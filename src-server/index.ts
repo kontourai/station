@@ -8,6 +8,7 @@ import './telemetry.js';
  * Main entry point
  */
 
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
@@ -33,6 +34,13 @@ import type { SelfHostedBrokerStatus } from './runtime/bootstrap/self-hosted-bro
 import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
+import {
+  allowHomeAccess,
+  type DrainRequest,
+  installListenerLink,
+  parkUnderSupervisor,
+  type SupervisorLink,
+} from './runtime/bootstrap/supervisor-link.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
 import {
   getInstalledServerLogSink,
@@ -61,7 +69,61 @@ function flushLogSink(): void {
   }
 }
 
+const VOICE_DRAIN_POLL_MS = 500;
+
+async function parkOrExit(): Promise<SupervisorLink | null> {
+  try {
+    return await parkUnderSupervisor();
+  } catch (error) {
+    console.error('Station could not start under its supervisor:', error);
+    process.exit(1);
+  }
+}
+
 async function main() {
+  // Under the process supervisor this generation is loaded while the previous
+  // one still serves and owns the home, so it parks before anything below:
+  // the temp and orphan sweeps (which could kill the live generation's
+  // engines), the schema gate, the log sink, and the lifecycle journal.
+  const supervisorLink = await parkOrExit();
+  if (supervisorLink) installListenerLink(supervisorLink);
+  allowHomeAccess();
+  // Set once the runtime can report its live voice calls and shut down.
+  let liveVoiceSessions: () => number = () => 0;
+  let gracefulShutdown:
+    | ((signal: string, forcedExitCode?: number) => Promise<void>)
+    | undefined;
+  const drainForSupervisor = async (
+    link: SupervisorLink,
+    request: DrainRequest,
+  ): Promise<void> => {
+    // A live voice call keeps this generation until it ends or the
+    // supervisor's cap kills us; the supervisor extends its deadline while
+    // the reported count is above zero.
+    let reported = liveVoiceSessions();
+    link.reportDrainProgress(reported);
+    await request.idleConnectionsClosed;
+    for (;;) {
+      const live = liveVoiceSessions();
+      if (live !== reported) {
+        link.reportDrainProgress(live);
+        reported = live;
+      }
+      if (live === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, VOICE_DRAIN_POLL_MS));
+    }
+    if (gracefulShutdown) {
+      await gracefulShutdown('supervisor_drain', 0);
+      return;
+    }
+    // Drained before boot finished: nothing to shut down gracefully.
+    await link.reportDrained();
+    process.exit(0);
+  };
+  supervisorLink?.onDrain((request) => {
+    void drainForSupervisor(supervisorLink, request);
+  });
+
   if (process.env.STATION_SERVICE_MANAGED === '1') {
     lifecycleService.add(1, { action: 'boot', platform: process.platform });
   }
@@ -85,6 +147,17 @@ async function main() {
     process.env.PORT,
     process.env.STATION_PORT_MODE,
   );
+  // A later generation serves on the sockets its supervisor holds, so their
+  // base port wins over PORT (and over allocating a fresh block for PORT=0).
+  const adoptedApiPort = supervisorLink?.adoptedPort('api') ?? null;
+  if (adoptedApiPort !== null) {
+    if (port !== AUTO_ALLOCATE_PORT && port !== adoptedApiPort) {
+      console.warn(
+        `[station] PORT ${port} differs from the supervisor-held API port ${adoptedApiPort}; serving on ${adoptedApiPort}`,
+      );
+    }
+    port = adoptedApiPort;
+  }
   const projectHomeDir = resolveHomeDir();
 
   // The schema gate must own the first write to a Station home. In
@@ -146,9 +219,6 @@ async function main() {
   });
 
   let stdoutBrokenPipe = false;
-  let gracefulShutdown:
-    | ((signal: string, forcedExitCode?: number) => Promise<void>)
-    | undefined;
   // Install before runtime initialization: boot logs are still stdout writes,
   // and Desktop can disappear while initialization is in flight.
   installStdoutEpipeGuard(process.stdout, () => {
@@ -159,6 +229,7 @@ async function main() {
   });
   try {
     await runtime.initialize();
+    liveVoiceSessions = () => runtime.activeVoiceSessionCount();
     let shuttingDown = false;
 
     // The read side of archive#1903: a self-update that never confirmed the
@@ -199,11 +270,16 @@ async function main() {
         });
       }
       processLifecycle.observeExit(exitCode);
+      if (supervisorLink?.draining) await supervisorLink.reportDrained();
       process.exit(exitCode);
     };
 
     process.on('SIGINT', () => void gracefulShutdown?.('SIGINT'));
     process.on('SIGTERM', () => void gracefulShutdown?.('SIGTERM'));
+    // The supervisor's IPC channel closing means it is gone (protocol).
+    supervisorLink?.setShutdownHandler(() =>
+      gracefulShutdown?.('supervisor_disconnect', 1),
+    );
     armSupervisedParentWatchdog({
       logger,
       onSupervisorGone: () => gracefulShutdown?.('SIGTERM', 1),
@@ -233,6 +309,10 @@ async function main() {
     }
     // Cover both an earlier async EPIPE and a synchronous handshake refusal.
     if (stdoutBrokenPipe) void gracefulShutdown('stdout_epipe', 1);
+    // The supervisor's readiness, sent once every listener has settled. The
+    // boot id is per generation: STATION_BOOT_ID is inherited unchanged by
+    // every generation a supervisor forks.
+    await supervisorLink?.ready(randomUUID(), port);
   } catch (error) {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);

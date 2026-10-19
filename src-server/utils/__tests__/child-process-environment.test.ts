@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { isSupervisedEnvironment } from '../../runtime/bootstrap/supervisor-link.js';
 import {
   BOOT_INTERNAL_SECRET_ENV_KEYS,
   childProcessEnvironment,
@@ -53,6 +54,24 @@ describe('childProcessEnvironment', () => {
     expect(env).not.toHaveProperty('STATION_SUPERVISOR_BIRTH');
     expect(env).not.toHaveProperty('STATION_SERVICE_MANAGED');
     expect(env).not.toHaveProperty('STATION_SERVICE_LAUNCHER');
+  });
+
+  it('does not pass the process supervisor generation markers to a child: a Station started there does not believe it is a forked generation', () => {
+    // Literal names, pinned independently of the protocol constants.
+    const markers = {
+      STATION_SUPERVISOR_IPC: '1',
+      STATION_SUPERVISOR_GENERATION: '3',
+      STATION_SUPERVISOR_PID: '4242',
+    };
+    expect(scrubBootInternalSecrets({ ...markers, KEEP: 'yes' })).toEqual({
+      KEEP: 'yes',
+    });
+    const env = childProcessEnvironment(markers);
+    expect(env).not.toHaveProperty('STATION_SUPERVISOR_IPC');
+    expect(env).not.toHaveProperty('STATION_SUPERVISOR_GENERATION');
+    // The same check the core's entry point uses to decide it must park.
+    expect(isSupervisedEnvironment(markers)).toBe(true);
+    expect(isSupervisedEnvironment(env)).toBe(false);
   });
 
   it('scrubs the internal API token and UI-bootstrap token from a copy', () => {

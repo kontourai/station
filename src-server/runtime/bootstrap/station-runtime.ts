@@ -4871,6 +4871,11 @@ export class StationRuntime {
   /**
    * List all loaded agents
    */
+  /** Live voice calls; a supervisor drain waits for them to end. */
+  activeVoiceSessionCount(): number {
+    return this.voiceService?.getActiveCount() ?? 0;
+  }
+
   listAgents(): string[] {
     return Array.from(this.activeAgents.keys());
   }

@@ -23,6 +23,10 @@ import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { observeOtelBootstrapConfig } from './domain/telemetry-bootstrap-config.js';
 import { resolveOtelTelemetryConfiguration } from './domain/telemetry-configuration.js';
 import { assertHostedPersistenceBeforeSchemaSync } from './runtime/bootstrap/hosted-persistence-boundary.js';
+import {
+  isSupervisedEnvironment,
+  whenHomeAccessAllowed,
+} from './runtime/bootstrap/supervisor-link.js';
 import { persistedRandomIdentifierHash } from './services/persisted-random-identifier.js';
 import { TelemetryRequestError } from './services/telemetry-response.js';
 import {
@@ -362,9 +366,23 @@ export function configuredTelemetryShutdownTask():
 // a swallowed failure makes a broken exporter configuration indistinguishable
 // from an unconfigured one, and an operator who set OTEL_EXPORTER_OTLP_ENDPOINT
 // deliberately deserves to know it did not take.
-void initializeTelemetry().catch((error) => {
+//
+// A supervised generation is loaded while the previous one still owns the
+// home, and initialization runs the schema gate and writes an installation
+// identity when an endpoint is configured. So under a supervisor it waits
+// until this generation is promoted.
+function warnTelemetryNotStarted(error: unknown): void {
   console.warn(
     '[telemetry] OTel did not start; Station continues without it:',
     error instanceof Error ? error.message : String(error),
   );
-});
+}
+// Unsupervised, initialization stays synchronous with this module's
+// evaluation, so the SDK starts before the modules imported after it.
+if (isSupervisedEnvironment()) {
+  void whenHomeAccessAllowed()
+    .then(() => initializeTelemetry())
+    .catch(warnTelemetryNotStarted);
+} else {
+  void initializeTelemetry().catch(warnTelemetryNotStarted);
+}
