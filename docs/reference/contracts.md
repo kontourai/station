@@ -43,6 +43,11 @@ It neither describes an analytics authorization credential nor proves a
 durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
 for current implementation and unexecuted acceptance limits.
 
+The `@kontourai/station-contracts/html-reply` subpath defines prepared page
+bytes, publication references, byte/height limits and theme variable names for
+[visual replies](../user/html-replies.md). It grants no publication or
+conversation access. Filesystem preparation stays in the server.
+
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |

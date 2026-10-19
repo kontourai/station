@@ -221,7 +221,8 @@
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
     "./mcp-prompts": "./src/mcp-prompts.ts",
-    "./account-preferences": "./src/account-preferences.ts"
+    "./account-preferences": "./src/account-preferences.ts",
+    "./html-reply": "./src/html-reply.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",

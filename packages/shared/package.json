@@ -117,7 +117,8 @@
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
     "./mcp-elicitation-form": "./src/mcp-elicitation-form.ts",
-    "./skill-experience-workflow": "./src/skill-experience-workflow.ts"
+    "./skill-experience-workflow": "./src/skill-experience-workflow.ts",
+    "./html-reply-document": "./src/html-reply-document.ts"
   },
   "publishConfig": {
     "access": "public"

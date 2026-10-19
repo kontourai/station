@@ -29,6 +29,11 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+The browser-safe `@kontourai/station-shared/html-reply-document` subpath builds
+the restrictive page document and page-only proxy bootstrap used by the
+[HTML reply sandbox](../decisions/html-replies.md). It also validates bounded page references for event-window projection. It
+carries no MCP tool or session bridge and does not publish or store pages.
+
 ## Recorded MCP app results
 
 `@kontourai/station-shared/mcp-app-result` exports
@@ -1247,7 +1252,10 @@ or explicitly configured integrations.
 The browser-safe `@kontourai/station-shared/mcp-ui-csp` leaf constructs resource
 policy separately from these Node transports. It filters URL schemes and emits
 directives; that alone is not complete CSP source-expression validation or
-browser network-containment proof. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
+browser network-containment proof. `MCP_UI_NETWORK_BOOTSTRAP_TAG` disables direct
+peer/ICE constructors before authored code in the shared wrappers. Nested srcdoc
+can obtain fresh constructors, so this does not guarantee network isolation.
+Frame source declarations are refused. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
 
 ### types
 

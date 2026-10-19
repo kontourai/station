@@ -1304,7 +1304,16 @@ describe('MCPToolUIFrame', () => {
     );
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
     expect(iframe.srcdoc).not.toContain("'nonce-shell-csp-nonce'");
-    expect(document.scripts).toHaveLength(2);
+    expect(
+      [...document.scripts].some(
+        (script) => script.textContent === 'window.panelReady = true',
+      ),
+    ).toBe(true);
+    expect(
+      document.querySelector(
+        'script[src="https://undeclared.example/payload.js"]',
+      ),
+    ).not.toBeNull();
     expect(
       [...document.scripts].every((script) => !script.hasAttribute('nonce')),
     ).toBe(true);

@@ -38,6 +38,18 @@ credential. Tokens for one server cannot open the other, and in-process tokens
 cannot be presented over HTTP. Ordinary API and Project authorization still
 apply to each tool operation.
 
+## Visual replies
+
+`html_preview` and `html_render` on station-control act only for the verified
+calling Session. The internal POST leaves `/api/html-replies/preview` and
+`/api/html-replies/render` accept bounded self-contained HTML, not a caller-chosen
+Session or workspace. Preview returns PNG data, contentHeight and console output;
+render returns a page reference. Both POST leaves require operate scope; preview launches Chromium rather than performing a read-only query. `GET /api/html-replies/:sessionId/:pageId` reads
+JSON only after canonical Session-read authorization. The read is no-store and
+does not execute HTML on the app origin. Deleting the publishing Session removes
+its page bytes. See [visual replies](../user/html-replies.md) for limits,
+engine approval behavior and physical-deletion semantics.
+
 ## Personal preferences
 
 `GET /api/me/preferences` reads the verified person's preferences on this

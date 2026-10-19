@@ -1175,6 +1175,30 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // the route additionally requires the caller to be able to read a session
   // that references the blob.
   {
+    id: '/api/html-replies/:sessionId/:pageId:GET',
+    method: 'GET',
+    prefix: '/api/html-replies/:sessionId/:pageId',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/html-replies/render:POST',
+    method: 'POST',
+    prefix: '/api/html-replies/render',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/html-replies/preview:POST',
+    method: 'POST',
+    prefix: '/api/html-replies/preview',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/attachments:GET',
     method: 'GET',
     prefix: '/api/attachments',

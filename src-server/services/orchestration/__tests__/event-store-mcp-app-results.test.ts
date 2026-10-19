@@ -51,6 +51,30 @@ test.each(['demo/chart', 'my__srv/chart'])(
       status: 'success',
       output: result,
     });
+    const reference = {
+      version: 1,
+      sessionId: threadId,
+      pageId: '00000000-0000-4000-8000-000000000001',
+    };
+    for (const [id, name] of [
+      ['page', 'mcp__station-control__html_render'],
+      ['ordinary', 'attacker/html_render'],
+    ])
+      store.appendEvent({
+        ...base,
+        eventId: id,
+        method: 'tool.completed',
+        itemId: id,
+        toolCallId: id,
+        toolName: name,
+        status: 'success',
+        output: {
+          content: [
+            { type: 'text', text: JSON.stringify({ htmlReply: reference }) },
+          ],
+        },
+        mcpAppResourceUri: 'ui://forged/app',
+      });
     store.close();
     store = new EventStore(path);
     try {
@@ -61,6 +85,13 @@ test.each(['demo/chart', 'my__srv/chart'])(
         output: result,
         mcpAppResourceUri: 'ui://demo/chart',
       });
+      const page = window.events.find((event) => event.id === 'page');
+      expect(page?.payload).toMatchObject({ htmlReply: reference });
+      expect(page?.payload).not.toHaveProperty('mcpAppResourceUri');
+      const ordinary = window.events.find((event) => event.id === 'ordinary');
+      expect(ordinary?.elided).toBe('output_limit');
+      expect(ordinary?.payload).not.toHaveProperty('htmlReply');
+      expect(ordinary?.payload).not.toHaveProperty('mcpAppResourceUri');
       const messages = projectRuntimeEventsToMessages(
         window.events.map((event) => event.payload),
       );

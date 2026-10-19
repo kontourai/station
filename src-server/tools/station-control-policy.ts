@@ -888,6 +888,22 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
 
   // ── notify ─────────────────────────────────────────────────────────────
+  html_render: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    enforcedBy: 'route',
+    routes: [post('/api/html-replies/render')],
+  },
+  html_preview: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    enforcedBy: 'route',
+    routes: [post('/api/html-replies/preview')],
+  },
   notify_user: {
     assurance: 'any',
     role: 'self',

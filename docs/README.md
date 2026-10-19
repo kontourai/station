@@ -37,6 +37,9 @@ local-first data boundary, and its work vocabulary. These pages describe
 outcomes and user-visible behavior without depending on a particular external
 engine.
 
+The [visual replies guide](user/html-replies.md) explains publishing, preview,
+page retention and the sandbox boundary.
+
 ### Developer and operator
 
 Use the [development guide](guides/development.md), [plugin authoring guide](guides/build-your-first-plugin.md),
