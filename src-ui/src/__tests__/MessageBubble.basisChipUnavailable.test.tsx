@@ -27,9 +27,10 @@ vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => {
     chunk.failures -= 1;
     throw new Error('Failed to fetch dynamically imported module');
   }
+  // Shaped like the real chip: visible "Basis", per-answer accessible name.
   return {
-    ConnectedAnswerBasisAffordance: () => (
-      <button type="button" className="answer-basis-chip">
+    ConnectedAnswerBasisAffordance: ({ label }: { label: string }) => (
+      <button type="button" className="answer-basis-chip" aria-label={label}>
         Basis
       </button>
     ),
@@ -39,6 +40,7 @@ vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => {
 const { MessageBubble } = await import('../components/chat/MessageBubble');
 
 const SESSION = 'agent:1792425046978';
+const CHIP = 'Basis for the answer “Here is the answer.”';
 
 describe('MessageBubble Basis chip when its chunk fails to load', () => {
   it('stays visible as a retry, and retrying restores the chip', async () => {
@@ -106,16 +108,17 @@ describe('MessageBubble Basis chip when its chunk fails to load', () => {
     );
 
     const retry = await screen.findByRole('button', {
-      name: 'Basis didn’t load · Retry',
+      name: 'Basis didn’t load · Retry for the answer “Here is the answer.”',
     });
+    expect(retry.textContent).toBe('Basis didn’t load · Retry');
     expect(retry.closest('.turn-footer__bar')).not.toBeNull();
     expect(retry.closest('.turn-footer__actions')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Basis' })).toBeNull();
+    expect(screen.queryByRole('button', { name: CHIP })).toBeNull();
 
     fireEvent.click(retry);
-    expect(await screen.findByRole('button', { name: 'Basis' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: CHIP })).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Basis didn’t load · Retry' }),
+      screen.queryByRole('button', { name: /^Basis didn’t load/ }),
     ).toBeNull();
   });
 });

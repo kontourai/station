@@ -684,6 +684,8 @@ function MessageBubbleComponent({
           <button
             type="button"
             className="answer-basis-chip answer-basis-chip--unavailable"
+            // Visible text first, then which answer (as the chip itself).
+            aria-label={`Basis didn’t load · Retry ${basisAnswerLabel.replace(/^Basis /, '')}`}
             onClick={retry}
           >
             Basis didn’t load · Retry
