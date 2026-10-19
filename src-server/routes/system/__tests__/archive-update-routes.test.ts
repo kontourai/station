@@ -1148,8 +1148,12 @@ function coordinatorFor(
     | ((message: { event: string; data?: Record<string, unknown> }) => void)
     | undefined;
   let policy = options.policy;
+  let provenanceCalls = 0;
   const coordinator = new ServerUpdateCoordinator({
-    provenance: () => resolveInstallProvenance(install.moduleDir),
+    provenance: () => {
+      provenanceCalls += 1;
+      return resolveInstallProvenance(install.moduleDir);
+    },
     options: {
       env: launcherEnv(install),
       fetchFn: fetchFn as unknown as typeof fetch,
@@ -1177,6 +1181,23 @@ function coordinatorFor(
     clock,
     timers,
     published,
+    provenanceCalls: () => provenanceCalls,
+    /** Fires timers in due order until `ms` from now has passed. */
+    advance: async (ms: number) => {
+      const target = clock.now + ms;
+      for (let step = 0; ; step += 1) {
+        if (step > 200)
+          throw new Error(
+            `timers did not settle: ${JSON.stringify(timers.live().map((timer) => timer.due - clock.now))}`,
+          );
+        const next = Math.min(...timers.live().map((timer) => timer.due));
+        if (!Number.isFinite(next) || next > target) break;
+        clock.now = Math.max(clock.now, next);
+        await timers.fireDue();
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+      clock.now = target;
+    },
     setPolicy: (next: string) => {
       policy = next;
     },
@@ -1584,17 +1605,20 @@ describe('the coordinator after review (#3851 F2-F8, F12)', () => {
     const install = makeInstall();
     stageOnDisk(install, NEWER, STAGE_REQUEST);
     let answer: (turns: Array<{ sessionId: string }>) => void = () => undefined;
+    let asked = false;
     const { coordinator, request } = coordinatorFor(install, {
       policy: 'never',
       running: () =>
         new Promise((resolve) => {
+          asked = true;
           answer = resolve;
         }),
     });
     coordinator.start();
     coordinator.markReady();
     await coordinator.setApplyWhenIdle(NEWER);
-    await vi.waitFor(() => expect(answer).not.toBe(undefined));
+    // The evaluation has asked for the running turns and is waiting on them.
+    await vi.waitFor(() => expect(asked).toBe(true));
     // The evaluation is waiting; the person cancels.
     expect(await coordinator.cancelApplyWhenIdle()).toMatchObject({ ok: true });
     answer([]);
@@ -1667,7 +1691,10 @@ describe('the coordinator after review (#3851 F2-F8, F12)', () => {
     settleRequest(install, { status: 'failed', reason: 'curl: (22) 404' });
     await coordinator.check('newer-client', { force: true });
     expect(request()).toBeNull();
-    expect((await coordinator.state()).autoDownloadAt).toBeNull();
+    // Not again at once: it is retried after the first backoff (round 2).
+    expect((await coordinator.state()).autoDownloadPausedReason).toBe(
+      'download-failed',
+    );
     // A person's Download still works.
     expect(await coordinator.stage()).toMatchObject({ ok: true });
     settleRequest(install, { status: 'failed', reason: 'again' });
@@ -1882,5 +1909,227 @@ describe('stage and apply on an install that has updated before (#3851 review F1
     });
     await coordinator.check('boot');
     expect(request()).toBeNull();
+  });
+});
+
+describe('the coordinator, review round 2 (#3851)', () => {
+  test('item 1: with no apply-when-idle pending, runtime events resolve nothing and arm nothing', async () => {
+    const install = makeInstall();
+    const { coordinator, turnEnded, timers, provenanceCalls } = coordinatorFor(
+      install,
+      { policy: 'never' },
+    );
+    coordinator.start();
+    coordinator.markReady();
+    const before = provenanceCalls();
+    const armed = timers.live().length;
+    for (let event = 0; event < 100; event += 1)
+      turnEnded('content.text-delta');
+    expect(provenanceCalls()).toBe(before);
+    expect(timers.live()).toHaveLength(armed);
+    // And the resolution happened once for the whole life of the coordinator.
+    await coordinator.state();
+    await coordinator.state();
+    expect(provenanceCalls()).toBe(1);
+    coordinator.stop();
+  });
+
+  test('item 2: an early timer re-arms without fetching; the deadline check runs once', async () => {
+    const install = makeInstall();
+    const { coordinator, advance, request } = coordinatorFor(install);
+    await coordinator.check('boot');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    await advance(23 * 60 * 60_000);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(request()).toBeNull();
+    await advance(60 * 60_000);
+    await vi.waitFor(() =>
+      expect(request()).toMatchObject({ mode: 'stage', targetVersion: NEWER }),
+    );
+  });
+
+  test('item 2: a deadline check that fails is retried after a backoff, not dropped', async () => {
+    const install = makeInstall();
+    const { coordinator, advance, request } = coordinatorFor(install);
+    await coordinator.check('boot');
+    fetchFn.mockRejectedValueOnce(new Error('getaddrinfo EAI_AGAIN'));
+    await advance(24 * 60 * 60_000);
+    expect(request()).toBeNull();
+    // The first retry waits one backoff step (1 h).
+    await advance(60 * 60_000);
+    await vi.waitFor(() =>
+      expect(request()).toMatchObject({ mode: 'stage', targetVersion: NEWER }),
+    );
+  });
+
+  test('item 2: a deadline check that does not verify is retried after a backoff', async () => {
+    const install = makeInstall();
+    const { coordinator, advance, request } = coordinatorFor(install);
+    await coordinator.check('boot');
+    const other = generateKeyPairSync('ed25519');
+    serveManifest(signedManifest(releasePayload(NEWER), other.privateKey));
+    await advance(24 * 60 * 60_000);
+    expect(request()).toBeNull();
+    serveManifest(signedManifest(releasePayload(NEWER)));
+    await advance(60 * 60_000);
+    await vi.waitFor(() =>
+      expect(request()).toMatchObject({ mode: 'stage', targetVersion: NEWER }),
+    );
+  });
+
+  test('item 5: a failed policy download is retried after a backoff and says why it paused', async () => {
+    const install = makeInstall();
+    const { coordinator, advance, request } = coordinatorFor(install, {
+      policy: 'immediately',
+    });
+    await coordinator.check('boot');
+    const first = settleRequest(install, {
+      status: 'failed',
+      reason: 'curl: (56) connection reset',
+    });
+    expect(first).toMatchObject({ mode: 'stage' });
+    await coordinator.check('newer-client', { force: true });
+    expect(request()).toBeNull();
+    const paused = await coordinator.state();
+    expect(paused.autoDownloadPausedReason).toBe('download-failed');
+    expect(paused.autoDownloadAt).not.toBeNull();
+    await advance(60 * 60_000);
+    await vi.waitFor(() =>
+      expect(request()).toMatchObject({ mode: 'stage', targetVersion: NEWER }),
+    );
+  });
+
+  test('item 5: a rolled-back update stays paused, and says so', async () => {
+    const install = makeInstall();
+    const paths = serviceUpdatePaths(install.installRoot);
+    mkdirSync(paths.runtime, { recursive: true });
+    writeFileSync(
+      paths.state,
+      JSON.stringify({
+        protocol: 1,
+        activeVersion: RUNNING,
+        update: {
+          id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+          fromVersion: RUNNING,
+          targetVersion: NEWER,
+          status: 'rolled-back',
+          reason: 'prepared-timeout',
+          attempts: 2,
+          finishedAt: '2026-10-19T09:00:00.000Z',
+        },
+      }),
+    );
+    const { coordinator, advance, request } = coordinatorFor(install, {
+      policy: 'immediately',
+    });
+    await coordinator.check('boot');
+    const state = await coordinator.state();
+    expect(state.autoDownloadPausedReason).toBe('update-failed');
+    expect(state.autoDownloadAt).toBeNull();
+    await advance(48 * 60 * 60_000);
+    expect(request()).toBeNull();
+  });
+
+  test('item 7: a download while an update when idle waits is refused', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'never',
+      running: () => [{ sessionId: 's-1' }],
+    });
+    coordinator.start();
+    coordinator.markReady();
+    await coordinator.setApplyWhenIdle(NEWER);
+    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    const app = createApp(install, {
+      extraDeps: { serverUpdate: coordinator },
+    });
+    const res = await app.request('/core-update', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'stage' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.status).toBe(409);
+    expect((await json(res)).error).toMatch(/cancel it before downloading/);
+    expect(request()).toBeNull();
+    expect((await coordinator.state()).applyWhenIdle).toMatchObject({
+      version: NEWER,
+    });
+    coordinator.stop();
+  });
+
+  test('item 8: the state says how many running turns an update when idle waits for', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator } = coordinatorFor(install, {
+      policy: 'never',
+      running: () => [{ sessionId: 's-1' }, { sessionId: 'webhook' }],
+    });
+    coordinator.start();
+    coordinator.markReady();
+    await coordinator.setApplyWhenIdle(NEWER);
+    await vi.waitFor(async () =>
+      expect((await coordinator.state()).applyWhenIdle).toMatchObject({
+        version: NEWER,
+        waitingForTurns: 2,
+      }),
+    );
+    coordinator.stop();
+  });
+
+  test('item 9: a new server keeps the policy download record for a still-newer version', async () => {
+    const install = makeInstall();
+    const runtime = serviceUpdatePaths(install.installRoot).runtime;
+    mkdirSync(runtime, { recursive: true });
+    const file = join(runtime, 'server-update.json');
+    writeFileSync(
+      file,
+      JSON.stringify({
+        availableSince: { version: RUNNING, at: '2026-10-18T00:00:00Z' },
+        autoStaged: {
+          version: NEWER,
+          at: '2026-10-18T00:00:00Z',
+          attempts: 1,
+          refused: true,
+        },
+      }),
+    );
+    const { coordinator } = coordinatorFor(install, { policy: 'never' });
+    coordinator.start();
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+      autoStaged: {
+        version: NEWER,
+        at: '2026-10-18T00:00:00Z',
+        attempts: 1,
+        refused: true,
+      },
+    });
+    coordinator.stop();
+  });
+
+  test('item 9: cancelling while the launcher is updating says nothing was cancelled', async () => {
+    const install = makeInstall();
+    const paths = serviceUpdatePaths(install.installRoot);
+    mkdirSync(paths.runtime, { recursive: true });
+    writeFileSync(
+      paths.state,
+      JSON.stringify({
+        protocol: 1,
+        activeVersion: RUNNING,
+        update: {
+          id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+          fromVersion: RUNNING,
+          targetVersion: NEWER,
+          status: 'pending',
+          phase: 'trial',
+          attempts: 1,
+        },
+      }),
+    );
+    const { coordinator } = coordinatorFor(install, { policy: 'never' });
+    expect(await coordinator.cancelApplyWhenIdle()).toMatchObject({
+      ok: false,
+      status: 409,
+    });
   });
 });

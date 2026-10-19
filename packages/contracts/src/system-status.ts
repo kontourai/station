@@ -257,7 +257,13 @@ export const DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY: ServerUpdateDownloadPolicy =
  *   already staged or under way). It is evaluated on a check, not by a
  *   clock: a server checks again when it is due.
  * - `applyWhenIdle`: a persisted request to apply `version` once no agent
- *   turn is running; null when none is set.
+ *   turn is running; null when none is set. `waitingForTurns` is how many
+ *   running turns its last evaluation found (absent before one ran): a turn
+ *   that never ends keeps it waiting, and this is where that shows.
+ * - `autoDownloadPausedReason`: why the policy is not downloading the
+ *   available release: `update-failed` (its update rolled back or failed;
+ *   until a person's Download or a newer release) or `download-failed` (it
+ *   is retried at `autoDownloadAt`). Optional: absent on servers before it.
  */
 // A type alias, not an interface: it is an event payload
 // (`Record<string, unknown>`), which an interface is not assignable to.
@@ -274,7 +280,12 @@ export type ServerUpdateState = {
   progress: ServiceUpdateProgress;
   downloadPolicy: ServerUpdateDownloadPolicy;
   autoDownloadAt: string | null;
-  applyWhenIdle: { version: string; requestedAt: string } | null;
+  autoDownloadPausedReason?: 'update-failed' | 'download-failed' | null;
+  applyWhenIdle: {
+    version: string;
+    requestedAt: string;
+    waitingForTurns?: number;
+  } | null;
 };
 
 /**

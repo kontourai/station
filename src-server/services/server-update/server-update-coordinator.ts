@@ -77,6 +77,22 @@ const PROGRESS_POLL_MS = 1_000;
  * 2^31-1 ms to 1 ms (review F3); a far deadline is reached by re-arming.
  */
 export const MAX_TIMER_MS = 6 * 60 * 60_000;
+/**
+ * Waits before retrying something that failed: a download-deadline check
+ * that could not verify the manifest, and a policy download that failed
+ * (review round 2). The last one repeats.
+ */
+export const RETRY_BACKOFF_MS = [
+  60 * 60_000,
+  6 * 60 * 60_000,
+  24 * 60 * 60_000,
+];
+
+function backoff(attempt: number): number {
+  return RETRY_BACKOFF_MS[
+    Math.min(Math.max(attempt, 1), RETRY_BACKOFF_MS.length) - 1
+  ] as number;
+}
 /** Turns end in bursts (a turn and its children); one evaluation per burst. */
 const IDLE_DEBOUNCE_MS = 2_000;
 
@@ -140,8 +156,17 @@ export interface ServerUpdateCoordinatorDeps {
 interface PersistedIntent {
   availableSince?: { version: string; at: string };
   applyWhenIdle?: { version: string; requestedAt: string };
-  /** The version the policy last started downloading (review F4). */
-  autoStaged?: { version: string; at: string };
+  /**
+   * The policy's last download of a version (review F4): when, how many
+   * attempts, the request it wrote, or that the request was refused.
+   */
+  autoStaged?: {
+    version: string;
+    at: string;
+    attempts: number;
+    requestId?: string;
+    refused?: true;
+  };
 }
 
 interface CachedCheck {
@@ -201,7 +226,18 @@ function readIntentFile(path: string): PersistedIntent {
     VERSION.test(auto.version) &&
     isTimestamp(auto.at)
   )
-    intent.autoStaged = { version: auto.version, at: auto.at };
+    intent.autoStaged = {
+      version: auto.version,
+      at: auto.at,
+      attempts:
+        Number.isSafeInteger(auto.attempts) && (auto.attempts as number) > 0
+          ? (auto.attempts as number)
+          : 1,
+      ...(typeof auto.requestId === 'string'
+        ? { requestId: auto.requestId }
+        : {}),
+      ...(auto.refused === true ? { refused: true as const } : {}),
+    };
   return intent;
 }
 
@@ -244,6 +280,23 @@ export class ServerUpdateCoordinator {
   private ready = false;
   /** The policy the last evaluation used, to tell its own setting changed. */
   private lastPolicy: ServerUpdateDownloadPolicy | null = null;
+  /**
+   * What this server is, resolved once (round 2 item 1): an install does not
+   * change kind under a running process, and the resolution reads files.
+   */
+  private archiveResolved:
+    | { value: (ArchiveProvenance & { installRoot: string }) | null }
+    | undefined;
+  /**
+   * Whether an apply-when-idle intent exists, kept in memory: this
+   * coordinator is the intent file's only writer, so the hot path (every
+   * runtime event) needs no file read to learn there is nothing to do.
+   */
+  private idleIntentPending: boolean | undefined;
+  /** The running turns the last idle evaluation waited for (item 8). */
+  private idleWait: { version: string; turns: number } | null = null;
+  /** Consecutive download deadlines whose check failed (item 2). */
+  private deadlineFailures = 0;
   private unsubscribe: (() => void) | null = null;
   private stopped = false;
 
@@ -256,15 +309,17 @@ export class ServerUpdateCoordinator {
 
   /** The launcher-run archive this server is, or null when it is not one. */
   private archive(): (ArchiveProvenance & { installRoot: string }) | null {
+    if (this.archiveResolved) return this.archiveResolved.value;
     const provenance = this.deps.provenance();
-    if (provenance.installKind !== 'archive' || !provenance.installRoot)
-      return null;
-    if (
-      archiveApplyMethod(provenance, this.deps.options?.env) !==
-      'service-update'
-    )
-      return null;
-    return provenance as ArchiveProvenance & { installRoot: string };
+    const value =
+      provenance.installKind === 'archive' &&
+      provenance.installRoot &&
+      archiveApplyMethod(provenance, this.deps.options?.env) ===
+        'service-update'
+        ? (provenance as ArchiveProvenance & { installRoot: string })
+        : null;
+    this.archiveResolved = { value };
+    return value;
   }
 
   supported(): boolean {
@@ -276,13 +331,16 @@ export class ServerUpdateCoordinator {
   }
 
   private readIntent(installRoot: string): PersistedIntent {
-    return readIntentFile(this.intentPath(installRoot));
+    const intent = readIntentFile(this.intentPath(installRoot));
+    this.idleIntentPending = !!intent.applyWhenIdle;
+    return intent;
   }
 
   private writeIntent(installRoot: string, intent: PersistedIntent): void {
     const path = this.intentPath(installRoot);
     if (!intent.availableSince && !intent.applyWhenIdle && !intent.autoStaged) {
       rmSync(path, { force: true });
+      this.idleIntentPending = false;
       return;
     }
     mkdirSync(serviceUpdatePaths(installRoot).runtime, {
@@ -290,6 +348,7 @@ export class ServerUpdateCoordinator {
       mode: 0o700,
     });
     writeJsonAtomically(path, intent);
+    this.idleIntentPending = !!intent.applyWhenIdle;
   }
 
   private async policy(): Promise<ServerUpdateDownloadPolicy> {
@@ -313,6 +372,7 @@ export class ServerUpdateCoordinator {
         progress: { state: 'unavailable' },
         downloadPolicy: policy,
         autoDownloadAt: null,
+        autoDownloadPausedReason: null,
         applyWhenIdle: null,
       };
     const intent = this.readIntent(archive.installRoot);
@@ -344,8 +404,56 @@ export class ServerUpdateCoordinator {
         progress,
         intent,
       ),
-      applyWhenIdle: intent.applyWhenIdle ?? null,
+      autoDownloadPausedReason:
+        policy === 'never'
+          ? null
+          : this.autoDownloadPause(status, progress, intent),
+      applyWhenIdle: intent.applyWhenIdle
+        ? {
+            ...intent.applyWhenIdle,
+            ...(this.idleWait?.version === intent.applyWhenIdle.version
+              ? { waitingForTurns: this.idleWait.turns }
+              : {}),
+          }
+        : null,
     };
+  }
+
+  /**
+   * Why the policy is not downloading the available release (round 2 item
+   * 5): its update failed or rolled back (until a person's Download or a
+   * newer release), or its download failed and waits to be retried.
+   */
+  private autoDownloadPause(
+    status: ArchiveUpdateStatus | null,
+    progress: ServiceUpdateProgress,
+    intent: PersistedIntent,
+  ): 'update-failed' | 'download-failed' | null {
+    const latest = status?.latestVersion;
+    if (!latest || !status?.updateAvailable) return null;
+    if (
+      (progress.state === 'rolled-back' ||
+        progress.state === 'failed' ||
+        progress.state === 'needs-operator') &&
+      progress.targetVersion === latest
+    )
+      return 'update-failed';
+    return intent.autoStaged?.version === latest &&
+      this.autoStageFailed(intent.autoStaged, progress)
+      ? 'download-failed'
+      : null;
+  }
+
+  /** The policy's download of a version failed: refused, or staging failed. */
+  private autoStageFailed(
+    auto: NonNullable<PersistedIntent['autoStaged']>,
+    progress: ServiceUpdateProgress,
+  ): boolean {
+    if (auto.refused) return true;
+    return (
+      (progress.state === 'staging-failed' || progress.state === 'rejected') &&
+      progress.requestId === auto.requestId
+    );
   }
 
   /** When the policy downloads the available version; null when it will not. */
@@ -363,11 +471,20 @@ export class ServerUpdateCoordinator {
     )
       return null;
     const latest = status?.latestVersion;
-    // Once per version (F4): a download the policy already started, or a
-    // version whose update rolled back or failed, waits for a person or a
+    // A version whose update rolled back or failed waits for a person or a
     // newer release. And never under a pending apply-when-idle (F6): it
     // waits for the staged version, which a newer stage would replace.
-    if (intent.autoStaged?.version === latest) return null;
+    if (intent.applyWhenIdle) return null;
+    const auto = intent.autoStaged;
+    if (auto?.version === latest) {
+      // A download the policy started: once its staging failed (or it was
+      // refused), it is retried after a backoff (round 2 item 5); while it
+      // runs or after it succeeded, nothing.
+      if (!this.autoStageFailed(auto, progress)) return null;
+      return new Date(
+        Date.parse(auto.at) + backoff(auto.attempts),
+      ).toISOString();
+    }
     if (
       (progress.state === 'rolled-back' ||
         progress.state === 'failed' ||
@@ -375,7 +492,6 @@ export class ServerUpdateCoordinator {
       progress.targetVersion === latest
     )
       return null;
-    if (intent.applyWhenIdle) return null;
     if (policy === 'immediately') return availableSince;
     return new Date(
       Date.parse(availableSince) + SERVER_UPDATE_DOWNLOAD_DELAY_MS,
@@ -481,9 +597,12 @@ export class ServerUpdateCoordinator {
       compareStationReleaseVersions(version, archive.version) !== 1;
     if (
       !stale(intent.applyWhenIdle?.version) &&
-      !stale(intent.availableSince?.version)
+      !stale(intent.availableSince?.version) &&
+      !stale(intent.autoStaged?.version)
     )
       return;
+    // Each record goes only if it names a version no longer newer; the
+    // policy's download record stays otherwise (round 2 item 9).
     const next: PersistedIntent = {
       ...(stale(intent.availableSince?.version)
         ? {}
@@ -491,6 +610,9 @@ export class ServerUpdateCoordinator {
       ...(stale(intent.applyWhenIdle?.version)
         ? {}
         : { applyWhenIdle: intent.applyWhenIdle }),
+      ...(stale(intent.autoStaged?.version)
+        ? {}
+        : { autoStaged: intent.autoStaged }),
     };
     this.tryWriteIntent(archive.installRoot, next);
   }
@@ -624,25 +746,36 @@ export class ServerUpdateCoordinator {
     const due = Date.parse(state.autoDownloadAt);
     const wait = due - this.now();
     if (wait > 0) {
-      const timer = this.setTimer(
-        () => {
-          this.downloadDue = null;
-          void this.check('download-due', { force: true });
-        },
-        Math.min(wait, MAX_TIMER_MS),
-      );
-      this.downloadDue = { at: due, ...timer };
+      this.armDownloadDeadline(due);
       return;
     }
     const version = state.availability?.latestVersion ?? null;
     // Recorded before the request, so even a download that fails at once is
-    // not started again by the next trigger (F4).
+    // not started again by the next trigger until its backoff passed (F4).
+    const previous = this.readIntent(archive.installRoot);
+    const attempts =
+      previous.autoStaged?.version === version
+        ? previous.autoStaged.attempts + 1
+        : 1;
+    const at = new Date(this.now()).toISOString();
+    if (version)
+      this.tryWriteIntent(archive.installRoot, {
+        ...previous,
+        autoStaged: { version, at, attempts },
+      });
+    const result = await this.request('stage');
     if (version)
       this.tryWriteIntent(archive.installRoot, {
         ...this.readIntent(archive.installRoot),
-        autoStaged: { version, at: new Date(this.now()).toISOString() },
+        autoStaged: {
+          version,
+          at,
+          attempts,
+          ...(result.ok
+            ? { requestId: result.requestId }
+            : { refused: true as const }),
+        },
       });
-    const result = await this.request('stage');
     if (result.ok)
       this.deps.logger.info('Server update: downloading by policy', {
         policy: state.downloadPolicy,
@@ -652,6 +785,40 @@ export class ServerUpdateCoordinator {
       this.deps.logger.warn('Server update: the policy download was refused', {
         error: result.error,
       });
+  }
+
+  /**
+   * Waits for a download deadline (round 2 item 2). A timer that fires
+   * before the deadline (timers are capped at MAX_TIMER_MS) re-arms without
+   * fetching anything; at the deadline one check runs, and the policy acts on
+   * it. A check that fails or does not verify is retried after a backoff.
+   */
+  private armDownloadDeadline(due: number): void {
+    this.downloadDue?.cancel();
+    const timer = this.setTimer(
+      () => {
+        this.downloadDue = null;
+        if (this.now() < due) this.armDownloadDeadline(due);
+        else void this.downloadDeadlineReached();
+      },
+      Math.min(Math.max(due - this.now(), 0), MAX_TIMER_MS),
+    );
+    this.downloadDue = { at: due, ...timer };
+  }
+
+  private async downloadDeadlineReached(): Promise<void> {
+    if (this.stopped) return;
+    const status = await this.check('download-due', { force: true });
+    if (status?.releaseCheck === 'verified') {
+      this.deadlineFailures = 0;
+      return;
+    }
+    this.deadlineFailures += 1;
+    const retryAt = this.now() + backoff(this.deadlineFailures);
+    this.deps.logger.warn('Server update: the download deadline check failed', {
+      retryAt: new Date(retryAt).toISOString(),
+    });
+    this.armDownloadDeadline(retryAt);
   }
 
   /**
@@ -696,6 +863,16 @@ export class ServerUpdateCoordinator {
 
   /** Download and verify the newest release; nothing restarts. */
   async stage(): Promise<ServerUpdateActionResult> {
+    // A new download would replace (and prune) the staged version an
+    // apply-when-idle waits for (round 2 item 7).
+    const archive = this.archive();
+    if (archive && this.readIntent(archive.installRoot).applyWhenIdle)
+      return {
+        ok: false,
+        status: 409,
+        error:
+          'An update when idle is waiting for the downloaded version; cancel it before downloading another.',
+      };
     const result = await this.request('stage');
     if (!result.ok) return result;
     await this.publish();
@@ -791,8 +968,9 @@ export class ServerUpdateCoordinator {
       const intent = this.readIntent(archive.installRoot);
       const progress = readServiceUpdateProgress(archive.installRoot);
       if (
-        (progress.state === 'queued' || progress.state === 'staging') &&
-        progress.intent === 'apply'
+        progress.state === 'updating' ||
+        ((progress.state === 'queued' || progress.state === 'staging') &&
+          progress.intent === 'apply')
       ) {
         // The restart is already requested; the intent it fulfilled goes.
         if (intent.applyWhenIdle) {
@@ -829,10 +1007,11 @@ export class ServerUpdateCoordinator {
     // abort, an exit, a runtime error, a stop settling): rather than name
     // them all, every one re-evaluates, at most once per interval (F5). The
     // timer is not reset by later events, so a busy stream cannot starve it.
+    // The flag first (round 2 item 1): with no intent pending, a runtime
+    // event costs nothing else, no file read and no provenance resolution.
+    if (!this.idleIntentPending) return;
     if (message.event !== 'orchestration:event' || this.idleTimer) return;
     if (!this.ready) return;
-    const archive = this.archive();
-    if (!archive || !this.readIntent(archive.installRoot).applyWhenIdle) return;
     this.idleTimer = this.setTimer(() => {
       this.idleTimer = null;
       void this.evaluateIdle();
@@ -885,7 +1064,13 @@ export class ServerUpdateCoordinator {
         });
         return;
       }
-      if (running.length > 0) return;
+      if (running.length > 0) {
+        // What the wait is for, so a turn that never ends is visible.
+        this.idleWait = { version: intent.version, turns: running.length };
+        await this.publish();
+        return;
+      }
+      this.idleWait = null;
       // The intent is read again after the wait: only the version it still
       // names, if it still names one, is applied.
       const current = this.readIntent(archive.installRoot).applyWhenIdle;

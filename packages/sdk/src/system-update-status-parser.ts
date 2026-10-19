@@ -108,11 +108,22 @@ export function parseServerUpdateState(value: unknown): ServerUpdateState {
       ? (value.downloadPolicy as ServerUpdateDownloadPolicy)
       : 'after-24h',
     autoDownloadAt: optionalTimestamp(value.autoDownloadAt),
+    autoDownloadPausedReason:
+      value.autoDownloadPausedReason === 'update-failed' ||
+      value.autoDownloadPausedReason === 'download-failed'
+        ? value.autoDownloadPausedReason
+        : null,
     applyWhenIdle:
       idle &&
       isNonEmptyString(idle.version) &&
       optionalTimestamp(idle.requestedAt)
-        ? { version: idle.version, requestedAt: idle.requestedAt as string }
+        ? {
+            version: idle.version,
+            requestedAt: idle.requestedAt as string,
+            ...(isByteCount(idle.waitingForTurns)
+              ? { waitingForTurns: idle.waitingForTurns }
+              : {}),
+          }
         : null,
   };
 }

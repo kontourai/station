@@ -1035,6 +1035,7 @@ export function createSystemUpdateRoutes(
         progress: { state: 'unavailable' },
         downloadPolicy: 'after-24h',
         autoDownloadAt: null,
+        autoDownloadPausedReason: null,
         applyWhenIdle: null,
       });
     return c.json(await deps.serverUpdate.state());
