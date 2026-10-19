@@ -2149,7 +2149,7 @@ describe('the coordinator, review round 3 (#3851)', () => {
 
   test('item 1: saving never while the deadline check runs leaves nothing to retry', async () => {
     const install = makeInstall();
-    const { coordinator, advance, timers, setPolicy, request } =
+    const { coordinator, advance, setPolicy, request } =
       coordinatorFor(install);
     coordinator.start();
     await coordinator.check('boot');
