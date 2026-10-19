@@ -686,7 +686,6 @@ function MessageBubbleComponent({
           {msg.traceId.slice(-8)}
         </a>
       )}
-      {!isMobile && basisChip}
       {desktopCopy}
       {((msg.turnId &&
         answerSessionId &&
@@ -824,7 +823,12 @@ function MessageBubbleComponent({
             from the overflow as dialogs (#2211). */}
       {hasTurnFooter && !isMobile && (
         <div className="turn-footer">
-          <div className="turn-footer__actions">{footerActions}</div>
+          {/* #926 amendment (owner, 2026-10): Basis stays visible at rest,
+              beside the hover-revealed row rather than inside it. */}
+          <div className="turn-footer__bar">
+            {basisChip}
+            <div className="turn-footer__actions">{footerActions}</div>
+          </div>
         </div>
       )}
     </>

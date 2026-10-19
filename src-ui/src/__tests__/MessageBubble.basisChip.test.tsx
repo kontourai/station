@@ -9,6 +9,9 @@
  * Session ids are the colon-shaped ids real sessions carry, not `session-a`.
  */
 
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   fireEvent,
@@ -18,7 +21,21 @@ import {
   within,
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../tests/helpers/css-cascade-fixture';
 import {
   closeSessionInventoryOccurrence,
   registerSessionInventoryHost,
@@ -185,10 +202,16 @@ describe('MessageBubble answer Basis chip', () => {
     const { container } = renderTranscript([answer('turn-7')]);
 
     const chip = await screen.findByRole('button', { name: 'Basis' });
-    // In the answer's own action row: no menu or dialog to open first.
+    // In the answer's own footer, beside (never inside) the hover-revealed
+    // action row: no menu or dialog to open first (#926 amendment).
+    expect(chip.parentElement?.classList.contains('turn-footer__bar')).toBe(
+      true,
+    );
+    expect(chip.closest('.turn-footer__actions')).toBeNull();
     expect(
-      container.querySelector('.turn-footer__actions')?.contains(chip),
+      chip.nextElementSibling?.classList.contains('turn-footer__actions'),
     ).toBe(true);
+    expect(container.querySelector('.turn-footer__actions')).not.toBeNull();
     // The chip claims nothing it did not compute: no count, no standing.
     expect(chip.textContent).toBe('Basis');
 
@@ -335,3 +358,75 @@ describe('MessageBubble answer Basis chip', () => {
     });
   });
 });
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, '../../../');
+const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
+
+/**
+ * The placement above is DOM structure; whether the chip is actually visible
+ * at rest is the cascade's answer. This lays the real row out with the real
+ * stylesheets in Chromium, on a hover-capable pointer, with nothing hovered.
+ */
+describe.skipIf(!chromiumAvailable)('Basis chip at rest, in Chromium', () => {
+  let browser: Awaited<ReturnType<typeof chromium.launch>>;
+  beforeAll(async () => {
+    browser = await chromium.launch();
+  });
+  afterAll(async () => {
+    await browser?.close();
+  });
+
+  it('is visible and hittable while the hover-revealed row is hidden', async () => {
+    const { container } = renderTranscript([answer('turn-7')]);
+    await screen.findByRole('button', { name: 'Basis' });
+    const css = `${resolveCssImports(resolve(HERE, '../index.css'))}\n${resolveCssImports(resolve(HERE, '../components/chat/chat.css'))}`;
+    assertNoImportsSurvive(css);
+    const page = await browser.newPage({
+      viewport: { width: 1280, height: 800 },
+    });
+    try {
+      await page.setContent(
+        `<!doctype html><style>${css}</style><main style="padding:24px">${container.innerHTML}</main>`,
+      );
+      expect(
+        await page.evaluate(() => matchMedia('(hover: hover)').matches),
+      ).toBe(true);
+      await page.mouse.move(1, 1);
+      const result = await page.evaluate(() => {
+        const chip = document.querySelector<HTMLElement>('.answer-basis-chip')!;
+        const row = document.querySelector<HTMLElement>(
+          '.turn-footer__actions',
+        )!;
+        const box = chip.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2,
+        );
+        return {
+          chipVisible: chip.checkVisibility({ opacityProperty: true }),
+          rowVisible: row.checkVisibility({ opacityProperty: true }),
+          hitIsChip: hit === chip,
+          height: Math.round(box.height),
+        };
+      });
+      expect(result).toEqual({
+        chipVisible: true,
+        rowVisible: false,
+        hitIsChip: true,
+        height: 28,
+      });
+    } finally {
+      await page.close();
+    }
+  });
+});
+
+it.skipIf(chromiumAvailable)(
+  'Basis chip at rest — Chromium not installed',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the at-rest visibility of the Basis chip cannot be verified. Run npm run install:playwright and retry.',
+    );
+  },
+);

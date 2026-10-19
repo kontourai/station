@@ -108,7 +108,8 @@ describe('MessageBubble Basis chip when its chunk fails to load', () => {
     const retry = await screen.findByRole('button', {
       name: 'Basis didn’t load · Retry',
     });
-    expect(retry.closest('.turn-footer__actions')).not.toBeNull();
+    expect(retry.closest('.turn-footer__bar')).not.toBeNull();
+    expect(retry.closest('.turn-footer__actions')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Basis' })).toBeNull();
 
     fireEvent.click(retry);

@@ -433,9 +433,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       { name: /^Basis/ },
       { timeout: 10_000 },
     );
-    expect(
-      document.querySelector('.turn-footer__actions')?.contains(chip),
-    ).toBe(true);
+    expect(chip.closest('.turn-footer__bar')).not.toBeNull();
     await openProvenanceDialog();
     const detail = document.querySelector('.turn-provenance__detail');
     expect(detail).not.toBeNull();
