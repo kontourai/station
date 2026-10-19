@@ -457,8 +457,11 @@ Both save the same selected answers before opening their next step.
 
 On a phone, use the compose button at the right of the chat bar, or tap the
 current chat title to open **Chats and tasks** and choose **New chat** at the
-lower right. The three-dot menu holds chat actions; connection health remains
-in the app header. In fullscreen chat, where that header is hidden, Station
+lower right. The three-dot menu holds chat actions, including **This chat**:
+the chat's workspace, branch and changed files, status, background tasks and
+linked pull requests, each opening its own view. On a computer, a wide dock
+shows the same panel beside the transcript, and a narrower one puts it behind
+a chip in the dock header. Connection health remains in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
