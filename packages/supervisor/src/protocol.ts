@@ -24,7 +24,7 @@
  */
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { posix, win32 } from 'node:path';
 
 export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 0 });
 
@@ -418,13 +418,22 @@ export function isValidInstanceId(instance: string): boolean {
  * socket). The parent is already writable wherever Station runs, since the
  * home schema gate keeps its mutation lock there too.
  */
-export function supervisorRunDir(home: string): string {
-  const resolved = resolve(home);
-  const name = basename(resolved);
-  if (name === '' || dirname(resolved) === resolved) {
+export function supervisorRunDir(
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const path = pathFor(platform);
+  const resolved = path.resolve(home);
+  const name = path.basename(resolved);
+  if (name === '' || path.dirname(resolved) === resolved) {
     throw new Error(`a Station home cannot be a filesystem root: ${resolved}`);
   }
-  return join(dirname(resolved), `.${name}.station-supervisor`);
+  return path.join(path.dirname(resolved), `.${name}.station-supervisor`);
+}
+
+/** Paths in the flavor of the platform they are derived for. */
+function pathFor(platform: NodeJS.Platform): typeof posix {
+  return platform === 'win32' ? win32 : posix;
 }
 
 /**
@@ -442,8 +451,9 @@ export function resolveControlEndpoint(options: {
   if (!isValidInstanceId(options.instance)) {
     throw new Error(`invalid supervisor instance id: ${options.instance}`);
   }
+  const { join, resolve } = pathFor(platform);
   const home = resolve(options.home);
-  const runDir = supervisorRunDir(home);
+  const runDir = supervisorRunDir(home, platform);
   const tokenPath = join(runDir, `supervisor-${options.instance}.token`);
   const hash = endpointHash(home, options.instance);
   if (platform === 'win32') {

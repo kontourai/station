@@ -71,7 +71,7 @@ export interface RunningSupervisor {
 }
 
 /**
- * Homes short enough for the in-home socket path. The vitest temp root is too
+ * Homes short enough for the run-directory socket path. The vitest temp root is too
  * deep for a 104-byte sun_path, so these live in the ambient temp directory.
  * Created before the teardown hook below, so they are removed after it.
  */

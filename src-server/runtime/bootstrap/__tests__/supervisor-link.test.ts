@@ -6,8 +6,11 @@
 import { EventEmitter } from 'node:events';
 import http from 'node:http';
 import net from 'node:net';
-import { dirname } from 'node:path';
-import { resolveControlEndpoint } from '@kontourai/station-supervisor/protocol';
+import { posix, win32 } from 'node:path';
+import {
+  resolveControlEndpoint,
+  supervisorRunDir,
+} from '@kontourai/station-supervisor/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   closeStableListener,
@@ -664,15 +667,34 @@ describe('closeStableListener', () => {
 });
 
 describe('the supervisor run directory', () => {
-  it('lies beside the Station home, never inside it', () => {
-    const endpoint = resolveControlEndpoint({
+  it("lies beside the Station home, never inside it, in its platform's path flavor", () => {
+    const linux = resolveControlEndpoint({
       home: '/station/instances/stable',
       instance: 'default',
       platform: 'linux',
     });
-    expect(dirname(endpoint.tokenPath)).toBe(
+    expect(posix.dirname(linux.tokenPath)).toBe(
       '/station/instances/.stable.station-supervisor',
     );
-    expect(endpoint.path.startsWith('/station/instances/stable/')).toBe(false);
+    expect(linux.path.startsWith('/station/instances/stable/')).toBe(false);
+    const windows = resolveControlEndpoint({
+      home: 'C:\\Station\\instances\\stable',
+      instance: 'default',
+      platform: 'win32',
+    });
+    expect(win32.dirname(windows.tokenPath)).toBe(
+      'C:\\Station\\instances\\.stable.station-supervisor',
+    );
+  });
+
+  it('names the run directory for the default home and for a home of ~/.station', () => {
+    // The default home is <root>/instances/<channel>.
+    expect(
+      supervisorRunDir('/Users/me/.station/instances/stable', 'darwin'),
+    ).toBe('/Users/me/.station/instances/.stable.station-supervisor');
+    // STATION_HOME=~/.station itself: a doubled dot, still beside the home.
+    expect(supervisorRunDir('/Users/me/.station', 'darwin')).toBe(
+      '/Users/me/..station.station-supervisor',
+    );
   });
 });

@@ -33,7 +33,7 @@ async function fakeSupervisor(
   connections: () => number;
   received: () => string;
 }> {
-  // The real endpoint derivation: a socket in <home>/run, or a named pipe on Windows.
+  // The real endpoint derivation: a socket in the run directory beside the home, or a named pipe on Windows.
   const home = makeShortHome();
   const { path } = resolveControlEndpoint({ home, instance: 't' });
   if (process.platform !== 'win32') {

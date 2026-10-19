@@ -112,6 +112,17 @@ function parseCommandLine(): Record<string, string | boolean | undefined> {
   }
 }
 
+/** The derived endpoint, or a usage error (for example a home at `/`). */
+function endpointOrFail(
+  options: Parameters<typeof resolveControlEndpoint>[0],
+): ControlEndpoint {
+  try {
+    return resolveControlEndpoint(options);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
 async function main(): Promise<void> {
   const parsed = parseCommandLine();
   if (parsed.help === true) {
@@ -125,9 +136,7 @@ async function main(): Promise<void> {
       fail('--break-lock needs --home and --instance', true);
     }
     if (!isValidInstanceId(instance)) fail(`invalid --instance: ${instance}`);
-    const runDir = dirname(
-      resolveControlEndpoint({ home, instance }).tokenPath,
-    );
+    const runDir = dirname(endpointOrFail({ home, instance }).tokenPath);
     const result = await breakInstanceLock({
       runDir,
       instance,
@@ -171,7 +180,7 @@ async function main(): Promise<void> {
   }
   const entry = checked.entry;
 
-  const derived = resolveControlEndpoint({
+  const derived = endpointOrFail({
     home: raw.home,
     instance: raw.instance,
   });
