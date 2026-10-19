@@ -1,0 +1,7 @@
+{
+  "revision": "6b70504364bd30437e5879a8b4577263d614fd28",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the guide's whole-tree scan classification rule (#2176) against path-read-pin-boundary.test.ts after adding two classified entries for the service launcher suites; both walk only temporary install directories, and the rule the guide describes (a real-tree walker is a repo scan or classified with a reason) is unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}
