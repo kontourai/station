@@ -262,10 +262,6 @@ export function isTelemetryIngestRoute(method: string, path: string): boolean {
     (TELEMETRY_INGEST_PATHS as readonly string[]).includes(path)
   );
 }
-export const TELEMETRY_INGEST_ROUTES: readonly {
-  method: 'POST';
-  path: string;
-}[] = TELEMETRY_INGEST_PATHS.map((path) => ({ method: 'POST', path }));
 
 export interface PairingScopeRouteRule {
   readonly id: string;
@@ -1331,7 +1327,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // Telemetry ingest. A paired credential with the operate tier keeps the
   // access it had through the `/v1` family. These leaves ALSO admit a
   // telemetry producer token, the one credential that works nowhere else:
-  // see {@link TELEMETRY_INGEST_ROUTES} and the producer seam in
+  // see {@link isTelemetryIngestRoute} and the producer seam in
   // `runtime-http.ts`. Exact, so a future `/v1/*` leaf is not ingest.
   ...TELEMETRY_INGEST_PATHS.map(
     (prefix): PairingScopeRouteRule => ({

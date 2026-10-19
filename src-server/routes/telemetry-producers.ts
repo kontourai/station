@@ -1,6 +1,8 @@
 import { type Context, Hono } from 'hono';
 import {
   type StoredTelemetryProducer,
+  TELEMETRY_PRODUCER_LIMIT,
+  TELEMETRY_PRODUCER_MAX_EXPIRY_DAYS,
   TelemetryProducerError,
   type TelemetryProducerStore,
 } from '../services/telemetry-producers/telemetry-producer-store.js';
@@ -19,18 +21,37 @@ function project(store: TelemetryProducerStore, p: StoredTelemetryProducer) {
   };
 }
 
+/**
+ * Fixed outward text per refusal code: the store's error messages stay
+ * server-side, so nothing it might one day interpolate reaches a response.
+ */
+const REFUSALS = {
+  invalid_request: {
+    status: 400,
+    error: `A producer name is 1-63 characters of a-z, 0-9, ".", "_" or "-", starting with a letter or digit; expiresInDays is a whole number from 1 through ${TELEMETRY_PRODUCER_MAX_EXPIRY_DAYS}.`,
+  },
+  producer_exists: {
+    status: 409,
+    error:
+      'A telemetry producer with that name already exists. Revoke it first or choose another name.',
+  },
+  producer_limit_reached: {
+    status: 409,
+    error: `At most ${TELEMETRY_PRODUCER_LIMIT} telemetry producers can exist. Revoke one first.`,
+  },
+  producers_unavailable: {
+    status: 503,
+    error: 'The telemetry producer record is unsafe or unreadable.',
+  },
+} as const satisfies Record<
+  TelemetryProducerError['code'],
+  { status: 400 | 409 | 503; error: string }
+>;
+
 function refusal(c: Context, error: unknown): Response {
   if (error instanceof TelemetryProducerError) {
-    const status =
-      error.code === 'invalid_request'
-        ? 400
-        : error.code === 'producers_unavailable'
-          ? 503
-          : 409;
-    return c.json(
-      { success: false, error: error.message, code: error.code },
-      status,
-    );
+    const { status, error: text } = REFUSALS[error.code];
+    return c.json({ success: false, error: text, code: error.code }, status);
   }
   throw error;
 }

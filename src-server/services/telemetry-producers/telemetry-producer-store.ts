@@ -49,7 +49,7 @@ export const TELEMETRY_PRODUCER_MAX_EXPIRY_DAYS = 3650;
  * paired-device credentials (no prefix), so secret scanners can name it and
  * the two never collide.
  */
-export const TELEMETRY_PRODUCER_TOKEN_PREFIX = 'sti_';
+const TELEMETRY_PRODUCER_TOKEN_PREFIX = 'sti_';
 const SECRET_PATTERN = /^sti_[A-Za-z0-9_-]{43}$/;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,62}$/;
 const RECORD_VERSION = 1;
@@ -77,7 +77,7 @@ export function isTelemetryProducerSecret(candidate: string): boolean {
   return SECRET_PATTERN.test(candidate);
 }
 
-export function isTelemetryProducerName(candidate: unknown): boolean {
+function isTelemetryProducerName(candidate: unknown): boolean {
   return typeof candidate === 'string' && NAME_PATTERN.test(candidate);
 }
 
