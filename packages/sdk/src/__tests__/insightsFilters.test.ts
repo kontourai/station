@@ -42,9 +42,13 @@ describe('insights filters reach the server (station#3075)', () => {
       }),
     });
     const insights = await fetchInsights(7, { producer: 'flow-agents' });
-    expect(String(authenticatedFetch.mock.calls.at(-1)?.[0])).toContain(
-      'producer=flow-agents',
-    );
+    expect(
+      String(
+        authenticatedFetch.mock.calls[
+          authenticatedFetch.mock.calls.length - 1
+        ]?.[0],
+      ),
+    ).toContain('producer=flow-agents');
     expect(insights.producerActivity?.['flow-agents']).toEqual({
       events: 3,
       chats: 1,
