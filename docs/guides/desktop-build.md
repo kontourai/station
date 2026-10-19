@@ -12,7 +12,9 @@ The desktop shell owns its own updates (`src-desktop/src/desktop_update.rs`).
 The native updater is registered only when the build carries usable
 endpoint/key configuration; an ordinary development build has none and reports
 no update channel. A configured app checks about 20 seconds after it starts and
-then hourly while it runs, including tray-only; there is no OS job.
+then hourly by wall-clock time while it runs, including tray-only (after the
+computer sleeps past a due check, it checks within about 30 seconds of
+waking); there is no OS job.
 
 Updating has three separate steps:
 
@@ -22,14 +24,23 @@ Updating has three separate steps:
    After 24 hours) decides when it downloads without a click; the 24-hour clock
    starts when that version is first seen and survives restarts. A manual
    download always works. Downloading shows byte progress and never restarts
-   anything.
+   anything. The download is written to the app's cache directory with its
+   SHA-256 and release manifest; it is not kept in memory while it waits.
+   During the download itself the updater plugin still buffers the whole
+   package in memory.
 2. **Confirm.** A downloaded update offers **Restart to update**, which only
-   opens a confirmation. When the app's built-in server serves this window, the
+   opens a confirmation. A downloaded update survives quitting: at the next
+   start the app offers it again if it is still newer than the app and passes
+   the updater's signature check (which requires the package signature to bind
+   its version); a stale, damaged or unverifiable package is deleted. While an
+   update is downloaded, the app does not check for newer releases; installing
+   it, or a damaged package, returns to checking. When the app's built-in server serves this window, the
    confirmation lists the running agent turns the restart interrupts; an
    installed service or another server keeps running.
-3. **Install and restart.** Only **Restart now** installs the verified download
-   and restarts the app. A failed install leaves the update downloaded and the
-   app running, with the failure shown.
+3. **Install and restart.** Only **Restart now** installs the download, after
+   its digest and signature check, and restarts the app. **Restart now** waits
+   until the running agent turns are listed. A failed install leaves the update
+   downloaded and the app running, with the failure shown.
 
 Settings shows check failures with the updater's own text; the sidebar does
 not. The desktop package includes the built-in Station server, so installing
