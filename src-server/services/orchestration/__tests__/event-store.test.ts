@@ -8110,38 +8110,159 @@ describe('EventStore', () => {
       ],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
-    await new Promise<void>((resolve, reject) => {
-      holder.once('error', reject);
-      holder.stdout.once('data', () => resolve());
+    const stdout = { head: Buffer.alloc(0), tail: Buffer.alloc(0), bytes: 0 };
+    const stderr = { head: Buffer.alloc(0), tail: Buffer.alloc(0), bytes: 0 };
+    const retain = (output: typeof stdout, chunk: Buffer) => {
+      output.bytes += chunk.length;
+      const headBytes = Math.min(16_384 - output.head.length, chunk.length);
+      output.head = Buffer.concat([output.head, chunk.subarray(0, headBytes)]);
+      output.tail = Buffer.concat([
+        output.tail,
+        chunk.subarray(headBytes),
+      ]).subarray(-16_384);
+    };
+    const snapshot = (output: typeof stdout) => ({
+      text:
+        output.bytes > output.head.length + output.tail.length
+          ? `${output.head.toString('utf8')}\n[${output.bytes - output.head.length - output.tail.length} bytes omitted]\n${output.tail.toString('utf8')}`
+          : Buffer.concat([output.head, output.tail]).toString('utf8'),
+      bytes: output.bytes,
+      retainedBytes: output.head.length + output.tail.length,
+      truncated: output.bytes > output.head.length + output.tail.length,
+      retention:
+        'first 16384 bytes and last 16384 bytes; omitted middle if truncated',
     });
-    const first = new EventStore(path);
-    await new Promise<void>((resolve, reject) => {
-      holder.once('error', reject);
-      holder.once('exit', (code) =>
-        code === 0 ? resolve() : reject(new Error(`holder exited ${code}`)),
+    // Decoded from the unchanged child script's stdout literal, not any data chunk.
+    const lockMarker = Buffer.from('locked\n');
+    let markerTail = Buffer.alloc(0);
+    let lockObserved = false;
+    let phase = 'waiting for lock marker';
+    let spawnError: {
+      name: string;
+      message: string;
+      stack?: string;
+      code?: unknown;
+    } | null = null;
+    let exit: { code: number | null; signal: NodeJS.Signals | null } | null =
+      null;
+    holder.stderr.on('data', (chunk: Buffer) => retain(stderr, chunk));
+    holder.once('error', (error) => {
+      spawnError = {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        code: 'code' in error ? error.code : undefined,
+      };
+    });
+    holder.once('exit', (code, signal) => {
+      exit = { code, signal };
+    });
+    const ready = new Promise<'locked' | 'closed'>((resolve) => {
+      holder.stdout.on('data', (chunk: Buffer) => {
+        retain(stdout, chunk);
+        const pending = Buffer.concat([markerTail, chunk]);
+        if (!lockObserved && pending.includes(lockMarker)) {
+          lockObserved = true;
+          resolve('locked');
+        }
+        markerTail = pending.subarray(-(lockMarker.length - 1));
+      });
+      holder.once('close', () => resolve('closed'));
+    });
+    // Resolve rather than reject: even an early failure is observed after both pipes close.
+    const closed = new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>((resolve) => {
+      holder.once('close', (code, signal) => resolve({ code, signal }));
+    });
+    const reached: string[] = [];
+    let first: EventStore | undefined;
+    let second: EventStore | undefined;
+    const failure = (outcome: Awaited<typeof closed>) =>
+      new Error(
+        `holder failed during ${phase}: ${JSON.stringify({
+          ...outcome,
+          exit,
+          spawnError,
+          lockObserved,
+          stdout: snapshot(stdout),
+          stderr: snapshot(stderr),
+        })}`,
       );
-    });
-    const second = new EventStore(path);
-    recoveryLedger(first).arm({
-      fingerprint: 'after-migration:turn:capacity:account',
-      threadId: 'after-migration',
-      provider: 'codex',
-      sourceEventId: 'event',
-      sourceTurnId: 'turn',
-      failureKind: 'capacity',
-      scope: 'account',
-      decision: 'retry-now',
-      dueAt: '2026-08-13T00:00:00.000Z',
-      maxAttempts: 1,
-      outcome: 'armed',
-      createdAt: '2026-08-13T00:00:00.000Z',
-      updatedAt: '2026-08-13T00:00:00.000Z',
-    });
-    expect(
-      recoveryLedger(second).find('after-migration:turn:capacity:account'),
-    ).toBeTruthy();
-    first.close();
-    second.close();
+    try {
+      if ((await ready) !== 'locked' || spawnError) throw failure(await closed);
+      reached.push('actual lock marker observed');
+      phase = 'first EventStore constructor';
+      first = new EventStore(path);
+      reached.push('first EventStore constructor returned');
+      phase = 'holder stream closure';
+      const outcome = await closed;
+      if (spawnError || outcome.code !== 0 || outcome.signal !== null)
+        throw failure(outcome);
+      reached.push('holder closed with code 0 and no signal');
+      phase = 'second EventStore constructor';
+      second = new EventStore(path);
+      reached.push('second EventStore constructor returned');
+      phase = 'cross-store recovery arm/find';
+      recoveryLedger(first).arm({
+        fingerprint: 'after-migration:turn:capacity:account',
+        threadId: 'after-migration',
+        provider: 'codex',
+        sourceEventId: 'event',
+        sourceTurnId: 'turn',
+        failureKind: 'capacity',
+        scope: 'account',
+        decision: 'retry-now',
+        dueAt: '2026-08-13T00:00:00.000Z',
+        maxAttempts: 1,
+        outcome: 'armed',
+        createdAt: '2026-08-13T00:00:00.000Z',
+        updatedAt: '2026-08-13T00:00:00.000Z',
+      });
+      expect(
+        recoveryLedger(second).find('after-migration:turn:capacity:account'),
+      ).toBeTruthy();
+      reached.push('original cross-store recovery arm/find assertion passed');
+      phase = 'assertions complete';
+    } finally {
+      const close = await closed;
+      try {
+        const diagnosticDir = mkdtempSync(
+          join(tmpdir(), 'event-store-contention-diagnostic-'),
+        );
+        const diagnosticPath = join(diagnosticDir, 'holder-outcome.json');
+        writeFileSync(
+          diagnosticPath,
+          `${JSON.stringify(
+            {
+              test: 'waits through writer contention before recovery-settlement migration',
+              pid: holder.pid,
+              executable: process.execPath,
+              databasePath: path,
+              lockMarkerHex: lockMarker.toString('hex'),
+              lockObserved,
+              phase,
+              reached,
+              spawnError,
+              exit,
+              close,
+              stdout: snapshot(stdout),
+              stderr: snapshot(stderr),
+            },
+            null,
+            2,
+          )}\n`,
+          { flag: 'wx' },
+        );
+        process.stdout.write(
+          `EventStore contention diagnostic: ${diagnosticPath}\n`,
+        );
+      } finally {
+        first?.close();
+        second?.close();
+      }
+    }
   });
 
   test('reads bounded event pages after a stable per-thread sequence', () => {
