@@ -1,0 +1,7 @@
+{
+  "revision": "e08845eb397f4cdd67fe539947119a2d5de698e0",
+
+  "notes": [
+    {"path":"README.md","note":"Re-checked against the updated Nightly guide subsection (iOS web bundle stamp, bare-version rule, readable labels); the README repeats none of it and its link to the guide holds.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}

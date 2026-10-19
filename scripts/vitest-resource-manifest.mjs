@@ -131,6 +131,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
   'src-server/routes/pull-requests/__tests__/pull-request-routes.test.ts',
   'src-server/runtime/routes/__tests__/runtime-routes-station-control-declare-pull-request.test.ts',
+  // Creates real FIFOs with bounded mkfifo to check prompt CLI attachment refusal.
+  'src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts',
   // Real server esbuild children and executable workflow-policy negative controls.
   'scripts/__tests__/author-telemetry-build.test.ts',
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
@@ -155,6 +157,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/qualification-evidence.test.ts',
   // Runs the advisory review gate as a real child against a loopback GitHub API.
   'scripts/__tests__/advisory-review-gate.test.ts',
+  // #2675: runs the Nightly plan step's shell under bash in a temporary dir.
+  'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.
   'scripts/__tests__/pr-ci-supersession.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
@@ -884,6 +888,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.
   'scripts/__tests__/desktop-runtime-port-lease.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
+  // Matrix CLI refusals and sends use real routes, SQLite and a fake adapter.
+  'src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts',
   // Drives the deploy-ledger commit-back's
   // bounded re-derive-and-retry against real local git repositories — the
   // two-writer convergence proof, the off-main ancestry refusal, retry

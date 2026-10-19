@@ -843,6 +843,7 @@ jobs:
       source_sha: ${{ needs.preflight.outputs.sha }}
       source_ref: refs/tags/${{ needs.preflight.outputs.tag }}
       marketing_version: ${{ needs.preflight.outputs.ios_marketing_version }}
+      web_build_version: ${{ needs.preflight.outputs.version }}
       bundle_version: ${{ needs.preflight.outputs.ios_bundle_version }}
       release_label: ${{ needs.preflight.outputs.tag }}
       mobile_endpoint: ${{ needs.preflight.outputs.channel == 'preview' && vars.STATION_MOBILE_DEFAULT_ENDPOINT_BETA || vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
