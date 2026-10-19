@@ -1302,13 +1302,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     inboxClock,
     activeTaskItem ? workFacts.get(activeTaskItem.id) : undefined,
   );
-  const sessionContextStatus = activeWorkStatus
-    ? {
-        word: activeWorkStatus.word,
-        tone: activeWorkStatus.tone,
-        text: workStatusText(activeWorkStatus),
-      }
-    : null;
+  const statusWord = activeWorkStatus?.word;
+  const statusTone = activeWorkStatus?.tone;
+  const statusText = activeWorkStatus
+    ? workStatusText(activeWorkStatus)
+    : undefined;
+  const sessionContextStatus = useMemo(
+    () =>
+      statusWord && statusTone && statusText
+        ? { word: statusWord, tone: statusTone, text: statusText }
+        : null,
+    [statusWord, statusTone, statusText],
+  );
   const activeChatModelLabel = chatModelLabel(
     activeChatModelId,
     effectiveModels,
@@ -2349,80 +2354,119 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     !importedSessionId && !conversationOpenRecovery && inventoryExecutionId,
   );
   /**
+   * The card's actions read the dock's handlers through a ref written each
+   * render, so the props below depend only on the facts they show and stay
+   * one object across the dock's resize frames and stream renders.
+   */
+  const sessionContextActions = {
+    openLayout: handleOpenLayout,
+    setProject,
+    setActiveWorkPanel,
+    showBackgroundTasks,
+    collapseDockForNavigation,
+    showSurface,
+    showToast,
+  };
+  const sessionContextActionsRef = useRef(sessionContextActions);
+  sessionContextActionsRef.current = sessionContextActions;
+  const sessionContextProjectSlug = activeSession?.projectSlug;
+  const sessionContextConversationId = activeSession?.conversationId ?? null;
+  const sessionContextDetailsId =
+    activeTaskItem?.orchestrationThreadId ??
+    activeSession?.currentSessionId ??
+    activeSession?.conversationId;
+  const sessionContextPendingMessages =
+    activeSession?.queuedMessages.length ?? 0;
+  const sessionContextLayoutSlug =
+    !scopedProjectSlug && sessionContextProjectSlug
+      ? (sessionCodingLayout?.slug ?? null)
+      : null;
+  const sessionInventoryPressable =
+    sessionInventoryOffered && sessionInventoryReady;
+  /**
    * The card's rows, each from a fact this dock already holds and each
    * opening a surface that already exists. Rows a fact cannot fill are
    * omitted by the card rather than worded as a state nothing computes.
    */
-  const sessionContextCardProps =
-    sessionContextAvailable && activeSession
-      ? {
-          workspace: {
-            projectName: activeSession.projectSlug
-              ? (sessionProjectName ?? activeSession.projectSlug)
-              : null,
-            directory: sessionDisplayCwd ?? null,
-            // The More menu's own gate for Open in Coding (#1536 F), else
-            // the session's project page.
-            action:
-              !scopedProjectSlug &&
-              sessionCodingLayout &&
-              activeSession.projectSlug
-                ? {
-                    label: 'Open in Coding',
-                    onSelect: () =>
-                      handleOpenLayout(
-                        activeSession.projectSlug as string,
-                        sessionCodingLayout.slug,
-                      ),
-                  }
-                : activeSession.projectSlug
-                  ? {
-                      label: 'Open project',
-                      onSelect: () =>
-                        setProject(activeSession.projectSlug as string),
-                    }
-                  : undefined,
-          },
-          gitStatus,
-          // The Active work Changed files panel renders only for a chat with
-          // a project, so the row opens it only then.
-          onOpenChanges: activeSession.projectSlug
-            ? () => setActiveWorkPanel('files')
-            : undefined,
-          status: sessionContextStatus,
-          backgroundTasksRunning: backgroundTasksRunningCount,
-          onOpenBackgroundTasks: showBackgroundTasks,
-          pendingMessages: activeSession.queuedMessages.length,
-          conversationId: activeSession.conversationId ?? null,
-          onOpenChatDetails: () => {
-            const session =
-              activeTaskItem?.orchestrationThreadId ??
-              activeSession.currentSessionId ??
-              activeSession.conversationId;
-            if (!session) return;
-            collapseDockForNavigation();
-            showSurface('activity', { session });
-          },
-          inventory:
-            sessionInventoryOffered && sessionInventoryReady
+  const sessionContextCardProps = useMemo(() => {
+    if (!sessionContextAvailable) return null;
+    const actions = () => sessionContextActionsRef.current;
+    const projectSlug = sessionContextProjectSlug;
+    return {
+      workspace: {
+        projectName: projectSlug ? (sessionProjectName ?? projectSlug) : null,
+        directory: sessionDisplayCwd ?? null,
+        // The More menu's own gate for Open in Coding (#1536 F), else the
+        // session's project page.
+        action:
+          projectSlug && sessionContextLayoutSlug
+            ? {
+                label: 'Open in Coding',
+                onSelect: () =>
+                  actions().openLayout(projectSlug, sessionContextLayoutSlug),
+              }
+            : projectSlug
               ? {
-                  onOpen: (trigger: HTMLElement) => {
-                    if (
-                      !toggleSessionInventoryOccurrence({
-                        hostId: sessionInventoryHostId,
-                        projectId: inventoryProjectId,
-                        executionRead: activeOrchestrationSessionRead,
-                        trigger,
-                      })
-                    )
-                      showToast(
-                        'Chat inventory is not ready for this chat yet.',
-                      );
-                  },
+                  label: 'Open project',
+                  onSelect: () => actions().setProject(projectSlug),
                 }
               : undefined,
-        }
-      : null;
+      },
+      gitStatus,
+      // The Active work Changed files panel renders only for a chat with a
+      // project, so the row opens it only then.
+      onOpenChanges: projectSlug
+        ? () => actions().setActiveWorkPanel('files')
+        : undefined,
+      status: sessionContextStatus,
+      backgroundTasksRunning: backgroundTasksRunningCount,
+      onOpenBackgroundTasks: () => actions().showBackgroundTasks(),
+      pendingMessages: sessionContextPendingMessages,
+      conversationId: sessionContextConversationId,
+      onOpenChatDetails: sessionContextDetailsId
+        ? () => {
+            actions().collapseDockForNavigation();
+            actions().showSurface('activity', {
+              session: sessionContextDetailsId,
+            });
+          }
+        : undefined,
+      inventory: sessionInventoryPressable
+        ? {
+            onOpen: (trigger: HTMLElement) => {
+              if (
+                !toggleSessionInventoryOccurrence({
+                  hostId: sessionInventoryHostId,
+                  projectId: inventoryProjectId,
+                  executionRead: activeOrchestrationSessionRead,
+                  trigger,
+                })
+              )
+                actions().showToast(
+                  'Chat inventory is not ready for this chat yet.',
+                );
+            },
+          }
+        : undefined,
+      onPresentChange: setSessionContextCardPresent,
+    };
+  }, [
+    sessionContextAvailable,
+    sessionContextProjectSlug,
+    sessionProjectName,
+    sessionDisplayCwd,
+    sessionContextLayoutSlug,
+    gitStatus,
+    sessionContextStatus,
+    backgroundTasksRunningCount,
+    sessionContextPendingMessages,
+    sessionContextConversationId,
+    sessionContextDetailsId,
+    sessionInventoryPressable,
+    sessionInventoryHostId,
+    inventoryProjectId,
+    activeOrchestrationSessionRead,
+  ]);
   /**
    * The inventory's host registration, ONE per dock: the desktop header
    * mounts it, and on a phone the dock mounts it beside the mobile header
@@ -3176,10 +3220,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 {sessionContextCardVisible && sessionContextCardProps ? (
                   <LazyBoundary
                     load={loadSessionContextCard}
-                    componentProps={{
-                      ...sessionContextCardProps,
-                      onPresentChange: setSessionContextCardPresent,
-                    }}
+                    componentProps={sessionContextCardProps}
                     pending={null}
                   />
                 ) : null}

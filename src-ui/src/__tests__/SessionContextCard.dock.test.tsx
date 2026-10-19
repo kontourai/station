@@ -51,6 +51,8 @@ const fixture = vi.hoisted(() => ({
   // suspends forever (a chunk still in flight); `failed` throws (a chunk
   // that did not load).
   cardChunk: 'ready' as 'ready' | 'loading' | 'failed',
+  // Renders of the real card's rows, counted through the one hook they call.
+  cardRowRenders: 0,
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -286,6 +288,23 @@ vi.mock('../components/chat-dock/SessionInventoryEntryPoint', async () => {
   };
 });
 
+vi.mock(
+  '../components/pull-requests/useConversationPullRequestLinks',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../components/pull-requests/useConversationPullRequestLinks')
+      >();
+    return {
+      ...actual,
+      useConversationPullRequestLinks: (conversationId: string) => {
+        fixture.cardRowRenders += 1;
+        return actual.useConversationPullRequestLinks(conversationId);
+      },
+    };
+  },
+);
+
 // The card's module stands as itself unless a test holds its chunk back.
 vi.mock(
   '../components/chat-dock/SessionContextCard',
@@ -399,6 +418,7 @@ beforeEach(() => {
   fixture.authority = undefined;
   fixture.pullRequests = [];
   fixture.cardChunk = 'ready';
+  fixture.cardRowRenders = 0;
   // The one layout fact the fit reads: the conversation surface's width.
   HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
     const rect = realRect.call(this);
@@ -685,6 +705,25 @@ describe('one inventory host per chat', () => {
       }
     },
   );
+});
+
+describe('the card is not re-rendered by dock renders that change none of its facts', () => {
+  test('a dock re-render leaves the card alone', async () => {
+    fixture.authority = AUTHORITY;
+    renderDock();
+    await screen.findByRole('button', { name: 'Chat inventory' });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    const before = fixture.cardRowRenders;
+    // A route param the card does not read: the dock re-renders.
+    for (const n of [1, 2, 3]) {
+      await act(async () => {
+        navigationStore.navigate('/', { dock: 'open', probe: String(n) });
+      });
+    }
+    expect(fixture.cardRowRenders).toBe(before);
+  });
 });
 
 describe('the Chat inventory footer', () => {
