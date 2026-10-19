@@ -1,4 +1,19 @@
+import { OPENED_NOTIFICATION_QUERY_PARAM } from '@kontourai/station-contracts/notification';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
+
+/**
+ * An OS alert's open link (Web Push, the desktop feed) with the opened
+ * record's id added, so the client that loads it marks exactly that record
+ * read as opened. Its other parameters are kept as they are.
+ */
+export function withOpenedNotification(
+  href: string,
+  notificationId: string,
+): string {
+  const url = new URL(href, 'https://station.invalid');
+  url.searchParams.set(OPENED_NOTIFICATION_QUERY_PARAM, notificationId);
+  return `${url.pathname}${url.search}`;
+}
 
 /**
  * Resolves the exact-session deep link for a notification's metadata —

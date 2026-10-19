@@ -22,7 +22,11 @@ vi.mock('@kontourai/station-sdk/notification-read', () => ({
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { navigationStore } from '../contexts/NavigationContext';
 import { FOCUS_INPUT_RECENCY_MS } from '../hooks/focusReporter';
-import { startTurnNotificationReads } from '../hooks/orchestration/turnNotificationReads';
+import {
+  INPUT_RECHECK_MS,
+  startTurnNotificationReads,
+} from '../hooks/orchestration/turnNotificationReads';
+import { subscribeToNotificationOpen } from '../lib/notificationOpen';
 
 const CHAT = 'thread-watched';
 let focused = true;
@@ -69,7 +73,7 @@ function input() {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
   vi.setSystemTime(new Date('2026-10-19T12:00:00Z'));
   focused = true;
   vi.spyOn(document, 'hasFocus').mockImplementation(() => focused);
@@ -87,6 +91,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.history.replaceState(null, '', '/');
   stop?.();
   stop = undefined;
   activeChatsStore.removeChat(CHAT);
@@ -168,4 +173,64 @@ test('a failed read is retried on the next change', async () => {
   await Promise.resolve();
   reads.evaluate();
   expect(readIds()).toEqual(['n-1', 'n-1']);
+});
+
+// An OS alert's open link names its record (`openedNotification`, added by
+// the server's link builder). Opening it reads that record with no input.
+test('a Web Push tap: the page loads on the link and reads the record it names, then drops the parameter', () => {
+  window.history.replaceState(
+    null,
+    '',
+    '/?surface=activity&session=thread-watched&openedNotification=n-tapped',
+  );
+  start();
+  expect(readIds()).toEqual(['n-tapped']);
+  const params = new URLSearchParams(window.location.search);
+  expect(params.has('openedNotification')).toBe(false);
+  expect(params.get('session')).toBe('thread-watched');
+});
+
+test('a desktop alert click: the app navigates to the link and reads the record it names', async () => {
+  start();
+  let handler: () => void = () => {};
+  const unsubscribe = subscribeToNotificationOpen(
+    (pathname, params) => navigationStore.navigate(pathname, params),
+    Promise.resolve({
+      listen: async (_event, onEvent) => {
+        handler = onEvent;
+        return () => {};
+      },
+      take: async () =>
+        '/?surface=activity&session=thread-watched&openedNotification=n-clicked',
+    }),
+  );
+  await vi.waitFor(() => expect(readIds()).toEqual(['n-clicked']));
+  expect(
+    new URLSearchParams(window.location.search).has('openedNotification'),
+  ).toBe(false);
+  handler();
+  unsubscribe();
+});
+
+test('plain focus with no opened link and no input reads nothing', () => {
+  const reads = start();
+  reads.update([turnRecord('n-1')]);
+  window.dispatchEvent(new Event('focus'));
+  navigationStore.setActiveChat(CHAT);
+  expect(readIds()).toEqual([]);
+});
+
+test('input inside the recheck window is checked once more when it closes', () => {
+  focused = false;
+  const reads = start();
+  input();
+  reads.update([turnRecord('n-1')]);
+  expect(readIds()).toEqual([]);
+  // The window gains focus with no event, and the person types again before
+  // the throttle window closes: only the trailing check can see it.
+  focused = true;
+  window.dispatchEvent(new Event('keydown'));
+  expect(readIds()).toEqual([]);
+  vi.advanceTimersByTime(INPUT_RECHECK_MS);
+  expect(readIds()).toEqual(['n-1']);
 });

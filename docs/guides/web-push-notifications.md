@@ -141,8 +141,9 @@ also have its own live event stream. Another tab's stream cannot vouch for it.
 Stream leases expire after 90 seconds without successful keepalive writes; focus
 reports have a 120-second lease. The client renews a focused report every 60
 seconds while there was input in the last two minutes or the document shows a
-chat whose turn is running; the second reason renews at most 60 times in a row
-(one hour) without input. There are caps of 32 documents per device,
+chat whose turn is running; the second reason renews at most 60 times (one
+hour) since the last input or window focus, counted per document across all
+of its chats and turns, not per turn. There are caps of 32 documents per device,
 32 operator tabs, and 256 device streams overall. A document beyond a cap does
 not qualify as live.
 
@@ -158,8 +159,12 @@ outcomes currently have no general retry scheduler consuming them.
 Turn-completion records carry an envelope (system source, the session's
 readers, a session target). A client marks one read only when the person
 attends to its chat: on screen in a focused window with input in the last two
-minutes, or the record opened. A focused window nobody is touching does not
-read it, so an unread failure still escalates. Reading cancels a pending
+minutes, or the record opened (from the inbox, or by opening its Web Push or
+desktop alert, whose link names the record). A focused window nobody is
+touching does not read it, so an unread failure still escalates. Accepted
+gap: input made just before walking away still counts for two minutes, so a
+failure landing in that window is read. A native Android or iOS alert tap
+opens the session but does not name the record, so it does not read it. Reading cancels a pending
 escalation and retracts alerts already sent for it. Read state is per record,
 not per person: when several people can read a session, the first to read a
 record cancels its escalation for all of them.

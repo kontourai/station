@@ -9,6 +9,7 @@ import { navigationStore } from '../../contexts/NavigationContext';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import { FOCUS_INPUT_RECENCY_MS } from '../focusReporter';
 import { isChatInForeground } from './chatForeground';
+import { startOpenedNotificationReads } from './openedNotificationRead';
 
 /**
  * A turn-completion record is read once the person attends to its chat: the
@@ -20,8 +21,14 @@ import { isChatInForeground } from './chatForeground';
  * without input (so a finished turn does not buzz other devices), and a
  * person who walked away from it must still hear about a failure. Covers a
  * turn ending while its chat is attended, coming back to it (the first
- * input re-checks), and opening the chat later; opening the record itself
- * marks it too (`activateNotification`).
+ * input re-checks), and navigating to the chat with input (a click). A
+ * deep link loaded without input reads nothing here; opening the record
+ * marks it instead: from the inbox (`activateNotification`) or from an OS
+ * alert (`openedNotificationRead.ts`).
+ *
+ * Accepted gap: attention is "input within the window", so input made just
+ * before walking away still reads a failure that lands within
+ * `FOCUS_INPUT_RECENCY_MS` of it.
  *
  * Known limit: read state is per record, not per person. A record whose
  * audience is the session's readers is marked read by whichever reader
@@ -40,8 +47,11 @@ const INPUT_EVENTS = [
   'wheel',
   'touchstart',
 ] as const;
-/** Input re-checks the list at most this often. */
-const INPUT_RECHECK_MS = 1_000;
+/**
+ * Input re-checks the list at most this often: at once on the first input,
+ * then once more when the window closes if input arrived inside it.
+ */
+export const INPUT_RECHECK_MS = 1_000;
 
 /** Unread, undismissed turn-completion records whose session is watched. */
 export function watchedTurnNotificationIds(
@@ -125,19 +135,36 @@ export function startTurnNotificationReads(): TurnNotificationReader & {
 } {
   let lastInputAt = Number.NEGATIVE_INFINITY;
   let lastRecheckAt = Number.NEGATIVE_INFINITY;
+  let trailing: ReturnType<typeof setTimeout> | undefined;
+  const markRead = (id: string) =>
+    markNotificationRead({ id, clientSessionId: CLIENT_DOCUMENT_SESSION_ID });
   const reader = createTurnNotificationReader({
     isWatched: (sessionId) =>
       isTurnSessionAttended(sessionId, lastInputAt, Date.now()),
-    markRead: (id) =>
-      markNotificationRead({ id, clientSessionId: CLIENT_DOCUMENT_SESSION_ID }),
+    markRead,
   });
+  const recheck = () => {
+    lastRecheckAt = Date.now();
+    reader.evaluate();
+  };
   const onInput = () => {
     const now = Date.now();
     lastInputAt = now;
-    if (now - lastRecheckAt < INPUT_RECHECK_MS) return;
-    lastRecheckAt = now;
-    reader.evaluate();
+    if (now - lastRecheckAt >= INPUT_RECHECK_MS) {
+      recheck();
+      return;
+    }
+    // Inside the window: one trailing check when it closes, so the last
+    // input of a burst is not lost.
+    trailing ??= setTimeout(
+      () => {
+        trailing = undefined;
+        recheck();
+      },
+      lastRecheckAt + INPUT_RECHECK_MS - now,
+    );
   };
+  const stopOpened = startOpenedNotificationReads(markRead);
   const unsubscribe = navigationStore.subscribe(reader.evaluate);
   window.addEventListener('focus', reader.evaluate);
   document.addEventListener('visibilitychange', reader.evaluate);
@@ -146,6 +173,8 @@ export function startTurnNotificationReads(): TurnNotificationReader & {
   return {
     ...reader,
     stop() {
+      if (trailing !== undefined) clearTimeout(trailing);
+      stopOpened();
       unsubscribe();
       window.removeEventListener('focus', reader.evaluate);
       document.removeEventListener('visibilitychange', reader.evaluate);

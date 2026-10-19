@@ -166,6 +166,14 @@ export interface NotificationEnvelopeV1 {
  */
 export const TURN_COMPLETION_NOTIFICATION_SOURCE = 'turn-completion';
 
+/**
+ * The query parameter an OS notification's open link carries (Web Push,
+ * the desktop alert feed): the id of the record whose alert was opened. The
+ * client that loads the link marks that record read as opened, then removes
+ * the parameter.
+ */
+export const OPENED_NOTIFICATION_QUERY_PARAM = 'openedNotification';
+
 /** Categories agent notifications are stored under, one per urgency. */
 export const AGENT_NOTIFICATION_CATEGORIES = {
   info: 'agent-info',

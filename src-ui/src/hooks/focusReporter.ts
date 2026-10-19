@@ -14,11 +14,14 @@ export const FOCUS_HEARTBEAT_MS = 60_000;
 /** A focused window nobody has touched for this long stops heartbeating. */
 export const FOCUS_INPUT_RECENCY_MS = 120_000;
 /**
- * At most this many heartbeats in a row may renew a focused lease on a
- * running turn alone (`isWatching`) — one hour at the 60 s beat. Long agent
- * turns fit; a turn whose terminal event never arrived cannot hold the
- * person "present" (and their other devices quiet) indefinitely. Any input
- * starts a fresh allowance.
+ * At most this many heartbeats may renew a focused lease on a running turn
+ * alone (`isWatching`) since the last input or window focus event — one hour
+ * at the 60 s beat. The allowance is one per document: shared by every chat
+ * it shows and NOT restarted when a new turn starts, so back-to-back turns
+ * in an untouched window also stop holding the person present after an
+ * hour, and a turn whose terminal event never arrived cannot hold them
+ * (and their other devices quiet) indefinitely. Input or focusing the
+ * window restarts it.
  */
 export const FOCUS_WATCH_RENEWAL_MAX = 60;
 
