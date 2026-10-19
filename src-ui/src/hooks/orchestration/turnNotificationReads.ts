@@ -9,7 +9,6 @@ import { navigationStore } from '../../contexts/NavigationContext';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import { FOCUS_INPUT_RECENCY_MS } from '../focusReporter';
 import { isChatInForeground } from './chatForeground';
-import { startOpenedNotificationReads } from './openedNotificationRead';
 
 /**
  * A turn-completion record is read once the person attends to its chat: the
@@ -129,8 +128,13 @@ export function createTurnNotificationReader(deps: {
   };
 }
 
-/** Starts marking watched turn records read; returns the reader and a stop. */
+/**
+ * Starts marking watched turn records read. Returns the reader, `markOpened`
+ * for a record an opened OS alert named (`openedNotificationRead.ts`), and a
+ * stop.
+ */
 export function startTurnNotificationReads(): TurnNotificationReader & {
+  markOpened(notificationId: string): void;
   stop(): void;
 } {
   let lastInputAt = Number.NEGATIVE_INFINITY;
@@ -164,7 +168,7 @@ export function startTurnNotificationReads(): TurnNotificationReader & {
       lastRecheckAt + INPUT_RECHECK_MS - now,
     );
   };
-  const stopOpened = startOpenedNotificationReads(markRead);
+
   const unsubscribe = navigationStore.subscribe(reader.evaluate);
   window.addEventListener('focus', reader.evaluate);
   document.addEventListener('visibilitychange', reader.evaluate);
@@ -172,9 +176,13 @@ export function startTurnNotificationReads(): TurnNotificationReader & {
     window.addEventListener(type, onInput, { passive: true, capture: true });
   return {
     ...reader,
+    // Opened explicitly: read whatever the record is, input or not. A failed
+    // mark leaves it unread, and its escalation proceeds.
+    markOpened(notificationId) {
+      void markRead(notificationId).catch(() => undefined);
+    },
     stop() {
       if (trailing !== undefined) clearTimeout(trailing);
-      stopOpened();
       unsubscribe();
       window.removeEventListener('focus', reader.evaluate);
       document.removeEventListener('visibilitychange', reader.evaluate);

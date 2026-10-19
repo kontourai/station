@@ -258,7 +258,12 @@ export function isSurfaceId(value: unknown): value is SurfaceId {
 /**
  * Same-origin relative path only: leading `/`, never protocol-relative
  * (`//host`), no backslash (some browsers coerce `/\host` to `//host`), no
- * whitespace or control characters, bounded length.
+ * whitespace or control characters, bounded length — and the same holds
+ * for the NORMALIZED path. Dot segments, encoded (`%2e`) or not and in any
+ * case, collapse when the path is resolved: `/..//host` and `/.//host`
+ * become `//host`, which any later serialization (`pathname + search`)
+ * turns into a protocol-relative, off-origin link. Mirrors the desktop
+ * host's `in_app_link`.
  */
 export function isRelativeStationPath(value: unknown): value is string {
   return (
@@ -268,7 +273,25 @@ export function isRelativeStationPath(value: unknown): value is string {
     !value.startsWith('//') &&
     !value.includes('\\') &&
     // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting control characters is the point
-    !/[\s\u0000-\u001f\u007f]/.test(value)
+    !/[\s\u0000-\u001f\u007f]/.test(value) &&
+    resolvesOnStationOrigin(value)
+  );
+}
+
+const STATION_PATH_BASE = 'https://station.invalid';
+
+/** The path resolved against a fixed origin stays on it, as a single-`/` path. */
+function resolvesOnStationOrigin(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value, `${STATION_PATH_BASE}/`);
+  } catch {
+    return false;
+  }
+  return (
+    url.origin === STATION_PATH_BASE &&
+    !url.pathname.startsWith('//') &&
+    !url.pathname.includes('\\')
   );
 }
 

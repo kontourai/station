@@ -18,6 +18,7 @@ vi.mock('../../../telemetry/metrics.js', () => metrics);
 
 const { NotificationService } = await import('../notification-service.js');
 const { EventBus } = await import('../../orchestration/event-bus.js');
+const { composeWebPushPayload } = await import('../push-payload-composer.js');
 const {
   AgentNotificationGate,
   agentNotificationSessionContext,
@@ -463,6 +464,57 @@ describe('AgentNotificationGate', () => {
     );
     expect(capped?.title.length).toBeLessThanOrEqual(80);
     expect(capped?.title).not.toContain('Basic a');
+  });
+
+  // A link whose dot segments (plain or encoded, any case) or slashes resolve
+  // off Station must never reach a push tap as a link: admitted, it was
+  // re-serialized by the open-link builder as `//evil.example/...`.
+  test.each([
+    '/..//evil.example/phish',
+    '/%2e%2e//evil.example/phish',
+    '/%2E%2E//evil.example/phish',
+    '/%2e//evil.example/phish',
+    '/.//evil.example/phish',
+    '/x/../..//evil.example/phish',
+    '///evil.example/phish',
+    '/\\evil.example/phish',
+    '/\t/evil.example/phish',
+    '/\n/evil.example/phish',
+    'https:evil.example/phish',
+    'HTTPS://evil.example/phish',
+  ])(
+    'a hostile link %j is refused, and the push it sends opens on Station',
+    async (link) => {
+      await gate().notify(
+        { sessionId: 'session-hostile', assurance: 'bound' },
+        notice('Hostile', { link }),
+      );
+      const [stored] = await service.list();
+      expect(readNotificationEnvelope(stored)?.target).toEqual({
+        kind: 'session',
+        sessionId: 'session-hostile',
+      });
+      expect(stored.metadata).not.toHaveProperty('link');
+      const url = composeWebPushPayload(stored)?.payload.url;
+      expect(url).toBeDefined();
+      const opened = new URL(url!, 'https://station.test/');
+      expect(opened.origin).toBe('https://station.test');
+      expect(opened.pathname.startsWith('//')).toBe(false);
+    },
+  );
+
+  test('an admitted same-origin link stays on Station through the push it sends', async () => {
+    await gate().notify(
+      { sessionId: 'session-link', assurance: 'bound' },
+      notice('Open project', { link: '/projects/web?tab=a' }),
+    );
+    const [stored] = await service.list();
+    const url = composeWebPushPayload(stored)?.payload.url;
+    const opened = new URL(url!, 'https://station.test/');
+    expect(opened.origin).toBe('https://station.test');
+    expect(`${opened.pathname}${opened.search}`).toBe(
+      `/projects/web?tab=a&openedNotification=${stored.id}`,
+    );
   });
 
   test('a same-origin link becomes the target; anything else falls back to the calling session', async () => {

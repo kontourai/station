@@ -1,6 +1,9 @@
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { describe, expect, test } from 'vitest';
-import { resolveNotificationOpenHref } from '../notification-deep-link.js';
+import {
+  resolveNotificationOpenHref,
+  withOpenedNotification,
+} from '../notification-deep-link.js';
 
 describe('resolveNotificationOpenHref', () => {
   test('prefers a project-scoped chat link when projectSlug + sessionId resolve', () => {
@@ -87,5 +90,55 @@ describe('resolveNotificationOpenHref', () => {
     test('rejects a non-string link', () => {
       expect(resolveNotificationOpenHref({ link: 42 })).toBeUndefined();
     });
+  });
+});
+
+describe('withOpenedNotification never leaves Station', () => {
+  const origin = 'https://station.test';
+  test.each([
+    '/..//evil.example/phish',
+    '/%2e%2e//evil.example/phish',
+    '/%2E%2e//evil.example/phish',
+    '/.//evil.example/phish',
+    '/x/../..//evil.example/phish',
+    '//evil.example/phish',
+    '///evil.example/phish',
+    '/\\evil.example/phish',
+    'https://evil.example/phish',
+    'https:evil.example/phish',
+    'evil.example/phish',
+  ])('%j opens the inbox on Station instead', (href) => {
+    const link = withOpenedNotification(href, 'n-1');
+    expect(link).toBe('/notifications?openedNotification=n-1');
+    const opened = new URL(link, `${origin}/`);
+    expect(opened.origin).toBe(origin);
+  });
+
+  test('a Station link keeps its query as written and its fragment', () => {
+    expect(withOpenedNotification('/schedule?job=a%20b&x=1#logs', 'n-1')).toBe(
+      '/schedule?job=a%20b&x=1&openedNotification=n-1#logs',
+    );
+  });
+
+  test('a record id already in the link is replaced, never trusted', () => {
+    const link = withOpenedNotification(
+      '/notifications?openedNotification=victim',
+      'n-1',
+    );
+    expect(
+      new URL(link, `${origin}/`).searchParams.getAll('openedNotification'),
+    ).toEqual(['n-1']);
+  });
+
+  test('a hostile stored metadata.link (not admitted by the gate) still pushes a Station link', () => {
+    expect(
+      resolveNotificationOpenHref({ link: '/..//evil.example/phish' }),
+    ).toBeUndefined();
+    expect(
+      resolveNotificationOpenHref({ link: '/%2e%2e//evil.example' }),
+    ).toBeUndefined();
+    expect(resolveNotificationOpenHref({ link: '/schedule?job=a' })).toBe(
+      '/schedule?job=a',
+    );
   });
 });

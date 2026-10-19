@@ -1,18 +1,50 @@
 import { OPENED_NOTIFICATION_QUERY_PARAM } from '@kontourai/station-contracts/notification';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
+import { isRelativeStationPath } from '@kontourai/station-shared/notification-envelope';
+
+const LINK_BASE = 'https://station.invalid';
+/** Where an alert opens when its own link cannot be kept on Station. */
+const SAFE_OPEN_PATH = '/notifications';
 
 /**
  * An OS alert's open link (Web Push, the desktop feed) with the opened
  * record's id added, so the client that loads it marks exactly that record
- * read as opened. Its other parameters are kept as they are.
+ * read as opened. Never off-origin: the link is resolved against a fixed
+ * base and must stay on it as a single-`/` path with no backslash (dot
+ * segments such as `/..//host` or `/%2e%2e//host` collapse to `//host`);
+ * otherwise the alert opens `SAFE_OPEN_PATH`. The existing query is kept as
+ * written and the fragment is kept; an `OPENED_NOTIFICATION_QUERY_PARAM`
+ * already in the link is replaced, never trusted.
  */
 export function withOpenedNotification(
   href: string,
   notificationId: string,
 ): string {
-  const url = new URL(href, 'https://station.invalid');
-  url.searchParams.set(OPENED_NOTIFICATION_QUERY_PARAM, notificationId);
-  return `${url.pathname}${url.search}`;
+  const url = onStationOrigin(href) ?? onStationOrigin(SAFE_OPEN_PATH)!;
+  let search: string;
+  if (url.searchParams.has(OPENED_NOTIFICATION_QUERY_PARAM)) {
+    url.searchParams.set(OPENED_NOTIFICATION_QUERY_PARAM, notificationId);
+    search = url.search;
+  } else {
+    const param = `${OPENED_NOTIFICATION_QUERY_PARAM}=${encodeURIComponent(notificationId)}`;
+    search = url.search ? `${url.search}&${param}` : `?${param}`;
+  }
+  return `${url.pathname}${search}${url.hash}`;
+}
+
+function onStationOrigin(href: string): URL | undefined {
+  if (!href.startsWith('/') || href.includes('\\')) return undefined;
+  let url: URL;
+  try {
+    url = new URL(href, `${LINK_BASE}/`);
+  } catch {
+    return undefined;
+  }
+  return url.origin === LINK_BASE &&
+    !url.pathname.startsWith('//') &&
+    !url.pathname.includes('\\')
+    ? url
+    : undefined;
 }
 
 /**
@@ -65,12 +97,9 @@ export function resolveNotificationOpenHref(
 function resolveRelativePathLink(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
-  if (!trimmed.startsWith('/')) return undefined;
-  // Reject protocol-relative ("//host/...") and backslash-normalized
-  // ("/\host/...", which some browsers coerce to "//host/...") variants —
-  // both resolve to an external origin despite starting with '/'.
-  if (trimmed.startsWith('//') || trimmed.startsWith('/\\')) return undefined;
-  return trimmed;
+  // The shared same-origin check, which also refuses a path whose dot
+  // segments normalize to `//host` (`/..//host`, `/%2e%2e//host`).
+  return isRelativeStationPath(trimmed) ? trimmed : undefined;
 }
 
 function stringValue(value: unknown): string | undefined {

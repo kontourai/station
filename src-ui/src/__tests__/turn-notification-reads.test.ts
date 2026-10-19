@@ -18,7 +18,12 @@ const { markNotificationRead } = vi.hoisted(() => ({
 vi.mock('@kontourai/station-sdk/notification-read', () => ({
   markNotificationRead,
 }));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useNotificationsQuery: () => ({ data: [] }),
+}));
 
+import { renderHook } from '@testing-library/react';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { navigationStore } from '../contexts/NavigationContext';
 import { FOCUS_INPUT_RECENCY_MS } from '../hooks/focusReporter';
@@ -26,6 +31,7 @@ import {
   INPUT_RECHECK_MS,
   startTurnNotificationReads,
 } from '../hooks/orchestration/turnNotificationReads';
+import { useTurnNotificationReads } from '../hooks/useTurnNotificationReads';
 import { subscribeToNotificationOpen } from '../lib/notificationOpen';
 
 const CHAT = 'thread-watched';
@@ -177,29 +183,44 @@ test('a failed read is retried on the next change', async () => {
 
 // An OS alert's open link names its record (`openedNotification`, added by
 // the server's link builder). Opening it reads that record with no input.
-test('a Web Push tap: the page loads on the link and reads the record it names, then drops the parameter', () => {
+test('a Web Push tap: the page loads on the link, the parameter leaves the URL on mount, and the record is read', async () => {
   window.history.replaceState(
     null,
     '',
     '/?surface=activity&session=thread-watched&openedNotification=n-tapped',
   );
-  start();
-  expect(readIds()).toEqual(['n-tapped']);
+  const view = renderHook(() => useTurnNotificationReads());
+  // Taken off the URL on mount, before the reader's chunk has loaded.
   const params = new URLSearchParams(window.location.search);
   expect(params.has('openedNotification')).toBe(false);
   expect(params.get('session')).toBe('thread-watched');
+  await vi.dynamicImportSettled();
+  expect(readIds()).toEqual(['n-tapped']);
+  view.unmount();
+});
+
+test('an alert opened before the reader loads is still read once it does', async () => {
+  const view = renderHook(() => useTurnNotificationReads());
+  navigationStore.navigate('/', {
+    surface: 'activity',
+    session: 'thread-watched',
+    openedNotification: 'n-early',
+  });
+  expect(
+    new URLSearchParams(window.location.search).has('openedNotification'),
+  ).toBe(false);
+  await vi.dynamicImportSettled();
+  expect(readIds()).toEqual(['n-early']);
+  view.unmount();
 });
 
 test('a desktop alert click: the app navigates to the link and reads the record it names', async () => {
-  start();
-  let handler: () => void = () => {};
+  const view = renderHook(() => useTurnNotificationReads());
+  await vi.dynamicImportSettled();
   const unsubscribe = subscribeToNotificationOpen(
     (pathname, params) => navigationStore.navigate(pathname, params),
     Promise.resolve({
-      listen: async (_event, onEvent) => {
-        handler = onEvent;
-        return () => {};
-      },
+      listen: async () => () => {},
       take: async () =>
         '/?surface=activity&session=thread-watched&openedNotification=n-clicked',
     }),
@@ -208,8 +229,8 @@ test('a desktop alert click: the app navigates to the link and reads the record 
   expect(
     new URLSearchParams(window.location.search).has('openedNotification'),
   ).toBe(false);
-  handler();
   unsubscribe();
+  view.unmount();
 });
 
 test('plain focus with no opened link and no input reads nothing', () => {

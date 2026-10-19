@@ -91,7 +91,7 @@ self.addEventListener('notificationclick', (event) => {
   // Default tap — focus an existing tab (navigating it to the deep link) or
   // open a new one. Defaults to the attention inbox (/notifications) since
   // that's the canonical landing surface for an approval-request push.
-  const targetUrl = url || '/notifications';
+  const targetUrl = sameOriginTarget(url);
   event.waitUntil(
     self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
@@ -109,3 +109,24 @@ self.addEventListener('notificationclick', (event) => {
       }),
   );
 });
+
+/**
+ * The tap's destination as an absolute URL on this worker's own origin, or
+ * the inbox. The server already keeps push links on Station; this refuses
+ * anything else (an absolute URL, `//host`, a path whose dot segments
+ * resolve off-origin) in case a payload ever carries one. The absolute,
+ * resolved URL is used as is, so it is never re-parsed as `//host`.
+ */
+function sameOriginTarget(url) {
+  const origin = self.location.origin;
+  if (typeof url === 'string' && url && !url.includes('\\')) {
+    try {
+      const target = new URL(url, `${origin}/`);
+      if (target.origin === origin && !target.pathname.startsWith('//'))
+        return target.href;
+    } catch {
+      // Unparseable: the inbox.
+    }
+  }
+  return new URL('/notifications', `${origin}/`).href;
+}
