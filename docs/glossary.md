@@ -437,6 +437,7 @@ release delivery.
 | Execution episode | **Session** |
 | One agent working through a request from start to stop | **Agent run** (the Settings card is **Agent runs**) |
 | An authored instruction a user or agent can reuse (some are runnable as `/command`) | **Skill** — the page is **Skills** (`/guidance`, with a Commands tab) |
+| The live transcript's map of user turns, and stepping between them | **Conversation turns** (the desktop gutter's name; contributors call it the turn rail); **Previous turn** / **Next turn** beside Scroll to bottom. History replay's separate view is **History** |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
 
 ## Persisted identity records

@@ -323,6 +323,56 @@ These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/Cha
 [ChatDockHeader](../../src-ui/src/components/chat-dock/ChatDockHeader.tsx), and
 [NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx).
 
+### Turn navigation
+
+A live transcript with six or more user turns gets turn navigation (#342;
+[TranscriptTurnRail](../../src-ui/src/components/chat/TranscriptTurnRail.tsx)).
+Its user turns are derived from the whole transcript row model
+([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts)),
+so a virtualized transcript's unmounted turns are included; only the loaded
+window is mapped, and earlier history joins the map as it loads. Every user
+message row starts a turn.
+
+- **Turn rail.** A 16px gutter over the transcript's right edge, inside its
+  scrollbar, with one tick per user turn placed by the turn's position among
+  the rows. The rows on screen are drawn as a band, and their turns' ticks are
+  highlighted; both are written from the scroll handler, once per frame. Hover
+  or keyboard focus previews a turn: its prompt and the start of its first
+  reply. Escape dismisses the preview without moving focus or the pointer:
+  while it shows, the preview carries `data-escape-owner`, so the app's
+  shortcuts (such as "Go up one level") leave that Escape to it. Pointing at
+  or focusing another turn shows previews again. A press or drag jumps to the nearest turn without taking focus from
+  the composer. The ticks are one tab stop: arrow keys move between turns
+  (jumping as they go), Home and End reach the ends. The rail is hidden when
+  the transcript column is narrower than 560px or shorter than 200px
+  (measured on the column, not the viewport).
+- **Markers.** A tick carries at most one marker, from facts the rows already
+  hold: a reply carrying the projected runtime error (`runtimeError`) marks
+  the turn as ended with an error; otherwise a standalone sub-agent row marks
+  it as having started a sub-agent. Sub-agents shown inside a reply's tool
+  call, and interrupted turns, are not marked.
+- **Previous turn / Next turn.** Two steps sit beside Scroll to bottom
+  whenever that control shows, at every width; on a phone they are the turn
+  navigation. Previous goes to the start of the turn in view when its prompt
+  is above the screen, otherwise to the turn before. The steps stay focusable
+  at either end, and announce the turn they reached (its position and prompt)
+  in a polite status region. Only a step announces; the region empties before
+  each announcement, so a repeat step is said again, and it is cleared on a
+  chat switch or when the loaded history changes.
+- **Positions.** A turn is named "Turn N of M". While older history is not
+  loaded, the map covers only the loaded window, so it is named "Loaded turn
+  N of M" instead, and the numbers change as earlier history loads.
+- **Jumping.** A jump reveals the turn's prompt row, centred, through the same
+  path a message link uses (`revealRowId`, then the virtualizer's
+  `scrollToIndex`); a short transcript, with every row mounted, is scrolled
+  directly. A jump marks the reader as away from the latest message, so text
+  still streaming does not pull the transcript back to the end, and it
+  clears a followed `#station-message=` link, which would otherwise hold the
+  transcript on its message. Scroll to bottom returns to
+  the latest; if focus was on it or the steps, focus moves to the transcript.
+
+History replay has its own timeline and shows no rail.
+
 ## 1. The principle: if an agent can't drive it, it's broken
 
 Station's thesis is agents doing real work with receipts. That obligates Station's own UI

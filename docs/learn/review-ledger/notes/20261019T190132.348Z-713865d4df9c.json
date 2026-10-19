@@ -1,0 +1,7 @@
+{
+  "revision": "6a4dda58c38361eab17ddf719ceeba7cd3dad9a2",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Review-round delta to ChatMessageList.tsx: stepToTurn wraps the turn jump with a polite status announcement, and the rail receives hasOlderMessages for its position labels. The form submission, draft scope and replay read-only claims here are untouched; no prose change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}
