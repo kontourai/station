@@ -84,6 +84,7 @@
     "./distribution": "./src/distribution.ts",
     "./discord": "./src/discord.ts",
     "./device-settings": "./src/device-settings.ts",
+    "./desktop-update": "./src/desktop-update.ts",
     "./diff-comment": "./src/diff-comment.ts",
     "./datum-secret-reference": "./src/datum-secret-reference.ts",
     "./engine-capability-matrix": "./src/engine-capability-matrix.ts",

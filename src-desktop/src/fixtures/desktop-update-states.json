@@ -1,0 +1,106 @@
+{
+  "disabled": {
+    "phase": { "status": "disabled" },
+    "error": null,
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": null
+  },
+  "idle": {
+    "phase": { "status": "idle" },
+    "error": null,
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": null
+  },
+  "checking": {
+    "phase": { "status": "checking" },
+    "error": null,
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": null
+  },
+  "upToDate": {
+    "phase": { "status": "up-to-date", "checkedAt": 1760000000000 },
+    "error": null,
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": null
+  },
+  "checkFailed": {
+    "phase": { "status": "idle" },
+    "error": {
+      "context": "check",
+      "message": "error sending request for url",
+      "version": null
+    },
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": null
+  },
+  "available": {
+    "phase": {
+      "status": "available",
+      "version": "0.1.12",
+      "notes": "Faster startup.",
+      "availableSince": 1760000000000
+    },
+    "error": null,
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": 1760086400000
+  },
+  "downloading": {
+    "phase": {
+      "status": "downloading",
+      "version": "0.1.12",
+      "downloadedBytes": 42000000,
+      "totalBytes": 100000000
+    },
+    "error": null,
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": null
+  },
+  "downloadFailed": {
+    "phase": {
+      "status": "available",
+      "version": "0.1.12",
+      "notes": "Faster startup.",
+      "availableSince": 1760000000000
+    },
+    "error": {
+      "context": "download",
+      "message": "Download request failed with status: 503 Service Unavailable",
+      "version": "0.1.12"
+    },
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": 1760086400000
+  },
+  "ready": {
+    "phase": { "status": "ready", "version": "0.1.12" },
+    "error": null,
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": null
+  },
+  "installing": {
+    "phase": { "status": "installing", "version": "0.1.12" },
+    "error": null,
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": null
+  },
+  "installFailed": {
+    "phase": { "status": "ready", "version": "0.1.12" },
+    "error": {
+      "context": "install",
+      "message": "failed to move the new app into place",
+      "version": "0.1.12"
+    },
+    "policy": "after-24h",
+    "currentVersion": "0.1.11",
+    "autoDownloadAt": null
+  }
+}
