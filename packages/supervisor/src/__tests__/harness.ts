@@ -400,9 +400,12 @@ export function startSse(port: number): {
   };
 }
 
-export async function getBoot(
-  port: number,
-): Promise<{ bootId: string; generation: number; entry: string }> {
+export async function getBoot(port: number): Promise<{
+  bootId: string;
+  generation: number;
+  entry: string;
+  inheritedBirth: string | null;
+}> {
   return new Promise((resolve, reject) => {
     http
       .get(

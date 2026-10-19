@@ -62,6 +62,9 @@ export interface SupervisorOptions {
   exit?: (code: number) => void;
 }
 
+/** Set by other Station supervisors (Desktop, `service run`) on their child. */
+const INHERITED_SUPERVISOR_BIRTH_ENV = 'STATION_SUPERVISOR_BIRTH';
+
 /** Signals a generation and, on POSIX, every process in its group. */
 function killTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
   if (process.platform !== 'win32' && child.pid !== undefined) {
@@ -83,13 +86,18 @@ function createForkLauncher(options: {
 }): GenerationLauncher {
   return {
     launch({ entry, generation }) {
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        [SUPERVISOR_ENV.ipc]: '1',
+        [SUPERVISOR_ENV.pid]: String(process.pid),
+        [SUPERVISOR_ENV.generation]: String(generation),
+      };
+      // A birth fingerprint inherited from whatever started this supervisor
+      // names that process, not this one; a core comparing it against its
+      // parent would conclude its supervisor is gone.
+      delete env[INHERITED_SUPERVISOR_BIRTH_ENV];
       const child = fork(entry, [], {
-        env: {
-          ...process.env,
-          [SUPERVISOR_ENV.ipc]: '1',
-          [SUPERVISOR_ENV.pid]: String(process.pid),
-          [SUPERVISOR_ENV.generation]: String(generation),
-        },
+        env,
         // The supervisor's own Node flags are not the core's.
         execArgv: [],
         stdio: ['ignore', 'inherit', 'inherit', 'ipc'],

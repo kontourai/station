@@ -290,7 +290,7 @@ export class GenerationManager {
       readinessTimeoutMs,
     );
     if (ready !== 'ok' || this.stopping) {
-      await this.terminate(trial);
+      await this.retire(trial, drainDeadlineMs);
       this.trial = null;
       const reason = this.stopping
         ? 'stopping'
@@ -305,7 +305,7 @@ export class GenerationManager {
       (await this.waitForExit(trial, this.handoffConfig.commitGraceMs)) ||
       this.stopping
     ) {
-      await this.terminate(trial);
+      await this.retire(trial, drainDeadlineMs);
       this.trial = null;
       const reason = this.stopping ? 'stopping' : 'trial-exited-at-commit';
       return this.finishRollback(null, previousEntry, reason, progress);
@@ -334,10 +334,12 @@ export class GenerationManager {
     this.clearStableTimer();
     this.stopped = (async () => {
       const work: Promise<void>[] = [];
-      if (this.trial) work.push(this.terminate(this.trial));
       // A stop must finish inside a service manager's stop timeout, so its
       // drain, voice sessions included, is capped well below the handoff cap.
       const cap = this.handoffConfig.stopDrainCapMs;
+      if (this.trial) {
+        work.push(this.retire(this.trial, Math.min(drainDeadlineMs, cap)));
+      }
       if (this.active) {
         work.push(this.drain(this.active, Math.min(drainDeadlineMs, cap), cap));
       }
@@ -609,7 +611,7 @@ export class GenerationManager {
         return gen;
       }
     }
-    await this.terminate(gen);
+    await this.retire(gen, this.handoffConfig.drainDeadlineMs);
     this.trial = null;
     return null;
   }
@@ -738,6 +740,24 @@ export class GenerationManager {
       break;
     }
     this.log(`generation ${gen.id} missed its drain deadline`);
+    await this.terminate(gen);
+  }
+
+  /**
+   * Ends a generation that failed or is being abandoned. One that was
+   * promoted may already serve the held listeners, and a signal would make it
+   * drop its clients' connections, so it is drained first (no voice
+   * extension) and signalled only after the deadline. One that never left
+   * `parked` holds no connections and is signalled at once.
+   */
+  private async retire(gen: Generation, deadlineMs: number): Promise<void> {
+    if (gen.state === 'exited') return;
+    // Already draining: that drain signals it after its own deadline.
+    if (gen.state === 'draining') return gen.exited;
+    if (gen.state === 'promoted' || gen.state === 'serving') {
+      await this.drain(gen, deadlineMs, deadlineMs);
+      return;
+    }
     await this.terminate(gen);
   }
 

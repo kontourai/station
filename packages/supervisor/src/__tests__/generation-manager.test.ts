@@ -418,11 +418,37 @@ describe('GenerationManager', () => {
       generation: 3,
       bootId: 'boot-3',
     });
-    expect(generations[1]?.signals).toEqual(['SIGTERM']);
+    // Promoted, it may already serve the held listeners: drained, not signalled.
+    expect(generations[1]?.sent.map(({ message }) => message.type)).toContain(
+      'drain',
+    );
+    expect(generations[1]?.signals).toEqual([]);
     expect(generations[2]?.entry).toBe('/core/a.js');
     expect(manager.status()).toMatchObject({
       state: 'serving',
       active: { generation: 3, entry: '/core/a.js' },
+    });
+  });
+
+  it('signals a failed promoted trial only after it ignores the drain deadline', async () => {
+    const { manager, generations } = setup((_generation, entry) =>
+      entry === '/core/bad.js' ? { ready: false, exitOnDrain: false } : {},
+    );
+    await manager.start();
+    const handoff = manager.handoff({
+      entry: '/core/bad.js',
+      readinessTimeoutMs: 5_000,
+      drainDeadlineMs: 4_000,
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(generations[1]?.signals).toEqual([]);
+    await vi.advanceTimersByTimeAsync(3_999);
+    expect(generations[1]?.signals).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(generations[1]?.signals).toEqual(['SIGTERM']);
+    expect(await settle(handoff)).toMatchObject({
+      outcome: 'rolled-back',
+      reason: 'trial-readiness-timeout',
     });
   });
 
