@@ -964,3 +964,12 @@ This profile does not replace existing continuity capabilities or migrate existi
 provider-specific execution paths. Durable inbox placement, accepted-through
 context delivery and crash-durable model/tool steps have separate implementation
 owners. Profile claims must change with their adapter behavior and proof.
+
+### Pull request review guides
+
+`@kontourai/station-contracts/pull-request-review-guide` owns the guide,
+stop, excerpt, run, and result shapes. Completed guides name `headSha`,
+`generatedAt`, `modelSelection`, and ordered `stops`. Runs are `Running` or
+`Failed`. Results carry `currentHeadSha` independently of the guide head and
+validated `excerptContents` for rendering. Stale results omit line anchors.
+The [user guide](../user/pull-request-guides.md) describes generation and limits.

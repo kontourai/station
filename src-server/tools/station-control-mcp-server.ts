@@ -28,6 +28,7 @@ import {
   stationControlToolPolicy,
 } from './station-control-policy.js';
 import { registerProjectActivityTools } from './station-control-project-activity-tools.js';
+import { registerReviewGuideTools } from './station-control-review-guide-tools.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
 import { registerSessionSearchTools } from './station-control-session-search-tools.js';
 import { registerSessionTools } from './station-control-session-tools.js';
@@ -279,6 +280,7 @@ export function createSelectedStationControlMcpServer(
   registerNotifyTools(registry);
   registerHtmlReplyTools(registry);
   registerDeclarePullRequestTools(registry);
+  registerReviewGuideTools(registry);
   return server;
 }
 

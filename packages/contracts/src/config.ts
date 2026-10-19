@@ -17,6 +17,9 @@ export interface ApprovalGuardianConfig {
 }
 
 export interface AppConfig {
+  reviewGuidesEnabled?: boolean;
+  reviewGuideModel?: string;
+  reviewGuideInstructions?: string;
   region?: string;
   defaultModel: string;
   invokeModel: string;

@@ -57,6 +57,8 @@ const DECISION_1_BOUND_OPERATOR = [
   'list_delegation_targets',
   'reindex_knowledge',
   'migrate_knowledge',
+  // Guides are shared server state; the first slice keeps bound operator authority.
+  'write_pull_request_guides',
 ];
 // Decision 2 (slice B): operator-wide reads — Station-wide data no single
 // person's view contains — need a bound caller acting for the operator.
@@ -69,6 +71,7 @@ const DECISION_2_OPERATOR_READS = [
   'get_usage',
   'check_plugin_updates',
   'list_delegation_environments',
+  'read_pull_request_guide',
 ];
 // Decision 2 (slice B): reads scoped to the principal the caller's session
 // acts for. Transcribed from the slice B brief, independently of the table.

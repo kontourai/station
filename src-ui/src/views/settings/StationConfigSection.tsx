@@ -77,6 +77,9 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'defaultWorkspaceIsolation',
     'workspaceCheckpoints',
     'usageLimitAutoResume',
+    'reviewGuidesEnabled',
+    'reviewGuideModel',
+    'reviewGuideInstructions',
   ],
   // The Station default this device's chat-font-size slider falls back to.
   chat: ['defaultChatFontSize'],

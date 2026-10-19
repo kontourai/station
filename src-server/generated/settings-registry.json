@@ -385,6 +385,33 @@
       "configKey": "usageLimitAutoResume"
     },
     {
+      "id": "review-guides",
+      "label": "Review guides",
+      "help": "Allow AI-written tours of pull requests on this server.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=review-guides",
+      "configKey": "reviewGuidesEnabled"
+    },
+    {
+      "id": "review-guide-model",
+      "label": "Review guide model",
+      "help": "Choose the model that writes pull request guides.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=review-guide-model",
+      "configKey": "reviewGuideModel"
+    },
+    {
+      "id": "review-guide-instructions",
+      "label": "Review guide instructions",
+      "help": "Change the emphasis and reading order of generated guides.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=review-guide-instructions",
+      "configKey": "reviewGuideInstructions"
+    },
+    {
       "id": "chat-font-size",
       "label": "Chat font size",
       "help": "Chat messages render at this size in your interface, ahead of the Station-configured default.",

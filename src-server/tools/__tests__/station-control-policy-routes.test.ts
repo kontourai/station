@@ -109,9 +109,19 @@ function memoryTransport() {
 }
 
 const HEX64 = 'a'.repeat(64);
+const GUIDE_TARGET = {
+  project: 'project-a',
+  provider: 'github',
+  host: 'github.com',
+  owner: 'o',
+  repository: 'r',
+  ref: '1',
+};
 
 /** Arguments that pass each tool's own schema, so it reaches Station. */
 const ARGS: Record<string, Record<string, unknown>> = {
+  read_pull_request_guide: { target: GUIDE_TARGET },
+  write_pull_request_guides: { targets: [GUIDE_TARGET] },
   device_open: { platform: 'android', deviceId: 'emulator-5554' },
   device_screenshot: { deviceSessionId: 'device-session' },
   device_snapshot: { deviceSessionId: 'device-session' },
