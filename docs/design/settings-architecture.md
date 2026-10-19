@@ -72,12 +72,15 @@ and chat remain available. Pane discovery omits disabled previews, and restored
 or direct Flow console renderers show an off state before reading Flow data.
 The Trust evidence setting also leaves Settings search and the command palette
 until Trust is enabled. These are UI gates, not authorization or backend feature
-switches; stored evidence and server configuration remain intact. Withdrawing
-panes can change a saved pane arrangement.
+switches; stored evidence and server configuration remain intact. Withdrawing a
+preview removes that pane while preserving unrelated panes, grouping and the
+selection of a retained pane.
 
 Host options retain their editable settings. **Host diagnostics** is a collapsed,
-on-demand troubleshooting disclosure; Settings does not run discovery until it
-is opened. Setting source information opens in a responsive dialog rather than
+on-demand troubleshooting disclosure; build provenance is also under **Build
+details**. Settings does not request the host-status report until one of those
+disclosures is opened. Setting source information opens in a responsive dialog
+rather than
 a viewport-dependent popover. It no longer occupies a separate mobile row.
 
 The [launch triage](settings-launch-triage.md) records the complete Settings

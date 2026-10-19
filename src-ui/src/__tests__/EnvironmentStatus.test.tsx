@@ -44,7 +44,7 @@ async function openDiagnostics() {
   await waitFor(() => expect(fixtures.queried).toHaveBeenCalled());
 }
 
-test('keeps editable host settings available without starting a discovery query', async () => {
+test('keeps editable host settings available while requested diagnostics load', async () => {
   fixtures.loading = true;
   render(
     <EnvironmentStatus apiBase="http://host">
@@ -52,11 +52,10 @@ test('keeps editable host settings available without starting a discovery query'
     </EnvironmentStatus>,
   );
   expect(screen.getByRole('textbox', { name: 'Terminal shell' })).toBeTruthy();
-  expect(fixtures.queried).not.toHaveBeenCalled();
   await openDiagnostics();
-  expect(screen.getByRole('status').textContent).toBe(
-    'Checking the Station host…',
-  );
+  expect(
+    screen.getByRole('status', { name: 'Checking the Station host' }),
+  ).toBeTruthy();
   expect(screen.getByRole('textbox', { name: 'Terminal shell' })).toBeTruthy();
 });
 

@@ -5,6 +5,7 @@ import {
   CloseGlyph,
   WarningGlyph,
 } from '../../components/icons/Glyph';
+import { SkeletonBlock } from '../../components/state';
 import { activatable } from '../../utils/activatable';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -64,7 +65,8 @@ function HostDiagnostics({ apiBase }: { apiBase: string }) {
       )
     : [];
 
-  if (loading) return <p role="status">Checking the Station host…</p>;
+  if (loading)
+    return <SkeletonBlock count={2} label="Checking the Station host" />;
   if (isError || !Array.isArray(systemStatus?.prerequisites)) {
     return (
       <p role="status">

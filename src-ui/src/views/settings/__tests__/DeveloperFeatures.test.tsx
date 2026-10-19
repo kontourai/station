@@ -46,6 +46,7 @@ test('Developer tools reveals three off-by-default independent opt-ins; disablin
   expect(screen.queryByRole('switch')).toBeNull();
   expect(screen.getByRole('status').textContent).toBe('none');
   act(() => deviceSettingsStore.set('developerToolsEnabled', true));
+  expect(screen.getByRole('status').textContent).toBe('none');
   const flow = screen.getByRole('switch', { name: 'Flow delivery preview' });
   const readiness = screen.getByRole('switch', {
     name: 'Veritas readiness preview',

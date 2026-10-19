@@ -46,6 +46,7 @@ vi.mock('@kontourai/station-connect', () => ({
   describeDeviceGrant: () => 'full device access',
   requestedScopeTokens: (scope: string) => scope.split(' ').filter(Boolean),
 }));
+const systemStatusRead = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async () => {
   const { defaultNotificationPreferences } = await import(
     '@kontourai/station-contracts/notification-preferences'
@@ -215,21 +216,24 @@ vi.mock('@kontourai/station-sdk', async () => {
       );
     },
     useInvalidateQuery: () => invalidateQuery,
-    useSystemStatusForApiBaseQuery: () => ({
-      data: {
-        build: {},
-        prerequisites: [
-          {
-            id: 'node',
-            name: 'Node',
-            description: 'ready',
-            status: 'installed',
-            category: 'required',
-          },
-        ],
-      },
-      isLoading: false,
-    }),
+    useSystemStatusForApiBaseQuery: () => {
+      systemStatusRead();
+      return {
+        data: {
+          build: {},
+          prerequisites: [
+            {
+              id: 'node',
+              name: 'Node',
+              description: 'ready',
+              status: 'installed',
+              category: 'required',
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    },
     useFeaturePreviewsQuery: () => ({
       isLoading: false,
       error: null,
@@ -475,6 +479,7 @@ describe('settings catalog completeness', () => {
     pluginVisibilityRefused = false;
     pluginVisibilityFailed = false;
     updateConfig.mockReset();
+    systemStatusRead.mockClear();
     exerciseModelSelection = false;
     modelConnections = [];
     updateAppLogLevel.mockReset();
@@ -1895,6 +1900,22 @@ describe('settings catalog completeness', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('Advanced defers the host-status request until diagnostics or build details are opened', async () => {
+    window.history.replaceState({}, '', '/settings?view=advanced');
+    await renderSettings();
+    expect(
+      screen.getByText('Host diagnostics', { selector: 'summary' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Build details', { selector: 'summary' }),
+    ).toBeTruthy();
+    expect(systemStatusRead).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByText('Host diagnostics', { selector: 'summary' }),
+    );
+    await waitFor(() => expect(systemStatusRead).toHaveBeenCalled());
   });
 
   test('can reveal the persistent host-runtime status row', async () => {

@@ -19,7 +19,7 @@ empty state is insufficient. This is review policy, not a new automatic CI gate.
 Implemented here: Flow delivery, Veritas readiness and Trust UI opt-ins;
 normal Coding stays available. Server APIs, authorization, stored evidence and
 backend configuration are unchanged. Client gates are not security controls.
-Turning previews off may withdraw panes from a saved arrangement.
+Turning previews off withdraws those panes while retaining unrelated pane placement.
 
 ## Decisions to make before launch
 
@@ -73,7 +73,7 @@ changed. No inventory item below is silently marked launch-hardened.
 | New Muse chats (`personal-muse-approval`) | Keep | Retain the engine-specific choice; provider availability is separate. | [source](../../src-ui/src/views/settings/AccountPreferencesSection.tsx) |
 | Desktop app updates (`desktop-app-updates`) | Keep | Shell update workflow; validate signed update/restart and unsupported-platform states. | [source](../../src-ui/src/views/settings/SystemSection.tsx) |
 | Connected Station server (`core-app-updates`) | Simplify | Remote server update is distinct from this client’s app update; show target and restart consequences. | [source](../../src-ui/src/views/settings/SystemSection.tsx) |
-| Deployed Build (`deployed-build`) | Move | Troubleshooting information, not a preference; keep in About/diagnostics. | [source](../../src-ui/src/views/settings/SystemSection.tsx) |
+| Build details (`deployed-build`) | Move (implemented) | Troubleshooting information, not a preference; keep in About/diagnostics. | [source](../../src-ui/src/views/settings/SystemSection.tsx) |
 | Log Level (`log-level`) | Move | Operator troubleshooting; avoid implying logging must be enabled for normal use. | [source](../../src-ui/src/views/settings/SystemSection.tsx) |
 | Settings Export & Import (`backup-restore`) | Keep | Recovery value; distinguish Station config from device preferences and credentials. | [source](../../src-ui/src/views/settings/utils.ts) |
 | Reset Station settings (`reset-defaults`) | Keep | Destructive configuration action needs its existing preview and confirmation. | [source](../../src-ui/src/views/settings/station-reset.ts) |

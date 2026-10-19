@@ -7,8 +7,16 @@ import {
   type WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneHostDocumentV1 } from '@kontourai/station-contracts/workspace-pane-host';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { reconcileCodingWorkspaceDocument } from '../../app-shell/codingWorkspaceDocument';
 import { navigationStore } from '../../contexts/navigation-store';
 import {
   admitRestoredFilePreviewPaneInstance as admitRestoredFilePreviewPaneInstanceWithProjectId,
@@ -2882,4 +2890,65 @@ test("'explicit' selection: closing the named pane corrects the entry in place, 
   expect(pane).not.toBeNull();
   expect(pane).not.toBe(one.instanceId);
   expect(navigationStore.getHistoryIndex()).toBe(index);
+});
+
+test('a Coding preview baseline delta preserves and persists unrelated panes and their grouping', async () => {
+  const original = hostDocument();
+  const previous = singlePaneHostDocument(original.id, one, 'layout');
+  const added = {
+    ...previous,
+    instances: [one, four],
+    root: {
+      ...previous.root,
+      type: 'tabs' as const,
+      instanceIds: [one.instanceId, four.instanceId],
+      selectedInstanceId: one.instanceId,
+    },
+  };
+  let current = original;
+  const storage = window.localStorage;
+  const lockManager = permissiveTestLockManager;
+  const tree = (document: WorkspacePaneHostDocumentV1) => (
+    <WorkspacePaneHost
+      document={document}
+      storage={storage}
+      lockManager={lockManager}
+      onDocumentChange={(next) => {
+        current = next;
+      }}
+      renderPane={(pane) => (
+        <div>{pane.descriptorId} preview reconciliation</div>
+      )}
+    />
+  );
+  const view = render(tree(original));
+  await waitFor(() =>
+    expect(
+      storage.getItem(workspacePaneHostStorageKey(original.scope, original.id)),
+    ).not.toBeNull(),
+  );
+  const enabled = reconcileCodingWorkspaceDocument(previous, added, current);
+  view.rerender(tree(enabled));
+  await waitFor(() =>
+    expect(current.instances.map((instance) => instance.instanceId)).toContain(
+      four.instanceId,
+    ),
+  );
+  const disabled = reconcileCodingWorkspaceDocument(added, previous, current);
+  view.rerender(tree(disabled));
+  await waitFor(() =>
+    expect(
+      current.instances.map((instance) => instance.instanceId),
+    ).not.toContain(four.instanceId),
+  );
+  const saved = JSON.parse(
+    storage.getItem(workspacePaneHostStorageKey(original.scope, original.id))!,
+  );
+  expect(
+    saved.instances.map(
+      (instance: WorkspacePaneInstance) => instance.instanceId,
+    ),
+  ).toEqual([one.instanceId, two.instanceId, three.instanceId]);
+  expect(saved.root).toEqual(original.root);
+  expect(saved.activeInstanceId).toBe(original.activeInstanceId);
 });

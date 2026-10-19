@@ -134,6 +134,7 @@ import { trackCodingDiffCompositionReceipt } from './codingDiffCompositionTeleme
 import { trackCodingEvidenceCompositionReceipt } from './codingEvidenceCompositionTelemetry';
 import { codingEvidenceUnavailableCopy } from './codingEvidenceUnavailableCopy';
 import { trackCodingFileCompositionReceipt } from './codingFileCompositionTelemetry';
+import { reconcileCodingWorkspaceDocument } from './codingWorkspaceDocument';
 import { isUnplacedLayoutRecord } from './layout-record-absent';
 import { layoutTypeRegistry } from './layoutRegistry';
 import {
@@ -412,15 +413,24 @@ const NO_INSTANCES: readonly WorkspacePaneInstance[] = [];
 
 function retainWorkspacePaneHostDocument(
   published: {
-    current: { content: string; document: WorkspacePaneHostDocumentV1 } | null;
+    current: {
+      content: string;
+      document: WorkspacePaneHostDocumentV1;
+      baseline: WorkspacePaneHostDocumentV1;
+    } | null;
   },
   next: WorkspacePaneHostDocumentV1 | null,
+  live: WorkspacePaneHostDocumentV1 | null,
 ): WorkspacePaneHostDocumentV1 | null {
   if (!next) return next;
   const content = JSON.stringify(next);
   if (published.current?.content === content) return published.current.document;
-  published.current = { content, document: next };
-  return next;
+  const document =
+    published.current && live
+      ? reconcileCodingWorkspaceDocument(published.current.baseline, next, live)
+      : next;
+  published.current = { content, document, baseline: next };
+  return document;
 }
 
 /** The one admitted current-layout bridge: exact builtin catalog identity only. */
@@ -714,6 +724,7 @@ function BuiltinCodingLayoutHost({
   const publishedDocument = useRef<{
     content: string;
     document: WorkspacePaneHostDocumentV1;
+    baseline: WorkspacePaneHostDocumentV1;
   } | null>(null);
   const captureHostOpen = useCallback(
     (action: WorkspacePaneHostOpenAction | null) => setHostOpen(action),
@@ -1149,23 +1160,26 @@ function BuiltinCodingLayoutHost({
   }
   const selectedDiffInstance = diffComposition?.instance ?? diffInstance;
   const evidenceEntries = [
-    ['plan', planEntry],
-    ['readiness', readinessEntry],
-    ['trust', trustEntry],
+    ['plan', planEntry, developerFeatures.flow],
+    ['readiness', readinessEntry, developerFeatures.readiness],
+    ['trust', trustEntry, developerFeatures.trust],
   ] as const;
+  const enabledEvidenceEntries = evidenceEntries.filter(
+    ([, , enabled]) => enabled,
+  );
+  const admittedEvidenceEntries = enabledEvidenceEntries.filter(
+    ([, candidate]) => candidate?.instance,
+  );
   const evidenceCompositionActive =
     evidenceCompositionControl !== 'legacy' &&
-    (developerFeatures.flow ||
-      developerFeatures.readiness ||
-      developerFeatures.trust);
+    enabledEvidenceEntries.length > 0;
   const evidenceComposition =
-    evidenceCompositionActive &&
-    evidenceEntries.every(([, candidate]) => candidate?.instance)
+    evidenceCompositionActive && admittedEvidenceEntries.length > 0
       ? selectCodingEvidenceComposition({
           control: evidenceCompositionControl,
           projectId,
           layoutId: layout.id,
-          panes: evidenceEntries.map(([category, candidate]) => ({
+          panes: admittedEvidenceEntries.map(([category, candidate]) => ({
             category,
             descriptor: candidate!.descriptor,
             catalogInstance:
@@ -1185,36 +1199,25 @@ function BuiltinCodingLayoutHost({
           })),
         })
       : null;
-  const evidenceCompositionReceipts =
-    evidenceComposition?.receipts ??
-    (evidenceCompositionActive
-      ? [
-          {
-            category: 'evidence' as const,
+  const evidenceCompositionReceipts = [
+    ...(evidenceComposition?.receipts ?? []),
+    ...(evidenceCompositionActive
+      ? enabledEvidenceEntries
+          .filter(([, candidate]) => !candidate?.instance)
+          .map(([category]) => ({
+            category,
             control: evidenceCompositionControl,
             outcome: 'unavailable' as const,
             restorationIdentityMatched: false,
             fallbackUsed: false as const,
             reason: 'descriptor-incompatible' as const,
-          },
-        ]
-      : []);
-  if (evidenceCompositionActive && !evidenceComposition?.document) {
-    return chatOnly(
-      <>
-        {evidenceCompositionReceipts.map((receipt) => (
-          <CodingEvidenceCompositionReceiptTracker
-            key={`${receipt.category}:${receipt.outcome}:${receipt.reason ?? 'none'}`}
-            receipt={receipt}
-          />
-        ))}
-        <ErrorState
-          title="Coding evidence workspace unavailable"
-          description="The Workspace Composition evidence panes could not be admitted. Station did not fall back to the legacy Coding host."
-        />
-      </>,
-    );
-  }
+          }))
+      : []),
+  ];
+  const evidenceCompositionUnavailable =
+    evidenceCompositionActive &&
+    (!evidenceComposition?.document ||
+      admittedEvidenceEntries.length !== enabledEvidenceEntries.length);
   const selectedEvidence = (descriptorId: string) =>
     evidenceComposition?.instances.find(
       (instance) => instance.descriptorId === descriptorId,
@@ -1262,6 +1265,7 @@ function BuiltinCodingLayoutHost({
             hostScope,
             drillInInstances,
           ),
+          liveHostDocument.current,
         )
       : null;
   if (drillInInstances.length > 0 && !document) {
@@ -1556,6 +1560,12 @@ function BuiltinCodingLayoutHost({
       {diffCompositionReceipt ? (
         <CodingDiffCompositionReceiptTracker receipt={diffCompositionReceipt} />
       ) : null}
+      {evidenceCompositionUnavailable && (
+        <ErrorState
+          title="Experimental evidence panes unavailable"
+          description="Some opted-in tools could not be admitted. Your Coding workspace remains available."
+        />
+      )}
       {evidenceCompositionReceipts.map((receipt) => (
         <CodingEvidenceCompositionReceiptTracker
           key={`${receipt.category}:${receipt.outcome}:${receipt.reason ?? 'none'}`}

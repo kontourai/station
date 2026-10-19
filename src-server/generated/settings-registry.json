@@ -45,7 +45,7 @@
     },
     {
       "id": "deployed-build",
-      "label": "Deployed Build",
+      "label": "Build details",
       "scope": "informational",
       "section": "system",
       "route": "/settings?view=system&highlight=deployed-build"

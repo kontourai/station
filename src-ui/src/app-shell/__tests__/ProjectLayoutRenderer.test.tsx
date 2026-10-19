@@ -27,6 +27,7 @@ import {
   WORKSPACE_TRUST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
+import type { WorkspacePaneHostDocumentV1 } from '@kontourai/station-contracts/workspace-pane-host';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
@@ -1199,6 +1200,143 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
   });
 
+  test.each(
+    (['legacy', 'compare', 'composition'] as const).flatMap((control) => [
+      {
+        control,
+        key: 'experimentalFlowEnabled' as const,
+        descriptor: WORKSPACE_PLAN_PANE_DESCRIPTOR,
+        instance: createWorkspacePlanPaneInstance('project-uuid'),
+        paneName: 'Plan pane',
+      },
+      {
+        control,
+        key: 'experimentalReadinessEnabled' as const,
+        descriptor: WORKSPACE_READINESS_PANE_DESCRIPTOR,
+        instance: createWorkspaceReadinessPaneInstance('project-uuid'),
+        paneName: 'Readiness pane',
+      },
+      {
+        control,
+        key: 'experimentalTrustEnabled' as const,
+        descriptor: WORKSPACE_TRUST_PANE_DESCRIPTOR,
+        instance: createWorkspaceTrustPaneInstance('project-uuid'),
+        paneName: 'Trust pane',
+      },
+    ]),
+  )(
+    'Coding retains files, diff and terminal with only $paneName opted in ($control)',
+    ({ control, key, descriptor, instance, paneName }) => {
+      const coding = paneAdaptationFromLayoutTab(
+        {
+          id: 'coding',
+          label: 'Coding',
+          component: { kind: 'builtin-component', name: 'coding' },
+        },
+        {
+          layoutSlug: 'coding',
+          instanceScope: 'project:project-uuid:source:builtin:coding',
+          modeContextRequirement: { project: true, source: true },
+          boundContext: {
+            projectId: 'project-uuid',
+            sourceId: 'builtin:coding',
+          },
+        },
+      )!;
+      const availability = {
+        state: 'available',
+        reason: { code: 'ready', source: 'resolver' },
+      } as const;
+      const ordinary = [
+        { ...coding, availability },
+        {
+          descriptor: WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+          instance:
+            createWorkspaceCodingFileBrowserPaneInstance('project-uuid'),
+          availability,
+        },
+        {
+          descriptor: WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+          instance: createWorkspaceCodingDiffPaneInstance('project-uuid'),
+          availability,
+        },
+        {
+          descriptor: WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+          instance: createWorkspaceCodingTerminalPaneInstance('project-uuid'),
+          availability,
+        },
+      ];
+      mobileMock.mockReturnValue(false);
+      layoutQueryMock.mockReturnValue({
+        data: {
+          type: 'coding',
+          config: {
+            workingDirectory: '/repo/workspace',
+            workspaceCompositionEvidencePanes: control,
+          },
+        },
+      });
+      catalogMock.mockReturnValue({
+        projectId: 'project-uuid',
+        platform: { isMobile: false, isDesktop: false },
+        entries: [
+          ...ordinary,
+          {
+            descriptor,
+            instance,
+            availability,
+          },
+        ],
+      });
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set(key, true);
+      const singlePreviewView = render(
+        withQueryClient(
+          <ProjectLayoutRenderer
+            projectSlug="project-route"
+            layoutSlug="coding"
+          />,
+        ),
+      );
+      drillIntoHostPane();
+      expect(
+        screen.getByRole('button', { name: /Files pane/, hidden: true }),
+      ).toBeTruthy();
+      expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
+      expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
+      expect(screen.getByText(paneName)).toBeTruthy();
+      for (const sibling of [
+        'Plan pane',
+        'Readiness pane',
+        'Trust pane',
+      ].filter((name) => name !== paneName))
+        expect(screen.queryByText(sibling)).toBeNull();
+      if (control !== 'legacy') {
+        catalogMock.mockReturnValue({
+          projectId: 'project-uuid',
+          platform: { isMobile: false, isDesktop: false },
+          entries: ordinary,
+        });
+        singlePreviewView.rerender(
+          withQueryClient(
+            <ProjectLayoutRenderer
+              projectSlug="project-route"
+              layoutSlug="coding"
+            />,
+          ),
+        );
+        expect(
+          screen.getByRole('button', { name: /Files pane/, hidden: true }),
+        ).toBeTruthy();
+        expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
+        expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
+        expect(screen.getByRole('alert').textContent).toContain(
+          'Experimental evidence panes unavailable',
+        );
+      }
+    },
+  );
+
   test('hosts exact builtin panels with the selected layout identity', () => {
     const coding = paneAdaptationFromLayoutTab(
       {
@@ -1680,6 +1818,41 @@ describe('ProjectLayoutRenderer', () => {
       undefined,
       expect.objectContaining({ type: 'split' }),
     );
+    const currentHost = hostMock.mock.lastCall?.[0];
+    const customized: WorkspacePaneHostDocumentV1 = {
+      ...currentHost.document,
+      instances: [...currentHost.document.instances, pluginInstance],
+      activeInstanceId: pluginInstance.instanceId,
+      root: {
+        type: 'split',
+        id: 'custom-split',
+        orientation: 'horizontal',
+        ratio: 0.6,
+        first: currentHost.document.root,
+        second: {
+          type: 'tabs',
+          id: 'plugin-group',
+          instanceIds: [pluginInstance.instanceId],
+          selectedInstanceId: pluginInstance.instanceId,
+        },
+      },
+    };
+    act(() => currentHost.onDocumentChange(customized));
+    act(() => deviceSettingsStore.set('experimentalTrustEnabled', false));
+    const withdrawn = hostMock.mock.lastCall?.[0].document;
+    expect(
+      withdrawn.instances.map(
+        (instance: { instanceId: string }) => instance.instanceId,
+      ),
+    ).toContain(pluginInstance.instanceId);
+    expect(withdrawn.root).toMatchObject({
+      type: 'split',
+      id: 'custom-split',
+      ratio: 0.6,
+      second:
+        customized.root.type === 'split' ? customized.root.second : undefined,
+    });
+    expect(withdrawn.activeInstanceId).toBe(pluginInstance.instanceId);
     const liveCatalog = catalogMock.mock.results.at(-1)?.value;
     catalogMock.mockReturnValue({
       ...liveCatalog,

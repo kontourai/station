@@ -1,7 +1,4 @@
-/* #2144 slice 3 — the status strip a generic settings row carries: scope
-   badge, provenance chip, the inheritance popover trigger, and
-   reset-to-inherited. Layout only; the badges and popover panel are
-   @kontourai/ui's own. */
+/* Source badges, dialog trigger and reset-to-inherited controls. */
 .setting-row-status {
   display: inline-flex;
   flex-wrap: wrap;

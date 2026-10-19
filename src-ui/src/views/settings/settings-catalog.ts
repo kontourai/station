@@ -201,7 +201,7 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'deployed-build',
-    title: 'Deployed Build',
+    title: 'Build details',
     section: 'system',
     keywords: ['version provenance'],
   },
