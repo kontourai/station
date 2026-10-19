@@ -2794,10 +2794,7 @@ export function configureRuntimeRoutes(
       ),
     subscribe: (listener) => context.eventBus.subscribe(listener),
     publish: (state) =>
-      context.eventBus.emit(
-        SERVER_EVENTS.SERVER_UPDATE_CHANGED,
-        state as unknown as Record<string, unknown>,
-      ),
+      context.eventBus.emit(SERVER_EVENTS.SERVER_UPDATE_CHANGED, state),
     logger: context.logger,
   });
   // The policy is a setting: a saved change re-evaluates it at once.

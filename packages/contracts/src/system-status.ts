@@ -259,7 +259,9 @@ export const DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY: ServerUpdateDownloadPolicy =
  * - `applyWhenIdle`: a persisted request to apply `version` once no agent
  *   turn is running; null when none is set.
  */
-export interface ServerUpdateState {
+// A type alias, not an interface: it is an event payload
+// (`Record<string, unknown>`), which an interface is not assignable to.
+export type ServerUpdateState = {
   supported: boolean;
   currentVersion: string | null;
   availability: {
@@ -273,7 +275,7 @@ export interface ServerUpdateState {
   downloadPolicy: ServerUpdateDownloadPolicy;
   autoDownloadAt: string | null;
   applyWhenIdle: { version: string; requestedAt: string } | null;
-}
+};
 
 /**
  * An agent turn running on this server right now: what a restart would
