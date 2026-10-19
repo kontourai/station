@@ -216,6 +216,11 @@ async function receiverFixture(
     if (request.method() === 'GET' && path === '/config/app') {
       return route.fulfill({ json: { success: true, data: config } });
     }
+    if (request.method() === 'GET' && path === '/notifications') {
+      // The app's turn-notification reader lists the selected Station's
+      // live notifications; this receiver has delivered none.
+      return route.fulfill({ json: { success: true, data: [] } });
+    }
     if (request.method() === 'GET' && path === '/api/starter-work/start-task') {
       // No Starter Task was bound or launched on this receiver.
       return route.fulfill({
@@ -230,7 +235,10 @@ async function receiverFixture(
       const device = pairing.identifyDevice(authorization.slice(7));
       if (!device)
         throw new Error('The verified receiver grant has no Device record');
-      const principal = pairedDevicePrincipal(device);
+      const principal = pairedDevicePrincipal(
+        device,
+        pairing.deviceLocality(device.id),
+      );
       if (principal.kind !== 'human' && principal.kind !== 'tenant') {
         throw new Error(
           'The receiver Device resolved a principal kind unsupported by authority observations',
