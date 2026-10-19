@@ -127,18 +127,25 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 const FALLBACK_AGENT: { name: string } = { name: 'AI' };
 
 /**
- * The Basis chip's accessible name: "Basis" (its visible text, first, so
- * voice control can say what it sees) plus which answer it opens.
+ * Accessible names for an answer's Basis controls: each starts with its
+ * visible text (so voice control can say what it sees), then says which
+ * answer, by its opening words or, wordless, its settle time.
  */
-export function answerBasisLabel(text: string, settledAt: number): string {
+export function answerBasisLabels(
+  text: string,
+  settledAt: number,
+): { chip: string; retry: string } {
   const words = text.replace(/\s+/g, ' ').trim();
-  if (words) {
-    const excerpt =
-      words.length > 48 ? `${words.slice(0, 47).trimEnd()}…` : words;
-    return `Basis for the answer “${excerpt}”`;
-  }
   const at = absoluteTime(settledAt);
-  return at ? `Basis for the answer at ${at}` : 'Basis for this answer';
+  const answer = words
+    ? `the answer “${words.length > 48 ? `${words.slice(0, 47).trimEnd()}…` : words}”`
+    : at
+      ? `the answer at ${at}`
+      : 'this answer';
+  return {
+    chip: `Basis for ${answer}`,
+    retry: `Basis didn’t load · Retry for ${answer}`,
+  };
 }
 
 /** A fixed, ordered list of optional slots (never reordered), so its index
@@ -659,7 +666,7 @@ function MessageBubbleComponent({
   // Every answer's chip reads "Basis"; its accessible name says WHICH answer,
   // by the answer's opening words (or, wordless, its settle time), so a
   // screen reader's list of buttons is not a column of identical "Basis".
-  const basisAnswerLabel = answerBasisLabel(textContent, settledAt);
+  const basisLabels = answerBasisLabels(textContent, settledAt);
   const basisChip =
     isAssistant &&
     msg.turnId &&
@@ -674,7 +681,7 @@ function MessageBubbleComponent({
           chatStoreId: activeSession.id,
           sessionId: answerSessionId,
           turnId: msg.turnId,
-          label: basisAnswerLabel,
+          label: basisLabels.chip,
         }}
         pending={null}
         shareAcrossMounts
@@ -685,7 +692,7 @@ function MessageBubbleComponent({
             type="button"
             className="answer-basis-chip answer-basis-chip--unavailable"
             // Visible text first, then which answer (as the chip itself).
-            aria-label={`Basis didn’t load · Retry ${basisAnswerLabel.replace(/^Basis /, '')}`}
+            aria-label={basisLabels.retry}
             onClick={retry}
           >
             Basis didn’t load · Retry
