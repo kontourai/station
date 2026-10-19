@@ -96,6 +96,12 @@ export interface ChatDockWorkspaceControls {
     mountRef: React.RefObject<HTMLDivElement | null>;
     dockMode: DockMode;
     fullscreen: boolean;
+    /**
+     * A phone presents the inventory as its full-height sheet. The desktop
+     * header never mounts on a phone, so only the dock's own phone host
+     * sets this.
+     */
+    isMobile?: boolean;
   };
   onOpenConversation: () => void;
   /** Opens the New Chat picker, where installed Skills appear too (#3170). */
@@ -146,6 +152,16 @@ interface ChatDockHeaderProps {
    * own rows.
    */
   moreActions?: readonly DockMoreAction[];
+  /**
+   * The session context card's chip, shown while the dock is too narrow for
+   * the card itself. Absent while the card is beside the transcript.
+   */
+  sessionContextChip?: React.ReactNode;
+  /**
+   * The session context card carries the background-task count while it is
+   * beside the transcript, so the More trigger does not repeat it.
+   */
+  backgroundTasksBadgeHidden?: boolean;
 }
 
 export function ChatDockHeader({
@@ -158,6 +174,8 @@ export function ChatDockHeader({
   contextMeter,
   regionVisible,
   moreActions,
+  sessionContextChip,
+  backgroundTasksBadgeHidden = false,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
   const slots = useRegionChromeSlots();
@@ -301,6 +319,7 @@ export function ChatDockHeader({
       {projectContext && !slots?.namesPane ? (
         <div className="chat-dock__header-context">{projectContext}</div>
       ) : null}
+      {sessionContextChip ?? null}
     </>
   );
 
@@ -413,9 +432,15 @@ export function ChatDockHeader({
         // Folding Background tasks into the menu took its running-count badge
         // off the bar with it, and a count that only exists inside a closed
         // menu is not a signal. It rides the trigger instead.
-        badgeCount={workspaceControls?.backgroundTasksRunningCount ?? 0}
+        badgeCount={
+          backgroundTasksBadgeHidden
+            ? 0
+            : (workspaceControls?.backgroundTasksRunningCount ?? 0)
+        }
         badgeLabel={
-          workspaceControls && workspaceControls.backgroundTasksRunningCount > 0
+          !backgroundTasksBadgeHidden &&
+          workspaceControls &&
+          workspaceControls.backgroundTasksRunningCount > 0
             ? `${workspaceControls.backgroundTasksRunningCount} background task${
                 workspaceControls.backgroundTasksRunningCount === 1 ? '' : 's'
               } running`
