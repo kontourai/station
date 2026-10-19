@@ -50,6 +50,8 @@ const NOT_SENT_CODES = new Set([
   'EADDRNOTAVAIL',
   'ERR_INVALID_URL',
 ]);
+/** Statuses a proxy or gateway may answer after the request reached Station. */
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
 /** SDK refusals raised before any request is sent. */
 const NOT_SENT_ERRORS = new Set([
   'StationReadOnlyError',
@@ -57,13 +59,23 @@ const NOT_SENT_ERRORS = new Set([
 ]);
 
 /**
- * Whether a failed create may still have created the producer. A server
- * refusal (any `status`) did not; nor did a failure before the request was
- * sent. Anything else (a reset connection, a timeout, a 2xx with no
- * readable body) is ambiguous.
+ * Whether a failed create may still have created the producer. Station's own
+ * refusal did not; nor did a failure before the request was sent. Anything
+ * else (a gateway 502/503/504 without Station's envelope, a reset
+ * connection, a timeout, a 2xx with no readable body) is ambiguous.
  */
 function createMayHaveHappened(error: unknown): boolean {
-  if (typeof (error as { status?: unknown })?.status === 'number') return false;
+  const status = (error as { status?: unknown })?.status;
+  if (typeof status === 'number') {
+    // A gateway in front of Station (the UI proxy, Tailscale Serve) can
+    // answer 502/503/504 after Station already processed the create. Only
+    // Station's own refusal envelope, which always names a `code`, proves
+    // nothing was created.
+    return (
+      GATEWAY_STATUSES.has(status) &&
+      typeof (error as { code?: unknown }).code !== 'string'
+    );
+  }
   if (error instanceof Error && NOT_SENT_ERRORS.has(error.name)) return false;
   for (
     let current: unknown = error, depth = 0;

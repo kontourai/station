@@ -283,6 +283,33 @@ describe('station telemetry producers', () => {
     expect(result.stderr).not.toContain('may exist');
   }, 60_000);
 
+  test("a gateway 502/503/504 without Station's envelope may hide a created producer", async () => {
+    for (const status of [502, 503, 504]) {
+      seen = [];
+      reply = () => ({ status, body: undefined, text: 'Bad Gateway' });
+      const result = await run(['create', `gateway-${status}`]);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        `station telemetry producers revoke gateway-${status}`,
+      );
+    }
+  }, 120_000);
+
+  test("Station's own 503 refusal is a refusal, no revoke hint", async () => {
+    reply = () => ({
+      status: 503,
+      body: {
+        success: false,
+        error: 'The telemetry producer record is unsafe or unreadable.',
+        code: 'producers_unavailable',
+      },
+    });
+    const result = await run(['create', 'store-down']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('unsafe or unreadable');
+    expect(result.stderr).not.toContain('revoke');
+  }, 60_000);
+
   test('a plain-text refusal is a refusal, no revoke hint', async () => {
     reply = () => ({ status: 404, body: undefined, text: 'Not Found' });
     const result = await run(['create', 'refused']);

@@ -1,5 +1,6 @@
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
+import { MONITORING_SESSION_ID_KEYS } from './monitoring-session-identity.js';
 import type {
   AgentTelemetryIngestEvent,
   GenAiOperationName,
@@ -82,7 +83,9 @@ function parseIsoDateTime(value: string): number | undefined {
   const [year, month, day, hour, minute, second = '0', offH = '0', offM = '0'] =
     match.slice(1).map((part) => part ?? '0');
   const [y, mo, d] = [Number(year), Number(month), Number(day)];
-  const calendar = new Date(Date.UTC(y, mo - 1, d));
+  // setUTCFullYear, not Date.UTC: Date.UTC maps years 0-99 to 1900-1999.
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(y, mo - 1, d);
   if (
     calendar.getUTCFullYear() !== y ||
     calendar.getUTCMonth() !== mo - 1 ||
@@ -157,6 +160,15 @@ function validateAgentEvent(
   }
   return { ok: true, event: parsed.data as AgentTelemetryIngestEvent };
 }
+
+/** Prefix of every identity a telemetry producer reported. */
+const PRODUCER_ID_PREFIX = 'producer:';
+/** Session, trace and tool-call identities a producer row may carry. */
+const PRODUCER_NAMESPACED_KEYS: readonly string[] = [
+  K.TRACE_ID,
+  K.TOOL_CALL_ID,
+  ...MONITORING_SESSION_ID_KEYS,
+];
 
 type KnownAgentEventType =
   | 'session.start'
@@ -238,14 +250,26 @@ export function createOtlpReceiverRoutes(
   const app = new Hono();
   const attributed = (c: Context, event: MonitoringEvent): MonitoringEvent => {
     const producer = resolveProducer(c);
+    if (!producer) return event;
+    // A producer is a low-trust, possibly remote sender. An id it reports
+    // must never equal a Station session, trace or tool-call id: a row that
+    // joined a Station conversation would put producer text into that
+    // conversation's timeline and into what agents read about it. Every
+    // identity it supplies is namespaced by the token name, so it can only
+    // ever group with that producer's own rows.
+    const namespaced: Record<string, unknown> = {};
+    for (const key of PRODUCER_NAMESPACED_KEYS) {
+      const value = (event as Record<string, unknown>)[key];
+      if (typeof value === 'string' && value.length > 0)
+        namespaced[key] = `${PRODUCER_ID_PREFIX}${producer.name}:${value}`;
+    }
     // Last, so no mapped field can shadow the server-derived attribution.
-    return producer
-      ? {
-          ...event,
-          [K.TELEMETRY_PRODUCER]: producer.name,
-          [K.TELEMETRY_PRODUCER_OWNER]: producer.ownerPrincipalId,
-        }
-      : event;
+    return {
+      ...event,
+      ...namespaced,
+      [K.TELEMETRY_PRODUCER]: producer.name,
+      [K.TELEMETRY_PRODUCER_OWNER]: producer.ownerPrincipalId,
+    };
   };
 
   app.post('/v1/traces', async (c) => {

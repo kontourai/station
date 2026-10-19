@@ -111,6 +111,18 @@ export function EventEntryHeader({
           </span>
         )}
 
+        {typeof event[K.TELEMETRY_PRODUCER] === 'string' && (
+          <span className="log-inline">
+            <span className="meta-label">Producer:</span>
+            <span
+              className="pill-badge"
+              title="Reported by an external telemetry producer; not observed by Station"
+            >
+              {event[K.TELEMETRY_PRODUCER] as string}
+            </span>
+          </span>
+        )}
+
         {event[K.HEALTHY] !== undefined && (
           <span className="log-inline">
             <span className="meta-label">Status:</span>

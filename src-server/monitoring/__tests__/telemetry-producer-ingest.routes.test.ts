@@ -413,6 +413,8 @@ describe('telemetry producer tokens on the ingest routes', () => {
     expect(await statusFor('2028-02-29T00:00:00Z')).toBe(200);
     // Older producers sent a JSON number; it is still epoch milliseconds.
     expect(await statusFor(1_792_400_000_000)).toBe(200);
+    // Years 0-99 are real years, not 1900-1999 (Date.UTC's legacy mapping).
+    expect(await statusFor('0048-02-29T00:00:00Z')).toBe(200);
     expect(h.emitted.map((event) => event.timestamp)).toEqual([
       '+275760-09-13T00:00:00.000Z',
       '1970-01-01T00:00:00.000Z',
@@ -420,7 +422,132 @@ describe('telemetry producer tokens on the ingest routes', () => {
       '2026-10-19T10:00:00.000Z',
       '2028-02-29T00:00:00.000Z',
       new Date(1_792_400_000_000).toISOString(),
+      '0048-02-29T00:00:00.000Z',
     ]);
+  });
+
+  test('every identity a producer reports is namespaced by its token', async () => {
+    const h = harness();
+    const token = await h.create('flow-agents');
+    const station = 'station-session-1';
+    expect(
+      (
+        await h.send('/v1/agent-events', {
+          token,
+          body: agentEvent({ session_id: station }),
+        })
+      ).status,
+    ).toBe(200);
+    const attr = (key: string, value: string) => ({
+      key,
+      value: { stringValue: value },
+    });
+    expect(
+      (
+        await h.send('/v1/traces', {
+          token,
+          body: {
+            resourceSpans: [
+              {
+                scopeSpans: [
+                  {
+                    spans: [
+                      {
+                        traceId: station,
+                        spanId: 's1',
+                        name: 'x',
+                        kind: 1,
+                        startTimeUnixNano: '1',
+                        attributes: [
+                          attr(K.CONVERSATION_ID, station),
+                          attr(K.TOOL_CALL_ID, 'call-1'),
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        })
+      ).status,
+    ).toBe(200);
+    const [event, span] = h.emitted;
+    const own = `producer:flow-agents:${station}`;
+    expect(event?.[K.TRACE_ID]).toBe(own);
+    expect(event?.[K.AT_SESSION_ID]).toBe(own);
+    expect(span?.[K.TRACE_ID]).toBe(own);
+    expect(span?.[K.CONVERSATION_ID]).toBe(own);
+    expect(span?.[K.TOOL_CALL_ID]).toBe('producer:flow-agents:call-1');
+  });
+
+  test('a paired credential cannot forge producer attribution on any ingest path', async () => {
+    const h = harness();
+    const forged = {
+      [K.TELEMETRY_PRODUCER]: 'forged',
+      [K.TELEMETRY_PRODUCER_OWNER]: 'someone-else',
+    };
+    const forgedAttributes = Object.entries(forged).map(([key, value]) => ({
+      key,
+      value: { stringValue: value },
+    }));
+    const responses = [
+      await h.send('/v1/agent-events', {
+        token: OPERATE_DEVICE,
+        body: {
+          ...agentEvent(),
+          ...forged,
+          agent: { ...agentEvent().agent, ...forged },
+        },
+      }),
+      await h.send('/v1/traces', {
+        token: OPERATE_DEVICE,
+        body: {
+          resourceSpans: [
+            {
+              scopeSpans: [
+                {
+                  spans: [
+                    {
+                      traceId: 't1',
+                      spanId: 's1',
+                      name: 'x',
+                      kind: 1,
+                      startTimeUnixNano: '1',
+                      attributes: forgedAttributes,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      await h.send('/v1/logs', {
+        token: OPERATE_DEVICE,
+        body: {
+          resourceLogs: [
+            {
+              scopeLogs: [
+                {
+                  logRecords: [
+                    { timeUnixNano: '1', attributes: forgedAttributes },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ];
+    expect(responses.map((response) => response.status)).toEqual([
+      200, 200, 200,
+    ]);
+    expect(h.emitted).toHaveLength(3);
+    for (const event of h.emitted) {
+      expect(K.TELEMETRY_PRODUCER in event).toBe(false);
+      expect(K.TELEMETRY_PRODUCER_OWNER in event).toBe(false);
+    }
   });
 
   test('a paired credential with the operate tier keeps working, unattributed', async () => {

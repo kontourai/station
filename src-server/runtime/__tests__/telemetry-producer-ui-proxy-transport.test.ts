@@ -16,6 +16,7 @@ import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import { createServer, type Server } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import * as path from 'node:path';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -61,8 +62,8 @@ const logger = (): Logger =>
     getLevel: vi.fn(() => 'info' as const),
   }) as unknown as Logger;
 
-async function listen(server: Server): Promise<number> {
-  server.listen(0, '127.0.0.1');
+async function listen(server: Server, host = '127.0.0.1'): Promise<number> {
+  server.listen(0, host);
   await once(server, 'listening');
   closers.push(
     () => new Promise<void>((resolve) => server.close(() => resolve())),
@@ -70,7 +71,15 @@ async function listen(server: Server): Promise<number> {
   return (server.address() as { port: number }).port;
 }
 
-async function setup() {
+/** This host's own non-loopback IPv4 address: a real off-loopback peer. */
+function hostOwnIpv4(): string | undefined {
+  return Object.values(networkInterfaces())
+    .flatMap((entries) => entries ?? [])
+    .find((entry) => entry.family === 'IPv4' && !entry.internal)?.address;
+}
+
+async function setup(options: { clientAddress?: string } = {}) {
+  const clientAddress = options.clientAddress ?? '127.0.0.1';
   const home = makeTempDir('station-producer-proxy-');
   const store = new TelemetryProducerStore({
     securityDir: join(home, 'security'),
@@ -126,7 +135,10 @@ async function setup() {
     internalApiToken: getInternalApiToken(),
     trustedTailscaleServeOrigin: `https://${SERVE_HOST}`,
   });
-  const uiPort = await listen(createServer(handler));
+  const uiPort = await listen(
+    createServer(handler),
+    clientAddress === '127.0.0.1' ? '127.0.0.1' : '0.0.0.0',
+  );
 
   const create = async (name: string, allowRemote = false) =>
     (
@@ -160,7 +172,7 @@ async function setup() {
       const method = init.method ?? 'POST';
       const request = http.request(
         {
-          host: '127.0.0.1',
+          host: clientAddress,
           port: uiPort,
           path: pathName,
           method,
@@ -265,6 +277,26 @@ describe('telemetry producers through the UI proxy (real sockets)', () => {
     });
     expect(response.status, response.body).toBe(403);
     expect(h.emitted).toHaveLength(0);
+  });
+
+  test('a client on another address through the proxy is remote', async () => {
+    const own = hostOwnIpv4();
+    // Every machine that runs this suite has a non-internal IPv4 address; a
+    // skip would read as coverage while proving nothing.
+    expect(own).toBeDefined();
+    const h = await setup({ clientAddress: own });
+    const local = await h.create('local-only');
+    const remote = await h.create('lan', true);
+    const refused = await h.viaProxy('/v1/agent-events', {
+      token: local,
+      host: `${own}:${h.uiPort}`,
+    });
+    expect(refused.status, refused.body).toBe(403);
+    const admitted = await h.viaProxy('/v1/agent-events', {
+      token: remote,
+      host: `${own}:${h.uiPort}`,
+    });
+    expect(admitted.status, admitted.body).toBe(200);
   });
 
   test('a GET to an ingest path is not forwarded to the API', async () => {

@@ -41,7 +41,8 @@ const REFUSALS = {
   },
   producers_unavailable: {
     status: 503,
-    error: 'The telemetry producer record is unsafe or unreadable.',
+    error:
+      'The telemetry producer record is unsafe or unreadable. Restore it to an owner-only (0600) regular file, or delete security/telemetry-producers.json in the Station home and create the producers again.',
   },
 } as const satisfies Record<
   TelemetryProducerError['code'],

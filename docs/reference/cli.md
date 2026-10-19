@@ -739,7 +739,8 @@ made. A token works only from this machine unless created with
 Value flags take the `--flag=value` form; the switches `--allow-remote` and
 `--json` take no value (`--allow-remote=true` is a usage error). `--json`
 prints the result object. If the request was sent but no usable reply came back
-(a dropped connection, a timeout, a success with no readable body), the command
+(a dropped connection, a timeout, a success with no readable body, or a
+502/503/504 from a proxy without Station's own refusal body), the command
 says the producer may exist and names the `revoke` to run. A refusal, or a
 Station that could not be reached at all, is reported as a plain error.
 To rotate a token, create a new one, point the producer at it, then revoke the

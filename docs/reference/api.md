@@ -1834,7 +1834,7 @@ Responses for a producer token:
 | `403` | `telemetry_producer_remote_not_allowed` | The sender is not on this machine and the token was not created with remote access |
 | `429` | `authentication_rate_limited` | Too many unknown tokens (or query-string credentials) from this address; `Retry-After` says when to try again. A recognized token sent as a bearer is not counted |
 | `413`, `429` | `rate_limited` (429) | The ordinary per-credential body and rate budgets; `429` carries `Retry-After` |
-| `503` | `telemetry_producers_unavailable` | The token file is unsafe or unreadable; no token is admitted |
+| `503` | `telemetry_producers_unavailable` | The token file is unsafe or unreadable; no token is admitted. Restore it to an owner-only (`0600`) regular file, or delete `<home>/security/telemetry-producers.json` (all tokens are lost) and create the producers again. A file written by an earlier build of this feature, before tokens recorded an owner, reads as unreadable and needs the same remedy |
 
 `POST /v1/agent-events` validates the body before reading it: `schema_version`
 must be `0.<minor>[.<patch>]`; `timestamp` (epoch milliseconds or ISO 8601),
@@ -1857,7 +1857,16 @@ Rows a producer token delivers are readable, through `/monitoring/events` and
 Station operator); other people never see them, and hosted readers never do.
 The session id a producer reports does not decide this: an external agent's
 session is not a Station session. The owner comes from the admitted token,
-never from the body.
+never from the body, and stays on each row: revoking a token stops further
+ingest but its earlier rows remain readable by their owner.
+
+Every identity a producer reports (session, conversation, trace and tool-call
+ids) is stored as `producer:<token name>:<reported id>`. A producer that
+reports a real Station session id therefore never joins that session: its
+rows do not appear under the Station conversation in Monitoring, Insights or
+the station-control `read_monitoring_events` tool, which also marks every
+producer row with `station.external_producer_notice` as external, unverified
+data. The Monitoring view names the producer on each such row.
 
 A request counts as from this machine when it arrives on a loopback socket
 with a loopback `Host`, carries no forwarding or Tailscale headers and has no

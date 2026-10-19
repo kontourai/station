@@ -899,7 +899,7 @@ Station extensions:
 | `station.user.id` | User identifier. Omitted when the session reported none (archive#3082), same discipline as the agent slug. |
 | `station.reasoning.text` | Extended thinking content |
 | `station.telemetry.producer` | The telemetry producer token that delivered an ingested row. Absent on rows Station wrote itself or a paired credential sent. |
-| `station.telemetry.producer_owner` | The principal who created that token. A producer row is readable only by this principal, whatever session id the producer reported. Set from the admitted token, never from the body. |
+| `station.telemetry.producer_owner` | The principal who created that token. A producer row is readable only by this principal, whatever session id the producer reported, and stays so after the token is revoked. Set from the admitted token, never from the body. |
 
 ### Emitter Methods
 
@@ -936,10 +936,17 @@ contract a producer implements:
    `403`: the token expired (`telemetry_producer_expired`) or the sender is not
    on this machine and the token does not allow that
    (`telemetry_producer_remote_not_allowed`). `413`/`429`: the body or rate
-   budget; `429` carries `Retry-After`. `503`: the token store is unreadable.
+   budget; `429` carries `Retry-After`. `503`: the token store is unreadable (the
+   [API reference](../reference/api.md#telemetry-ingest) gives the remedy).
 5. **Rotation.** Create a new token, point the producer at it, then revoke the
    old one with `station telemetry producers revoke <name>`. Revocation and
    expiry take effect on the next request.
+
+Session, conversation, trace and tool-call ids a producer reports are stored
+as `producer:<token name>:<id>`, so a producer row never joins a Station
+conversation. Agents reading monitoring through station-control see producer
+rows marked as external, unverified data, and the Monitoring view shows a
+`Producer:` label on them.
 
 A token accepts senders on this machine only unless it was created with
 `--allow-remote`, which a producer on another tailnet device needs. Every

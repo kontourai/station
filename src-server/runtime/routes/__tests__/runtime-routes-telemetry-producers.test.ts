@@ -56,6 +56,7 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const ORIGIN = 'https://station.example.test';
+const STATION_SESSION = 'station-session-1';
 
 describe('telemetry producer management over the production composition', () => {
   const makeTempDir = trackTempDirs();
@@ -134,6 +135,11 @@ describe('telemetry producer management over the production composition', () => 
         }),
       }),
       environmentSecurityService: security,
+      // One real Station session everyone here may read.
+      orchestrationService: deepStub({
+        canUserReadSession: (sessionId: string) =>
+          sessionId === STATION_SESSION,
+      }),
       eventBus: new EventBus(),
       taskGraphService: { listTasks: () => [] },
     });
@@ -201,6 +207,52 @@ describe('telemetry producer management over the production composition', () => 
         },
         { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
       );
+    const ingestSpan = (token: string, conversationId: string) =>
+      app.request(
+        `${ORIGIN}/v1/traces`,
+        {
+          method: 'POST',
+          headers: {
+            host: '127.0.0.1:4321',
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            resourceSpans: [
+              {
+                scopeSpans: [
+                  {
+                    spans: [
+                      {
+                        traceId: conversationId,
+                        spanId: 's1',
+                        name: 'tool',
+                        kind: 1,
+                        startTimeUnixNano: '1',
+                        attributes: [
+                          {
+                            key: K.CONVERSATION_ID,
+                            value: { stringValue: conversationId },
+                          },
+                          {
+                            key: K.OP_NAME,
+                            value: { stringValue: 'execute_tool' },
+                          },
+                          {
+                            key: K.TOOL_NAME,
+                            value: { stringValue: 'injected' },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+        { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+      );
     const read = (path: string, credential: string) =>
       app.request(
         `${ORIGIN}${path}`,
@@ -212,6 +264,7 @@ describe('telemetry producer management over the production composition', () => 
       pairManageDevice,
       create,
       ingest,
+      ingestSpan,
       read,
       flush: () => monitoringEmitter.flush(),
       emitRaw: (event: Parameters<MonitoringEmitter['emitRaw']>[0]) =>
@@ -318,5 +371,51 @@ describe('telemetry producer management over the production composition', () => 
     );
     expect(await events(other)).toEqual([]);
     expect(await toolCalls(other)).toBe(0);
+  });
+
+  test('a producer reporting a real Station session id does not join that session', async () => {
+    const h = await setup();
+    const created = await h.create(
+      { Authorization: `Bearer ${h.operatorCredential}` },
+      'spoofer',
+    );
+    const { token } = ((await created.json()) as { data: { token: string } })
+      .data;
+    // The genuine Station row for that session.
+    h.emitRaw({
+      timestamp: new Date().toISOString(),
+      [K.TIMESTAMP_MS]: Date.now(),
+      [K.OP_NAME]: 'execute_tool',
+      [K.SPAN_KIND]: 'start',
+      [K.TOOL_NAME]: 'real',
+      [K.CONVERSATION_ID]: STATION_SESSION,
+      [K.USER_ID]: getCachedUser().alias,
+    });
+    expect((await h.ingestSpan(token, STATION_SESSION)).status).toBe(200);
+    expect((await h.ingest(token, STATION_SESSION)).status).toBe(200);
+    await h.flush();
+
+    const rows = async (query: string) => {
+      const response = await h.read(
+        `/monitoring/events?start=0${query}`,
+        h.operatorCredential,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as { data: Record<string, unknown>[] })
+        .data;
+    };
+    // Under the Station conversation: only Station's own row.
+    const underSession = await rows(`&conversation=${STATION_SESSION}`);
+    expect(underSession.map((row) => row[K.TOOL_NAME])).toEqual(['real']);
+    // The producer's rows exist, in the producer's own namespace.
+    const all = await rows('');
+    const producerRows = all.filter((row) => K.TELEMETRY_PRODUCER in row);
+    expect(producerRows).toHaveLength(2);
+    for (const row of producerRows) {
+      for (const key of [K.TRACE_ID, K.CONVERSATION_ID, K.AT_SESSION_ID]) {
+        if (row[key] !== undefined)
+          expect(row[key]).toBe(`producer:spoofer:${STATION_SESSION}`);
+      }
+    }
   });
 });
