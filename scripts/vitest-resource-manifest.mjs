@@ -1646,14 +1646,88 @@ function explicitFiles(manifest) {
  */
 export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
   return Object.freeze([
-    ...manifest.processHeavy.files,
-    ...manifest.processExclusive.files,
-    ...manifest.coordinatorExclusive.files,
-    ...manifest.credentialLedgerExclusive.files,
-    ...manifest.sharedOutput.files,
+    ...compactExactPaths([
+      ...manifest.processHeavy.files,
+      ...manifest.processExclusive.files,
+      ...manifest.coordinatorExclusive.files,
+      ...manifest.credentialLedgerExclusive.files,
+      ...manifest.sharedOutput.files,
+    ]),
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
     `${manifest.dogfoodReconcile.prefix}/**`,
   ]);
+}
+
+const BRACE_UNSAFE = /[*?[\]{}(),!+@\\]/;
+
+/**
+ * The same exact files as fewer patterns: the files of one directory become
+ * one brace alternation of their literal names, `dir/{a.test.ts,b.test.ts}`,
+ * which matches those files and nothing else. A name holding a glob
+ * metacharacter stays a pattern of its own. Order is deterministic.
+ */
+export function compactExactPaths(paths) {
+  const byDirectory = new Map();
+  const literal = [];
+  for (const path of [...new Set(paths)].sort()) {
+    const slash = path.lastIndexOf('/');
+    const name = path.slice(slash + 1);
+    if (slash <= 0 || BRACE_UNSAFE.test(path)) {
+      literal.push(path);
+      continue;
+    }
+    const directory = path.slice(0, slash);
+    const names = byDirectory.get(directory) ?? [];
+    names.push(name);
+    byDirectory.set(directory, names);
+  }
+  const compact = [];
+  for (const [directory, names] of byDirectory) {
+    compact.push(
+      names.length === 1
+        ? `${directory}/${names[0]}`
+        : `${directory}/{${names.join(',')}}`,
+    );
+  }
+  return [...compact, ...literal];
+}
+
+/**
+ * Windows caps a command line at 32,767 UTF-16 characters. The ordinary
+ * group's Vitest command is the node path, the Vitest entry, its options and
+ * one --exclude per pattern; these bound the two paths at Windows MAX_PATH
+ * (260), longer than any real install, so the measure does not depend on the
+ * host that runs it.
+ */
+export const WINDOWS_COMMAND_LINE_LIMIT = 32_767;
+export const WORST_CASE_WINDOWS_PATH_LENGTH = 260;
+
+export function ordinaryVitestCommandLineLength(
+  excludes = ordinaryVitestExcludes(),
+) {
+  const arguments_ = [
+    'x'.repeat(WORST_CASE_WINDOWS_PATH_LENGTH),
+    'x'.repeat(WORST_CASE_WINDOWS_PATH_LENGTH),
+    'run',
+    '--maxWorkers=4',
+    '--shard=4/4',
+    ...excludes.map((pattern) => `--exclude=${pattern}`),
+  ];
+  // Each argument is quoted and separated by a space on Windows.
+  return arguments_.reduce((total, argument) => total + argument.length + 3, 0);
+}
+
+/** Throws when the ordinary command could exceed the Windows limit. */
+export function assertOrdinaryVitestCommandLineFits(
+  excludes = ordinaryVitestExcludes(),
+) {
+  const length = ordinaryVitestCommandLineLength(excludes);
+  if (length >= WINDOWS_COMMAND_LINE_LIMIT) {
+    throw new Error(
+      `the ordinary Vitest command line could reach ${length} characters, over the Windows limit of ${WINDOWS_COMMAND_LINE_LIMIT}; compact ordinaryVitestExcludes`,
+    );
+  }
+  return length;
 }
 
 export function assertOrdinaryVitestSelection(
