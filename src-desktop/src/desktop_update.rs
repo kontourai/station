@@ -924,7 +924,8 @@ mod tauri_glue {
         let stall = timeouts.stall;
         app.updater_builder()
             .timeout(timeouts.check)
-            // Copied into every update handle, so it also bounds downloads.
+            // Copied into every update handle's client, so it also bounds
+            // downloads.
             .configure_client(move |client| client.read_timeout(stall))
             .build()
             .map_err(|error| error.to_string())
@@ -1024,8 +1025,11 @@ mod tauri_glue {
         Ok(Some(update))
     }
 
-    /// The handle a download runs with: the check's total timeout removed,
-    /// leaving the stall bound from [`build_updater`].
+    /// The handle a download runs with: no total timeout, leaving the stall
+    /// bound from [`build_updater`]. tauri-plugin-updater 2.14 already builds
+    /// checked handles without the check's timeout (pinned by
+    /// `a_download_is_not_cut_off_by_the_checks_total_timeout`); clearing it
+    /// here keeps that true if a plugin upgrade starts copying it.
     pub(super) fn for_download(mut update: Update) -> Update {
         update.timeout = None;
         update
@@ -1232,6 +1236,8 @@ mod tauri_glue {
         fn a_download_is_not_cut_off_by_the_checks_total_timeout() {
             let app = app_for("latest.json");
             let update = checked(&app);
+            // 2.14 does not copy the check's bound into the handle.
+            assert!(update.timeout.is_none());
             let received = Arc::new(AtomicU64::new(0));
             let counter = Arc::clone(&received);
             let started = Instant::now();
