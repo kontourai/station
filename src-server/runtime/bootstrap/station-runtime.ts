@@ -3426,9 +3426,14 @@ export class StationRuntime {
       }
       this.virtualApplicationLifetime.signal.throwIfAborted();
       this.recordRuntimeLifecycle('ready');
-      // #3851: listening, and turn recovery has run: a persisted update
-      // when idle may now read the running turns.
-      this.serverUpdate?.markReady();
+      // #3851: the server listens, but orchestration's session recovery
+      // (which re-registers the turns it finds) runs unawaited from its
+      // initialize. A persisted update when idle may read the running turns
+      // only once that recovery settled, which it does whether it succeeded
+      // or failed (the signal resolves in the recovery chain's `finally`).
+      void this.orchestrationService
+        ?.whenSessionAttachmentSettled()
+        .then(() => this.serverUpdate?.markReady());
       void this.usageTelemetry?.stationStarted();
     } catch (error) {
       virtualApplication?.stop();
