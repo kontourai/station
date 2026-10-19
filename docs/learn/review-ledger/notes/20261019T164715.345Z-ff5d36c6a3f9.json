@@ -1,0 +1,27 @@
+{
+  "revision": "824981260cf2103b52a2d40461e6afbb6f85f827",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Full re-review of Release updates against desktop_update.rs and the UI at this revision; supersedes the 2026-10-19T15:31 note for this file, which wrongly also said no claim concerned the desktop updater. Checked: 20 s first check then hourly on wall-clock time in 30 s steps; policy default after-24h, per-version clock persisted and reset when in the future; packages cached in the app cache dir with SHA-256 and manifest, restored at startup only via Updater::restore_update plus Update::verify, stale/damaged/mismatched ones deleted; ready never re-checks; a damaged package returns to idle; Restart now waits for the turn list; restart only after a successful install. The plugin still buffers the download in memory, as stated.","inputs":["docs/guides/desktop-build.md","src-ui/src/platform/native/desktopUpdate.ts","src-ui/src/views/settings/DesktopUpdateCheck.tsx","src-desktop/src/desktop_update.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"native-platform-boundary.mjs now refuses updater/process identifiers in every file under capabilities/ and permissions/ and in every Tauri config; the document's claims (default.json is the exact JavaScript permission inventory; Updater and Process rows say no capability grants the webview those permissions) still hold.","inputs":["docs/design/native-capabilities.md","scripts/native-platform-boundary.mjs"]},
+
+    {"path":"docs/glossary.md","note":"docs/reference/contracts.md only extended the desktop-update row (per-run sequence); the glossary's references to it remain valid.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"docs/reference/contracts.md only extended the desktop-update row (per-run sequence); this guide's references to the contracts reference remain valid.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"docs/reference/contracts.md only extended the desktop-update row; this routing file's references remain valid.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the desktop-update row against packages/contracts/src/desktop-update.ts, which now also carries sequence.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"desktopUpdate.ts (install now returns the native state) and DesktopUpdateCheck.tsx (read error, conditional server hint) changed; this Android guide makes no desktop update claim.","inputs":["docs/guides/android-build.md","src-ui/src/platform/native/desktopUpdate.ts","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"desktopUpdate.ts and DesktopUpdateCheck.tsx changed; this tray guide makes no claim about desktop update UI or flow (tray work is slice 2).","inputs":["docs/guides/desktop-tray.md","src-ui/src/platform/native/desktopUpdate.ts","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"desktopUpdate.ts and DesktopUpdateCheck.tsx changed; this guide's update claims concern the launcher and installers, not the desktop update UI.","inputs":["docs/guides/release-channel-ports.md","src-ui/src/platform/native/desktopUpdate.ts","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest.mjs gained one process-heavy entry (native-platform-boundary.process.test.ts); the documented resource groups and classification rule are unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs gained one classified child-process suite; the routing and resource-classification rules here still hold.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

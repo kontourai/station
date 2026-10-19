@@ -142,7 +142,9 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-desktop/src/desktop_update.rs"
   ],
 
   "checks": [
