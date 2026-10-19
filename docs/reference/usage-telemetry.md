@@ -18,9 +18,17 @@ current revision for this host across reloads while DNT remains active. Removing
 DNT re-prompts only a saved Full choice awaiting confirmation; Off and Lite need
 no acknowledgement.
 
-A standard paired device may lower tiers; only the operator or a device with
-`access:manage` may raise them. Agents cannot change telemetry choices or
-acknowledge the disclosure, even with `access:manage`.
+The app-wide disclosure stays closed when both effective publishers are Off
+and no product endpoint is configured. After a successful Off/Lite save, a
+device refused acknowledgement remembers a local decision for this host and
+disclosure revision across reloads. It does not create a server receipt or
+authorize Full; a changed revision or a saved Full choice prompts again.
+Setting-save failures show the server's refusal message.
+
+A standard paired device may lower or keep tiers. Only the operator or
+a device with `access:manage` may raise tiers. Agent-originated requests cannot
+change telemetry choices or acknowledge the
+disclosure, even with `access:manage`.
 `STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
 defaults, reported as `environment`, and cannot grant Full. Hosts that previously
 relied on `STATION_PRODUCT_TELEMETRY_ENABLED=true` (or its legacy alias) plus a
