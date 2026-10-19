@@ -13,8 +13,10 @@ import {
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { SkeletonBlock } from '../../components/state';
 
 export function ServerUpdateStageApply({
   apiBase,
@@ -153,23 +155,27 @@ function RestartConfirmation({
   return createPortal(
     <Dialog
       title={`Restart the server into ${version}?`}
-      closeLabel="Close the restart confirmation"
+      // "Later" is the dialog's own dismissal (its close control and
+      // Escape): a row holds at most two labelled actions (#3045).
+      closeLabel="Later"
       onClose={onLater}
       role="alertdialog"
       size="sm"
       historyMode="none"
       footer={
-        <>
-          <Button variant="secondary" onClick={onLater}>
-            Later
-          </Button>
-          <Button variant="secondary" onClick={onWhenIdle} disabled={pending}>
-            When idle
-          </Button>
-          <Button variant="primary" onClick={onRestartNow} pending={pending}>
-            Restart now
-          </Button>
-        </>
+        <ActionRow
+          overflowLabel="More restart choices"
+          secondary={
+            <Button variant="secondary" onClick={onWhenIdle} disabled={pending}>
+              When idle
+            </Button>
+          }
+          primary={
+            <Button variant="primary" onClick={onRestartNow} pending={pending}>
+              Restart now
+            </Button>
+          }
+        />
       }
     >
       <p className="station-dialog__message">
@@ -177,7 +183,7 @@ function RestartConfirmation({
         it does not start.
       </p>
       {turns.isPending && (
-        <p className="station-dialog__message">Checking for running turns…</p>
+        <SkeletonBlock count={1} label="Checking for running agent turns" />
       )}
       {turns.isError && (
         <p className="station-dialog__message" role="alert">
