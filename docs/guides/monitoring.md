@@ -980,7 +980,9 @@ records that reached the monitoring files.
 ### Insights API
 
 `GET /api/insights` returns aggregates, not raw events: tool/Agent/model buckets,
-hourly activity and totals. Agent buckets count chats only; there is no
+hourly activity and totals. Rows from external telemetry producers never count toward
+them; they are summarized per producer in `producerActivity`, and
+`producer=<token name>` scopes the response to one producer. Agent buckets count chats only; there is no
 per-Agent token figure. Its default window is 14 days. The route applies
 user and Session/tenant checks and optional Agent/tool/engine filters; health
 probes are excluded. A tool filter removes non-tool rows too, and an engine
