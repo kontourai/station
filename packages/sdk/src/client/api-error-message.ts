@@ -83,6 +83,7 @@ export class StationHttpError extends Error {
     this.kind =
       options?.kind ??
       (options?.code === undefined ||
+      // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK targets ES2020; Object.hasOwn requires ES2022.
       !Object.prototype.hasOwnProperty.call(
         PROVIDER_FAILURE_KINDS,
         options.code,
@@ -285,6 +286,7 @@ export function readEnvelopeFailure(
   const raw = record(body);
   if (
     typeof raw?.kind === 'string' &&
+    // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK targets ES2020; Object.hasOwn requires ES2022.
     Object.prototype.hasOwnProperty.call(PROVIDER_FAILURE_RETRYABLE, raw.kind)
   ) {
     failure.kind = raw.kind as ProviderFailureKind;

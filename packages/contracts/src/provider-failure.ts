@@ -1,3 +1,4 @@
+import type { DelegationFileRefusalCode } from './attachment-staging.js';
 import {
   CLIENT_PROTOCOL_INVALID_ERROR_CODE,
   CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE,
@@ -92,6 +93,26 @@ export interface ProviderFailure {
 
 /** Existing diagnostic codes retain their wire spelling, including warning codes. */
 export const PROVIDER_FAILURE_KINDS = {
+  delegation_files_unsupported: 'input_unsupported',
+  delegation_files_duplicate_name: 'input_unsupported',
+  delegation_files_count: 'input_unsupported',
+  delegation_files_size: 'input_unsupported',
+  delegation_files_invalid_name: 'input_unsupported',
+  delegation_files_invalid_data: 'input_unsupported',
+  delegation_files_ref_invalid: 'input_unsupported',
+  delegation_files_unavailable: 'unavailable',
+  delegation_files_start_refused: 'provider_error',
+  delegation_files_turn_refused: 'provider_error',
+  delegation_files_outcome_unknown: 'indeterminate',
+  delegation_files_cleanup_failed: 'provider_error',
+  stage_not_found: 'input_unsupported',
+  stage_expired: 'input_unsupported',
+  stage_forbidden: 'permission_denied',
+  stage_grant_invalid: 'permission_denied',
+  stage_cancelled: 'cancelled',
+  stage_incomplete: 'input_unsupported',
+  stage_invalid_upload: 'input_unsupported',
+  stage_capacity: 'busy',
   [PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE]: 'quota_exhausted',
   [CODEX_DECISION_UNACKNOWLEDGED_CODE]: 'warning',
   [CODEX_DECISION_REPLY_REFUSED_CODE]: 'warning',
@@ -152,6 +173,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [CLIENT_TURN_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
   [ATTACHMENT_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
   [SESSION_ENDED_REJECTION_CODE]: 'session_gone',
-} as const satisfies Readonly<Record<string, ProviderFailureKind>>;
+} as const satisfies Readonly<
+  Record<string, ProviderFailureKind> &
+    Record<DelegationFileRefusalCode, ProviderFailureKind>
+>;
 
 export type ProviderFailureCode = keyof typeof PROVIDER_FAILURE_KINDS;

@@ -220,6 +220,26 @@ No existing diagnostic code is renamed or removed.
 
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
+| `delegation_files_unsupported` | `input_unsupported` | `false` |
+| `delegation_files_duplicate_name` | `input_unsupported` | `false` |
+| `delegation_files_count` | `input_unsupported` | `false` |
+| `delegation_files_size` | `input_unsupported` | `false` |
+| `delegation_files_invalid_name` | `input_unsupported` | `false` |
+| `delegation_files_invalid_data` | `input_unsupported` | `false` |
+| `delegation_files_ref_invalid` | `input_unsupported` | `false` |
+| `delegation_files_unavailable` | `unavailable` | `true` |
+| `delegation_files_start_refused` | `provider_error` | `false` |
+| `delegation_files_turn_refused` | `provider_error` | `false` |
+| `delegation_files_outcome_unknown` | `indeterminate` | `false` |
+| `delegation_files_cleanup_failed` | `provider_error` | `false` |
+| `stage_not_found` | `input_unsupported` | `false` |
+| `stage_expired` | `input_unsupported` | `false` |
+| `stage_forbidden` | `permission_denied` | `false` |
+| `stage_grant_invalid` | `permission_denied` | `false` |
+| `stage_cancelled` | `cancelled` | `false` |
+| `stage_incomplete` | `input_unsupported` | `false` |
+| `stage_invalid_upload` | `input_unsupported` | `false` |
+| `stage_capacity` | `busy` | `true` |
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
 | `continuation_place_refused` | `input_unsupported` | `false` |
@@ -293,6 +313,18 @@ configuration, storage, policy, and non-provider lifecycle failures. The guard r
 a new unclassified constant or class-field code. Object-literal API/validation codes
 are outside this inventory; strict `runtime.error` construction is checked separately.
 Existing server import paths forward the relocated contract constants.
+
+The inventory also reads the delegation-file refusal union in `attachment-staging.ts`
+and the staging service's constructor code union independently of the mapping.
+Their codes surface through delegation HTTP refusals. Invalid, missing, expired,
+incomplete or already consumed file references require valid prepared inputs;
+`stage_capacity` is staging-store contention, while forbidden references or grants
+are permission failures. Workspace file-write unavailability can permit a manual
+retry after the host recovers. The delegation start/turn refusal wrappers no longer
+carry the underlying engine reason, so they conservatively use `provider_error`.
+Cleanup failures also require inspection before another attempt. Unknown delegation
+outcomes remain `indeterminate`; none of these kinds authorizes automatic replay.
+
 
 The same guard requires every literal server `runtime.error` constructor to
 satisfy a strict writer type. Its two named reader exceptions reconstruct old

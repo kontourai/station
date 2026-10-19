@@ -373,6 +373,50 @@ describe('provider failure source boundaries', () => {
     expect([...seenExclusions].sort()).toEqual(Object.keys(exclusions).sort());
   });
 
+  it('maps delegation-file and stage refusal type unions independently of the map', () => {
+    const unmapped: string[] = [];
+    const declarations = new Set<string>();
+    for (const source of sources) {
+      const path = relative(root, source.fileName).split(sep).join('/');
+      if (
+        path !== 'packages/contracts/src/attachment-staging.ts' &&
+        path !==
+          'src-server/services/orchestration/attachment-staging-service.ts'
+      )
+        continue;
+      const visit = (node: ts.Node) => {
+        const codeType =
+          ts.isTypeAliasDeclaration(node) && /RefusalCode$/.test(node.name.text)
+            ? node.type
+            : ts.isParameter(node) &&
+                node.name.getText(source) === 'code' &&
+                ts.isConstructorDeclaration(node.parent)
+              ? node.type
+              : undefined;
+        if (codeType) {
+          declarations.add(path);
+          const literal = (type: ts.Node) => {
+            if (
+              ts.isLiteralTypeNode(type) &&
+              ts.isStringLiteralLike(type.literal) &&
+              !Object.hasOwn(PROVIDER_FAILURE_KINDS, type.literal.text)
+            )
+              unmapped.push(`${path}: ${type.literal.text}`);
+            ts.forEachChild(type, literal);
+          };
+          literal(codeType);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
+    expect(unmapped).toEqual([]);
+    expect([...declarations].sort()).toEqual([
+      'packages/contracts/src/attachment-staging.ts',
+      'src-server/services/orchestration/attachment-staging-service.ts',
+    ]);
+  });
+
   it('requires an explicit strict write type at every server runtime.error construction', () => {
     const seenReaders = new Map<string, number>();
     let writers = 0;
