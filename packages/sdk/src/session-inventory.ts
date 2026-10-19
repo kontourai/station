@@ -92,8 +92,9 @@ export function clearSessionInventoryCache(
  * Only a refusal that means this principal may not (or may no longer) read the
  * Session revokes what it already holds. The route answers a denied, missing
  * or stale-principal read alike (404, non-disclosing); 401 and 403 come from
- * the authentication layer. A 503, a network failure or a projection the
- * contract refuses (status 0) is an ordinary failed read: what was already
+ * the authentication layer. A 503, a network failure (status 0) or a
+ * projection the contract refuses (the response's own status, usually 200) is
+ * an ordinary failed read: what was already
  * authorized stays, and the surface reports the failure.
  *
  * This deliberately differs from `useAnswerBasisQuery`, which revokes on any

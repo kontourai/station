@@ -9,6 +9,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  SessionInventoryRequestError,
   sessionInventoryQueries,
   useSessionInventoryGroupPage,
   useSessionInventoryQuery,
@@ -61,7 +62,9 @@ function mount(
 describe('session inventory query lifecycle', () => {
   /**
    * A current-answer projection whose Basis answer is unavailable is refused
-   * by the contract parser (status 0); a 503 is a read Station could not
+   * by the contract parser; the error carries the response's own status (a
+   * 200), not 0, which is reserved for no response at all. A 503 is a read
+   * Station could not
    * perform. Neither is lost authority. Each must settle into one error the
    * surface can name, after exactly one read (retry is off). Before, any
    * refusal REMOVED the observed query; the observer re-created it and the
@@ -78,11 +81,12 @@ describe('session inventory query lifecycle', () => {
             scope: { kind: 'current-answer', sessionId: SESSION, turnId: TURN },
           },
         }),
+      200,
     ],
-    ['a 503', () => respond(503, { success: false })],
+    ['a 503', () => respond(503, { success: false }), 503],
   ])(
     '%s settles into one error without revoking or refetching',
-    async (_label, answer) => {
+    async (_label, answer, status) => {
       const fetchMock = vi
         .fn<typeof fetch>()
         .mockImplementation(async () => answer());
@@ -103,6 +107,9 @@ describe('session inventory query lifecycle', () => {
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(observer.result.current.data).toBeUndefined();
+      expect(
+        (observer.result.current.error as SessionInventoryRequestError).status,
+      ).toBe(status);
       // Not a revocation: nothing is tombstoned.
       expect(
         client.getQueryData(sessionInventoryQueries.projection(scope).queryKey),
