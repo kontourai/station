@@ -221,6 +221,8 @@ describe('DesktopUpdateRestartDialog', () => {
   test.each([
     ['http://localhost:4141', 'http://127.0.0.1:4141/'],
     ['http://[::1]:4141', 'http://localhost:4141'],
+    ['http://0.0.0.0:4141', 'http://[::ffff:127.0.0.1]:4141'],
+    ['http://station.localhost:4141', 'http://127.0.0.1:4141'],
   ])('loopback names compare equal (%s vs %s)', (sidecar, window) => {
     facts.bundled = { ownership: 'sidecar', apiBase: sidecar };
     facts.apiBase = window;
@@ -228,6 +230,20 @@ describe('DesktopUpdateRestartDialog', () => {
     const { dialog } = open();
     expect(
       within(dialog).getByText(/built-in server runs inside this app/),
+    ).not.toBeNull();
+  });
+
+  test.each([
+    'http://0.0.0.0:9999',
+    'http://[::ffff:127.0.0.1]:9999',
+    'http://station.localhost:9999',
+  ])('a mismatch on another loopback name (%s) is unknown', (window) => {
+    facts.bundled = { ownership: 'sidecar', apiBase: 'http://127.0.0.1:4141' };
+    facts.apiBase = window;
+    facts.sessions.data = [];
+    const { dialog } = open();
+    expect(
+      within(dialog).getByText(/could not confirm whether its server restarts/),
     ).not.toBeNull();
   });
 

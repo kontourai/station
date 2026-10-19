@@ -23,8 +23,18 @@ function endpointOf(base: string): { key: string; loopback: boolean } | null {
     return null;
   }
   const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  // Every name for this machine: localhost (and *.localhost), 127/8, ::1,
+  // the unspecified addresses a server binds, and IPv4-mapped loopback
+  // (which URL parsing writes as ::ffff:7fxx:xxxx).
   const loopback =
-    host === 'localhost' || host === '::1' || /^127\.\d+\.\d+\.\d+$/.test(host);
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '::1' ||
+    host === '::' ||
+    host === '0.0.0.0' ||
+    /^127\.\d+\.\d+\.\d+$/.test(host) ||
+    /^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/.test(host) ||
+    /^::ffff:127\.\d+\.\d+\.\d+$/.test(host);
   const port = url.port || (url.protocol === 'https:' ? '443' : '80');
   const path = url.pathname.replace(/\/+$/, '');
   return {
