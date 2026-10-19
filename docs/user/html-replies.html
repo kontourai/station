@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Visual replies | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/user/html-replies.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <h1 id="visual-replies">Visual replies</h1>
+<p>An Agent can publish a chart, table, diagram, collage or mockup as an HTML page inside its chat. The built-in Station Agent already receives these tools. For other Agents, configure the <code>station-control</code> attachment as described below. The shared registrations are available through Claude Code, Codex and capable ACP connections. A connection that cannot carry MCP servers reports that delivery limitation.</p>
+<p>Ask the Agent to preview its page, inspect the screenshot, and publish the same HTML. Preview returns a PNG, the content height at the requested width, and console messages with stacks. It uses Station's existing Chromium acquisition and a disposable profile. If Chromium is unavailable, install it through the Browser workspace; publishing itself does not need Chromium. Preview checks the browser's effective WebRTC policy before loading authored content. It refuses an unsupported browser or enterprise override that prevents the restrictive policy, even when the profile file requests it.</p>
+<p>Publishing writes to the conversation and may require engine tool approval. For example, Codex configured with approval policy <code>never</code> can refuse the write; select a session mode that permits approval. Station does not mislabel the publishing tool as read-only to avoid that decision.</p>
+<p>Pages appear at their tool result, remain outside collapsed tool batches, and survive reload. They follow light/dark mode, support 50–200% zoom and an expanded view. Expanding recreates the page and resets unsaved interaction state. Links require recent interaction with that reply and confirmation before opening outside Station. Browsers retain transient activation for roughly five seconds; the request need not come from clicking the link itself. The Open button waits 500 ms; Cancel mutes further link requests from that reply until its viewer is remounted.</p>
+<p>Scripts run in an opaque sandbox with no Station session or tool bridge. CSP blocks ordinary network loads. Direct WebRTC constructors are disabled, but a nested srcdoc frame can obtain a fresh constructor and send ICE UDP packets in Chromium and WebKit. Published pages are <strong>not network-isolated</strong>: they can disclose the viewer's IP or information entered into the page. Do not enter secrets into a visual reply. Headless preview has separate profile-wide RTC routing restrictions and denied DNS/HTTP egress; that protection does not extend to a viewer's browser. Preparation embeds quoted absolute PNG, JPEG, GIF and WebP paths inside the publishing session's workspace, including HTML <code>src</code>, CSS <code>url()</code> and JS string literals. Captured bytes survive removal of the source image. SVG, AVIF, unquoted paths and constructed JS paths are not embedded.</p>
+<p>Use <code>--background</code>, <code>--foreground</code>, <code>--muted</code>, <code>--border</code>, <code>--accent</code>, <code>--destructive</code>, <code>--success</code>, <code>--warning</code>, <code>--chart-1</code> through <code>--chart-6</code>, <code>--radius</code>, <code>--font-sans</code>, and <code>--font-mono</code>. The viewer maps these to the current Station theme; preview uses a fixed light or dark palette.</p>
+<p>Source HTML is limited to 256 KiB, each image to 2 MiB, the expanded HTML to 8 MiB, and distinct images to 32. Height is 100–2000 pixels; preview width is 320–1920 pixels. Preview rejects content taller than 2000 pixels, screenshots over 8 MiB, or console output over 128 entries or 64 KiB. At most two previews run at once, with a 15-second render deadline and bounded process cleanup. V8's heap is capped at 128 MiB; this is not a hard cap on the browser's total RSS. Over-limit inputs and outputs are rejected rather than shortened.</p>
+<p>A conversation can retain at most 32 pages and 32 MiB of serialized page data. Pages belong to their publishing execution session. Closing or archiving work retains them. Physical deletion of that session deletes its pages in the same transaction; deleting every member of a conversation lineage deletes every page in it. See the <a href="https://github.com/kontourai/station/blob/main/docs/decisions/html-replies.md">security and deletion decision</a>.</p>
+<h2 id="which-agents-receive-the-tools">Which Agents receive the tools</h2>
+<p>The built-in <strong>Station</strong> Agent receives station-control's full catalog by default, including visual replies, when its selected engine supports that MCP passthrough. The runtime default Agent also receives the full catalog. Preview and render are bounded writes on Station's auto-approved tool list; the engine or session's approval mode can still refuse them. Preview runs in a disposable browser with profile-wide RTC routing restrictions and denied DNS/HTTP egress. These controls are separate from the accepted viewer-side WebRTC limitation above.</p>
+<p>Other authored Agents, including direct Claude and Codex Agents, need the built-in <code>station-control</code> MCP server attached. In the Agent's tool settings, attach it and select <code>html_preview</code> and <code>html_render</code>. For Claude and Codex, the equivalent configuration is:</p>
+<pre><code>
+{
+  &quot;tools&quot;: {
+    &quot;mcpServers&quot;: [&quot;station-control&quot;],
+    &quot;available&quot;: [&quot;station-control_html_preview&quot;, &quot;station-control_html_render&quot;]
+  }
+}
+</code></pre>
+<p>For an Agent using an <strong>ACP engine</strong>, attach the server without an <code>available</code> filter:</p>
+<pre><code>
+{
+  &quot;tools&quot;: {
+    &quot;mcpServers&quot;: [&quot;station-control&quot;]
+  }
+}
+</code></pre>
+<p>ACP passthrough exposes the server's full tool catalog. Station refuses per-tool <code>available</code> filters or disabled-tool selections on this path with <code>engine-unsupported</code>; do not copy the Claude/Codex filter into an Agent using an ACP engine. An ACP engine without MCP passthrough cannot use these tools. Merge server entries into existing arrays rather than removing other tool servers. Start a new conversation after saving tool settings. Authored Agents may optionally configure auto-approval; otherwise approve the calls when the engine asks. Codex policy <code>never</code>, for example, can refuse either call.</p>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>
