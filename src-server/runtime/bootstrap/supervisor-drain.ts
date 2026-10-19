@@ -58,3 +58,29 @@ export async function runSupervisorDrain(
   await deps.link.reportDrained();
   deps.exit(0);
 }
+
+/**
+ * The SIGTERM handler. A supervised generation drains first, like a
+ * supervisor drain: it is serving the supervisor's sockets, and shutting down
+ * at once would reset its keep-alive clients. A second SIGTERM, one during a
+ * drain, or one to an unsupervised process shuts down at once.
+ */
+export function createSigtermHandler(deps: {
+  link: Pick<SupervisorLink, 'draining' | 'beginDrain'> | null;
+  shutdown: SupervisorDrainDeps['shutdown'];
+  /**
+   * How long to drain: the supervisor kills a generation this long after
+   * SIGTERM. Callers pass HANDOFF_DEFAULTS.killGraceMs; a supervisor started
+   * with another `--kill-grace-ms` does not tell its generations, and a
+   * shorter one kills mid-drain, which is no worse than not draining.
+   */
+  killGraceMs: number;
+}): () => void {
+  return () => {
+    if (deps.link && !deps.link.draining) {
+      deps.link.beginDrain(deps.killGraceMs);
+      return;
+    }
+    void deps.shutdown()?.('SIGTERM');
+  };
+}

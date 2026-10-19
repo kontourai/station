@@ -278,10 +278,14 @@ describe('a parked core generation', () => {
       );
 
       // Losing the supervisor's channel ends the generation.
-      const exited = exitOf(core);
       core.disconnect();
-      await expect(exited).resolves.not.toBeUndefined();
-      expect(core.exitCode ?? core.signalCode).not.toBeNull();
+      await waitFor(
+        'the generation to exit after its IPC channel closed',
+        BOOT_TIMEOUT_MS,
+        () =>
+          core.exitCode !== null || core.signalCode !== null ? true : undefined,
+        output,
+      );
     },
     // Above the sum of its three bounded waits, so a stuck one names itself.
     BOOT_TIMEOUT_MS * 4,
@@ -592,6 +596,43 @@ describe('a supervised core handoff', () => {
         const consent = await plainGet(port + 3);
         expect(consent.status).toBe(404);
         expect(consent.type).toMatch(/text\/html/);
+
+        // An operator's SIGTERM straight to the serving core: it drains as
+        // for a handoff, so no client is reset, and the supervisor restarts
+        // it without counting a failure.
+        const pid2 = second.active?.pid as number;
+        const signalled = startPoller(port);
+        await waitFor(
+          'the poller to be served before SIGTERM',
+          BOOT_TIMEOUT_MS,
+          () => (signalled.stats.ok >= 20 ? true : undefined),
+          output,
+        );
+        process.kill(pid2, 'SIGTERM');
+        signalled.markHandedOff();
+        const third = await waitFor(
+          'generation 3 serving after SIGTERM',
+          BOOT_TIMEOUT_MS,
+          async () => {
+            const current = await status();
+            return current.active?.generation === 3 &&
+              current.active.state === 'serving'
+              ? current
+              : undefined;
+          },
+          output,
+        );
+        await waitFor(
+          'requests served after the restart',
+          BOOT_TIMEOUT_MS,
+          () => (signalled.stats.okAfterHandoff >= 20 ? true : undefined),
+          output,
+        );
+        const signalledStats = await signalled.stop();
+        expect(signalledStats.errors, output()).toEqual({});
+        expect(processAlive(pid2)).toBe(false);
+        expect(third.active?.port).toBe(port);
+        expect(third.restarts.consecutiveFailures).toBe(0);
       } finally {
         (connection as ControlConnection | null)?.close();
       }

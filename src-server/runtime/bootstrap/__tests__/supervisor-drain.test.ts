@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { StationRuntime } from '../station-runtime.js';
-import { runSupervisorDrain } from '../supervisor-drain.js';
+import {
+  createSigtermHandler,
+  runSupervisorDrain,
+} from '../supervisor-drain.js';
 import type { DrainRequest } from '../supervisor-link.js';
 
 function request(
@@ -84,6 +87,38 @@ describe('runSupervisorDrain', () => {
     expect(reporter.reportDrainProgress).toHaveBeenCalledWith(0);
     expect(reporter.reportDrained).toHaveBeenCalledTimes(1);
     expect(exit).toHaveBeenCalledWith(0);
+  });
+});
+
+describe('createSigtermHandler', () => {
+  it('starts a drain bounded by the kill grace for a supervised generation', () => {
+    const link = { draining: false, beginDrain: vi.fn() };
+    const shutdown = vi.fn(async () => {});
+    createSigtermHandler({
+      link,
+      shutdown: () => shutdown,
+      killGraceMs: 5_000,
+    })();
+    expect(link.beginDrain).toHaveBeenCalledWith(5_000);
+    expect(shutdown).not.toHaveBeenCalled();
+  });
+
+  it('shuts down at once when already draining or unsupervised', () => {
+    const shutdown = vi.fn(async () => {});
+    const link = { draining: true, beginDrain: vi.fn() };
+    createSigtermHandler({
+      link,
+      shutdown: () => shutdown,
+      killGraceMs: 5_000,
+    })();
+    expect(link.beginDrain).not.toHaveBeenCalled();
+    expect(shutdown).toHaveBeenCalledWith('SIGTERM');
+    createSigtermHandler({
+      link: null,
+      shutdown: () => shutdown,
+      killGraceMs: 5_000,
+    })();
+    expect(shutdown).toHaveBeenCalledTimes(2);
   });
 });
 

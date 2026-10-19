@@ -36,7 +36,10 @@ import type { SelfHostedBrokerStatus } from './runtime/bootstrap/self-hosted-bro
 import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
-import { runSupervisorDrain } from './runtime/bootstrap/supervisor-drain.js';
+import {
+  createSigtermHandler,
+  runSupervisorDrain,
+} from './runtime/bootstrap/supervisor-drain.js';
 import {
   allowHomeAccess,
   installListenerLink,
@@ -257,18 +260,14 @@ async function main() {
     };
 
     process.on('SIGINT', () => void gracefulShutdown?.('SIGINT'));
-    process.on('SIGTERM', () => {
-      // A supervised generation drains first, like a supervisor drain: it is
-      // serving the supervisor's sockets, and shutting down at once would
-      // reset its keep-alive clients. The supervisor kills it after its kill
-      // grace, so that bounds the drain. A second SIGTERM, or one during a
-      // drain, shuts down at once.
-      if (supervisorLink && !supervisorLink.draining) {
-        supervisorLink.beginDrain(HANDOFF_DEFAULTS.killGraceMs);
-        return;
-      }
-      void gracefulShutdown?.('SIGTERM');
-    });
+    process.on(
+      'SIGTERM',
+      createSigtermHandler({
+        link: supervisorLink,
+        shutdown: () => gracefulShutdown,
+        killGraceMs: HANDOFF_DEFAULTS.killGraceMs,
+      }),
+    );
     // The supervisor's IPC channel closing means it is gone (protocol).
     supervisorLink?.setShutdownHandler(() =>
       gracefulShutdown?.('supervisor_disconnect', 1),
