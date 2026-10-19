@@ -48,6 +48,22 @@ export type LifecycleIdentity = {
   pid: number;
 };
 
+/**
+ * Why a server observed its own shutdown. The supervisor reasons come from
+ * the process supervisor: a drain it requested, or its IPC channel closing.
+ */
+export const LIFECYCLE_SHUTDOWN_REASONS = Object.freeze([
+  'SIGINT',
+  'SIGTERM',
+  'uncaughtException',
+  'startup_failure',
+  'stdout_epipe',
+  'supervisor_drain',
+  'supervisor_disconnect',
+] as const);
+export type LifecycleShutdownReason =
+  (typeof LIFECYCLE_SHUTDOWN_REASONS)[number];
+
 export type StopIntent =
   | 'promotion'
   | 'operator_stop'
@@ -68,7 +84,7 @@ export type LifecycleEvent = LifecycleIdentity & {
   operationId?: string;
   expiresAt?: string;
   result?: 'completed' | 'already_absent' | 'failed';
-  reason?: 'SIGINT' | 'SIGTERM' | 'uncaughtException' | 'startup_failure';
+  reason?: LifecycleShutdownReason;
   exitCode?: number | null;
   signal?: string | null;
   sender?: 'unknown';
@@ -147,7 +163,7 @@ export function parseLifecycleEvent(value: unknown): LifecycleEvent {
   }
   if (
     event.type === 'shutdown_observed' &&
-    !['SIGINT', 'SIGTERM', 'uncaughtException', 'startup_failure'].includes(
+    !(LIFECYCLE_SHUTDOWN_REASONS as readonly string[]).includes(
       event.reason ?? '',
     )
   ) {
