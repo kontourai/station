@@ -212,7 +212,11 @@ worker's approval-action fields, so those old action branches are not this
 channel's live payload path.
 
 On a tap, the worker closes that notification and attempts to focus/navigate a
-window or open one. Navigation can fail; there is no replacement-window fallback
+window or open one. It resolves the payload URL against its own origin and opens
+`/notifications` instead for anything off it. The server never sends one: a
+link (an agent's included) is admitted only if its normalized path stays on
+Station (`/..//host` and `/%2e%2e//host` are refused), and the open link with
+the record id is rebuilt on Station's origin or falls back to the inbox. Navigation can fail; there is no replacement-window fallback
 after a rejected existing-window navigation. Verify the actual destination on
 the target platform rather than claiming the URL alone proves successful display.
 
