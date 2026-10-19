@@ -4312,6 +4312,40 @@ revocation against ingestion, deduplicates retained source/event UUIDs, and
 returns acceptance only after acknowledged durable commit. Database waits and
 request concurrency are bounded; uncertainty returns a failure.
 
+The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
+accepts the foundation's strict `station_daily` contract through public source
+IDs mapped to publisher/channel pairs, without installation credentials.
+[Lite storage](../../packages/telemetry-broker/src/lite-store.ts) atomically
+deduplicates raw pings and records bounded contribution arrays and dimension
+jobs. Closed-day finalization uses grouped SQL in separately committed dimension
+transactions; retries resume pending jobs and later batches erase contributor
+associations for completed publisher/days, even if another publisher's dimension
+fails. Retention commits independently. Operator `sto_` routes read exact daily
+marginals and weekly sums; weekly contributor counts are contributor-days because
+daily salts prevent cross-day deduplication.
+
+Public and publisher views release only four closed ISO UTC weeks over ten
+profile/adoption fields, excluding counters/friction. The fixed public domain
+contains enum values and each publisher's operator-configured public versions
+and registry IDs, including zero-count values. There is no true k pre-filter.
+Published counts sum distinct daily contributor keys per value (network-days),
+so NAT undercounts installations. Sensitivity is 40 per added/removed ping;
+ε=1/280 per count gives ε≤1/7 per added ping. A network contributing at most 40
+coordinates per day has week sensitivity 280 and ε≤1; arbitrary traffic has the
+conservative domain-based bound D/40, computed from stored publication cells. The ideal geometric mechanism
+is pure ε-DP; HMAC and finite-precision sampling qualify this implementation.
+Migration 6 atomically freezes each publisher/week marker, domain and noisy
+estimates; re-finalization is forbidden. Keyset pages contain at most 200 cells.
+Reads serve stored publications/finalized days without invoking finalization.
+Failed daily/weekly jobs are isolated and recorded in operator diagnostics.
+Publication waits for the captured cutoff's arrival fence. HMAC-signed,
+publisher-scoped cursors are verified before caching; successful pages cache for
+at most 60 seconds and reset at UTC midnight. Cached credential digests route unknown keys into pre-auth
+refusal without storage; known product and publisher keys have per-credential
+post-auth budgets and storage rechecks. A snapshot stale beyond 60 seconds
+returns 503. See the [receiver guide](../../packages/telemetry-broker/README.md#lite-observations)
+for composition, fixed domains, key/publication custody and low-volume utility.
+
 **Composition and limits.** The
 [Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private
 operator credentials and composes the database pool separately from Station's
@@ -4324,5 +4358,9 @@ rows do not guarantee physical database-file shrinkage.
 **Evidence.** Focused HTTP mocks own parser/credential/admission behavior. The
 [live qualifier](../../packages/telemetry-broker/qualify.mjs) uses its own PostgreSQL
 database to exercise commit/replay, revocation, capacity, corrupt live schemas
-and stalled transport recovery. Neither establishes persistent deployment,
+and stalled transport recovery. Its [Lite checks](../../packages/telemetry-broker/qualify-lite.mjs)
+also exercise strict rejection, operator-only exact counts, weekly fixed domains,
+immutable publication, privacy, publisher isolation, stale credentials and
+independent erasure during a blocked dimension.
+Neither establishes persistent deployment,
 actual Station execution, final-source backup/restore or native acceptance.

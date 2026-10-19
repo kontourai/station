@@ -1,0 +1,29 @@
+{
+  "revision": "489e9077238697dc996449e3352fbdf2dab628eb",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"Checked the official preview runtime beta stamp and the shared mapRuntimeChannelToTelemetryChannel consumer in UsageTelemetryService. Added the runtime beta to telemetry preview mapping and unknown omission; renamed the parity test to describe representative server bundles. The 24 shared/build tests passed; no desktop artifact publication or live endpoint verification.","inputs":["docs/guides/release-rings.md","scripts/__tests__/author-telemetry-build.test.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the disclosed Full build channel and Lite channel domains against TELEMETRY_CHANNELS and the real UsageTelemetryService payload. Runtime beta now emits preview; other permitted labels pass through and missing or unknown labels stay absent. The generated inventory remains accurate and unchanged. All 82 service tests passed; no Lite sender or live delivery claim.","inputs":["docs/reference/usage-telemetry.md","packages/shared/src/product-telemetry.ts","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the Node-only product-telemetry module and its service consumer. The new mapRuntimeChannelToTelemetryChannel maps beta to preview and filters with the existing contract channel list. Parser validation, fingerprints and receiver responsibilities described here are unchanged; shared/build tests passed (24).","inputs":["docs/reference/shared.md","packages/shared/src/product-telemetry.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked ProductTelemetryBuild.channel and TELEMETRY_CHANNELS against the shared mapper and strict parser. The sender now normalizes runtime beta to the already published preview label. No contract, disclosure revision, validation or personal receipt boundary changes; no prose change needed.","inputs":["docs/reference/contracts.md","packages/shared/src/product-telemetry.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the product observation build-attribution paragraph against the mapper consumed during UsageTelemetryService construction. Runtime beta is mapped to the published preview label; destination, consent, receipt, retry, OTel and local-monitoring boundaries are unaffected. The 82 service tests passed; existing delivery qualification limits remain.","inputs":["docs/guides/monitoring.md","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the usage telemetry disclosure publisher and ProductTelemetryReceiver boundaries for this delta. Shared channel normalization is called by the service while capturing immutable build metadata; JSON publication, disclosure authority, strict receiver ingestion and store behavior are unchanged. No architecture prose change or deployment qualification is needed for this mapping.","inputs":["docs/architecture/module-map.md","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed telemetry environment input claims against the service constructor delta: only buildProvenance.channel normalization changes. Endpoint and key precedence, legacy aliases, runtime author-variable refusal and activation gates remain unchanged; no new environment variable is introduced.","inputs":["docs/reference/env-vars.md","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed telemetry tier, disclosure, delivery-status and connection-check descriptions against the service constructor delta. Beta to preview normalization affects outgoing build attribution only; API shapes, read/write authority, status and probe semantics remain unchanged. The 82 service tests passed; no new API claim.","inputs":["docs/reference/api.md","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed telemetry destination, tier and disclosure descriptions against the constructor and shared mapper. Runtime beta to preview normalization adds no setting and changes no destination, key grant, consent, reconfiguration fence or restart activation behavior; existing prose remains accurate for this delta.","inputs":["docs/reference/config.md","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"Reviewed product-usage inventory release-channel and allowlisted build-attribution claims for this bounded change. Beta now emits the already disclosed preview label, with unknown labels omitted; the inventory, installation identifier, consent gates and sending scope are unchanged. No classification or publication approval is claimed.","inputs":["docs/privacy-policy.md","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Reviewed the product-usage inventory release-channel disclosure against the shared mapper and outgoing service payload. Runtime beta is normalized to the existing preview label; no field or identifier is added, and sending/consent and store classification limits are unchanged.","inputs":["docs/reference/play-data-safety.md","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"packages/telemetry-broker/README.md","note":"Reviewed strict v1 ingest, allowlisted provenance and source/receipt boundaries for the sender mapping delta. Beta is normalized to the existing preview contract label before delivery; receiver validation and storage are unchanged. Service tests parse the actual outgoing payload; no database, install or deployment qualification is claimed.","inputs":["packages/telemetry-broker/README.md","packages/shared/src/product-telemetry.ts","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

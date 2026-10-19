@@ -1323,6 +1323,11 @@ button:hover {
   scroll-padding-bottom: var(--dock-bottom-clearance);
 }
 
+/* Fill frames delegate scrolling to their bodies and need the full width. */
+.content-view:not(:has(> .route-transition--fill, > .page-frame--fill)) {
+  scrollbar-gutter: stable;
+}
+
 /* Root-route (`/`) restore placeholder (archive#223) — holds the content pane's
    shape (header line + main panel) while `resolveHomeSurface` is pending,
    instead of a blank flash or a spinner. */
