@@ -9,10 +9,22 @@ export interface ConversationTimelineLandmark {
   forkable: boolean;
 }
 
+/**
+ * One line of a turn's text, whitespace collapsed and cut to `max`
+ * characters. Shared by History replay's landmarks and the live
+ * transcript's turn rail, so both name a turn the same way.
+ */
+export function compactTurnText(
+  text: string | undefined,
+  max = 72,
+): string | undefined {
+  const compact = text?.replace(/\s+/g, ' ').trim();
+  if (!compact) return undefined;
+  return compact.length > max ? `${compact.slice(0, max - 3)}…` : compact;
+}
+
 function turnLabel(prompt: string | undefined, index: number): string {
-  const compact = prompt?.replace(/\s+/g, ' ').trim();
-  if (!compact) return `Turn ${index + 1}`;
-  return compact.length > 72 ? `${compact.slice(0, 69)}…` : compact;
+  return compactTurnText(prompt) ?? `Turn ${index + 1}`;
 }
 
 /** Full user-turn index over the already bounded, validated replay tape. */

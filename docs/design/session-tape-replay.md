@@ -199,7 +199,10 @@ click, pointer drag, previous/next controls, and ordinary button keyboard
 activation seek by destroy-and-refold. The ordinary transcript renderer stays
 in use, while the debugger transport is replaced by a small historical-state
 bar. Forms, sends, approvals, feedback, Task actions, and live queue draining
-remain fenced by replay membership.
+remain fenced by replay membership. History has no live turn rail: the
+live transcript's rail (see [chat controls](chat-composer.md#turn-navigation))
+is hidden while a replay is shown, and the two share only the turn-text
+compaction (`compactTurnText`).
 
 The conversation event window supplies the authoritative execution lineage.
 The timeline loads each selected execution through its bounded archive and

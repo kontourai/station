@@ -59,6 +59,13 @@ import { SmoothStreamingMessage } from './SmoothStreamingMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { SubagentTranscriptCard } from './SubagentTranscriptCard';
 import { ToolCallDisplay } from './ToolCallDisplay';
+import {
+  TRANSCRIPT_TURN_NAVIGATION_MIN_TURNS,
+  TranscriptTurnActions,
+  TranscriptTurnRail,
+  turnStepTarget,
+  useTranscriptTurnViewport,
+} from './TranscriptTurnRail';
 import { TranscriptVirtualizer } from './TranscriptVirtualizer';
 import {
   type ChildTranscriptRow,
@@ -77,6 +84,10 @@ import {
   projectTranscriptMessages,
   type TranscriptRow,
 } from './transcriptProjection';
+import {
+  type TranscriptTurnLandmark,
+  transcriptTurnLandmarks,
+} from './transcriptTurnLandmarks';
 import {
   UIBlockActionsContext,
   type UIBlockFormSubmission,
@@ -209,7 +220,22 @@ const READER_SCROLL_EXTEND_MS = 200;
 // Growth this soon after a press or key inside the transcript is the reader's
 // own doing (a tool card or details they opened): it stays where it opened.
 const READER_INTERACTION_GRACE_MS = 1_000;
+// A turn jump lets the virtualizer settle its reveal (measurement passes can
+// move it for a few frames) before retaining the revealed row as the reader's.
+const TURN_REVEAL_STABLE_FRAMES = 3;
+const TURN_REVEAL_MAX_FRAMES = 60;
+const STATION_MESSAGE_HASH = /^#station-message=/;
 const EMPTY_MESSAGES: ChatMessage[] = [];
+
+function sameLandmarks(
+  left: readonly TranscriptTurnLandmark[],
+  right: readonly TranscriptTurnLandmark[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((landmark, index) => isShallowEqual(landmark, right[index]))
+  );
+}
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
   activeSession,
@@ -522,6 +548,36 @@ function ChatMessageListComponent({
   }, [activeSession.id, messages, transcriptChildren, approvalEvents]);
   const transcriptRowsRef = useRef(transcriptRows);
   transcriptRowsRef.current = transcriptRows;
+  // #342: the user turns, from the whole row model — a virtualized transcript
+  // mounts only the rows near the reader. Kept by identity while no turn's
+  // summary changes, so streaming text does not re-render the rail.
+  const previousTurnLandmarks = useRef<readonly TranscriptTurnLandmark[]>([]);
+  const turnLandmarks = useMemo(() => {
+    const next = transcriptTurnLandmarks(transcriptRows);
+    if (sameLandmarks(previousTurnLandmarks.current, next))
+      return previousTurnLandmarks.current;
+    previousTurnLandmarks.current = next;
+    return next;
+  }, [transcriptRows]);
+  const turnLandmarksRef = useRef(turnLandmarks);
+  turnLandmarksRef.current = turnLandmarks;
+  const rowIndexById = useMemo(
+    () => new Map(transcriptRows.map((row, index) => [row.id, index])),
+    [transcriptRows],
+  );
+  // History replay keeps its own timeline; the live transcript gets the rail.
+  const turnNavigation =
+    !activeSession.replay &&
+    turnLandmarks.length >= TRANSCRIPT_TURN_NAVIGATION_MIN_TURNS;
+  const turnRailRef = useRef<HTMLElement>(null);
+  const turnViewport = useTranscriptTurnViewport({
+    enabled: turnNavigation,
+    scrollElement: messagesContainerRef,
+    railRef: turnRailRef,
+    landmarks: turnLandmarks,
+    rowIndexById,
+    rowCount: transcriptRows.length,
+  });
 
   const [transcriptRevealHash, setTranscriptRevealHash] = useState(
     () => window.location.hash,
@@ -1107,6 +1163,14 @@ function ChatMessageListComponent({
   const handleScrollToBottom = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
+    // The control (and the turn steps beside it) leave for the glide; focus
+    // on them stays in the conversation rather than falling to the page.
+    if (
+      document.activeElement?.closest(
+        '.chat-scroll-to-bottom, .transcript-turn-actions',
+      )
+    )
+      el.focus({ preventScroll: true });
     setReaderRestoreRequest(null);
     visibleAnchorRef.current = null;
     scrollAnimationRef.current?.cancel();
@@ -1134,6 +1198,101 @@ function ChatMessageListComponent({
     if (scrollAnimationTokenRef.current === token)
       scrollAnimationRef.current = animation;
   };
+  // #342: a turn jump reveals the turn's prompt row through the same path a
+  // message link uses. One reveal per jump: the virtualizer has scrolled by
+  // the time effects run, and clearing lets the same turn be asked for again.
+  const [turnRevealRowId, setTurnRevealRowId] = useState<string>();
+  useEffect(() => {
+    if (turnRevealRowId !== undefined) setTurnRevealRowId(undefined);
+  }, [turnRevealRowId]);
+  const turnRevealFrameRef = useRef<number | undefined>(undefined);
+  useEffect(
+    () => () => {
+      if (turnRevealFrameRef.current !== undefined)
+        cancelAnimationFrame(turnRevealFrameRef.current);
+    },
+    [],
+  );
+  const jumpToTurn = useCallback(
+    (turnIndex: number) => {
+      const landmark = turnLandmarksRef.current[turnIndex];
+      const element = messagesContainerRef.current;
+      if (!landmark || !element) return;
+      scrollAnimationRef.current?.cancel();
+      // The reader chose an earlier turn: hold the transcript there. Text
+      // still streaming must not pull it back to the end (tail-follow and the
+      // pin both read this) until the reader returns to the latest.
+      isUserScrolledUpRef.current = true;
+      setIsUserScrolledUp(true);
+      setReaderRestoreRequest(null);
+      setApprovalRevealRowId(undefined);
+      // A followed message link holds the transcript on its message until
+      // the reader goes elsewhere; a turn jump is elsewhere.
+      if (STATION_MESSAGE_HASH.test(window.location.hash)) {
+        window.history.replaceState(
+          window.history.state,
+          '',
+          `${window.location.pathname}${window.location.search}`,
+        );
+        setTranscriptRevealHash('');
+      }
+      if (transcriptRowsRef.current.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) {
+        setTurnRevealRowId(landmark.rowId);
+        markTranscriptPhase('turn-jump', { key: traceKey(landmark.rowId) });
+        // Once the reveal has settled, the revealed row is the reader's: a
+        // later measurement above it keeps it in place (`anchorVersion`).
+        if (turnRevealFrameRef.current !== undefined)
+          cancelAnimationFrame(turnRevealFrameRef.current);
+        let frames = 0;
+        let stableFrames = 0;
+        let lastTop: number | undefined;
+        const settle = () => {
+          turnRevealFrameRef.current = undefined;
+          const current = messagesContainerRef.current;
+          if (!current) return;
+          frames += 1;
+          stableFrames = current.scrollTop === lastTop ? stableFrames + 1 : 0;
+          lastTop = current.scrollTop;
+          if (
+            stableFrames >= TURN_REVEAL_STABLE_FRAMES ||
+            frames >= TURN_REVEAL_MAX_FRAMES
+          ) {
+            setScrollAnchorVersion((version) => version + 1);
+            return;
+          }
+          turnRevealFrameRef.current = requestAnimationFrame(settle);
+        };
+        turnRevealFrameRef.current = requestAnimationFrame(settle);
+        return;
+      }
+      // Every row of a short transcript is mounted: centre the prompt row.
+      const node = [
+        ...element.querySelectorAll<HTMLElement>(
+          ':scope > .chat-message-anchor[data-chat-message-key]',
+        ),
+      ].find(
+        (candidate) => candidate.dataset.chatMessageKey === landmark.rowId,
+      );
+      if (!node) return;
+      const bounds = element.getBoundingClientRect();
+      const rect = node.getBoundingClientRect();
+      writeProgrammaticScroll(
+        element,
+        Math.max(
+          0,
+          element.scrollTop +
+            rect.top -
+            bounds.top -
+            Math.max(0, (element.clientHeight - rect.height) / 2),
+        ),
+      );
+      visibleAnchorRef.current = captureChatScrollAnchor(element);
+    },
+    [writeProgrammaticScroll],
+  );
+  const previousTurn = turnStepTarget(turnViewport, -1, turnLandmarks.length);
+  const nextTurn = turnStepTarget(turnViewport, 1, turnLandmarks.length);
+
   // A glide belongs to the chat it started in; a switch or unmount ends it
   // where the reader asked to be — following the tail.
   useEffect(() => {
@@ -1395,6 +1554,26 @@ function ChatMessageListComponent({
     ],
   );
 
+  const scrollToBottomControl =
+    isUserScrolledUp && !scrollingToBottom ? (
+      <ScrollToBottomButton onClick={handleScrollToBottom} />
+    ) : null;
+  // #342: previous/next turn travel with the return-to-latest control, which
+  // is the transcript's one place for "you are not at the end" actions.
+  const scrollControls =
+    scrollToBottomControl && turnNavigation ? (
+      <TranscriptTurnActions
+        previousTurn={previousTurn}
+        nextTurn={nextTurn}
+        onJump={jumpToTurn}
+        floating={!scrollControlsTarget}
+      >
+        {scrollToBottomControl}
+      </TranscriptTurnActions>
+    ) : (
+      scrollToBottomControl
+    );
+
   return (
     <ApprovalSheetProvider
       apiBase={apiBase}
@@ -1511,6 +1690,7 @@ function ChatMessageListComponent({
                       revealRowId={
                         requestedMessageRowId ??
                         approvalRevealRowId ??
+                        turnRevealRowId ??
                         currentReaderRestoreRequest?.anchor?.key
                       }
                       restoreAnchor={currentReaderRestoreRequest?.anchor}
@@ -1648,16 +1828,20 @@ function ChatMessageListComponent({
               />
             )}
           </div>
-          {isUserScrolledUp &&
-            !scrollingToBottom &&
-            (scrollControlsTarget ? (
-              createPortal(
-                <ScrollToBottomButton onClick={handleScrollToBottom} />,
-                scrollControlsTarget,
-              )
-            ) : (
-              <ScrollToBottomButton onClick={handleScrollToBottom} />
-            ))}
+          {turnNavigation && (
+            <TranscriptTurnRail
+              landmarks={turnLandmarks}
+              rowCount={transcriptRows.length}
+              scrollElement={messagesContainerRef}
+              railRef={turnRailRef}
+              activeTurn={turnViewport.activeTurn}
+              onJump={jumpToTurn}
+            />
+          )}
+          {scrollControls &&
+            (scrollControlsTarget
+              ? createPortal(scrollControls, scrollControlsTarget)
+              : scrollControls)}
         </TranscriptChildrenContext.Provider>
       </UIBlockActionsContext.Provider>
     </ApprovalSheetProvider>
