@@ -1,0 +1,7 @@
+{
+  "revision": "e8a8e03ef739acf4f5aedb537c8514e8c7a044a5",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Corrected the Chat inventory row: the portable MCP App's visible text now says Chat inventory; only its server identity, the contract subpath and the SDK hook keep the session-inventory name. Checked session-inventory-mcp-app.ts and .browser.ts.","inputs":["docs/glossary.md"]}
+  ]
+}
