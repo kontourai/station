@@ -191,6 +191,13 @@ function isTimestamp(value: unknown): value is string {
 }
 
 /**
+ * Tags an intent built from a read that failed (round 4 item 1). Object
+ * spread and rest copy own symbol keys, so every intent derived from it
+ * keeps the tag, and `tryWriteIntent` refuses to write it over the file.
+ */
+const UNREADABLE = Symbol('intent-unreadable');
+
+/**
  * The persisted intent; null when the file exists but could not be read
  * (EMFILE, EACCES), which says nothing about what it holds (round 3 item
  * 8). A missing or malformed file holds no intent.
@@ -343,8 +350,9 @@ export class ServerUpdateCoordinator {
 
   private readIntent(installRoot: string): PersistedIntent {
     const intent = readIntentFile(this.intentPath(installRoot));
-    // An unreadable file leaves the in-memory flag as it was.
-    if (!intent) return {};
+    // An unreadable file leaves the in-memory flag as it was, and what is
+    // built from this read is never written over it.
+    if (!intent) return { [UNREADABLE]: true } as PersistedIntent;
     this.idleIntentPending = !!intent.applyWhenIdle;
     return intent;
   }
@@ -634,6 +642,14 @@ export class ServerUpdateCoordinator {
     installRoot: string,
     intent: PersistedIntent,
   ): boolean {
+    // Built from a read that failed: writing it would erase what the file
+    // holds (a pending update when idle, the policy's records).
+    if ((intent as Record<symbol, unknown>)[UNREADABLE]) {
+      this.deps.logger.warn(
+        'Server update: its intent file could not be read; not writing over it',
+      );
+      return false;
+    }
     try {
       this.writeIntent(installRoot, intent);
       return true;
@@ -828,10 +844,12 @@ export class ServerUpdateCoordinator {
     const status = await this.check('download-due', { force: true });
     // A verified check reset the failure count and let the policy act.
     if (status?.releaseCheck === 'verified' || this.stopped) return;
-    // While the check ran, the policy may have been set to `never`, or
-    // re-evaluated and armed a deadline of its own: the failure is then
-    // nobody's to retry (round 3 item 1).
-    if (this.downloadDue || (await this.policy()) === 'never') return;
+    // While the check ran, the policy may have been set to `never`: the
+    // failure is then nobody's to retry (round 3 item 1). A deadline the
+    // policy armed meanwhile needs no guard here: the check's own
+    // recordCheck re-ran the policy (cancelling it) before this continues,
+    // and arming the retry cancels whatever is armed (round 4 items 2-3).
+    if ((await this.policy()) === 'never' || this.stopped) return;
     this.deadlineFailures += 1;
     const retryAt = this.now() + backoff(this.deadlineFailures);
     this.deps.logger.warn('Server update: the download deadline check failed', {
@@ -985,6 +1003,13 @@ export class ServerUpdateCoordinator {
     const archive = this.archive();
     if (archive) {
       const intent = this.readIntent(archive.installRoot);
+      // Unread is not absent: claiming a cancel would leave the intent.
+      if ((intent as Record<symbol, unknown>)[UNREADABLE])
+        return {
+          ok: false,
+          status: 500,
+          error: 'Station could not read its request to update when idle.',
+        };
       const progress = readServiceUpdateProgress(archive.installRoot);
       if (
         progress.state === 'updating' ||

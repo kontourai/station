@@ -1139,6 +1139,8 @@ function coordinatorFor(
       | Array<{ sessionId: string }>
       | Promise<Array<{ sessionId: string }>>;
     clock?: { now: number };
+    /** Holds every policy read until it settles. */
+    policyGate?: Promise<void>;
   } = {},
 ) {
   const clock = options.clock ?? { now: Date.parse('2026-10-19T10:00:00Z') };
@@ -1161,7 +1163,10 @@ function coordinatorFor(
       platform: 'linux',
       arch: 'x64',
     },
-    readDownloadPolicy: async () => policy,
+    readDownloadPolicy: async () => {
+      if (options.policyGate) await options.policyGate;
+      return policy;
+    },
     listRunningTurns: async () => (await options.running?.()) ?? [],
     subscribe: (listener) => {
       busListener = listener;
@@ -2235,5 +2240,60 @@ describe('the coordinator, review round 3 (#3851)', () => {
       chmodSync(file, 0o600);
       coordinator.stop();
     }
+  });
+});
+
+describe('the coordinator, review round 4 (#3851)', () => {
+  function intentFile(install: Install) {
+    return join(
+      serviceUpdatePaths(install.installRoot).runtime,
+      'server-update.json',
+    );
+  }
+
+  test('item 1: a check while the intent file cannot be read leaves the file as it was', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator } = coordinatorFor(install, {
+      policy: 'never',
+      running: () => [{ sessionId: 's-1' }],
+    });
+    coordinator.start();
+    coordinator.markReady();
+    await coordinator.setApplyWhenIdle(NEWER);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const before = readFileSync(intentFile(install), 'utf8');
+    expect(JSON.parse(before)).toHaveProperty('applyWhenIdle');
+    chmodSync(intentFile(install), 0o000);
+    try {
+      await coordinator.check('newer-client', { force: true });
+      expect(await coordinator.cancelApplyWhenIdle()).toMatchObject({
+        ok: false,
+        status: 500,
+      });
+    } finally {
+      chmodSync(intentFile(install), 0o600);
+      coordinator.stop();
+    }
+    expect(readFileSync(intentFile(install), 'utf8')).toBe(before);
+  });
+
+  test('M1a: a stop while the policy reads its state arms no deadline', async () => {
+    const install = makeInstall();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const { coordinator, timers } = coordinatorFor(install, {
+      policyGate: gate,
+    });
+    const checked = coordinator.check('boot');
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    coordinator.stop();
+    open();
+    await checked;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(timers.live()).toEqual([]);
   });
 });
