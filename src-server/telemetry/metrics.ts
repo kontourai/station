@@ -2389,7 +2389,7 @@ export const connectedClientPresenceOps = meter.createCounter(
  * may read it, `skipped_external` for a read-only attached session, the
  * listener's other `skipped_*` reasons, `error` when its own defensive
  * try/catch caught a throw — see `turn-completion-notifications.ts`).
- * Only a `scheduled` decision reaches `NotificationService.schedule`; the
+ * Only `scheduled` reaches `NotificationService.scheduleEnveloped`; the
  * delivery router then decides each surface (focus, preferences).
  */
 export const turnCompletionNotificationOps = meter.createCounter(

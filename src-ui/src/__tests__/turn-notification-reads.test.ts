@@ -1,10 +1,12 @@
 /**
  * @vitest-environment jsdom
  *
- * A turn-completion record is read once its chat is on screen in a focused
- * window, so the server cancels a watched failure's escalation to the
- * person's other devices. Driven through the real chat and navigation
- * stores; only the read request is stubbed.
+ * A turn-completion record is read once the person attends to its chat —
+ * on screen in a focused window WITH recent input — so the server cancels a
+ * watched failure's escalation to their other devices; focus alone (a
+ * window left open on a long turn) never reads it. Driven through the real
+ * chat and navigation stores and real DOM input events; only the read
+ * request is stubbed.
  */
 
 import type { Notification } from '@kontourai/station-contracts/notification';
@@ -19,6 +21,7 @@ vi.mock('@kontourai/station-sdk/notification-read', () => ({
 
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { navigationStore } from '../contexts/NavigationContext';
+import { FOCUS_INPUT_RECENCY_MS } from '../hooks/focusReporter';
 import { startTurnNotificationReads } from '../hooks/orchestration/turnNotificationReads';
 
 const CHAT = 'thread-watched';
@@ -59,8 +62,15 @@ function turnRecord(
 const readIds = () =>
   markNotificationRead.mock.calls.map(([input]) => input.id);
 let stop: (() => void) | undefined;
+/** Real input, as the person would make it; moves past the recheck throttle. */
+function input() {
+  vi.advanceTimersByTime(1_000);
+  window.dispatchEvent(new Event('keydown'));
+}
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-19T12:00:00Z'));
   focused = true;
   vi.spyOn(document, 'hasFocus').mockImplementation(() => focused);
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
@@ -81,32 +91,56 @@ afterEach(() => {
   stop = undefined;
   activeChatsStore.removeChat(CHAT);
   navigationStore.setActiveChat(null);
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
-test('a turn ending in the chat on screen in a focused window is marked read once', () => {
+function start() {
   const reads = startTurnNotificationReads();
   stop = reads.stop;
+  return reads;
+}
+
+test('a failure in the chat on screen, in a focused window with recent input, is read once', () => {
+  const reads = start();
+  input();
   reads.update([turnRecord('n-1')]);
   reads.update([turnRecord('n-1')]);
   expect(readIds()).toEqual(['n-1']);
 });
 
-test('not while the window is unfocused; focusing it reads it', () => {
+test('a focused window nobody is touching does not read a failure; the first input does', () => {
+  const reads = start();
+  reads.update([turnRecord('n-1')]);
+  window.dispatchEvent(new Event('focus'));
+  expect(readIds()).toEqual([]);
+  input();
+  expect(readIds()).toEqual(['n-1']);
+});
+
+test('input older than the recency window no longer counts as attention', () => {
+  const reads = start();
+  input();
+  vi.advanceTimersByTime(FOCUS_INPUT_RECENCY_MS + 1);
+  reads.update([turnRecord('n-1')]);
+  expect(readIds()).toEqual([]);
+});
+
+test('not while the window is unfocused, even with input', () => {
   focused = false;
-  const reads = startTurnNotificationReads();
-  stop = reads.stop;
+  const reads = start();
+  input();
   reads.update([turnRecord('n-1')]);
   expect(readIds()).toEqual([]);
   focused = true;
-  window.dispatchEvent(new Event('focus'));
+  input();
   expect(readIds()).toEqual(['n-1']);
 });
 
 test('a chat that is not on screen is not read until it is opened', () => {
   navigationStore.setActiveChat('another-chat');
-  const reads = startTurnNotificationReads();
-  stop = reads.stop;
+  const reads = start();
+  input();
   reads.update([turnRecord('n-1')]);
   expect(readIds()).toEqual([]);
   navigationStore.setActiveChat(CHAT);
@@ -114,8 +148,8 @@ test('a chat that is not on screen is not read until it is opened', () => {
 });
 
 test('only unread turn-completion records are read', () => {
-  const reads = startTurnNotificationReads();
-  stop = reads.stop;
+  const reads = start();
+  input();
   reads.update([
     turnRecord('already-read', { readAt: '2026-10-19T00:00:01.000Z' }),
     turnRecord('dismissed', { status: 'dismissed' }),
@@ -127,8 +161,8 @@ test('only unread turn-completion records are read', () => {
 
 test('a failed read is retried on the next change', async () => {
   markNotificationRead.mockRejectedValueOnce(new Error('offline'));
-  const reads = startTurnNotificationReads();
-  stop = reads.stop;
+  const reads = start();
+  input();
   reads.update([turnRecord('n-1')]);
   await Promise.resolve();
   await Promise.resolve();

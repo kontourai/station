@@ -1,25 +1,47 @@
-import type { Notification } from '@kontourai/station-contracts/notification';
+import {
+  type Notification,
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
+} from '@kontourai/station-contracts/notification';
 import { markNotificationRead } from '@kontourai/station-sdk/notification-read';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/NavigationContext';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
+import { FOCUS_INPUT_RECENCY_MS } from '../focusReporter';
 import { isChatInForeground } from './chatForeground';
 
 /**
- * A turn-completion record is read once its chat is on screen in a focused
- * window: the person has seen the ending it announces. Marking it read is
- * what cancels the server's escalation of a failure to the person's other
- * surfaces and retracts alerts already sent for it (the delivery router's
- * read check). Covers both a turn ending while its chat is watched and
- * opening the chat later; opening the record itself marks it too
- * (`activateNotification`).
+ * A turn-completion record is read once the person attends to its chat: the
+ * chat is on screen in a focused window AND there was input in the last
+ * `FOCUS_INPUT_RECENCY_MS`. Marking it read cancels the server's escalation
+ * of a failure to the person's other surfaces and retracts alerts already
+ * sent for it (the delivery router's read check), so focus alone is not
+ * enough: the focus reporter keeps a window showing a running turn "present"
+ * without input (so a finished turn does not buzz other devices), and a
+ * person who walked away from it must still hear about a failure. Covers a
+ * turn ending while its chat is attended, coming back to it (the first
+ * input re-checks), and opening the chat later; opening the record itself
+ * marks it too (`activateNotification`).
+ *
+ * Known limit: read state is per record, not per person. A record whose
+ * audience is the session's readers is marked read by whichever reader
+ * attends first, which also cancels the escalation for every other reader.
  */
 
 /** The server's turn-completion listener writes under this source. */
-const TURN_COMPLETION_SOURCE = 'turn-completion';
+const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
 /** Bounds the ids already asked for; the oldest is forgotten first. */
 const REQUESTED_LIMIT = 500;
+/** Input that also counts as attention (the focus reporter's set). */
+const INPUT_EVENTS = [
+  'pointerdown',
+  'pointermove',
+  'keydown',
+  'wheel',
+  'touchstart',
+] as const;
+/** Input re-checks the list at most this often. */
+const INPUT_RECHECK_MS = 1_000;
 
 /** Unread, undismissed turn-completion records whose session is watched. */
 export function watchedTurnNotificationIds(
@@ -41,8 +63,17 @@ export function watchedTurnNotificationIds(
   return ids;
 }
 
-/** Is this session's chat in front of the user in a focused window? */
-export function isTurnSessionWatched(sessionId: string): boolean {
+/**
+ * Is the person attending to this session's chat: input within
+ * `FOCUS_INPUT_RECENCY_MS` (`lastInputAt`, epoch ms), and the chat in front
+ * of them in a focused window?
+ */
+export function isTurnSessionAttended(
+  sessionId: string,
+  lastInputAt: number,
+  now: number,
+): boolean {
+  if (now - lastInputAt > FOCUS_INPUT_RECENCY_MS) return false;
   if (typeof document === 'undefined' || !document.hasFocus()) return false;
   const chatKey =
     activeChatsStore.getChatKeyForExecutionSession(sessionId) ?? sessionId;
@@ -92,20 +123,34 @@ export function createTurnNotificationReader(deps: {
 export function startTurnNotificationReads(): TurnNotificationReader & {
   stop(): void;
 } {
+  let lastInputAt = Number.NEGATIVE_INFINITY;
+  let lastRecheckAt = Number.NEGATIVE_INFINITY;
   const reader = createTurnNotificationReader({
-    isWatched: isTurnSessionWatched,
+    isWatched: (sessionId) =>
+      isTurnSessionAttended(sessionId, lastInputAt, Date.now()),
     markRead: (id) =>
       markNotificationRead({ id, clientSessionId: CLIENT_DOCUMENT_SESSION_ID }),
   });
+  const onInput = () => {
+    const now = Date.now();
+    lastInputAt = now;
+    if (now - lastRecheckAt < INPUT_RECHECK_MS) return;
+    lastRecheckAt = now;
+    reader.evaluate();
+  };
   const unsubscribe = navigationStore.subscribe(reader.evaluate);
   window.addEventListener('focus', reader.evaluate);
   document.addEventListener('visibilitychange', reader.evaluate);
+  for (const type of INPUT_EVENTS)
+    window.addEventListener(type, onInput, { passive: true, capture: true });
   return {
     ...reader,
     stop() {
       unsubscribe();
       window.removeEventListener('focus', reader.evaluate);
       document.removeEventListener('visibilitychange', reader.evaluate);
+      for (const type of INPUT_EVENTS)
+        window.removeEventListener(type, onInput, { capture: true });
     },
   };
 }

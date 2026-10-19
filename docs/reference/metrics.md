@@ -7,7 +7,7 @@ These source declarations do **not** establish producers, live collection, corre
 The [Monitoring guide](../guides/monitoring.md) owns producer semantics, configuration and current limitations. Follow a declaration’s source link to find its callers before making an operational claim. Observable declarations inside a function do not establish that the function is called or its callback runs.
 
 Source: [`src-server/telemetry/metrics.ts`](../../src-server/telemetry/metrics.ts).
-Source SHA-256: `fc1f90e555e9b9bf65bdd34940558a2fa2675af601c22cb0a134269a3b52e149`. This identifies the input file, not a running build or collection receipt.
+Source SHA-256: `7edfd75cbadea49a7d4b31f5a75d9566cddf460f5b10a5b0320f276635ded686`. This identifies the input file, not a running build or collection receipt.
 
 The TypeScript AST contains **312 creation calls**, listed in source order. Binding/export labels describe the creation declaration, not later aliases or re-exports. String cells use JSON notation, preserving quotes, backslashes and control characters; “not declared” does not infer an SDK default.
 

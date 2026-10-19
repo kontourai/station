@@ -3,6 +3,7 @@
  * Dispatches server-pushed events to React Query invalidations and callbacks.
  */
 
+import { TURN_COMPLETION_NOTIFICATION_SOURCE } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { fetchSSE } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
@@ -53,7 +54,7 @@ export const NOTIFICATION_TOAST_DISPLAY_MS = 8000;
  * background chat, none for the chat in front of the user), so toasting the
  * record as well would show the same news twice.
  */
-const TURN_COMPLETION_SOURCE = 'turn-completion';
+const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
 
 /**
  * NOTIFICATION_DELIVERED data handler. Every delivery plays its category's

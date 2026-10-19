@@ -14,8 +14,10 @@
  * a "done" record and hold a "failed" one for `escalateAfterMs`, sending it
  * then only if it is still unread. The record carries an envelope (system
  * source, the session's readers, a session target) so that reading it —
- * opening it, or a focused client showing its chat — cancels that
- * escalation and retracts what was already sent. This listener used to skip
+ * opening it, or a person attending to its chat on a focused client (recent
+ * input, not focus alone) — cancels that escalation and retracts what was
+ * already sent. Read state is per record: the first reader's read cancels
+ * the escalation for every reader of the session. This listener used to skip
  * scheduling whenever the owner held ANY live `/api/orchestration/events`
  * stream; a desktop app idling in the tray keeps one open, so that gate
  * silenced every completion on every device. The
@@ -35,7 +37,10 @@
  * without creating an unhandled promise or poisoning later notifications.
  */
 
-import type { NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
+import {
+  type NotificationEnvelopeV1,
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
+} from '@kontourai/station-contracts/notification';
 import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
@@ -53,7 +58,7 @@ import {
   nextTurnIdentityAnchor,
 } from './session-lifecycle-service.js';
 
-const TURN_COMPLETION_SOURCE = 'turn-completion';
+const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
 const SESSION_KIND = 'runtime';
 
 /**
@@ -474,7 +479,7 @@ export function wireTurnCompletionNotifications(
 
   const unsubscribe = eventBus.subscribe(
     (message: TurnCompletionEventMessage) => {
-      notificationService.dispatch('turn-completion', async () => {
+      notificationService.dispatch(TURN_COMPLETION_SOURCE, async () => {
         try {
           if (
             message.event !== SERVER_EVENTS.ORCHESTRATION_EVENT ||

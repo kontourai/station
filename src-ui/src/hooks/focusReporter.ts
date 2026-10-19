@@ -13,6 +13,14 @@ export const FOCUS_REPORT_DEBOUNCE_MS = 1_000;
 export const FOCUS_HEARTBEAT_MS = 60_000;
 /** A focused window nobody has touched for this long stops heartbeating. */
 export const FOCUS_INPUT_RECENCY_MS = 120_000;
+/**
+ * At most this many heartbeats in a row may renew a focused lease on a
+ * running turn alone (`isWatching`) — one hour at the 60 s beat. Long agent
+ * turns fit; a turn whose terminal event never arrived cannot hold the
+ * person "present" (and their other devices quiet) indefinitely. Any input
+ * starts a fresh allowance.
+ */
+export const FOCUS_WATCH_RENEWAL_MAX = 60;
 
 const INPUT_EVENTS = [
   'pointerdown',
@@ -104,9 +112,10 @@ export function retryAfterMs(value: string | null, now: number): number {
  *   input — so within a minute of signing in;
  * - while focused, a 60 s heartbeat renews the lease only if there was user
  *   input in the last 2 minutes or the document shows a running turn
- *   (`isWatching`), so an unattended focused window lapses once nothing is
- *   running in front of it; the first input after the lease lapsed renews
- *   it at once.
+ *   (`isWatching`, for at most `FOCUS_WATCH_RENEWAL_MAX` beats without
+ *   input), so an unattended focused window lapses once nothing is running
+ *   in front of it; the first input after the lease lapsed renews it at
+ *   once.
  *
  * Nothing here throws: presence is advisory and must never break the app.
  */
@@ -136,6 +145,8 @@ export function startFocusReporter(
   let ackedSeq = 0;
   let ackedAt = Number.NEGATIVE_INFINITY;
   let lastInputAt = Number.NEGATIVE_INFINITY;
+  /** Heartbeats since the last input that renewed on `isWatching` alone. */
+  let watchRenewals = 0;
   let inFlight = false;
   let flushQueued = false;
   let authBlocked = false;
@@ -285,10 +296,12 @@ export function startFocusReporter(
   };
   const onFocus = () => {
     lastInputAt = now();
+    watchRenewals = 0;
     schedule();
   };
   const onInput = () => {
     lastInputAt = now();
+    watchRenewals = 0;
     // A focused document whose lease lapsed while nobody touched it is
     // absent on the server; the person is back, so say so now rather than
     // at the next heartbeat.
@@ -304,8 +317,11 @@ export function startFocusReporter(
   };
   const heartbeat = setInterval(() => {
     if (stopped || inFlight) return;
-    if (now() - lastInputAt > FOCUS_INPUT_RECENCY_MS && !watching()) return;
+    const attended = now() - lastInputAt <= FOCUS_INPUT_RECENCY_MS;
+    if (!attended && (watchRenewals >= FOCUS_WATCH_RENEWAL_MAX || !watching()))
+      return;
     if (currentState() === 'focused') {
+      if (!attended) watchRenewals += 1;
       void deliver('focused');
     } else if (authBlocked) {
       flush();

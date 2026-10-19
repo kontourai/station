@@ -7,10 +7,11 @@ import { useEffect, useRef } from 'react';
 import type { TurnNotificationReader } from './orchestration/turnNotificationReads';
 
 /**
- * Mount once, in App: marks a turn-completion record read while its chat is
- * on screen in a focused window (`turnNotificationReads.ts`). Shares the
- * live-notification query the OS-alert hook reads; the marking logic loads
- * on mount, outside the entry chunk.
+ * Mount once, in App: marks a turn-completion record read while the person
+ * attends to its chat — on screen in a focused window with recent input
+ * (`turnNotificationReads.ts`). Shares the live-notification query the
+ * OS-alert hook reads; the marking logic loads on mount, outside the entry
+ * chunk.
  */
 export function useTurnNotificationReads(): void {
   const { data } = useNotificationsQuery({

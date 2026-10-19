@@ -139,7 +139,8 @@ also have its own live event stream. Another tab's stream cannot vouch for it.
 Stream leases expire after 90 seconds without successful keepalive writes; focus
 reports have a 120-second lease. The client renews a focused report every 60
 seconds while there was input in the last two minutes or the document shows a
-chat whose turn is running. There are caps of 32 documents per device,
+chat whose turn is running; the second reason renews at most 60 times in a row
+(one hour) without input. There are caps of 32 documents per device,
 32 operator tabs, and 256 device streams overall. A document beyond a cap does
 not qualify as live.
 
@@ -153,9 +154,13 @@ can still suppress it. Restart loses timers, and eviction beyond the router's
 outcomes currently have no general retry scheduler consuming them.
 
 Turn-completion records carry an envelope (system source, the session's
-readers, a session target). A client marks one read while its chat is on screen
-in a focused window, or when it is opened, which cancels a pending escalation
-and retracts alerts already sent for it.
+readers, a session target). A client marks one read only when the person
+attends to its chat: on screen in a focused window with input in the last two
+minutes, or the record opened. A focused window nobody is touching does not
+read it, so an unread failure still escalates. Reading cancels a pending
+escalation and retracts alerts already sent for it. Read state is per record,
+not per person: when several people can read a session, the first to read a
+record cancels its escalation for all of them.
 
 The focus check also has a transport limit: successful writes do not prove a
 half-open socket is being read. A closed tab stops reporting focus, bounding its

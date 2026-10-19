@@ -179,8 +179,9 @@ function App() {
   // archive#1912: point the operator at anything blocking on them, at the OS
   // level, on desktop hosts. In-app surfaces are unchanged.
   useNotificationOsAlerts();
-  // A turn ending read on screen is read: its failure must not escalate to
-  // the person's other devices minutes later.
+  // A turn ending the person attends to (chat on screen, focused window,
+  // recent input) is read: its failure must not escalate to their other
+  // devices minutes later.
   useTurnNotificationReads();
   // SSE event stream — replaces all polling for ACP status, agent changes, etc.
   useServerEvents();

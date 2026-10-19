@@ -7281,6 +7281,10 @@ export function configureRuntimeRoutes(
       getVapidPublicKey: () => webPushService.getPublicKey(),
       identifyDevice: (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
+      credentialAliasId: (credential) =>
+        context.environmentSecurityService.devicePairing.credentialAliasId(
+          credential,
+        ),
       setPushSubscription: (deviceId, subscription) =>
         context.environmentSecurityService.devicePairing.setPushSubscription(
           deviceId,
@@ -7300,6 +7304,10 @@ export function configureRuntimeRoutes(
       logger: context.logger,
       identifyDevice: (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
+      credentialAliasId: (credential) =>
+        context.environmentSecurityService.devicePairing.credentialAliasId(
+          credential,
+        ),
       loadOrCreateStationKey: async () =>
         (await pushSigningKeyStore.loadOrCreate()).thumbprint,
       stationId: () =>

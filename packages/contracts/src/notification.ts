@@ -158,6 +158,14 @@ export interface NotificationEnvelopeV1 {
   dismissedBy?: SurfaceId;
 }
 
+/**
+ * The `Notification.source` of the records Station writes when an agent's
+ * turn finishes, stops or fails (`turn-completed`, `turn-stopped`,
+ * `turn-failed`), and their envelope's `source.subsystem`. Clients key on it
+ * to tell those records from any other writer's.
+ */
+export const TURN_COMPLETION_NOTIFICATION_SOURCE = 'turn-completion';
+
 /** Categories agent notifications are stored under, one per urgency. */
 export const AGENT_NOTIFICATION_CATEGORIES = {
   info: 'agent-info',

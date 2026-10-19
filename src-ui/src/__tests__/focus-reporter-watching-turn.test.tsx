@@ -27,6 +27,7 @@ import { navigationStore } from '../contexts/NavigationContext';
 import {
   FOCUS_HEARTBEAT_MS,
   FOCUS_REPORT_DEBOUNCE_MS,
+  FOCUS_WATCH_RENEWAL_MAX,
 } from '../hooks/focusReporter';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import { resetTurnAttentionNotifications } from '../hooks/orchestration/turnAttentionNotifications';
@@ -112,4 +113,27 @@ test('a running turn in a chat that is not on screen does not hold the lease', a
   emit({ method: 'turn.started', turnId: 'turn-1', prompt: 'Refactor' });
   await vi.advanceTimersByTimeAsync(FOCUS_HEARTBEAT_MS * 2);
   expect(sentStates()).toEqual([]);
+});
+
+test('a turn whose end never arrives holds the lease for at most the renewal cap; input restarts it', async () => {
+  // One hour at the 60 s beat (pinned beside the constant it bounds).
+  expect(FOCUS_WATCH_RENEWAL_MAX).toBe(60);
+  renderHook(() => useFocusReporter());
+  await vi.dynamicImportSettled();
+  await vi.advanceTimersByTimeAsync(FOCUS_REPORT_DEBOUNCE_MS);
+  emit({ method: 'turn.started', turnId: 'turn-1', prompt: 'Refactor' });
+  mocks.authenticatedFetch.mockClear();
+
+  await vi.advanceTimersByTimeAsync(
+    FOCUS_HEARTBEAT_MS * (FOCUS_WATCH_RENEWAL_MAX + 5),
+  );
+  expect(sentStates()).toHaveLength(FOCUS_WATCH_RENEWAL_MAX);
+
+  // The person is back: input renews at once and restarts the allowance.
+  mocks.authenticatedFetch.mockClear();
+  await act(async () => {
+    window.dispatchEvent(new Event('keydown'));
+  });
+  await vi.advanceTimersByTimeAsync(FOCUS_HEARTBEAT_MS * 5);
+  expect(sentStates().length).toBeGreaterThanOrEqual(5);
 });
