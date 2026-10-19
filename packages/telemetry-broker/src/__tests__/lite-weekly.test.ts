@@ -3,6 +3,7 @@ import { PGlite, type PGliteInterface } from '@electric-sql/pglite';
 import type { Pool, QueryResultRow } from 'pg';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createProductBroker } from '../app.js';
+import { clientAddressPolicy } from '../client-address.js';
 import {
   assertLiteSchema,
   LiteRepository,
@@ -238,6 +239,70 @@ test('padding probe always releases rare values, including zero, on identical fi
   ).toBe(false);
 });
 
+test('trusted proxy contributes distinct clients and accepts the sender unknown sentinels', async () => {
+  await lite.createSource({
+    id: 'unknown-channel',
+    publisher: 'kontour',
+    channel: 'unknown',
+    registryIds: [],
+    releaseVersions: [],
+  });
+  const addresses = clientAddressPolicy('192.0.2.1/32');
+  const full = new PgProductRepository({} as Pool);
+  app = createProductBroker(
+    Object.assign(full, { lite }),
+    operatorKey,
+    addresses,
+  );
+  const header = '203.0.113.87';
+  for (const [peer, value] of [
+    ['192.0.2.1', header],
+    ['192.0.2.1', '203.0.113.88'],
+    ['192.0.2.2', header],
+    ['192.0.2.2', '203.0.113.89'],
+  ]) {
+    const response = await app.request(
+      '/v1/lite/unknown-channel',
+      {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': value },
+        body: JSON.stringify({
+          ...dailyPing(),
+          version: 'custom',
+          channel: 'unknown',
+          distribution: 'unknown',
+          layouts_customized: 'unknown',
+          public_plugins_enabled: [],
+        }),
+      },
+      socketBindings(peer),
+    );
+    expect(response.status).toBe(202);
+  }
+  await closeDay();
+  await lite.finalize();
+  const exact = await (
+    await app.request('/v1/operator/lite/daily', auth())
+  ).json();
+  expect(exact.marginals).toContainEqual({
+    period: closedWeek,
+    publisher: 'kontour',
+    dimension: 'channel',
+    value: 'unknown',
+    pings: '4',
+    contributors: '3',
+  });
+  const published = await readAll();
+  for (const dimension of ['channel', 'distribution'])
+    expect(
+      published.some((c) => c.dimension === dimension && c.value === 'unknown'),
+    ).toBe(true);
+  expect((await app.request('/v1/operator/diagnostics')).status).toBe(401);
+  expect(
+    await (await app.request('/v1/operator/diagnostics', auth())).json(),
+  ).toEqual({ invalidClientIpHeaders: 0 });
+});
+
 test.each([
   ['IPv4', ['198.51.100.1', '198.51.100.1', '198.51.100.2']],
   [
@@ -443,9 +508,9 @@ test('expired full and publisher credential snapshots return 503 after refresh f
   }
 });
 
-test('migration 5 to 6 is transactional and idempotent without changing exact marginals or noise key', async () => {
+test('migrations 5 to 8 are transactional and idempotent without changing exact marginals or noise key', async () => {
   await db.exec(
-    'DROP TABLE station_telemetry.lite_published; DROP TABLE station_telemetry.lite_publications; DELETE FROM station_telemetry.migrations WHERE version=6',
+    'ALTER TABLE station_telemetry.lite_sources DROP COLUMN version_policy; DROP TABLE station_telemetry.lite_feedback; DROP TABLE station_telemetry.lite_published; DROP TABLE station_telemetry.lite_publications; DELETE FROM station_telemetry.migrations WHERE version IN (6,7,8)',
   );
   await db.query(
     "INSERT INTO station_telemetry.lite_marginals VALUES($1,'kontour','platform','linux',123,45,true)",
@@ -466,7 +531,7 @@ test('migration 5 to 6 is transactional and idempotent without changing exact ma
   expect(
     (
       await db.query(
-        'SELECT version FROM station_telemetry.migrations WHERE version=6',
+        'SELECT version FROM station_telemetry.migrations WHERE version IN (6,7,8)',
       )
     ).rows,
   ).toEqual([]);
@@ -764,4 +829,355 @@ test('forged cursors return 400 without evicting a cached public page', async ()
     (await app.request(`/v1/public/aggregates?cursor=${page.nextCursor}`))
       .status,
   ).toBe(200);
+});
+
+test('feedback HTTP admission, publisher/action/day dedupe, operator counts and erasure stay separate from public releases', async () => {
+  app = createProductBroker(
+    Object.assign(new PgProductRepository({} as Pool), { lite }),
+    operatorKey,
+    clientAddressPolicy('192.0.2.2/32'),
+  );
+  const payload = {
+    publisher: 'kontour',
+    action: 'tier-lowered',
+    reason: 'privacy',
+  };
+  const post = (body: unknown, source = 'kontour', address = '198.51.100.43') =>
+    app.request(
+      `/v1/lite/${source}`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'user-agent': 'private-feedback-agent',
+        },
+        body: JSON.stringify(body),
+      },
+      socketBindings(address),
+    );
+  const operator = { headers: { authorization: `Bearer ${operatorKey}` } };
+  for (const bad of [
+    { ...payload, reason: 'unknown' },
+    { ...payload, action: 'unknown' },
+    { ...payload, publisher: 'publisher:example' },
+    { ...payload, publisher: 'publisher:' },
+    { ...payload, event: 'station_daily' },
+    { ...payload, note: 'secret-feedback' },
+    { ...payload, id: 'secret-id' },
+    { ...payload, timestamp: today },
+    { ...payload, reason: ['privacy'] },
+    [payload],
+    null,
+  ])
+    expect((await post(bad)).status).toBe(400);
+  expect((await post(payload, 'missing')).status).toBe(401);
+  expect((await post({ ...payload, padding: 'x'.repeat(16385) })).status).toBe(
+    413,
+  );
+  const publicBefore = await (
+    await app.request('/v1/public/aggregates')
+  ).json();
+  const publisherBefore = await (
+    await app.request('/v1/publishers/publisher%3Aexample/aggregates', {
+      headers: { authorization: `Bearer ${publisherKey}` },
+    })
+  ).json();
+  expect(publicBefore).not.toHaveProperty('feedback');
+  expect(publisherBefore).not.toHaveProperty('feedback');
+  expect(await (await post(payload)).json()).toEqual({ accepted: true });
+  for (const header of ['::ffff:198.51.100.43', '::ffff:c633:642b']) {
+    const response = await app.request(
+      '/v1/lite/kontour',
+      {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': header },
+        body: JSON.stringify({ ...payload, reason: 'performance' }),
+      },
+      socketBindings('192.0.2.2'),
+    );
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true });
+  }
+
+  await lite.createSource({
+    id: 'kontour-alias',
+    publisher: 'kontour',
+    channel: 'stable',
+    registryIds: [],
+    releaseVersions: [],
+  });
+  expect(
+    await (
+      await post({ ...payload, reason: 'performance' }, 'kontour-alias')
+    ).json(),
+  ).toEqual({ accepted: true });
+  expect(
+    await (await post({ ...payload, action: 'plugin-uninstalled' })).json(),
+  ).toEqual({ accepted: true });
+  expect(
+    await (await post(payload, 'kontour', '198.51.100.44')).json(),
+  ).toEqual({ accepted: true });
+  expect(
+    await (
+      await post({ ...payload, publisher: 'publisher:example' }, 'third-party')
+    ).json(),
+  ).toEqual({ accepted: true });
+  for (const period of ['daily', 'weekly']) {
+    const path = `/v1/operator/lite/${period}`;
+    expect((await app.request(path)).status).toBe(401);
+    expect(
+      (
+        await app.request(path, {
+          headers: { authorization: `Bearer ${publisherKey}` },
+        })
+      ).status,
+    ).toBe(401);
+    const response = await app.request(path, operator);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    const exact = await response.json();
+    expect(exact.feedback).toContainEqual({
+      period:
+        period === 'daily'
+          ? today
+          : new Date(Date.parse(closedWeek) + 7 * 86400000)
+              .toISOString()
+              .slice(0, 10),
+      publisher: 'kontour',
+      action: 'tier-lowered',
+      reason: 'privacy',
+      count: '2',
+    });
+    expect(
+      exact.feedback.some(
+        (row: { reason: string }) => row.reason === 'performance',
+      ),
+    ).toBe(false);
+  }
+  expect(await (await app.request('/v1/public/aggregates')).json()).toEqual(
+    publicBefore,
+  );
+  expect(
+    await (
+      await app.request('/v1/publishers/publisher%3Aexample/aggregates', {
+        headers: { authorization: `Bearer ${publisherKey}` },
+      })
+    ).json(),
+  ).toEqual(publisherBefore);
+  const persisted = JSON.stringify(
+    (await db.query('SELECT * FROM station_telemetry.lite_feedback')).rows,
+  );
+  for (const secret of [
+    '198.51.100.43',
+    'private-feedback-agent',
+    'secret-feedback',
+  ])
+    expect(persisted).not.toContain(secret);
+  await expect(
+    lite.ingest('kontour', payload, {
+      day: '2000-01-01',
+      hash: 'a'.repeat(64),
+    }),
+  ).rejects.toMatchObject({ code: 'storage_busy' });
+  await db.query('UPDATE station_telemetry.lite_feedback SET day=$1', [
+    closedWeek,
+  ]);
+  await lite.finalize();
+  expect(
+    (await db.query('SELECT client_hash FROM station_telemetry.lite_feedback'))
+      .rows,
+  ).toEqual(Array(4).fill({ client_hash: null }));
+  expect((await lite.exact('weekly')).feedback).toContainEqual({
+    period: closedWeek,
+    publisher: 'kontour',
+    action: 'tier-lowered',
+    reason: 'privacy',
+    count: '2',
+  });
+  expect(await (await post(payload)).json()).toEqual({ accepted: true });
+});
+
+test('tunnel permits public reads and Lite ingest while operator and publisher routes require direct peers', async () => {
+  const full = new PgProductRepository({} as Pool);
+  const guarded = createProductBroker(
+    Object.assign(full, { lite }),
+    operatorKey,
+    clientAddressPolicy('192.0.2.2/32'),
+  );
+  const direct = socketBindings('100.64.0.1'),
+    proxy = socketBindings('192.0.2.2');
+  for (const [path, options] of [
+    ['/v1/operator/lite/daily', auth()],
+    ['/v1/operator/lite/weekly', auth()],
+    ['/v1/publishers/publisher%3Aexample/aggregates', auth(publisherKey)],
+  ] as const) {
+    expect((await guarded.request(path, options, proxy)).status).toBe(404);
+    expect((await guarded.request(path, options, direct)).status).toBe(200);
+  }
+  for (const path of [
+    '/v1/public/aggregates',
+    '/public/',
+    '/public/dashboard.js',
+    '/health/live',
+  ])
+    for (const peer of [direct, proxy])
+      expect((await guarded.request(path, undefined, peer)).status).toBe(200);
+  for (const peer of [direct, proxy]) {
+    const response = await guarded.request(
+      '/v1/lite/kontour',
+      { method: 'POST', body: JSON.stringify(dailyPing()) },
+      peer,
+    );
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true });
+  }
+  const source = {
+    id: 'new',
+    publisher: 'kontour',
+    channel: 'stable',
+    registryIds: [],
+    releaseVersions: [],
+  };
+  const init = {
+    method: 'POST',
+    headers: auth().headers,
+    body: JSON.stringify(source),
+  };
+  expect(
+    (await guarded.request('/v1/operator/lite/sources', init, proxy)).status,
+  ).toBe(404);
+  expect(
+    (await guarded.request('/v1/operator/lite/sources', init, direct)).status,
+  ).toBe(201);
+  const deletion = { method: 'DELETE', headers: auth().headers };
+  expect(
+    (await guarded.request('/v1/operator/lite/sources/new', deletion, proxy))
+      .status,
+  ).toBe(404);
+  expect(
+    (await guarded.request('/v1/operator/lite/sources/new', deletion, direct))
+      .status,
+  ).toBe(200);
+});
+
+test('version policies admit catalog or SemVer independently of the fixed public version domain', async () => {
+  // Use a publisher with no catalog sources so an empty SemVer catalog omits the dimension.
+  await lite.createSource({
+    id: 'semver-empty',
+    publisher: 'publisher:semver',
+    channel: 'stable',
+    registryIds: [],
+    releaseVersions: [],
+    versionPolicy: 'semver',
+  });
+  await lite.createSource({
+    id: 'semver-kontour',
+    publisher: 'kontour',
+    channel: 'stable',
+    registryIds: ['public.plugin'],
+    releaseVersions: ['1.2.3'],
+    versionPolicy: 'semver',
+  });
+  const postVersion = (source: string, version: string) =>
+    app.request(
+      `/v1/lite/${source}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          ...dailyPing(),
+          version,
+          public_plugins_enabled: [],
+        }),
+      },
+      socketBindings('198.51.100.12'),
+    );
+  for (const version of ['1.2.3', '2.4.6-preview.1+build.9', 'custom']) {
+    expect((await postVersion('semver-empty', version)).status).toBe(202);
+    expect((await postVersion('semver-kontour', version)).status).toBe(202);
+  }
+  for (const version of [
+    'v1.2.3',
+    '1.2.3-01',
+    '01.2.3',
+    '1.2',
+    '1.2.3+',
+    'x'.repeat(65),
+  ])
+    expect((await postVersion('semver-empty', version)).status).toBe(400);
+  expect((await postVersion('kontour', '2.4.6-preview.1+build.9')).status).toBe(
+    400,
+  );
+  expect((await postVersion('kontour', '1.2.3')).status).toBe(202);
+  expect((await postVersion('kontour', 'custom')).status).toBe(202);
+  expect(
+    (
+      await db.query(
+        "SELECT version_policy FROM station_telemetry.lite_sources WHERE id='kontour'",
+      )
+    ).rows,
+  ).toEqual([{ version_policy: 'catalog' }]);
+  await closeDay();
+  await lite.finalize();
+  expect((await lite.exact('daily')).marginals).toContainEqual(
+    expect.objectContaining({
+      publisher: 'kontour',
+      dimension: 'version',
+      value: '2.4.6-preview.1+build.9',
+    }),
+  );
+  const publicCells = await readAll();
+  expect(
+    publicCells.some((c) => c.dimension === 'version' && c.value === '1.2.3'),
+  ).toBe(true);
+  expect(
+    publicCells.some(
+      (c) => c.dimension === 'version' && c.value === '2.4.6-preview.1+build.9',
+    ),
+  ).toBe(false);
+  expect(
+    (
+      await db.query(
+        "SELECT value FROM station_telemetry.lite_published WHERE publisher='publisher:semver' AND dimension='version'",
+      )
+    ).rows,
+  ).toEqual([]);
+});
+
+test('feedback hashes erase even when the ping erasure transaction fails', async () => {
+  await lite.ingest(
+    'kontour',
+    { publisher: 'kontour', action: 'tier-lowered', reason: 'privacy' },
+    { day: today, hash: 'a'.repeat(64) },
+  );
+  await db.query('UPDATE station_telemetry.lite_feedback SET day=$1', [
+    closedWeek,
+  ]);
+  const query = sqlClient(db);
+  const failing = new LiteRepository(
+    (operation) =>
+      db.transaction((tx) =>
+        operation({
+          async query(text, values) {
+            if (
+              text.includes(
+                'UPDATE station_telemetry.lite_pings SET client_hash=NULL',
+              )
+            )
+              throw new Error('injected ping erasure failure');
+            return sqlClient(tx).query(text, values);
+          },
+        }),
+      ),
+    100000,
+    1_073_741_824,
+  );
+  await expect(failing.finalize()).rejects.toThrow(
+    'injected ping erasure failure',
+  );
+  expect(
+    (
+      await query.query(
+        'SELECT client_hash FROM station_telemetry.lite_feedback',
+      )
+    ).rows,
+  ).toEqual([{ client_hash: null }]);
 });

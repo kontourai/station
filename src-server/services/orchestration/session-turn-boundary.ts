@@ -1,3 +1,11 @@
+import {
+  PROVIDER_FAILURE_RETRYABLE,
+  type ProviderFailure,
+  SESSION_START_INDETERMINATE_CODE,
+} from '@kontourai/station-contracts/provider-failure';
+
+export { SESSION_START_INDETERMINATE_CODE } from '@kontourai/station-contracts/provider-failure';
+
 import { randomUUID } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
@@ -152,8 +160,15 @@ function sentence(message: string): string {
   return /[.!?]$/.test(trimmed) ? `${trimmed} ` : `${trimmed}. `;
 }
 
-export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
-export class SessionStartIndeterminateError extends Error {
+export class SessionStartIndeterminateError
+  extends Error
+  implements ProviderFailure
+{
+  readonly kind = 'indeterminate';
+  readonly failurePhase = 'indeterminate';
+  get retryable(): boolean {
+    return PROVIDER_FAILURE_RETRYABLE[this.kind];
+  }
   readonly code = SESSION_START_INDETERMINATE_CODE;
   constructor(cause?: unknown, reportedMessage?: string) {
     super(

@@ -1,3 +1,9 @@
+import {
+  PROVIDER_FAILURE_KINDS,
+  PROVIDER_FAILURE_RETRYABLE,
+  type ProviderFailureKind,
+} from '@kontourai/station-contracts/provider-failure';
+
 /**
  * What a refused request actually said.
  *
@@ -32,6 +38,9 @@
 /** A Station HTTP response failure whose status is safe for callers to branch on. */
 export class StationHttpError extends Error {
   readonly status: number;
+  readonly kind?: ProviderFailureKind;
+  readonly retryable?: boolean;
+  readonly failurePhase?: 'refused' | 'failed' | 'indeterminate';
 
   /**
    * The response's `Retry-After` in milliseconds, when it sent one. Station's
@@ -60,11 +69,35 @@ export class StationHttpError extends Error {
   constructor(
     status: number,
     message?: string,
-    options?: { retryAfterMs?: number; code?: string; details?: unknown },
+    options?: {
+      retryAfterMs?: number;
+      code?: string;
+      details?: unknown;
+      kind?: ProviderFailureKind;
+      failurePhase?: 'refused' | 'failed' | 'indeterminate';
+    },
   ) {
     super(message ?? `HTTP ${status}`);
     this.name = 'StationHttpError';
     this.status = status;
+    this.kind =
+      options?.kind ??
+      (options?.code === undefined ||
+      // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK targets ES2020; Object.hasOwn requires ES2022.
+      !Object.prototype.hasOwnProperty.call(
+        PROVIDER_FAILURE_KINDS,
+        options.code,
+      )
+        ? undefined
+        : (
+            PROVIDER_FAILURE_KINDS as Readonly<
+              Record<string, ProviderFailureKind>
+            >
+          )[options.code]);
+    if (this.kind !== undefined)
+      this.retryable = PROVIDER_FAILURE_RETRYABLE[this.kind];
+    this.failurePhase = options?.failurePhase;
+
     if (options?.retryAfterMs !== undefined) {
       this.retryAfterMs = options.retryAfterMs;
     }
@@ -105,6 +138,9 @@ export interface EnvelopeFailureResponse {
 
 /** Everything a failure envelope said, with the status it arrived under. */
 export interface EnvelopeFailure {
+  kind?: ProviderFailureKind;
+  failurePhase?: 'refused' | 'failed' | 'indeterminate';
+
   /** The observed HTTP status — a 2xx too, for a `success:false` body. */
   status: number;
   message: string;
@@ -247,6 +283,21 @@ export function readEnvelopeFailure(
     status: response.status,
     message: envelopeMessage(body, fallback),
   };
+  const raw = record(body);
+  if (
+    typeof raw?.kind === 'string' &&
+    // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK targets ES2020; Object.hasOwn requires ES2022.
+    Object.prototype.hasOwnProperty.call(PROVIDER_FAILURE_RETRYABLE, raw.kind)
+  ) {
+    failure.kind = raw.kind as ProviderFailureKind;
+  }
+  if (
+    raw?.failurePhase === 'refused' ||
+    raw?.failurePhase === 'failed' ||
+    raw?.failurePhase === 'indeterminate'
+  ) {
+    failure.failurePhase = raw.failurePhase;
+  }
   const code = envelopeCode(body);
   if (code !== undefined) failure.code = code;
   const details = record(body)?.details;

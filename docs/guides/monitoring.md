@@ -24,12 +24,35 @@ The companion receiver additionally accepts identifier-free `station_daily`
 Lite pings through public publisher/channel source IDs. Its owner view is exact:
 operator `sto_` endpoints return daily marginals and weekly sums, including daily
 distinct-network counts (weekly contributor-days; not cross-day unique people).
+The same Lite URL accepts strict fixed-enum feedback bound to the source's
+publisher. Operator responses include exact publisher/action/reason counts by
+UTC arrival day or week, covering retained days including the current partial
+period. Migration 7 stores feedback separately; it deduplicates per daily key,
+publisher and action, erases hashes after day closure and expires rows at the
+configured UTC-day cutoff (default 90 days including today). Feedback hash
+erasure still runs if ping-hash erasure fails. Committed Lite responses always
+return `{ "accepted": true }`, without exposing dedupe state. Public and
+third-party publisher views exclude feedback.
 IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits.
+Forwarded headers are ignored by default. A Cloudflare Tunnel needs explicit
+trusted connector CIDRs so clients do not share the connector key; only a trusted
+peer's single-IP `CF-Connecting-IP` is used transiently. Invalid values fall back
+to the peer and increment a content-free private counter. Startup refuses
+non-canonical ranges, whitespace, IPv4 prefixes wider than /24 and IPv6 prefixes
+wider than /64. Trusted-proxy peers can reach only the public GET routes and
+Lite POST route; private routes return 404 even with valid credentials. See the
+[single-host tunnel recipe](../../deployment/telemetry/README.md#single-host-cloudflare-tunnel)
+for public route limits and the separate infrastructure logging review.
 
 Public dashboards and scoped publisher keys receive only **weekly noisy
 estimates** over ten profile/adoption fields. The fixed public domain includes
 all enum values and operator-configured public versions/registry IDs, even true
-zero; no true-count k pre-filter remains. Published counts sum distinct daily
+zero; no true-count k pre-filter remains. Sources default to catalog-only
+version admission. Optional `versionPolicy: "semver"` admits valid sender
+versions plus `custom`; operator exact views show all of them. Its public version
+support still comes only from `releaseVersions`, with no version dimension
+contributed by an empty SemVer catalog. Unlisted versions never expand public
+support. Migration 8 preserves catalog policy for existing sources. Published counts sum distinct daily
 contributor keys per value (network-days), so NAT undercounts installations.
 Sensitivity 40 per added ping and per-count ε=1/280 give ε≤1/7 per ping. If a
 network contributes at most 40 coordinates per day, its week sensitivity is 280

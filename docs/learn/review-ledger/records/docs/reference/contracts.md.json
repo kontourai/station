@@ -208,9 +208,29 @@
 
     "packages/contracts/src/execution-confinement.ts",
 
+    "packages/contracts/src/provider-failure.ts",
+
+    "src-server/providers/provider-failure.ts",
+
+    "scripts/__tests__/provider-failure-inventory.test.ts",
+
+    "src-server/routes/orchestration/__tests__/provider-failure-projection.routes.test.ts",
+
+    "src-server/providers/model-provider-failure.ts",
+
+    "src-server/runtime/conversation/stream-orchestrator.ts",
+
+    "packages/contracts/src/__tests__/provider-failure.test.ts",
+
+    "src-server/providers/__tests__/station-agent-adapter.test.ts",
+
+    "src-ui/src/utils/chatErrorTranslation.ts",
+
     "packages/contracts/src/attachment-staging.ts",
 
-    "packages/shared/src/delegation-files.ts"
+    "packages/shared/src/delegation-files.ts",
+
+    "src-server/services/orchestration/attachment-staging-service.ts"
   ],
 
   "checks": [

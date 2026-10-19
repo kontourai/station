@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { PROVIDER_TURN_TRIGGER } from '@kontourai/station-contracts/runtime-events';
 import { providerOps } from '../../telemetry/metrics.js';
 import type { ProviderSession } from '../adapter-shape.js';

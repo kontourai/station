@@ -1,5 +1,5 @@
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { AsyncEventQueue as GenericAsyncEventQueue } from '../sessions/async-event-queue.js';
 
 interface Deferred<T> {
