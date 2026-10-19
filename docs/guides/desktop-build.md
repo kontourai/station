@@ -29,14 +29,25 @@ Updating has three separate steps:
    During the download itself the updater plugin still buffers the whole
    package in memory.
 2. **Confirm.** A downloaded update offers **Restart to update**, which only
-   opens a confirmation. A downloaded update survives quitting: at the next
-   start the app offers it again if it is still newer than the app and passes
-   the updater's signature check (which requires the package signature to bind
-   its version); a stale, damaged or unverifiable package is deleted. While an
-   update is downloaded, the app does not check for newer releases; installing
-   it, or a damaged package, returns to checking. When the app's built-in server serves this window, the
-   confirmation lists the running agent turns the restart interrupts; an
+   opens a confirmation. When the app's built-in server serves this window,
+   the confirmation lists the running agent turns the restart interrupts; an
    installed service or another server keeps running.
+
+   A downloaded update survives quitting. Shortly after the next start (off
+   the window's startup path; the state reads idle meanwhile) the app offers
+   it again if the release is still newer than the app and the package passes
+   the updater's signature check. That check requires the signature to name
+   the package's version. macOS updater archives are signed that way only
+   from the first release that includes #3851 (`tauri signer sign
+   --app-version`); a package from an earlier macOS release is deleted at the
+   next start and must be downloaded again. Windows and Linux archives are
+   signed by the Tauri bundler, which records the version. After restoring,
+   the app asks the release feed once whether it still offers that version: a
+   withdrawn or superseded release drops the package and shows the feed's
+   current answer, and no answer keeps it. Otherwise a downloaded update is
+   not re-checked against newer releases. A package that is damaged when
+   **Restart now** reads it is deleted, and the state returns to idle with an
+   install error; the next check offers the update again.
 3. **Install and restart.** Only **Restart now** installs the download, after
    its digest and signature check, and restarts the app. **Restart now** waits
    until the running agent turns are listed. A failed install leaves the update
