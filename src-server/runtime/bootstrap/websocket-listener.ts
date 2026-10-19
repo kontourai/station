@@ -1,0 +1,41 @@
+/**
+ * A dedicated WebSocket listener bound through the listener link.
+ *
+ * `new WebSocketServer({ port })` creates and binds its own HTTP server, which
+ * cannot listen on a handle the supervisor holds. This creates that server
+ * here instead, answering non-upgrade requests exactly as `ws` does for a
+ * port it owns, so clients see no difference. Closing the WebSocket server
+ * also closes the HTTP server, as it does when `ws` owns it.
+ */
+import { createServer, STATUS_CODES } from 'node:http';
+import { type ServerOptions, WebSocketServer } from 'ws';
+import {
+  closeStableListener,
+  type ListenAddress,
+  listenerLink,
+  type SupervisorListenerName,
+} from './supervisor-link.js';
+
+export function startWebSocketListener(
+  name: SupervisorListenerName,
+  address: ListenAddress,
+  options: Omit<ServerOptions, 'port' | 'host' | 'server' | 'noServer'>,
+): WebSocketServer {
+  // The same response `ws` sends from the HTTP server it creates for `port`.
+  const server = createServer((_req, res) => {
+    const body = STATUS_CODES[426] as string;
+    res.writeHead(426, {
+      'Content-Length': body.length,
+      'Content-Type': 'text/plain',
+    });
+    res.end(body);
+  });
+  const wss = new WebSocketServer({ ...options, server });
+  wss.once('close', () => void closeStableListener(server));
+  // A bind failure reaches the WebSocket server's 'error' event, which `ws`
+  // forwards from the HTTP server exactly as it does for a port it owns.
+  void listenerLink()
+    .listen(name, server, address)
+    .catch(() => {});
+  return wss;
+}

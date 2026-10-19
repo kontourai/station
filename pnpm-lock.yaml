@@ -161,6 +161,9 @@ importers:
       '@kontourai/station-shared':
         specifier: ^0.10.0
         version: link:packages/shared
+      '@kontourai/station-supervisor':
+        specifier: ^0.1.0
+        version: link:packages/supervisor
       '@kontourai/surface':
         specifier: 6.1.0
         version: 6.1.0(supports-color@7.2.0)

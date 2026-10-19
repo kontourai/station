@@ -345,6 +345,7 @@
     "@kontourai/station-contracts": "^0.10.0",
     "@kontourai/station-sdk": "^0.10.0",
     "@kontourai/station-shared": "^0.10.0",
+    "@kontourai/station-supervisor": "^0.1.0",
     "@kontourai/surface": "6.1.0",
     "@kontourai/survey": "8.2.0",
     "@kontourai/thread": "0.5.0",
