@@ -1,0 +1,7 @@
+{
+  "revision": "382e1a7d22ae181537bd8e087603156956fce9bd",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"Rechecked the combined-tree official endpoint section against all producer workflow diffs, esbuild banner validation and actionlint integration. Preserved main's supervisor build and CLI publisher while retaining step-scoped desktop/portable endpoint injection; publish-packages has no endpoint injection. Runtime beta maps to preview only through the shared telemetry mapper. Focused build/service/shared tests, standalone bundle guard and workflow gate passed. No variable activation, signed/native artifact, receiver deployment or release proof is claimed.","inputs":["docs/guides/release-rings.md",".github/workflows/publish-packages.yml","esbuild.config.mjs","scripts/actionlint-gate.mjs"]}
+  ]
+}

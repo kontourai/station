@@ -24,6 +24,7 @@ import {
   waitForSuiteSettlement,
 } from '../../scripts/lib/owned-process.mjs';
 import { readReceiverArtifactManifest } from './artifact-manifest.mjs';
+import { qualifyLiteReceiver } from './qualify-lite.mjs';
 
 async function qualifyArtifactManifest(manifest, outdir, repoRoot) {
   const fixture = await mkdtemp(join(tmpdir(), 'station-telemetry-artifact-'));
@@ -442,6 +443,16 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
     server = createServer(getRequestListener(app.fetch));
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
+    checks.push(
+      ...(await qualifyLiteReceiver(
+        createProductBroker,
+        store,
+        pool,
+        operatorKey,
+      )),
+    );
+    // The library harness has no main-entrypoint credential refresh timer.
+    await store.refreshCredentials();
     const from = new Date(Date.now() - 86400000).toISOString();
     const to = new Date(Date.now() + 86400000).toISOString();
     const inventory = await (await fetch(`${base}/health/live`)).json();
@@ -595,8 +606,8 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
       ],
       [
         'incompatible migration',
-        "INSERT INTO station_telemetry.migrations VALUES(2,'qualification-unsupported')",
-        'DELETE FROM station_telemetry.migrations WHERE version=2',
+        "INSERT INTO station_telemetry.migrations VALUES(999,'qualification-unsupported')",
+        'DELETE FROM station_telemetry.migrations WHERE version=999',
       ],
     ];
     for (const [name, inject, restore] of probes) {

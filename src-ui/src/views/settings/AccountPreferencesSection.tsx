@@ -71,29 +71,25 @@ export function AccountPreferencesSection() {
               ? 'Sync unavailable. Reload to try again.'
               : 'Saved on this device. Sign in to sync.'}
       </p>
-      <details>
-        <summary>What syncs?</summary>
-        <p>
-          <strong>Account:</strong> appearance, chat display, diff preferences,
-          model favorites, and new-chat defaults.
-        </p>
-        <p>
-          <strong>Device:</strong> microphone, speakers, push permission,
-          haptics, keyboard, layout, and access grants.
-        </p>
-        <p>
-          Other devices refresh when you return or reconnect. Other Stations
-          keep separate preferences.
-        </p>
-      </details>
-      <p>Approval defaults · new chats only</p>
-      <details>
-        <summary>Which default wins?</summary>
-        <p>
-          Chat choice → Agent → your default → Station → engine. Existing chats
-          and unattended jobs keep their settings.
-        </p>
-      </details>
+      <div className="settings__account-help">
+        <details>
+          <summary>About these preferences</summary>
+          <p>
+            Appearance, chat display, diff preferences, model favorites, and
+            new-chat defaults follow your account on this Station. Other devices
+            refresh when you return or reconnect.
+          </p>
+          <p>
+            Microphone, speakers, push permission, haptics, keyboard, layout,
+            and access grants stay on each device. Other Stations keep separate
+            preferences.
+          </p>
+          <p>
+            Approval defaults: Chat choice → Agent → your default → Station →
+            engine. Existing chats and unattended jobs keep their settings.
+          </p>
+        </details>
+      </div>
       <PageRow
         {...settingsRow('account-preference-sync')}
         description="Fills account choices you haven’t saved yet."

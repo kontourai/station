@@ -7,24 +7,9 @@ import type {
 } from '@kontourai/station-contracts/product-telemetry';
 import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
+import { BrokerError } from './broker-error.js';
+import { assertLiteSchema, LiteRepository, migrateLite } from './lite-store.js';
 
-export class BrokerError extends Error {
-  constructor(
-    readonly code:
-      | 'source_unauthorized'
-      | 'event_conflict'
-      | 'storage_limit'
-      | 'invalid_source'
-      | 'storage_not_durable'
-      | 'query_limit'
-      | 'source_conflict'
-      | 'storage_busy'
-      | 'storage_timeout'
-      | 'schema_incompatible',
-  ) {
-    super(code);
-  }
-}
 export interface ProductSource {
   id: string;
   label: string;
@@ -48,10 +33,13 @@ export interface ProductTrends {
   }>;
 }
 export interface ProductRepository {
+  readonly lite?: LiteRepository;
   ingest(
     key: string,
     batch: ProductTelemetryBatch,
   ): Promise<ProductTelemetryCommitReceipt>;
+  hasCredential(key: string): boolean;
+  authenticate(key: string): Promise<void>;
   probe(key: string): Promise<ProductTelemetryProbeReceipt>;
   createSource(
     id: string,
@@ -114,12 +102,56 @@ interface EventRow extends QueryResultRow {
 }
 export class PgProductRepository implements ProductRepository {
   private activeTransactions = 0;
+  private credentialSources = new Map<string, string>();
+  private credentialRevision = 0;
+  private credentialsUntil = 0;
+  private refreshingCredentials?: Promise<void>;
+  refreshCredentials(): Promise<void> {
+    if (this.refreshingCredentials) return this.refreshingCredentials;
+    const revision = this.credentialRevision;
+    const pending = this.transaction(async (client) => {
+      await this.assertSchema(client);
+      const { rows } = await client.query<{ id: string; digest: string }>(
+        "SELECT id,encode(credential_hash,'hex') AS digest FROM station_telemetry.sources WHERE revoked_at IS NULL",
+      );
+      await this.lite.refreshCredentials(client);
+      if (revision !== this.credentialRevision) return;
+      this.credentialSources = new Map(rows.map((row) => [row.digest, row.id]));
+      this.credentialsUntil = Date.now() + 60_000;
+    }).finally(() => {
+      if (this.refreshingCredentials === pending)
+        this.refreshingCredentials = undefined;
+    });
+    this.refreshingCredentials = pending;
+    return pending;
+  }
+  hasCredential(key: string): boolean {
+    if (Date.now() >= this.credentialsUntil)
+      throw new BrokerError('credentials_stale');
+    return (
+      /^stp_[A-Za-z0-9_-]{43}$/.test(key) &&
+      this.credentialSources.has(hash(key).toString('hex'))
+    );
+  }
+  readonly lite: LiteRepository;
   constructor(
     readonly pool: Pool,
     private readonly maxEvents = 1_000_000,
     private readonly maxDatabaseBytes = 1_073_741_824,
     readonly retentionDays = 90,
-  ) {}
+  ) {
+    this.lite = new LiteRepository(
+      (operation) =>
+        this.transaction(async (client) => {
+          await this.assertSchema(client);
+          return operation(client);
+        }),
+      maxEvents,
+      maxDatabaseBytes,
+    );
+    if (retentionDays < 1 || retentionDays > 90)
+      throw new Error('Retention must be between 1 and 90 days');
+  }
   private async durable(client: PoolClient): Promise<void> {
     const { rows } = await client.query<{ fsync: string; full_pages: string }>(
       "SELECT current_setting('fsync') AS fsync, current_setting('full_page_writes') AS full_pages",
@@ -180,11 +212,12 @@ export class PgProductRepository implements ProductRepository {
       );
       if (rows.length) {
         if (
-          rows.length !== 1 ||
+          rows.length > 6 ||
           rows[0].version !== 1 ||
           rows[0].digest !== SCHEMA_DIGEST
         )
           throw new BrokerError('schema_incompatible');
+        await migrateLite(client);
         await this.assertSchema(client);
         return;
       }
@@ -193,8 +226,10 @@ export class PgProductRepository implements ProductRepository {
         'INSERT INTO station_telemetry.migrations VALUES(1,$1)',
         [SCHEMA_DIGEST],
       );
+      await migrateLite(client);
       await this.assertSchema(client);
     });
+    await this.refreshCredentials();
   }
   private async assertSchema(client: PoolClient): Promise<void> {
     // Hold DDL locks through the operation, so validated keys cannot disappear before commit.
@@ -298,16 +333,25 @@ export class PgProductRepository implements ProductRepository {
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
     if (
-      rows.length !== 1 ||
+      rows.length !== 6 ||
       rows[0].version !== 1 ||
-      rows[0].digest !== SCHEMA_DIGEST
+      rows[0].digest !== SCHEMA_DIGEST ||
+      rows[1].version !== 2 ||
+      rows[2].version !== 3 ||
+      rows[3].version !== 4 ||
+      rows[4].version !== 5 ||
+      rows[5].version !== 6
     )
       throw new BrokerError('schema_incompatible');
+    await assertLiteSchema(client);
   }
   async ready(): Promise<void> {
     await this.transaction(async (client) => {
       await this.assertSchema(client);
     });
+  }
+  async authenticate(key: string): Promise<void> {
+    if (!this.hasCredential(key)) throw new BrokerError('source_unauthorized');
   }
   async probe(key: string): Promise<ProductTelemetryProbeReceipt> {
     return this.transaction(async (client) => {
@@ -347,7 +391,7 @@ export class PgProductRepository implements ProductRepository {
       !/^[0-9a-f]{64}$/.test(credentialHash)
     )
       throw new BrokerError('invalid_source');
-    return this.transaction(async (client) => {
+    const source = await this.transaction(async (client) => {
       await this.assertSchema(client);
       await client.query(
         "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
@@ -367,10 +411,14 @@ export class PgProductRepository implements ProductRepository {
       if (!rows[0]) throw new BrokerError('source_conflict');
       return { id: rows[0].id, label: rows[0].label, revokedAt: null };
     });
+    this.credentialRevision++;
+    this.credentialSources.set(credentialHash, id);
+    await this.refreshCredentials();
+    return source;
   }
   async revokeSource(id: string): Promise<boolean> {
     if (!uuid(id)) throw new BrokerError('invalid_source');
-    return this.transaction(async (client) => {
+    const revoked = await this.transaction(async (client) => {
       await this.assertSchema(client);
       const result = await client.query(
         'UPDATE station_telemetry.sources SET revoked_at=clock_timestamp() WHERE id=$1 AND revoked_at IS NULL',
@@ -378,6 +426,11 @@ export class PgProductRepository implements ProductRepository {
       );
       return result.rowCount === 1;
     });
+    this.credentialRevision++;
+    for (const [digest, sourceId] of this.credentialSources)
+      if (sourceId === id) this.credentialSources.delete(digest);
+    await this.refreshCredentials();
+    return revoked;
   }
   async ingest(
     key: string,
@@ -520,18 +573,29 @@ export class PgProductRepository implements ProductRepository {
     });
   }
   async retain(): Promise<void> {
-    await this.transaction(async (client) => {
-      await this.assertSchema(client);
-      await client.query(
-        "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
-      );
-      await client.query(
-        "DELETE FROM station_telemetry.commits WHERE stored_at < clock_timestamp()-interval '7 days'",
-      );
-      await client.query(
-        "DELETE FROM station_telemetry.events WHERE received_at < clock_timestamp()-$1*interval '1 day'",
-        [this.retentionDays],
-      );
-    });
+    // Each retention owner commits independently, even if finalization is unavailable.
+    for (const table of ['commits', 'events', 'lite_pings'] as const) {
+      const column = table === 'commits' ? 'stored_at' : 'received_at';
+      const days = table === 'commits' ? 7 : this.retentionDays;
+      while (
+        await this.transaction(async (client) => {
+          await this.assertSchema(client);
+          const result = await client.query(
+            `WITH batch AS MATERIALIZED (SELECT ctid FROM station_telemetry.${table}
+           WHERE ${column}<clock_timestamp()-$1*interval '1 day' LIMIT 2000 FOR UPDATE SKIP LOCKED)
+           DELETE FROM station_telemetry.${table} WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
+            [days],
+          );
+          if (table === 'lite_pings' && result.rowCount)
+            await client.query(
+              'UPDATE station_telemetry.lite_capacity SET pings=pings-$1 WHERE singleton',
+              [result.rowCount],
+            );
+          return result.rowCount !== 0;
+        })
+      ) {
+        /* separately committed retention batches */
+      }
+    }
   }
 }

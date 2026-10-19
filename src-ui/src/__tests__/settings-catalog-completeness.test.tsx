@@ -727,7 +727,7 @@ describe('settings catalog completeness', () => {
     const CONTROL_CAPTION = 'Saved to this Station.';
     const STATION_CAPTION = 'Saved to this Station.';
     const DEVICE_CAPTION =
-      'Personal choices follow your account when signed in. Device capabilities and layout stay here; each setting shows its scope.';
+      'Personal choices follow your account on this Station. Device settings stay here.';
 
     function captions(container: HTMLElement) {
       return [...container.querySelectorAll('.settings__scope-caption')].map(

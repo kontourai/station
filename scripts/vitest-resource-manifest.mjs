@@ -129,6 +129,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates real FIFOs with bounded mkfifo to check prompt CLI attachment refusal.
   'src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts',
+  // Real server esbuild children and executable workflow-policy negative controls.
+  'scripts/__tests__/author-telemetry-build.test.ts',
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
   // Claude handshake; skips loudly where Seatbelt cannot apply (non-macOS).
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts',

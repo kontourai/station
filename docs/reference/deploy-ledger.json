@@ -1,5 +1,146 @@
 [
   {
+    "timestampUtc": "2026-10-19T00:27:00Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2482.3",
+    "sha": "45e3cf69687d6d3dab0da9763241593c307952e0",
+    "artifactBuiltAt": "2026-10-18T23:49:45.369Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39177501369",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39177501369)"
+    ],
+    "changelog": {
+      "previousSha": "b28c84df811e27f9de6d28e7cd40cd541d89f68e",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3829](https://github.com/kontourai/station/pull/3829) fix(settings): unify typography, spacing, and concise copy",
+          "[#3819](https://github.com/kontourai/station/pull/3819) fix(sdk): type session structural sharing without wire-shape casts",
+          "[#3738](https://github.com/kontourai/station/pull/3738) fix(docs): preserve heading links on the public Pages site",
+          "[#3792](https://github.com/kontourai/station/pull/3792) fix(ui): keep transcript readers in control during updates",
+          "[#3771](https://github.com/kontourai/station/pull/3771) fix(runtime): narrow preview and chat invalidations"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3833](https://github.com/kontourai/station/pull/3833) test(providers): add deterministic adapter conformance suite",
+          "[#3770](https://github.com/kontourai/station/pull/3770) perf(notifications): avoid cloning history for single-row routes",
+          "[#3775](https://github.com/kontourai/station/pull/3775) perf(ui): reduce shell layout shifts and background work",
+          "[#3773](https://github.com/kontourai/station/pull/3773) perf(orchestration): stabilize session rows and scope thread snapshots"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
+    "timestampUtc": "2026-10-19T00:26:57Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2482.3",
+    "sha": "45e3cf69687d6d3dab0da9763241593c307952e0",
+    "artifactBuiltAt": "2026-10-18T23:50:39.884Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39177501369",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39177501369)"
+    ],
+    "changelog": {
+      "previousSha": "b28c84df811e27f9de6d28e7cd40cd541d89f68e",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3829](https://github.com/kontourai/station/pull/3829) fix(settings): unify typography, spacing, and concise copy",
+          "[#3819](https://github.com/kontourai/station/pull/3819) fix(sdk): type session structural sharing without wire-shape casts",
+          "[#3738](https://github.com/kontourai/station/pull/3738) fix(docs): preserve heading links on the public Pages site",
+          "[#3792](https://github.com/kontourai/station/pull/3792) fix(ui): keep transcript readers in control during updates",
+          "[#3771](https://github.com/kontourai/station/pull/3771) fix(runtime): narrow preview and chat invalidations"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3833](https://github.com/kontourai/station/pull/3833) test(providers): add deterministic adapter conformance suite",
+          "[#3770](https://github.com/kontourai/station/pull/3770) perf(notifications): avoid cloning history for single-row routes",
+          "[#3775](https://github.com/kontourai/station/pull/3775) perf(ui): reduce shell layout shifts and background work",
+          "[#3773](https://github.com/kontourai/station/pull/3773) perf(orchestration): stabilize session rows and scope thread snapshots"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
+    "timestampUtc": "2026-10-18T23:50:07Z",
+    "channel": "nightly-npm",
+    "version": "0.8.0-nightly.2482.39177501369",
+    "sha": "45e3cf69687d6d3dab0da9763241593c307952e0",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39177501369",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.8.0-nightly.2482.39177501369 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "a4baa7c402eccc901465b0e55e66565230c00a8b",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 0
+    }
+  },
+  {
+    "timestampUtc": "2026-10-18T21:11:16Z",
+    "channel": "nightly-npm",
+    "version": "0.8.0-nightly.2482.39166037433",
+    "sha": "a4baa7c402eccc901465b0e55e66565230c00a8b",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39166037433",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.8.0-nightly.2482.39166037433 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "b28c84df811e27f9de6d28e7cd40cd541d89f68e",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3829](https://github.com/kontourai/station/pull/3829) fix(settings): unify typography, spacing, and concise copy",
+          "[#3819](https://github.com/kontourai/station/pull/3819) fix(sdk): type session structural sharing without wire-shape casts",
+          "[#3738](https://github.com/kontourai/station/pull/3738) fix(docs): preserve heading links on the public Pages site",
+          "[#3792](https://github.com/kontourai/station/pull/3792) fix(ui): keep transcript readers in control during updates",
+          "[#3771](https://github.com/kontourai/station/pull/3771) fix(runtime): narrow preview and chat invalidations"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3833](https://github.com/kontourai/station/pull/3833) test(providers): add deterministic adapter conformance suite",
+          "[#3770](https://github.com/kontourai/station/pull/3770) perf(notifications): avoid cloning history for single-row routes",
+          "[#3775](https://github.com/kontourai/station/pull/3775) perf(ui): reduce shell layout shifts and background work",
+          "[#3773](https://github.com/kontourai/station/pull/3773) perf(orchestration): stabilize session rows and scope thread snapshots"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
     "timestampUtc": "2026-10-18T12:42:31Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2482.1",

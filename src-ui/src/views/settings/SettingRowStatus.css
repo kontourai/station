@@ -27,5 +27,5 @@
 .setting-row-status__pending {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
 }
