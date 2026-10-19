@@ -1,0 +1,7 @@
+{
+  "revision": "83d57ad163de9d6338c0e8d5780924b1595a3419",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"compareStationReleaseVersions moved unchanged into packages/shared/src/release-version-order.ts and is re-exported from prebuilt-archive.ts; the ADR's release-order, launcher and two-axis claims still hold. The new client-to-host nightly bridge is an interim the #2962 identity work replaces, as the Nightly guide says.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/prebuilt-archive.ts"]}
+  ]
+}

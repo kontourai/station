@@ -211,3 +211,23 @@
   width: 100%;
   margin-top: var(--space-2);
 }
+
+.chat-dock-inbox__scope {
+  padding: var(--k-space-2);
+  border-block-end: 1px solid var(--k-line);
+}
+.chat-dock-inbox__scope label {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.chat-dock-inbox__scope select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+}
+.chat-dock-inbox__scope > button {
+  min-height: 44px;
+  color: var(--k-action);
+}

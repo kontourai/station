@@ -210,6 +210,8 @@ function claudeDeferredToolUse(
 
 export interface ClaudeMessageState extends ClaudeUsageLimitState {
   session: ProviderSession;
+  /** Set only for the temporary delivery Agent and its matching authored MCP server. */
+  deliveryProbeServerId?: string;
   requireNativeResumeIdentity?: true;
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;
@@ -434,6 +436,38 @@ export function reportClaudePermissionMode(
   });
 }
 
+function deliveryProbeInventory(record: ClaudeMessageState, tools: unknown) {
+  const serverId = record.deliveryProbeServerId;
+  if (!serverId) return {};
+  const names: string[] = [];
+  let bytes = 2;
+  let truncated = !Array.isArray(tools);
+  if (Array.isArray(tools)) {
+    for (const name of tools) {
+      if (typeof name !== 'string') {
+        truncated = true;
+        continue;
+      }
+      if (!name.startsWith(`mcp__${serverId}__`)) continue;
+      if (names.length >= 32 || Buffer.byteLength(name, 'utf8') > 128) {
+        truncated = true;
+        continue;
+      }
+      const encodedBytes = Buffer.byteLength(JSON.stringify(name), 'utf8') + 1;
+      if (bytes + encodedBytes > 2048) {
+        truncated = true;
+        continue;
+      }
+      bytes += encodedBytes;
+      names.push(name);
+    }
+  }
+  return {
+    engineToolNames: names,
+    ...(truncated ? { engineToolNamesTruncated: true } : {}),
+  };
+}
+
 export function isClaudeInitMessage(
   message: SDKMessage,
 ): message is Extract<SDKMessage, { type: 'system'; subtype: 'init' }> {
@@ -517,6 +551,7 @@ export function mapClaudeSdkMessage({
       model: message.model,
       cwd: message.cwd,
       metadata: {
+        ...deliveryProbeInventory(record, message.tools),
         ...(record.attemptedResumeCursor === message.session_id
           ? { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'matched' }
           : {}),

@@ -45,7 +45,7 @@ Station consumes Conduit's public `createStrandsAdapter`,
 types. The package also ships its JSON schema and reference evidence as package
 assets. Station binds those adapters to its existing `IAgentHooks` seam and
 generates host-bound evidence against the exact Strands and VoltAgent versions
-in `package-lock.json`; Conduit's adapter-contract reference rows are not
+in `pnpm-lock.yaml`; Conduit's adapter-contract reference rows are not
 treated as runtime proof. Version 0.2.0 was rejected during integration because
 its registry tarball omitted the compiled public export target. Version 0.2.1's
 registry tarball and root import were reverified before adoption.

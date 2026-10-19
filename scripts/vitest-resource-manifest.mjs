@@ -130,6 +130,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Disposable Chromium previews, including renderer limits and process cleanup.
   'src-server/services/__tests__/html-reply-preview.process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
+  // Creates real FIFOs with bounded mkfifo to check prompt CLI attachment refusal.
+  'src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts',
   // Real server esbuild children and executable workflow-policy negative controls.
   'scripts/__tests__/author-telemetry-build.test.ts',
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
@@ -154,6 +156,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/qualification-evidence.test.ts',
   // Runs the advisory review gate as a real child against a loopback GitHub API.
   'scripts/__tests__/advisory-review-gate.test.ts',
+  // #2675: runs the Nightly plan step's shell under bash in a temporary dir.
+  'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.
   'scripts/__tests__/pr-ci-supersession.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
@@ -255,6 +259,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+  // Creates real Git and POSIX FIFO fixtures within its isolated workspace.
+  'src-server/routes/projects/__tests__/coding-content.routes.test.ts',
   // #2374 (epic #2323 S6): real `git` plumbing and pushes into temp bare
   // repositories, through the production publish service and route.
   'src-server/routes/projects/__tests__/plugin-publish-routes.test.ts',
@@ -881,6 +887,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.
   'scripts/__tests__/desktop-runtime-port-lease.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
+  'scripts/__tests__/engine-delivery-probes.test.ts',
+  'scripts/__tests__/engine-delivery-routes.test.ts',
+  // Matrix CLI refusals and sends use real routes, SQLite and a fake adapter.
+  'src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts',
   // Drives the deploy-ledger commit-back's
   // bounded re-derive-and-retry against real local git repositories — the
   // two-writer convergence proof, the off-main ancestry refusal, retry

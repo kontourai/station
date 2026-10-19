@@ -363,6 +363,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
+    'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/answer-quoting.spec.ts',
@@ -1349,6 +1350,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       '#2441: the shared Toggle track clears WCAG 1.4.11 3:1 non-text contrast against every surface it renders on (page, panels, modal, elevated and hover fills), off and on, both sizes, both themes — computed colours after the cascade and both theme blocks resolve, which jsdom cannot compute. Also proves the states differ by more than colour (outlined vs filled track, thumb moves), that the track keeps its 36x20/28x16 size so consumers do not reflow, and that the Browser pane switch keeps its state word, fits and has a 44px hit area at 390px. Same real-source-bundled-with-esbuild technique as banner-stack-bound.spec.ts, with the real index.css token layers bundled alongside; no live instance or server.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/server-older-banner.spec.ts',
+    bucket: 'product',
+    surface: 'Shell',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#2675: the "server is older than this app" banner, rendered by the real ServerOlderLaunchCheck through the real BannerHost with the real index.css token layers, in both themes at desktop and 390px phone width: the one-click "Update server" offer and the manual-remedy variant fit without a horizontal page scroll, and clicking the update moves the same banner to the service update\'s progress. Captures each state for a person to look at. Same real-source-bundled-with-esbuild technique as banner-stack-bound.spec.ts; only the SDK core-update hooks and the connected-server context are stubbed; no live instance or server.',
     exceptions: [],
   },
   {

@@ -1,5 +1,41 @@
 [
   {
+    "timestampUtc": "2026-10-19T07:02:52Z",
+    "channel": "nightly-npm",
+    "version": "0.8.0-nightly.2483.39212464623",
+    "sha": "71d58bde8d45c5d780c123c440ffa89e413f4416",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39212464623",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.8.0-nightly.2483.39212464623 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "45e3cf69687d6d3dab0da9763241593c307952e0",
+      "groups": {
+        "feat": [
+          "[#3790](https://github.com/kontourai/station/pull/3790) feat(telemetry-broker): exact operator and weekly noisy analytics"
+        ],
+        "fix": [
+          "[#3842](https://github.com/kontourai/station/pull/3842) fix(test): keep the adapter registration guard fast under full-regression load",
+          "[#3839](https://github.com/kontourai/station/pull/3839) fix(ci): align Corpus pin and startup font fixtures"
+        ],
+        "ci": [
+          "[#3788](https://github.com/kontourai/station/pull/3788) ci(telemetry): inject the author endpoint only in official builds"
+        ],
+        "docs": [],
+        "other": [
+          "[#3778](https://github.com/kontourai/station/pull/3778) perf: bound file reads and reduce background data churn"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-10-19T00:27:00Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2482.3",

@@ -30,6 +30,9 @@ on:
       reservation_tag:
         description: Immutable authority tag binding the reserved native version.
         value: ${{ jobs.plan-cohort.outputs.reservation_tag }}
+      web_build_version:
+        description: The cohort's full Nightly version (X.Y.Z-nightly.<day>[.<build>]) for the iOS web bundle's build identity.
+        value: ${{ jobs.plan-cohort.outputs.web_build_version }}
 
 permissions:
   contents: read
@@ -48,6 +51,7 @@ jobs:
       marketing_version: ${{ steps.ios_identity.outputs.marketing_version }}
       bundle_version: ${{ steps.allocate.outputs.version_code }}
       reservation_tag: ${{ steps.allocate.outputs.reservation_tag }}
+      web_build_version: ${{ steps.web_identity.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -187,6 +191,16 @@ jobs:
         run: |
           node scripts/release-cohort-workflow.mjs plan-input plan-input.json "${{ steps.source.outputs.sha }}" "$GITHUB_RUN_ID" "${{ steps.allocate.outputs.date }}" "${{ steps.allocate.outputs.build }}"
           node scripts/release-cohort.mjs plan plan-input.json > cohort-plan.json
+      - id: web_identity
+        name: Name the full Nightly version for the iOS web bundle
+        # Apple's marketing version is the bare X.Y.Z, but the web bundle's
+        # build identity is what a client compares with the server it reaches
+        # (#2675), so it carries the same Nightly version as Android and macOS.
+        if: steps.decide.outputs.build == 'true'
+        run: |
+          version=$(node -p 'require("./cohort-plan.json").versionIdentities.desktop.version')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-nightly\.[1-9][0-9]*(\.[1-9][0-9]*)?$ ]] || { echo "::error::cohort desktop version '${version}' is not a Nightly version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.decide.outputs.build == 'true'
         with:
@@ -245,7 +259,7 @@ jobs:
           workspaces: src-desktop
           key: android-aarch64
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with: { distribution: temurin, java-version: 17 }
       # `packages` defaults to `tools platform-tools`, and `tools` is the
       # obsolete SDK Tools package Google removed from the repository — the
@@ -485,6 +499,7 @@ jobs:
       marketing_version: ${{ needs.plan-cohort.outputs.marketing_version }}
       bundle_version: ${{ needs.plan-cohort.outputs.bundle_version }}
       release_label: nightly-${{ needs.plan-cohort.outputs.bundle_version }}
+      web_build_version: ${{ needs.plan-cohort.outputs.web_build_version }}
       mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
       update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}

@@ -1,0 +1,7 @@
+{
+  "revision": "381819009f338806c574afb085f1b57627ae2f30",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed round 3 manifest delta: keep the two delivery child-process suites and base real-server matrix suite classified process-heavy; base pure verdict test is no longer process-heavy. Existing focused/resource guidance remains accurate. Combined five-file focused run passed 128 tests; clean committed-head mutations fail actual assertions and restored suites pass.","inputs":["docs/guides/testing.md"]}
+  ]
+}
