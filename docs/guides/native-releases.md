@@ -51,8 +51,8 @@ restart. The check reads the comment only; the app verifies the signature. `publ
 runs this policy from the default branch, so re-running publication, or a
 break-glass pointer repair, for a tag built before this rule (whose macOS
 signatures name no version) is refused at "Assemble and validate the rolling
-desktop updater channel", before anything is uploaded. Such a tag needs a
-rebuild to publish its updater channel. Artifact names are canonicalized by
+desktop updater channel", before anything is uploaded. Rebuilding such a tag signs with its own,
+older script, so its updater channel can be published only by a new release. Artifact names are canonicalized by
 `scripts/release-artifacts.mjs`; do not rename files in Actions or by hand.
 
 Inventory schema v2 additionally admits exactly four canonical SBOM assets:
