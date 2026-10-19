@@ -269,7 +269,7 @@ export function stringLiteralsIn(content, syntax) {
     while (/[ \t\r\n]/.test(content[index] ?? '')) index += 1;
     return true;
   };
-  const escape = (triple) => {
+  const decodeEscape = (triple) => {
     const next = content[index];
     if (next === undefined) return null;
     if (syntax === 'toml') {
@@ -305,7 +305,7 @@ export function stringLiteralsIn(content, syntax) {
       if (!triple && (char === '\n' || char === '\r')) return null;
       if (escapes && char === '\\') {
         index += 1;
-        const decoded = escape(triple);
+        const decoded = decodeEscape(triple);
         if (decoded === null) return null;
         value += decoded;
         continue;
