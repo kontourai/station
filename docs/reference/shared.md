@@ -12,6 +12,7 @@ If you need a server-only provider interface such as `IBrandingProvider`, `IAuth
 For runtime helpers, use explicit subpaths:
 
 - `@kontourai/station-shared/parsers`
+- `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
