@@ -55,10 +55,14 @@ export function consumeHomeRestoreMarkerAtBoot(
 ): 'none' | 'restore' | 'await-commit' {
   // `running` is resolved only when a marker exists: an ordinary boot reads
   // one missing file and nothing else. A refusal throws.
-  return consumeStationHomeRestoreMarker({ homeDir, running }) as
-    | 'none'
-    | 'restore'
-    | 'await-commit';
+  return consumeStationHomeRestoreMarker({
+    homeDir,
+    running,
+    // For the recovery steps the refusal prints.
+    ...(process.env.STATION_INSTANCE_ID
+      ? { instance: process.env.STATION_INSTANCE_ID }
+      : {}),
+  }) as 'none' | 'restore' | 'await-commit';
 }
 
 /** The handoff committed: the home is the target's, nothing to restore. */

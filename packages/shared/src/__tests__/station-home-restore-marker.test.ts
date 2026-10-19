@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   createStationHomeUpdateBackup,
@@ -151,20 +151,46 @@ describe('the Station home update restore marker (#3851)', () => {
     });
   });
 
-  it('a refusal names the backup, the exact restore command and removing the marker (review F9)', () => {
+  it('a refusal says to stop the service first, then the exact restore command per install kind (review round 2 item 3)', () => {
     const { root, home, from, backupDir } = handedOff();
     const other = { version: '1.2.0', root: join(root, 'versions', '1.2.0') };
-    let message = '';
-    try {
-      consumeStationHomeRestoreMarker({ homeDir: home, running: () => other });
-    } catch (error) {
-      message = (error as Error).message;
-    }
-    expect(message).toContain(backupDir);
-    expect(message).toContain(
-      `"${join(from.root, 'bin', 'station')}" service update-home restore --backup-dir="${backupDir}" --base="${home}"`,
+    const refusal = (platform?: NodeJS.Platform) => {
+      try {
+        consumeStationHomeRestoreMarker({
+          homeDir: home,
+          running: () => other,
+          instance: 'stable',
+          ...(platform ? { platform } : {}),
+        });
+      } catch (error) {
+        return (error as Error).message;
+      }
+      return '';
+    };
+    // A source checkout: `station` at its root, a SHA for its version.
+    const checkout = refusal('linux');
+    expect(
+      checkout.indexOf('station service stop --instance=stable'),
+    ).toBeGreaterThan(-1);
+    expect(checkout.indexOf('station service stop')).toBeLessThan(
+      checkout.indexOf('update-home restore'),
     );
-    expect(message).toContain(`rm "${stationHomeRestoreMarkerPath(home)}"`);
+    expect(checkout).toContain(
+      `"${join(from.root, 'station')}" service update-home restore --backup-dir="${backupDir}" --base="${home}"`,
+    );
+    expect(checkout).toContain(`rm "${stationHomeRestoreMarkerPath(home)}"`);
+    expect(checkout).toContain('station service start --instance=stable');
+    // An archive version: its bin/station; on Windows bin\station.cmd and del.
+    mkdirSync(join(from.root, 'bin'), { recursive: true });
+    writeFileSync(join(from.root, 'bin', 'station.mjs'), '');
+    expect(refusal('darwin')).toContain(
+      `"${join(from.root, 'bin', 'station')}" service update-home restore`,
+    );
+    const windows = refusal('win32');
+    expect(windows).toContain(
+      `"${from.root}\\bin\\station.cmd" service update-home restore`,
+    );
+    expect(windows).toContain(`del "${stationHomeRestoreMarkerPath(home)}"`);
   });
 
   it('a rollback boot whose backup is gone refuses with the same way back, and keeps the home', () => {
@@ -191,5 +217,28 @@ describe('the Station home update restore marker (#3851)', () => {
       /restoring the home .* failed \(EACCES[\s\S]*update-home restore/,
     );
     expect(readStationHomeRestoreMarker(home).kind).toBe('present');
+  });
+
+  it('after a failed restore, the next boot refuses without restoring again (review round 2 item 3)', () => {
+    const { home, from } = handedOff();
+    const restore = vi.fn(() => {
+      throw new Error('EACCES: permission denied');
+    });
+    expect(() =>
+      consumeStationHomeRestoreMarker({
+        homeDir: home,
+        running: () => from,
+        restore,
+      }),
+    ).toThrow(StationHomeRestoreRefusedError);
+    expect(() =>
+      consumeStationHomeRestoreMarker({
+        homeDir: home,
+        running: () => from,
+        restore,
+      }),
+    ).toThrow(/could not restore the home .* not tried again automatically/);
+    expect(restore).toHaveBeenCalledTimes(1);
+    expect(appJson(home)).toBe('{"model":"migrated"}\n');
   });
 });

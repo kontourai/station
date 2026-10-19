@@ -35,6 +35,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -64,6 +65,12 @@ export interface StationHomeRestoreMarker {
   /** The home backup taken before the handoff (absolute, outside the home). */
   backupDir: string;
   createdAt: string;
+  /**
+   * A boot's restore from `backupDir` failed (round 2 item 3): later boots
+   * refuse rather than try again, so a service manager restarting a failed
+   * boot never runs a restore beside the operator's.
+   */
+  restoreFailed?: { at: string; error: string };
 }
 
 export type StationHomeRestoreMarkerRead =
@@ -118,6 +125,15 @@ export function parseStationHomeRestoreMarker(
     !Number.isFinite(Date.parse(marker.createdAt))
   )
     return null;
+  const failed = marker.restoreFailed as Record<string, unknown> | undefined;
+  if (
+    failed !== undefined &&
+    (!failed ||
+      typeof failed !== 'object' ||
+      typeof failed.at !== 'string' ||
+      typeof failed.error !== 'string')
+  )
+    return null;
   return {
     schemaVersion: MARKER_SCHEMA,
     fromRelease: {
@@ -130,6 +146,14 @@ export function parseStationHomeRestoreMarker(
     },
     backupDir: marker.backupDir,
     createdAt: marker.createdAt,
+    ...(failed
+      ? {
+          restoreFailed: {
+            at: failed.at as string,
+            error: failed.error as string,
+          },
+        }
+      : {}),
   };
 }
 
@@ -200,6 +224,34 @@ export function readStationHomeRestoreMarker(
     : { kind: 'invalid', reason: 'is not a restore marker this Station reads' };
 }
 
+/**
+ * Records on the marker that a boot's restore failed, replacing it in place
+ * (the marker exists: this is no new handoff).
+ */
+export function markStationHomeRestoreFailed(
+  homeDir: string,
+  marker: StationHomeRestoreMarker,
+  error: string,
+): void {
+  const path = stationHomeRestoreMarkerPath(homeDir);
+  const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  writeFileSync(
+    temp,
+    `${JSON.stringify(
+      { ...marker, restoreFailed: { at: new Date().toISOString(), error } },
+      null,
+      2,
+    )}\n`,
+    { mode: 0o600, flag: 'wx' },
+  );
+  try {
+    renameSync(temp, path);
+  } catch (caught) {
+    rmSync(temp, { force: true });
+    throw caught;
+  }
+}
+
 /** Removes the marker: the handoff it records is resolved. */
 export function clearStationHomeRestoreMarker(homeDir: string): void {
   rmSync(stationHomeRestoreMarkerPath(homeDir), { force: true });
@@ -232,6 +284,16 @@ export function decideStationHomeRestore(
       reason: `the update restore marker ${read.reason}`,
     };
   const { marker } = read;
+  if (
+    running &&
+    sameRelease(running, marker.fromRelease) &&
+    marker.restoreFailed
+  )
+    return {
+      action: 'refuse',
+      reason: `an earlier boot could not restore the home from ${marker.backupDir} (${marker.restoreFailed.error}); it is not tried again automatically`,
+      marker,
+    };
   if (running && sameRelease(running, marker.fromRelease))
     return existsSync(marker.backupDir)
       ? { action: 'restore', marker }
@@ -254,23 +316,49 @@ export function decideStationHomeRestore(
 }
 
 /**
- * How an operator restores the home by hand: the from-release's own CLI
- * (its store registry decides what the backup holds), then the marker goes.
- * `service update-home restore` is the one command that reads this backup
- * format; this is the case it is documented for.
+ * How an operator restores the home by hand (round 2 item 3), in order:
+ * stop the service, so its manager does not start this release (and its
+ * boot) again meanwhile; restore with the from-release's own CLI (its store
+ * registry decides what the backup holds), the one command that reads this
+ * backup format; remove the marker; start the service. The CLI entry is
+ * the release's own: `bin/station` (`bin\station.cmd` on Windows) in an
+ * archive version, `station` at a source checkout's root.
  */
 export function stationHomeRestoreRecovery(
   homeDir: string,
   marker: StationHomeRestoreMarker | undefined,
+  options: { platform?: NodeJS.Platform; instance?: string } = {},
 ): string {
+  const windows = (options.platform ?? process.platform) === 'win32';
   const markerPath = stationHomeRestoreMarkerPath(homeDir);
+  const instance = options.instance ?? '<instance>';
+  const remove = windows ? `del "${markerPath}"` : `rm "${markerPath}"`;
+  const stop = `  1. Stop the service so it does not start Station again meanwhile: station service stop --instance=${instance}`;
+  const start = `Start it again: station service start --instance=${instance}`;
   if (!marker)
-    return `Read ${markerPath} to find the backup it names, restore the home from it, then remove ${markerPath}. If the home is right for the release you are starting, removing the marker is enough.`;
+    return [
+      stop,
+      `  2. Read ${markerPath} for the backup it names, and restore the home from it; or, if the home is right for the release you are starting, skip this.`,
+      `  3. Remove the marker: ${remove}`,
+      `  4. ${start}`,
+    ].join('\n');
+  const archiveEntry = existsSync(
+    join(marker.fromRelease.root, 'bin', 'station.mjs'),
+  );
+  const entry = archiveEntry
+    ? windows
+      ? `${marker.fromRelease.root}\\bin\\station.cmd`
+      : join(marker.fromRelease.root, 'bin', 'station')
+    : windows
+      ? `${marker.fromRelease.root}\\station.cmd`
+      : join(marker.fromRelease.root, 'station');
   return [
-    `To return to ${marker.fromRelease.version}, restore the home from its backup ${marker.backupDir} with that release's own CLI:`,
-    `  "${join(marker.fromRelease.root, 'bin', 'station')}" service update-home restore --backup-dir="${marker.backupDir}" --base="${homeDir}"`,
-    `then remove the marker: rm "${markerPath}"`,
-    `If the home is right for the release you are starting (${marker.targetRelease.version}, the update's target), removing the marker is enough.`,
+    stop,
+    `  2. Restore the home from ${marker.backupDir} with ${marker.fromRelease.version}'s own CLI:`,
+    `     "${entry}" service update-home restore --backup-dir="${marker.backupDir}" --base="${homeDir}"`,
+    `     (If the home is right for the release you are starting, ${marker.targetRelease.version}, skip this.)`,
+    `  3. Remove the marker: ${remove}`,
+    `  4. ${start}`,
   ].join('\n');
 }
 
@@ -280,9 +368,10 @@ export class StationHomeRestoreRefusedError extends Error {
     homeDir: string,
     reason: string,
     marker?: StationHomeRestoreMarker,
+    options: { platform?: NodeJS.Platform; instance?: string } = {},
   ) {
     super(
-      `Station will not start on ${homeDir}: ${reason}. The home may hold changes from a release that is not running.\n${stationHomeRestoreRecovery(homeDir, marker)}`,
+      `Station will not start on ${homeDir}: ${reason}. The home may hold changes from a release that is not running. To recover:\n${stationHomeRestoreRecovery(homeDir, marker, options)}`,
     );
     this.name = 'StationHomeRestoreRefusedError';
   }
@@ -299,7 +388,11 @@ export function consumeStationHomeRestoreMarker(input: {
   /** Resolved only when a marker is present. */
   running: () => StationReleaseIdentity | null;
   restore?: typeof restoreStationHomeUpdateBackup;
+  /** For the recovery text: the service instance and the host platform. */
+  instance?: string;
+  platform?: NodeJS.Platform;
 }): StationHomeRestoreDecision['action'] {
+  const recovery = { instance: input.instance, platform: input.platform };
   const read = readStationHomeRestoreMarker(input.homeDir);
   if (read.kind === 'absent') return 'none';
   const decision = decideStationHomeRestore(read, input.running());
@@ -308,6 +401,7 @@ export function consumeStationHomeRestoreMarker(input: {
       input.homeDir,
       decision.reason,
       decision.marker,
+      recovery,
     );
   if (decision.action === 'restore') {
     try {
@@ -316,12 +410,20 @@ export function consumeStationHomeRestoreMarker(input: {
         backupDir: decision.marker.backupDir,
       });
     } catch (error) {
-      // The marker stays, so the next boot tries again; the operator gets
-      // the same way back as for any other refusal.
+      // Recorded on the marker, so the next boot refuses instead of trying
+      // again beside the operator (round 2 item 3); the operator gets the
+      // same way back as for any other refusal.
+      const message = (error as Error).message;
+      try {
+        markStationHomeRestoreFailed(input.homeDir, decision.marker, message);
+      } catch {
+        // The refusal below still stops this boot.
+      }
       throw new StationHomeRestoreRefusedError(
         input.homeDir,
-        `restoring the home from ${decision.marker.backupDir} failed (${(error as Error).message})`,
+        `restoring the home from ${decision.marker.backupDir} failed (${message})`,
         decision.marker,
+        recovery,
       );
     }
     clearStationHomeRestoreMarker(input.homeDir);
