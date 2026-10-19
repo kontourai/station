@@ -94,6 +94,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import {
   afterAll,
   afterEach,
@@ -183,6 +184,17 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
 
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isDesktop: false }),
+}));
+
+vi.mock('../views/agent-editor/ToolLibraryContext', () => ({
+  StationToolLibraryProvider: ({ children }: { children: ReactNode }) =>
+    children,
+  useToolLibraryClient: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('@kontourai/station-sdk/tool-library', () => ({
+  useOwnToolAccess: () => ({
+    data: { station: { operator: true, name: 'Fixture Station' } },
+  }),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -350,7 +362,7 @@ const MENUS: readonly {
   {
     name: 'the avatar’s profile menu',
     selector: '.app-toolbar__profile-menu',
-    rowCount: 3,
+    rowCount: 4,
     open: () => {
       // The fine pointer, where this menu exists at all: on a phone the avatar
       // that opens it is hidden and the panel closes itself (see ProfileMenu).

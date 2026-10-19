@@ -16,8 +16,24 @@ vi.mock('../components/header/HeaderActions', () => ({
   HeaderActions: () => null,
 }));
 
-vi.mock('../components/header/LayoutSwitcher', () => ({
-  LayoutSwitcher: () => null,
+const { setLayout } = vi.hoisted(() => ({ setLayout: vi.fn() }));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [{ slug: 'demo', name: 'Demo Project' }] }),
+}));
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigationActions: () => ({ setLayout }),
+}));
+vi.mock('@kontourai/station-sdk', () => ({
+  useProjectLayoutsQuery: (slug: string) => ({
+    data:
+      slug === 'demo'
+        ? [
+            { slug: 'coding', name: 'Coding' },
+            { slug: 'tasks', name: 'Tasks' },
+          ]
+        : [],
+    refetch: vi.fn(),
+  }),
 }));
 
 let productName = 'Station';
@@ -130,4 +146,13 @@ describe('Header chrome accessibility', () => {
     expect(crumb.getAttribute('role')).toBeNull();
     expect(crumb.getAttribute('tabindex')).toBeNull();
   });
+});
+
+test('the header displays the project name while layout navigation retains its slug', () => {
+  breadcrumb = { projectSlug: 'demo', layoutSlug: 'tasks' };
+  render(<Header onToggleSettings={vi.fn()} onNavigate={onNavigate} />);
+  expect(screen.getByRole('link', { name: 'Demo Project' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Switch layout' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Coding' }));
+  expect(setLayout).toHaveBeenCalledWith('demo', 'coding');
 });

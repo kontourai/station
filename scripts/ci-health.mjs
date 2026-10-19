@@ -16,15 +16,17 @@ import {
 const minute = 60_000;
 const time = (value) => Date.parse(value);
 const ratio = (n, d) => (d ? n / d : null);
+const assignedRunner = (job) =>
+  Number.isSafeInteger(job.runner_id) && job.runner_id > 0;
+const startedOnRunner = (job) =>
+  job.status !== 'queued' && assignedRunner(job) && job.started_at;
 const executed = (job) =>
+  startedOnRunner(job) &&
   job.conclusion != null &&
   job.conclusion !== 'skipped' &&
-  job.started_at &&
   job.completed_at;
 const duration = (job) =>
   Math.max(0, time(job.completed_at) - time(job.started_at)) / minute;
-const wait = (job) =>
-  Math.max(0, time(job.started_at) - time(job.created_at)) / minute;
 const failed = (run) => run.conclusion === 'failure';
 
 // Upper-rank quantiles match the capacity baseline, including even-sized medians.
@@ -41,31 +43,45 @@ export function distribution(values) {
     p90: percentile(values, 0.9),
   };
 }
-export function concurrencyTimeline(jobs, until) {
+function intervalMinutes(start, end, since, until) {
+  return (
+    Math.max(
+      0,
+      Math.min(time(end), until ? time(until) : Infinity) -
+        Math.max(time(start), since ? time(since) : -Infinity),
+    ) / minute
+  );
+}
+
+export function concurrencyTimeline(jobs, until, since) {
   const events = jobs
     .flatMap((job) => {
-      if (job.conclusion == null) {
-        const end = time(until);
-        if (job.started_at) {
-          const start = Math.min(time(job.started_at), end);
-          return [
-            [start, 1],
-            [end, -1],
-          ];
-        }
-        // Queued jobs consume no runner slots, but their wait remains observable.
-        return [
-          [Math.min(time(job.created_at), end), 0],
-          [end, 0],
-        ];
-      }
-      if (!executed(job)) return [];
-      const start = time(job.started_at);
+      if (job.conclusion === 'skipped') return [];
+      const end = job.completed_at ?? until;
+      if (!end) return [];
+      const start = Math.max(
+        time(startedOnRunner(job) ? job.started_at : job.created_at),
+        since ? time(since) : -Infinity,
+      );
+      const stop = Math.min(time(end), until ? time(until) : Infinity);
+      if (!Number.isFinite(start) || !Number.isFinite(stop) || stop <= start)
+        return [];
+      // Queued API records can have placeholder started_at timestamps.
+      // Only assigned runners establish execution, never the timestamp alone.
+      const occupied = startedOnRunner(job) ? 1 : 0;
       return [
-        [start, 1],
-        [Math.max(start, time(job.completed_at)), -1],
+        [start, occupied],
+        [stop, -occupied],
       ];
     })
+    .concat(
+      since && until
+        ? [
+            [time(since), 0],
+            [time(until), 0],
+          ]
+        : [],
+    )
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const histogram = {};
   let current = 0;
@@ -210,14 +226,36 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
       reentries[classification]++;
     }
   }
+  const candidateKey = (run) => `${run.head_branch}:${run.head_sha}`;
+  const isCiWorkflow = (run) =>
+    run.path === '.github/workflows/ci.yml' ||
+    (run.path == null && run.name === 'PR: CI');
+  const ownsIntegration = (run) =>
+    isCiWorkflow(run) &&
+    jobs.some(
+      (job) =>
+        job.name === 'Merge-queue regression' &&
+        job.health_run_key === `${run.id}:${run.run_attempt ?? 1}`,
+    );
+  // PR: CI predates integration ownership; the attempt-bound aggregate job
+  // distinguishes it. Select before filtering cancelled/unfinished evidence.
+  const currentOwners = new Set(
+    runs
+      .filter((r) => r.event === 'merge_group' && ownsIntegration(r))
+      .map(candidateKey),
+  );
   const regression = runs.filter(
     (r) =>
       r.event === 'merge_group' &&
-      [
-        'Merge-queue regression',
-        'Merge integration',
-        'PR: Merge integration',
-      ].includes(r.name) &&
+      (isCiWorkflow(r) ||
+        [
+          'Merge-queue regression',
+          'Merge integration',
+          'PR: Merge integration',
+        ].includes(r.name)) &&
+      (isCiWorkflow(r)
+        ? ownsIntegration(r)
+        : !currentOwners.has(candidateKey(r))) &&
       r.conclusion != null &&
       r.conclusion !== 'cancelled' &&
       r.run_started_at &&
@@ -252,17 +290,33 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
     ),
   };
 }
-export function capacityMetrics(jobs, until) {
+export function capacityMetrics(jobs, until, since) {
+  jobs = jobs.filter(
+    (job) =>
+      (!until || time(job.created_at) < time(until)) &&
+      (!since || !job.completed_at || time(job.completed_at) > time(since)),
+  );
   const ran = jobs.filter(executed);
   const unfinished = jobs.filter((j) => j.conclusion == null);
-  const waiting = [...ran, ...unfinished];
-  const waitSoFar = (j) =>
-    Math.max(
-      0,
-      Math.min(time(j.started_at ?? until), time(until)) - time(j.created_at),
-    ) / minute;
-  const jobWait = (j) => (j.conclusion == null ? waitSoFar(j) : wait(j));
-  const waits = waiting.map(jobWait);
+  const unassignedCancelled = jobs.filter(
+    (job) => job.conclusion === 'cancelled' && !assignedRunner(job),
+  );
+  const unattributed = jobs.filter(
+    (job) =>
+      !assignedRunner(job) &&
+      job.status !== 'queued' &&
+      job.conclusion !== 'skipped' &&
+      job.conclusion !== 'cancelled',
+  );
+  const knownUnfinished = unfinished.filter(
+    (job) => job.status === 'queued' || startedOnRunner(job),
+  );
+  const waiting = [...ran, ...knownUnfinished, ...unassignedCancelled];
+  const waitEnd = (job) =>
+    startedOnRunner(job) ? job.started_at : (job.completed_at ?? until);
+  const waitSoFar = (job) =>
+    intervalMinutes(job.created_at, waitEnd(job), undefined, until);
+  const waits = waiting.map(waitSoFar);
   const platform = (j) =>
     /macos/i.test(j.labels.join(' '))
       ? 'macos'
@@ -273,16 +327,37 @@ export function capacityMetrics(jobs, until) {
     executed: ran.length,
     skipped: jobs.filter((j) => j.conclusion === 'skipped').length,
     unfinished: unfinished.length,
-    unfinishedWaitMinutes: distribution(unfinished.map(waitSoFar)),
-    runnerHours: ran.reduce((sum, j) => sum + duration(j), 0) / 60,
-    waitingHours: waits.reduce((a, b) => a + b, 0) / 60,
-    concurrency: concurrencyTimeline(jobs, until),
+    unattributed: unattributed.length,
+    unfinishedWaitMinutes: distribution(knownUnfinished.map(waitSoFar)),
+    runnerHours:
+      ran.reduce(
+        (sum, j) =>
+          sum + intervalMinutes(j.started_at, j.completed_at, since, until),
+        0,
+      ) / 60,
+    waitingHours:
+      waiting.reduce(
+        (sum, j) =>
+          sum + intervalMinutes(j.created_at, waitEnd(j), since, until),
+        0,
+      ) / 60,
+    concurrency: concurrencyTimeline(jobs, until, since),
+    hostedConcurrency: concurrencyTimeline(
+      jobs.filter((j) => !j.labels.includes('self-hosted')),
+      until,
+      since,
+    ),
+    selfHostedConcurrency: concurrencyTimeline(
+      jobs.filter((j) => j.labels.includes('self-hosted')),
+      until,
+      since,
+    ),
     waitOver5Share: ratio(waits.filter((w) => w > 5).length, waiting.length),
     waitOver20Share: ratio(waits.filter((w) => w > 20).length, waiting.length),
     platformWaitMinutes: Object.fromEntries(
       ['linux', 'windows', 'macos'].map((os) => [
         os,
-        distribution(waiting.filter((j) => platform(j) === os).map(jobWait)),
+        distribution(waiting.filter((j) => platform(j) === os).map(waitSoFar)),
       ]),
     ),
   };
@@ -739,8 +814,12 @@ export function qualificationMetrics(runs, jobs) {
   };
 }
 export function buildSnapshot(data, options) {
-  const capacity = capacityMetrics(data.jobs, options.until);
+  const capacity = capacityMetrics(data.jobs, options.until, options.since);
   const reasons = [...data.reasons];
+  if (capacity.unattributed)
+    reasons.push(
+      `window includes ${capacity.unattributed} jobs with unavailable runner attribution`,
+    );
   if (capacity.unfinished)
     reasons.push(`window includes ${capacity.unfinished} unfinished jobs`);
   return {
@@ -868,7 +947,12 @@ export function renderSnapshot(s) {
       'Unfinished wait so far minutes median / p90',
       stats(c.unfinishedWaitMinutes),
     ],
-    ['Time with >=18 jobs running', percent(c.concurrency.shareAtLeast18)],
+    [
+      'Time with >=18 hosted jobs running',
+      c.hostedConcurrency
+        ? percent(c.hostedConcurrency.shareAtLeast18)
+        : 'unavailable (legacy snapshot)',
+    ],
     [
       'Jobs waiting >5 / >20 minutes',
       `${percent(c.waitOver5Share)} / ${percent(c.waitOver20Share)}`,
@@ -922,7 +1006,7 @@ export function readHistory(comments) {
     .sort((a, b) => time(a.until) - time(b.until));
 }
 export function renderHistory(snapshots) {
-  return `| Window end | Hours | Failed groups | >=18 running | Wait >5 min | Wait >20 min | New commits / unchanged | Incomplete |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${snapshots.map((s) => `| ${s.until} | ${number((time(s.until) - time(s.since)) / (60 * minute))} | ${percent(s.mergeQueue.failureRate)} | ${percent(s.capacity.concurrency.shareAtLeast18)} | ${percent(s.capacity.waitOver5Share)} | ${percent(s.capacity.waitOver20Share)} | ${s.mergeQueue.reentries.neededNewCommits} / ${s.mergeQueue.reentries.passedUnchanged} | ${s.incomplete} |`).join('\n')}`;
+  return `| Window end | Hours | Failed groups | >=18 hosted running | Wait >5 min | Wait >20 min | New commits / unchanged | Incomplete |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${snapshots.map((s) => `| ${s.until} | ${number((time(s.until) - time(s.since)) / (60 * minute))} | ${percent(s.mergeQueue.failureRate)} | ${s.capacity.hostedConcurrency ? percent(s.capacity.hostedConcurrency.shareAtLeast18) : 'unavailable (legacy snapshot)'} | ${percent(s.capacity.waitOver5Share)} | ${percent(s.capacity.waitOver20Share)} | ${s.mergeQueue.reentries.neededNewCommits} / ${s.mergeQueue.reentries.passedUnchanged} | ${s.incomplete} |`).join('\n')}`;
 }
 async function main() {
   const options = parseOptions(process.argv.slice(2));

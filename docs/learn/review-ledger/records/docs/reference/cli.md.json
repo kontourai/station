@@ -18,8 +18,6 @@
 
     "packages/cli/bundle-externals.mjs",
 
-    "packages/cli/package.json",
-
     "packages/cli/src/__tests__/cloud-project-import-durability.test.ts",
 
     "packages/cli/src/__tests__/cloud-project-import.test.ts",
@@ -192,7 +190,31 @@
 
     "src-server/utils/path-containment.ts",
 
-    "station"
+    "station",
+
+    "packages/cli/package.json#/name",
+
+    "packages/cli/package.json#/bin",
+
+    "packages/cli/package.json#/files",
+
+    "packages/cli/package.json#/scripts",
+
+    "packages/cli/package.json#/engines",
+
+    "packages/cli/package.json#/publishConfig",
+
+    "packages/cli/src/commands/delegate.ts",
+
+    "packages/cli/src/__tests__/delegate.test.ts",
+
+    "packages/cli/src/bin.ts",
+
+    "packages/cli/src/help.ts",
+
+    "packages/cli/src/__tests__/core-http.test.ts",
+
+    "packages/cli/src/commands/telemetry.ts"
   ],
 
   "checks": [

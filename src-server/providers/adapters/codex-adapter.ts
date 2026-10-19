@@ -13,6 +13,8 @@ import type {
   ConnectionQuotaSnapshotUpdate,
 } from '@kontourai/station-contracts/connection-quota';
 import { mergeQuotaSnapshot } from '@kontourai/station-contracts/connection-quota';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
@@ -34,7 +36,12 @@ import type {
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  assertRequiredConfinementObserved,
+  observedConfinementRecord,
+} from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import {
   adapterSessionStartDuration,
@@ -131,6 +138,11 @@ import {
   reportedCodexThreadSandbox,
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
+import {
+  describeCodexSandboxGap,
+  observeCodexSandboxPosture,
+  requiredByReportedPolicy,
+} from './codex-confinement.js';
 import {
   type CodexToolServerSkip,
   resolveCodexMcpServers,
@@ -731,6 +743,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       'external-process',
       'image-input',
     ],
+    durability: STEERING_ENGINE_DURABILITY,
     continuity: this.continuity,
     connectionId: engineConnectionId('codex'),
     builtin: true,
@@ -1907,15 +1920,29 @@ export class CodexAdapter implements ProviderAdapterShape {
         input.reviewIsolation,
         input.confinement,
       );
+      // #2494 D1: a workspace session Station sends no mode to still asks
+      // Codex for its sandbox at thread level, with `approvalPolicy` left
+      // unset so Codex's own configuration keeps governing approvals. Codex
+      // configured `never` + `danger-full-access` then runs confined from the
+      // start instead of being refused; only a Codex that still reports
+      // something wider is refused below.
+      const sandboxRequest =
+        approvalKnobs?.sandbox ??
+        (input.confinementPlan?.policyBasis === 'workspace-floor'
+          ? ('workspace-write' as const)
+          : undefined);
       const approvalWire = approvalKnobs
         ? {
             approvalPolicy: approvalKnobs.approvalPolicy,
             sandbox: approvalKnobs.sandbox,
           }
-        : {};
+        : sandboxRequest
+          ? { sandbox: sandboxRequest }
+          : {};
       const result = adoption
         ? await this.forkNativeAdoption(record, adoption, {
             approvalKnobs,
+            ...(sandboxRequest ? { sandboxRequest } : {}),
             serviceTier: modelOptions.fastMode ? 'fast' : null,
             ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
           })
@@ -1968,6 +1995,48 @@ export class CodexAdapter implements ProviderAdapterShape {
           'The engine opened a different native conversation; the requested resume was refused.',
         );
       }
+      // #2559: the sandbox the thread actually runs in. Codex reports it on
+      // start, resume and fork alike; when it does not, what Station asked
+      // for is the best-known value.
+      const reportedSandbox = readCodexSandboxPolicy(
+        (result as { sandbox?: unknown } | undefined)?.sandbox,
+      );
+      // #2494: the confinement record comes from Codex's response, never
+      // from the sandbox Station sent. A start whose policy requires
+      // confinement and whose engine does not report it applied is refused
+      // here, before it is claimed or announced; the catch below stops the
+      // process. The requirement also follows the approval policy Codex
+      // reports: a workspace session Codex runs at `never` (its own
+      // configuration, when Station sent no knobs) requires confinement too.
+      const plan = requiredByReportedPolicy(
+        input.confinementPlan,
+        (result as { approvalPolicy?: unknown } | undefined)?.approvalPolicy,
+      );
+      const sandboxEvidence = {
+        requested: sandboxRequest,
+        reported: reportedSandbox,
+        workspace: input.cwd,
+        permittedRoots: [engineSpawnTmpDirPath()],
+      };
+      const confinementRecord = plan
+        ? observedConfinementRecord(
+            plan,
+            plan.mechanism === 'codex-sandbox'
+              ? observeCodexSandboxPosture(sandboxEvidence)
+              : 'configured-but-failed',
+          )
+        : undefined;
+      // INVARIANT (#2494 D5): this refusal runs before `session.started` is
+      // published below. `ConfinementRefusedError` is a
+      // `SessionStartRefusedError`, whose contract lets the start boundary
+      // settle the thread only because no session was announced: moving this
+      // after the publish would leave an announced session with no end.
+      if (confinementRecord)
+        assertRequiredConfinementObserved(
+          confinementRecord,
+          this.provider,
+          describeCodexSandboxGap(sandboxEvidence),
+        );
       this.transport.setCodexThreadId(record, codexThread.id);
       this.options.nativeSessionOwnership?.claim(
         nativeSessionIdentityKey(
@@ -1994,15 +2063,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       // the ONLY place the resolved model ever appears.
       const reportedModelFromInit =
         extractStringField(result, 'model') ?? undefined;
-      // #2559: the sandbox the thread actually runs in. Codex reports it on
-      // start, resume and fork alike; when it does not, what Station asked
-      // for is the best-known value.
-      const reportedSandbox = readCodexSandboxPolicy(
-        (result as { sandbox?: unknown } | undefined)?.sandbox,
-      );
       record.threadSandbox = reportedCodexThreadSandbox(
         reportedSandbox,
-        approvalKnobs?.sandbox,
+        sandboxRequest,
       );
       // #2559 R5: what `session.configured` reports is the sandbox Codex
       // said the thread runs in; the requested mode only when it said
@@ -2034,6 +2097,9 @@ export class CodexAdapter implements ProviderAdapterShape {
             ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
             : undefined,
           codexThreadId: codexThread.id,
+          ...(confinementRecord
+            ? { [STATION_CONFINEMENT_RECORD_METADATA_KEY]: confinementRecord }
+            : {}),
           ...(adoption
             ? {
                 continuation: 'native-fork',
@@ -2239,6 +2305,8 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption: CodexNativeAdoption,
     execution: {
       approvalKnobs?: CodexExecutionKnobs;
+      /** #2494 D1: the thread-level sandbox asked for when no knobs are sent. */
+      sandboxRequest?: CodexExecutionKnobs['sandbox'];
       serviceTier: string | null;
       config?: Record<string, unknown>;
     },
@@ -2259,7 +2327,9 @@ export class CodexAdapter implements ProviderAdapterShape {
               approvalPolicy: execution.approvalKnobs.approvalPolicy,
               sandbox: execution.approvalKnobs.sandbox,
             }
-          : {}),
+          : execution.sandboxRequest
+            ? { sandbox: execution.sandboxRequest }
+            : {}),
         serviceTier: execution.serviceTier,
         ...(execution.config ? { config: execution.config } : {}),
         ephemeral: false,

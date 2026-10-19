@@ -1,0 +1,7 @@
+{
+  "revision": "bd7f3e88bfe95eac65a9f013cc600590f5a9fce3",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Fix round 6 of the delivery-state change: a remote-change pass starts only when a row the previous projection showed held back by an earlier row of its chat becomes sendable here (no longer on every notice, which re-sent a busy chat's message until it failed); that pass only sends (no reconcile, no syncHeld); a durable replay into a running turn returns deferred instead of not-invoked, so it spends no attempt (useActiveChatSessionMessaging.ts); a renderer whose lock request fails is recorded in a bounded localStorage list and read as unknown liveness, never gone (outboundQueueLease.ts); claimNext marks its claim in flight before announcing it. The changed input here is useActiveChatSessionMessaging.ts, where only the durable-replay busy branch changed (deferred instead of not-invoked). Searched this document for not-invoked, attempt, deferred, busy and replay claims; none describes that branch. No prose change.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

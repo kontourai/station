@@ -58,7 +58,21 @@
 
     "scripts/__tests__/version-pr-operation.test.ts",
 
-    "scripts/nightly-qualification-decide.mjs"
+    "scripts/nightly-qualification-decide.mjs",
+
+    "scripts/pr-delivery-plan.mjs",
+
+    "scripts/pr-delivery-paths.json",
+
+    ".github/workflows/delivery-validation.yml",
+
+    ".github/workflows/source-verification-policy.yml",
+
+    "scripts/source-verification-policy.mjs",
+
+    "scripts/release-pipeline.mjs",
+
+    ".github/workflows/hosted-capacity-probe.yml"
   ],
 
   "checks": [

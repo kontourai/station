@@ -17,8 +17,12 @@
  *   is closed (FCM with no `onNewToken` hook; push-to-start tokens are only
  *   read when the app asks), so a stored registration re-registers when the
  *   token (or, on iOS, its APNs environment) changed or the last
- *   registration is more than a day old. Nothing is registered that the
- *   person has not turned on.
+ *   registration is more than a day old. Otherwise it asks the Station
+ *   (`nativePushRegistrationStatus`) and re-registers when the Station no
+ *   longer holds this registration (it dropped it after the gateway said the
+ *   token was gone, or the phone was paired again as a new device). A
+ *   Station without that route, or one that cannot answer, keeps the rule
+ *   above. Nothing is registered that the person has not turned on.
  *
  * Registrations are kept per Station (environment id), so a phone paired with
  * several Stations keeps one each.
@@ -32,6 +36,7 @@ import {
   type NativePushIosBundle,
   type NativePushRegistrationRequest,
   type NativePushRegistrationResponse,
+  type NativePushRegistrationStatus,
 } from '@kontourai/station-contracts/native-push';
 import type {
   NativeAgentActivityPhoneStatus,
@@ -127,6 +132,14 @@ export interface AgentActivityDependencies {
     apiBase: string,
   ): Promise<NativePushRegistrationResponse>;
   unregister(apiBase: string): Promise<void>;
+  /**
+   * The Station's view of this device's registration, or `null` from a
+   * Station that predates the status route. Optional: without it, refresh
+   * relies on token changes and age alone.
+   */
+  registrationStatus?(
+    apiBase: string,
+  ): Promise<NativePushRegistrationStatus | null>;
   store: AgentActivityRegistrationStore;
   /** Ask the OS for notification permission; resolves whether it is granted. */
   requestNotificationPermission(): Promise<boolean>;
@@ -341,6 +354,28 @@ export function createAgentActivityController(
     return record;
   }
 
+  /**
+   * Whether the Station has lost (or replaced) the registration this phone
+   * holds. An old Station (`null`) or one that cannot answer is not evidence
+   * of a loss: refresh then keeps its token and age rule.
+   */
+  async function stationLostRegistration(
+    target: AgentActivityTarget,
+    record: AgentActivityRegistrationRecord,
+  ): Promise<boolean> {
+    if (!deps.registrationStatus) return false;
+    let status: NativePushRegistrationStatus | null;
+    try {
+      status = await deps.registrationStatus(target.apiBase);
+    } catch {
+      return false;
+    }
+    return (
+      status !== null &&
+      (!status.registered || status.registrationId !== record.registrationId)
+    );
+  }
+
   return {
     registration: (environmentId) => deps.store.get(environmentId),
 
@@ -450,7 +485,12 @@ export function createAgentActivityController(
           (record.platform !== 'ios' ||
             (identity.platform === 'ios' &&
               identity.apnsEnvironment === record.apnsEnvironment));
-        if (unchanged && fresh) return 'current';
+        if (
+          unchanged &&
+          fresh &&
+          !(await stationLostRegistration(target, record))
+        )
+          return 'current';
         await registerAndConfigure(target, token.token, identity, record);
         return 'refreshed';
       }),

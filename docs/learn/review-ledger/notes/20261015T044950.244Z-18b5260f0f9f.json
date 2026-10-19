@@ -1,0 +1,7 @@
+{
+  "revision": "329309c92e0e24896c63c04e59a1e59dbcf35d62",
+
+  "notes": [
+    {"path":"packages/monument/CONTEXT.md","note":"Re-read terminal-fact ownership and retention against the bound SQLite open validation and transaction-time callback dispatch. The context now distinguishes fixed-at-open bound host callbacks from the portable context hook; default terminal retention, strict session fences, timestamp fallbacks and the production read-view deferral remain accurate. No migration or production coordinator switch is claimed.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/sqlite.ts"]}
+  ]
+}

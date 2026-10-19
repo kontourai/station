@@ -1,0 +1,17 @@
+{
+  "revision": "360455289373da97f2aa60e6f1dbca9c2ec6ea33",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed overlap resolution at36045528937: the checksum-pinned installer is identical to upstream; a separate one-minute version preflight remains before dependency/corpus execution. No authority, protected standard, readiness route or pass criterion changed. Linux execution remains hosted qualification, not source inspection.","inputs":[".veritas/README.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed canonical actionlint installer and separate preflight against normal hook and completion guidance. The preflight only verifies the installed parser; source/reuse/integration assertions remain, with additive inputs allowed. No lint baseline, severity, source admission or promotion requirement changed.","inputs":["docs/guides/code-quality.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed merged main5c420476 and standalone parser preflight. The current developer feedback and exact-source qualification route remains accurate. Provisioning is still explicit and checksum-bound; dependency installation does not claim to install host tools. Product/library behavior is unaffected by the conflict resolution.","inputs":["docs/guides/development.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed full-regression overlap: kept the common reviewed installer bytes and moved the version command into its own bounded step before corpus work. Queue class, exact-source/reuse, source admission and promotion conditions are unchanged. New upstream native/CLI/worktree contracts remain distinct from runtime, provider and release proof.","inputs":["docs/guides/releasing.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed six conflicts against both parents. Stable mounted QueryClient, cache-owned feed records, exact copied-fork request binding and explicit integration/source/reuse assertions are retained. The new common-installer contract initially caught the inline version command; moving it to separate preflight preserves both contracts. Seven suites pass110 tests, final workflow subset59, and new main CLI/worktree/gallery/governance suites266; UI/E2E types, fixtures and workflow gate pass. No fixture assertion is weakened or skipped. Prior fault/restoration receipts remain tied to unchanged fixture/production bytes; fresh hosted combined qualification remains pending.","inputs":["docs/guides/testing.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed merged contract table and canonical human-record source union: retained package exports/tool-library DTO citations and added main workspace-isolation/worktree-provisioning citations. All other record fields are identical between parents. Tool-library row remains accurate; optional baseCommit is the resolved starting identity, not a current-workspace or execution-isolation guarantee. New main worktree/CLI tests passed266 with gallery/governance owners; no portable provider or native runtime acceptance is inferred.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

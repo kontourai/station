@@ -650,6 +650,26 @@ describe('attachment refusal (attachment_input_unsupported)', () => {
   });
 });
 
+describe('engine changed (execution_engine_changed)', () => {
+  const stale = {
+    status: 409,
+    // The literal the server forwards, not the constant.
+    code: 'execution_engine_changed',
+    message:
+      "Agent 'station' now runs on engine connection 'opencode', not Station's own engine as this request expected. Re-read the Agent and choose again.",
+  };
+
+  it('is a conflict with the user view, not a transient failure or a terminal chat', () => {
+    const translated = translateChatError(stale);
+    expect(translated.title).toBe('This Agent now runs somewhere else');
+    expect(translated.body).toBe(`${stale.message} Nothing was sent.`);
+    expect(translated.hint).toContain('Check the engine and model shown');
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.retryable).toBe(false);
+    expect(translated.terminalSession).toBeUndefined();
+  });
+});
+
 describe('model refusal (model_not_advertised)', () => {
   const refusal = {
     status: 400,

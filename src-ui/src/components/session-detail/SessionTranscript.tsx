@@ -16,6 +16,10 @@ import {
   TranscriptMarker,
   transcriptMarkerLabel,
 } from '../chat/TranscriptMarker';
+import {
+  projectTranscriptMessages,
+  type TranscriptRow,
+} from '../chat/transcriptProjection';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
 
@@ -96,25 +100,38 @@ export const SessionTranscript = memo(function SessionTranscript({
   useEffect(() => {
     onSettledChange?.(settled);
   }, [onSettledChange, settled]);
+  const previousRows = useRef<readonly TranscriptRow[]>([]);
   const rows = useMemo(() => {
-    const projected = projectRuntimeEventsToMessages(events, {
+    let projected = projectRuntimeEventsToMessages(events, {
       stableIds: true,
     }).map((message) => ({
       id: message.id,
       role: message.role,
+      content: '',
       contentParts: message.parts.flatMap(conversationPartToContentParts),
     }));
-    if (!failureShownAbove) return projected;
-    const last = projected.at(-1);
-    if (!last || last.role !== 'assistant') return projected;
-    const kept = last.contentParts.filter((part) => !part.runtimeError);
-    if (kept.length === last.contentParts.length) return projected;
-    return kept.length === 0
-      ? projected.slice(0, -1)
-      : [...projected.slice(0, -1), { ...last, contentParts: kept }];
-  }, [events, failureShownAbove]);
+    if (failureShownAbove) {
+      const last = projected.at(-1);
+      if (last?.role === 'assistant') {
+        const kept = last.contentParts.filter((part) => !part.runtimeError);
+        if (kept.length !== last.contentParts.length) {
+          projected =
+            kept.length === 0
+              ? projected.slice(0, -1)
+              : [...projected.slice(0, -1), { ...last, contentParts: kept }];
+        }
+      }
+    }
+    const next = projectTranscriptMessages(
+      session.threadId,
+      projected,
+      previousRows.current,
+    );
+    previousRows.current = next;
+    return next;
+  }, [events, failureShownAbove, session.threadId]);
   const lastIndex = rows.length - 1;
-  const lastIsAssistant = rows[lastIndex]?.role === 'assistant';
+  const lastIsAssistant = rows[lastIndex]?.message.role === 'assistant';
 
   return (
     <section
@@ -180,15 +197,14 @@ export const SessionTranscript = memo(function SessionTranscript({
           />
         )
       ) : (
-        rows.map((message, index) => {
+        rows.map(({ id, message }, index) => {
           const marker = transcriptMarkerLabel(message.contentParts);
-          if (marker)
-            return <TranscriptMarker key={message.id} label={marker} />;
+          if (marker) return <TranscriptMarker key={id} label={marker} />;
           const streaming =
             isStreaming && index === lastIndex && message.role === 'assistant';
           return (
             <article
-              key={message.id}
+              key={id}
               className={`session-transcript__message session-transcript__message--${message.role}`}
               data-testid="session-transcript-message"
               data-role={message.role}

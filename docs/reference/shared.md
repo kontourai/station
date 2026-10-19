@@ -31,7 +31,12 @@ owning declarations; import the canonical type rather than copying an interface.
 ## Product telemetry
 
 `@kontourai/station-shared/product-telemetry` is a Node-only leaf. It renders and
-fingerprints the canonical event/envelope inventory and provides
+exports `PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION` for the canonical data
+inventory and `FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION` for that inventory plus
+the Full disclosure wording revision. `USAGE_TELEMETRY_INVENTORY_REVISION`
+is the deprecated acknowledgement compatibility export; use the explicit
+acknowledgement name. Wording changes leave batch
+and probe compatibility unchanged. It provides
 `parseProductTelemetryBatch` for strict v1 receiver validation. It rejects
 unsupported versions, stale inventory revisions, unexpected fields, invalid
 timestamps, unclassified properties and invalid build provenance. It accepts
@@ -40,6 +45,14 @@ commit, deduplication and namespace isolation belong to the receiver.
 The contract shape and event constants live in
 `@kontourai/station-contracts/product-telemetry`. Validation alone proves no
 collection, consent, durable storage or deployed service.
+
+`parseProductTelemetryCommitReceipt` additionally requires the exact requested
+event-ID set, valid timestamp and matching inserted/duplicate counts before a
+sender can remove that batch. `parseProductTelemetryProbeRequest` and
+`parseProductTelemetryProbeReceipt` validate the separate content-free
+source/schema check. A compatible probe does not acknowledge disclosure,
+create an installation identity or establish an accepted observation. These
+parsers remain Node-only; the browser status SDK uses its own response boundary.
 
 ## Native relay link codec
 
@@ -295,6 +308,7 @@ interface AgentTools {
   mcpServers: string[];
   available?: string[];
   autoApprove?: string[];
+  askBeforeUse?: string[];
   unattendedAutoApprove?: string[];
   browser?: boolean;
 }

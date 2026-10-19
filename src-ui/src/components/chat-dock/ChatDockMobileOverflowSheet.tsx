@@ -95,6 +95,16 @@ export function ChatDockMobileOverflowSheet({
         >
           Inbox
         </button>
+        {overflow.onTurnIntoTask && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(overflow.onTurnIntoTask!)}
+          >
+            Turn into Task
+          </button>
+        )}
         {overflow.onOpenConversationHistory && (
           <button
             type="button"

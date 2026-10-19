@@ -14,6 +14,12 @@ import { StationHttpError } from './api-error-message';
  */
 export class ChatHttpError extends StationHttpError {
   readonly serverMessage?: string;
+  /**
+   * `'indeterminate'` when Station refused a keyed turn because it may
+   * already have started (`code: foreground_message_indeterminate`): do not
+   * resend it. Unset for every other refusal.
+   */
+  declare readonly outcome?: 'indeterminate';
 
   /**
    * Whether Station itself answered (`isStationAnswer`): the body has

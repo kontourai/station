@@ -5,7 +5,13 @@
  * exit to the planted import rather than to a malformed fixture.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { scratchRepo } from './helpers/guardrail-scratch.js';
@@ -19,6 +25,7 @@ const CLEAN = {
   [`${ROOT}/README.md`]: '# Monument\n',
   [`${ROOT}/LICENSE`]: 'Apache-2.0\n',
   [`${ROOT}/tsconfig.json`]: '{}\n',
+  [`${ROOT}/tsconfig.build.json`]: '{}\n',
   [`${ROOT}/src/index.ts`]:
     "import { DatabaseSync } from 'node:sqlite';\nexport { local } from './local.js';\nexport type Db = DatabaseSync;\n",
   [`${ROOT}/src/local.ts`]: 'export const local = 1;\n',
@@ -421,6 +428,26 @@ describe('monument import boundary gate', () => {
           "export * from './NODE_MODULES/@kontourai/station-shared/index.js';\n",
       },
       [['src-server/link', '../packages/monument/src']],
+      // Station depends on the package now, so an installed checkout has
+      // `node_modules/@kontourai/monument` linked to the workspace directory.
+      // The scratch repository's node_modules is the real one, whose link
+      // leads out of the scratch tree; give it the link an install of the
+      // scratch tree would make, or the route resolves outside the package.
+      (dir) => {
+        const modules = join(dir, 'node_modules');
+        rmSync(modules);
+        mkdirSync(join(modules, '@kontourai'), { recursive: true });
+        symlinkSync(
+          join(resolve('node_modules'), 'typescript-api'),
+          join(modules, 'typescript-api'),
+          'dir',
+        );
+        symlinkSync(
+          `../../${ROOT}`,
+          join(modules, '@kontourai', 'monument'),
+          'dir',
+        );
+      },
     );
     expect(result.status, result.output).toBe(1);
     for (const line of [

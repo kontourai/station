@@ -569,12 +569,31 @@ the public environment identity and checks a fresh nonce/HMAC response against
 that home's operator credential. These checks do not make an independently
 untrusted destination safe. Select the home and listener you operate.
 
+With no explicit target, host approval first discovers the live loopback listener
+in the CLI's selected Station home. This takes precedence over project and
+saved-default Stations. `--station`, `--api-base`, and `STATION_TARGET` remain
+explicit selections; a remote target is refused rather than redirected to a
+local instance. If discovery finds no listener, existing saved-local and port
+selection still applies. The CLI verifies the listener's environment identity
+and fresh proof before sending any operator credential.
+
 The command loads the operator credential inside the host process, sends it
 only to the loopback Station API, asks for interactive confirmation, and prints
 only request metadata. It refuses a non-loopback `--api-base`. For scripted SSH,
 `--latest --force` is available as an explicit noninteractive choice; it should
 be used only after reviewing `access list`. `access deny` uses the same local,
 non-secret boundary.
+
+The host's launcher sign-in session on the same computer may create invitations, decide pending
+requests and manage paired devices while its grant retains `access:manage`.
+This authority comes from the server's private host-possession and
+`ui-bootstrap` mint record, not from an ordinary paired Device carrying that
+scope. Invited Devices do not inherit it. It does not grant operator identity,
+passkey management or the native desktop consent broker's local-grant authority.
+The host browser cannot introduce protected management or consent scopes into
+an invitation, a pending request's final approved scope, or another Device's
+permissions. Ordinary Device-use grants, including running commands and full
+access, remain available; protected promotions keep their separate operator path.
 
 At the end of onboarding or in the Connections modal, choose **Connect another device** to invite a phone
 to the selected Station server. The existing client and the phone both connect
@@ -584,8 +603,8 @@ The panel warns when the address is a loopback one, and remembers the last
 reachable address an offer was created with for that Station, offering it back
 as the field's starting value the next time (#2228).
 Choose **Create pairing code**, scan with the phone camera to open the selected
-installed Station channel, then review and approve the request. For Station’s
-in-app scanner, select **Scanner inside Station** above the QR instead.
+installed Station channel, then redeem the invitation. Creating it approves
+the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** above the QR instead.
 **Paired devices → Approve another device** also opens the invitation panel.
 The selected client channel controls both the app-opening QR and any published
 mobile download links. Public store and beta invitation URLs are maintained in
@@ -604,10 +623,21 @@ and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
 
+For another browser, set **Browser app address** to a reachable Station web
+address and choose **Copy browser link**. That address must serve the web UI
+and proxy this same Station’s API. Its origin can differ from the API listener;
+the browser invitation uses the selected web origin for pairing and the session
+cookie. The link carries the offer in its fragment, opens the invitation review even in an
+unpaired browser and removes the proof from visible history before proceeding.
+The CLI equivalent is `station environment offer --browser-url=<web-origin>`.
+App links and raw scanner payloads remain available for installed Station apps.
+
 On the other device, choose **Scan a QR code** or **Enter a pairing code**, and
-name the device. The host must confirm the displayed name and scope. Only then
-can the browser atomically exchange the offer once for a random device
-credential. When
+name the device. An invitation approved at creation can be exchanged once for
+a random device credential. Legacy offers and offers created with
+`station environment offer --require-approval` still require the host to confirm
+the displayed name and scope before exchange. Unsolicited **Request access**
+requests always require approval. When
 the Station endpoint is the browser's own origin, the server returns only safe
 device/environment metadata and stores that credential in a host-only,
 persistent `HttpOnly` `SameSite=Strict` cookie. Closing and reopening the phone
@@ -624,8 +654,15 @@ other devices. Existing streams have their own revalidation boundaries; this is
 not a guarantee that revocation closes every already admitted socket. It does
 not recall data already delivered or guarantee cancellation of effects already
 dispatched. Ordinary paired
-credentials cannot create pairing offers or revoke other devices. A device
-explicitly granted `access:approve` can list and decide pending requests; that
+credentials cannot create pairing offers. An explicitly promoted
+`access:devices` Device can list, change scopes, revoke and remove revoked
+records using the same authenticated principal in the Paired devices panel.
+Only the operator can grant or remove `access:devices`; a person-bound holder
+also needs the Admin group ceiling, and account-bound guest route restrictions
+remain independent. Other scopes, including `approval:full-access`, do not
+confer administration. See [device administration](api.md#administer-paired-device-access).
+A device explicitly granted `access:approve` can list and decide pending requests (a
+device tied to a person only while that person's Station group is Admin); that
 does not grant device-inventory or offer-management access. The native desktop's
 local grant, minted using proof of Station-home possession, can manage pairing
 within its current scope. Browser launcher grants do not inherit that authority.
@@ -634,7 +671,8 @@ The host-managed `station environment credential rotate` path replaces the
 operator credential, preserves the environment ID and paired-device registry,
 and prints the new secret to stdout after confirmation. Keep that output out of
 logs and shared terminals. `station environment reset` replaces the environment
-ID and operator credential and clears paired-device authority; its output is
+ID and operator credential and clears paired-device authority and personal
+access tokens; its output is
 metadata rather than the new credential. Both support explicit `--force` to
 bypass the prompt. The separately installed CLI refuses these operations when
 no host security service is supplied; use the host's repository launcher or
@@ -1116,3 +1154,20 @@ triangle. This richer UI state is distinct from `ConnectionStatus`.
 ```tsx
 <ConnectionStatusDot status="connected" size={10} />
 ```
+
+## Browser session isolation on one host
+
+New browser sessions use an HttpOnly cookie whose name includes a stable hash
+of the Station environment identity. Signing in to another Station on the same
+host no longer replaces that cookie. HTTPS retains the `__Host-` prefix,
+Secure, Path=/ and SameSite=Strict; loopback HTTP retains its separate naming.
+The name is a namespace, not authentication: each Station still validates the
+credential, scope, locality and revocation through its own authority.
+
+Legacy cookie names remain readable. With several Station cookies present,
+the reader accepts exactly one credential recognized by the current Station;
+ambiguous current credentials, duplicate names and malformed Station cookies
+are refused. The same selection is used by consent, notification registration
+and secure application-session adoption. Unrelated browser cookies do not
+grant Station authority. A fresh launcher link can also be opened in an
+existing access screen without reloading; consumed links are never replayed.

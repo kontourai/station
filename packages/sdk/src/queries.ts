@@ -131,7 +131,9 @@ export {
   type RegistryCatalogTab,
   useApplyIntegrationToolsMutation,
   useDeleteIntegrationMutation,
+  useFinishIntegrationOAuthMutation,
   useInstalledRegistryItemsQuery,
+  useIntegrationAccountQuery,
   useIntegrationQuery,
   useIntegrationsQuery,
   useKitLayoutQuery,
@@ -149,6 +151,7 @@ export {
   useSaveIntegrationMutation,
   useSetIntegrationEnabledMutation,
   useSetIntegrationRenderPermissionMutation,
+  useStartIntegrationOAuthMutation,
 } from './query-domains/catalog';
 export {
   type AdoptOrchestrationSessionIntent,
@@ -221,6 +224,7 @@ export {
   type MessageSearchInstance,
   type MessageSearchResponse,
   type MessageSearchResult,
+  nativePushRegistrationStatus,
   type OrchestrationCommandDispatchResult,
   type OrchestrationCommandInput,
   type OrchestrationCommandReceipt,
@@ -393,6 +397,12 @@ export {
   peerCredentialQueries,
   usePeerCredentialsQuery,
 } from './query-domains/peerCredentials';
+export {
+  useBoardAttentionQuery,
+  useBoardRecentWorkQuery,
+  usePersonalBoardQuery,
+  useSavePersonalBoardMutation,
+} from './query-domains/personalBoards';
 export {
   type AgentHealthStatus,
   createWorkspaceHomeRoleRequest,
@@ -612,6 +622,29 @@ export {
   useRemoveSshEnvironmentMutation,
   useSshEnvironmentsQuery,
 } from './query-domains/sshEnvironments';
+export {
+  fetchOwnAccessTokens,
+  fetchStationPeople,
+  isOperatorCredentialRequired,
+  isStationAccessUnavailable,
+  mintOwnAccessToken,
+  mintStationPersonToken,
+  OWN_ACCESS_TOKENS_QUERY_KEY,
+  type PersonalTokenInput,
+  revokeOwnAccessToken,
+  revokeStationPersonToken,
+  STATION_PEOPLE_QUERY_KEY,
+  StationAccessError,
+  type StationGroupChange,
+  setStationPersonGroup,
+  useMintOwnAccessTokenMutation,
+  useMintStationPersonTokenMutation,
+  useOwnAccessTokensQuery,
+  useRevokeOwnAccessTokenMutation,
+  useRevokeStationPersonTokenMutation,
+  useSetStationPersonGroupMutation,
+  useStationPeopleQuery,
+} from './query-domains/stationPeople';
 export { useStationUsageQuery } from './query-domains/stationUsage';
 export {
   type AuthStatusData,
@@ -715,6 +748,12 @@ export {
   useTaskTurnReferencesQuery,
   useUpdateTaskStatusMutation,
 } from './query-domains/taskGraph';
+export {
+  checkTelemetryConnection,
+  fetchTelemetryDeliveryStatus,
+  useCheckTelemetryConnectionMutation,
+  useTelemetryDeliveryStatusQuery,
+} from './query-domains/telemetryDelivery';
 export {
   type TrustBundleSourceVM,
   type TrustBundleSummaryVM,

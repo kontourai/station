@@ -20,6 +20,7 @@ import {
   AUTHORED_ARTIFACT_MAX_CHARS,
   authoredArtifactBudgetMessage,
 } from '../../../../src-shared/authored-artifact-limits.js';
+import { personalBoardDefinitionSchema } from './personal-board.js';
 
 /** Mirrors `SkillSourceContext` in `@kontourai/station-contracts/catalog`. */
 const skillSourceContextSchema = z.object({
@@ -290,6 +291,16 @@ const layoutComponentRefSchema = z.union([
 ]);
 
 const layoutConfigSchema = z.record(z.unknown()).superRefine((config, ctx) => {
+  for (const field of ['dashboard', 'dashboardProposal']) {
+    if (config[field] === undefined) continue;
+    const result = personalBoardDefinitionSchema.safeParse(config[field]);
+    if (!result.success)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: result.error.issues[0]?.message ?? 'Invalid Board definition',
+      });
+  }
   const tabs = config.tabs;
   if (tabs === undefined) return;
   if (!Array.isArray(tabs)) {

@@ -31,6 +31,9 @@ describe('agents view utils', () => {
         project: 'private-project',
         toolsConfig: {
           mcpServers: ['safe-server'],
+          mcpMode: 'replace',
+          mcpLoading: 'on-demand',
+          askBeforeUse: ['mcp/safe-server/*'],
           available: ['safe-server_read'],
           autoApprove: ['safe-server_read'],
           unattendedAutoApprove: ['safe-server_read'],
@@ -54,6 +57,9 @@ describe('agents view utils', () => {
       maxSteps: '',
       tools: {
         mcpServers: ['safe-server'],
+        mcpMode: 'replace',
+        mcpLoading: 'on-demand',
+        askBeforeUse: ['mcp/safe-server/*'],
         available: ['safe-server_read'],
         autoApprove: ['safe-server_read'],
         // #2613: the unattended opt-in is a standing grant the editor can't
@@ -97,6 +103,9 @@ describe('agents view utils', () => {
         maxSteps: 7,
         toolsConfig: {
           mcpServers: ['server-1'],
+          mcpMode: 'replace',
+          mcpLoading: 'on-demand',
+          askBeforeUse: ['mcp/server-1/*'],
           available: ['server-1_tool-a'],
           autoApprove: ['server-1_tool-a'],
         },
@@ -120,6 +129,9 @@ describe('agents view utils', () => {
       maxSteps: '7',
       tools: {
         mcpServers: ['server-1'],
+        mcpMode: 'replace',
+        mcpLoading: 'on-demand',
+        askBeforeUse: ['mcp/server-1/*'],
         available: ['server-1_tool-a'],
         autoApprove: ['server-1_tool-a'],
         unattendedAutoApprove: [],
@@ -130,6 +142,9 @@ describe('agents view utils', () => {
       // not model (archive#2693).
       toolsOriginal: {
         mcpServers: ['server-1'],
+        mcpMode: 'replace',
+        mcpLoading: 'on-demand',
+        askBeforeUse: ['mcp/server-1/*'],
         available: ['server-1_tool-a'],
         autoApprove: ['server-1_tool-a'],
       },

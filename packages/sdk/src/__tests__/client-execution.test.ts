@@ -6,6 +6,7 @@ import {
   ForegroundMessageIndeterminateError,
   getConversationContextBoundaryStatus,
   getConversationHandoffStatus,
+  getTurnDelivery,
   handoffExecutionMessage,
 } from '../client/execution';
 import { sendExecutionMessage } from '../client/send-execution-message';
@@ -91,6 +92,55 @@ describe('client execution', () => {
       }),
     );
   });
+
+  test.each(['send', 'continue'])(
+    'preserves a queued receipt as a typed outcome for ordinary %s callers',
+    async (route) => {
+      const receipt = {
+        outcome: 'queued',
+        conversationId: 'conv-1',
+        clientTurnId: 'queued-key',
+        entry: {
+          conversationId: 'conv-1',
+          clientTurnId: 'queued-key',
+          kind: 'follow-up',
+          state: 'queued',
+          message: 'waiting',
+          createdAt: '2030-01-01T00:00:00.000Z',
+          updatedAt: '2030-01-01T00:00:00.000Z',
+        },
+      };
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ success: true, data: receipt }), {
+          status: 202,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      const pending =
+        route === 'send'
+          ? sendExecutionMessage('http://station.test', {
+              conversationId: 'conv-1',
+              clientTurnId: 'queued-key',
+              message: 'waiting',
+              target: {
+                environment: { kind: 'current' },
+                agent: agentId('station'),
+              },
+            })
+          : continueExecutionMessage('http://station.test', 'conv-1', {
+              clientTurnId: 'queued-key',
+              message: 'waiting',
+            });
+      await expect(pending).rejects.toMatchObject({
+        name: 'ForegroundMessageQueuedError',
+        status: 202,
+        outcome: 'queued',
+        receipt,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test('never treats a receipt without provider turn evidence as accepted', async () => {
     vi.stubGlobal(
@@ -236,6 +286,51 @@ describe('client execution', () => {
     );
   });
 
+  test("reads a send's delivery by its key, and never reads a refusal as not-received", async () => {
+    const data = {
+      outcome: 'received',
+      conversationId: 'conversation/a',
+      clientTurnId: 'turn/key',
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, data }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      getTurnDelivery('http://station.test', 'conversation/a', 'turn/key'),
+    ).resolves.toEqual(data);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://station.test/api/orchestration/conversations/conversation%2Fa/turn-deliveries/turn%2Fkey',
+      expect.anything(),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, data }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await getTurnDelivery('http://station.test', 'c', 'k', {
+      projectSlug: 'my project',
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://station.test/api/orchestration/conversations/c/turn-deliveries/k?projectSlug=my%20project',
+      expect.anything(),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false, error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    // An older Station has no lookup: that must not read as "safe to resend".
+    await expect(
+      getTurnDelivery('http://station.test', 'conversation/a', 'turn/key'),
+    ).rejects.toBeInstanceOf(ClientChatHttpError);
+  });
+
   test('reads durable context-boundary status with the idempotency key', async () => {
     const data = {
       boundaryId: 'boundary-a',
@@ -312,41 +407,55 @@ describe('client execution', () => {
     });
   });
 
-  test('preserves a coded orchestration refusal for the composer', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          success: false,
-          error: "This conversation's worktree is gone and cannot be resumed.",
-          code: 'continuation_workspace_worktree_gone',
-        }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    let error: unknown;
-    try {
-      await sendExecutionMessage('http://station.test', {
-        message: 'Resume safely',
-        target: {
-          environment: { kind: 'current' },
-          agent: agentId('station'),
-        },
-      });
-      expect.unreachable('expected an orchestration refusal');
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error).toBeInstanceOf(ChatHttpError);
-    expect(error).toMatchObject({
+  test.each([
+    {
       status: 400,
-      serverMessage:
-        "This conversation's worktree is gone and cannot be resumed.",
       code: 'continuation_workspace_worktree_gone',
-    });
-    expect(ChatHttpError).toBe(ClientChatHttpError);
-  });
+      message: "This conversation's worktree is gone and cannot be resumed.",
+    },
+    {
+      status: 409,
+      code: 'client_turn_input_conflict',
+      message:
+        'This client turn key already names a different submitted input.',
+    },
+  ])(
+    'preserves a coded orchestration refusal $code for the composer',
+    async ({ status, code, message }) => {
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: message,
+            code,
+          }),
+          { status, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      let error: unknown;
+      try {
+        await sendExecutionMessage('http://station.test', {
+          message: 'Resume safely',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+        });
+        expect.unreachable('expected an orchestration refusal');
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBeInstanceOf(ChatHttpError);
+      expect(error).toMatchObject({
+        status,
+        serverMessage: message,
+        code,
+      });
+      expect(ChatHttpError).toBe(ClientChatHttpError);
+    },
+  );
 
   test('parses foreground indeterminacy as typed no-retry evidence', async () => {
     const receipt = {

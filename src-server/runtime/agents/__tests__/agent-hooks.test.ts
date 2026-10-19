@@ -664,23 +664,48 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
     });
   });
 
-  test('still allows an autoApproved tool with no approval channel (guards over-denial)', async () => {
-    const deps = createDeps();
-    const hooks = createAgentHooks(deps);
+  test.each(['github_*', 'mcp/github/create_issue'])(
+    'allows %s with no approval channel',
+    async (pattern) => {
+      const generation = new MCPToolProvenanceGeneration();
+      const mapping = new Map<string, MCPToolNameMappingEntry>();
+      normalizeLoadedMCPTools(
+        'planner',
+        [{ name: 'github_create_issue' }],
+        mapping,
+        new Map(),
+        generation,
+        'github',
+        () => ({ serverId: 'github', originalToolName: 'create_issue' }),
+        { debug: vi.fn() },
+      );
+      const deps = createDeps({
+        spec: {
+          name: 'Planner',
+          prompt: '',
+          tools: {
+            autoApprove: [pattern],
+            askBeforeUse: pattern.startsWith('mcp/') ? ['mcp/github/*'] : [],
+          },
+        },
+        toolNameMapping: mapping,
+      });
+      const hooks = createAgentHooks(deps);
 
-    const approved = await hooks.beforeToolCall!(
-      {
-        toolName: 'github_create_issue',
-        toolCallId: 'tool-1',
-        toolArgs: {},
-      },
-      { agentSlug: 'planner' },
-    );
+      const approved = await hooks.beforeToolCall!(
+        {
+          toolName: 'github_createIssue',
+          toolCallId: 'tool-1',
+          toolArgs: {},
+        },
+        { agentSlug: 'planner' },
+      );
 
-    expect(approved).toBe(true);
-    expect(deps.logger.warn).not.toHaveBeenCalled();
-    expect(toolDenials.add).not.toHaveBeenCalled();
-  });
+      expect(approved).toBe(true);
+      expect(deps.logger.warn).not.toHaveBeenCalled();
+      expect(toolDenials.add).not.toHaveBeenCalled();
+    },
+  );
 
   test('a requester scoped to another conversation does not cover the invocation', async () => {
     const deps = createDeps();
@@ -1172,9 +1197,12 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
     expect(requester).not.toHaveBeenCalled();
   });
 
-  test('unattendedAutoApprove, written against the original MCP name, runs the tool unattended', async () => {
+  test.each([
+    'station-control_delete_agent',
+    'mcp/station-control/delete_agent',
+  ])('unattendedAutoApprove %s runs the tool unattended', async (pattern) => {
     const { hooks } = hooksFor({
-      unattendedAutoApprove: ['station-control_delete_agent'],
+      unattendedAutoApprove: [pattern],
     });
 
     await expect(

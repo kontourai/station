@@ -1,0 +1,7 @@
+{
+  "revision": "e88208d9cffe2f47a0252fb051de939a04019a79",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Upstream docs/reference/cli.md change only rewords the start and fresh --temp-home rows to describe the /tmp/station fallback. Searched this doc for temp-home/temporary-home location claims; none, no prose change.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]}
+  ]
+}

@@ -36,10 +36,15 @@ export function turnClaimIsReclaimable(record: TurnDedupRecord): boolean {
   return record.invocation === 'pending' || record.invocation === 'untracked';
 }
 
+/**
+ * `tombstoned` says the key's resolved row was evicted by retention. It is
+ * consulted only when no row exists: a row always answers for itself.
+ */
 export function decideTurnDedupClaim(
   current: TurnDedupRecord | undefined,
   command: TurnDedupClaimCommand,
   liveness: OwnerLiveness,
+  tombstoned = false,
 ): TurnDedupDecision<TurnDedupClaimResult> {
   const owned: TurnDedupRecord = {
     key: command.key,
@@ -47,12 +52,24 @@ export function decideTurnDedupClaim(
     createdAt: command.now,
     owner: ownerFields(command.owner),
     invocation: command.tracking === 'tracked' ? 'pending' : 'untracked',
+    ...(command.inputDigest !== undefined
+      ? { inputDigest: command.inputDigest }
+      : {}),
   };
-  if (!current)
+  if (!current) {
+    // The effect ran and its result is gone: never claim the key afresh.
+    if (tombstoned) return { write: NO_WRITE, result: { kind: 'expired' } };
     return {
       write: { kind: 'put', record: owned },
       result: { kind: 'claimed', reclaimed: false },
     };
+  }
+  if (
+    current.inputDigest !== undefined &&
+    command.inputDigest !== undefined &&
+    current.inputDigest !== command.inputDigest
+  )
+    return { write: NO_WRITE, result: { kind: 'conflict' } };
   if (current.value !== null)
     return {
       write: NO_WRITE,
@@ -64,7 +81,19 @@ export function decideTurnDedupClaim(
     if (!turnClaimIsReclaimable(current))
       return { write: NO_WRITE, result: { kind: 'indeterminate' } };
     return {
-      write: { kind: 'put', record: owned },
+      write: {
+        kind: 'put',
+        record: {
+          key: owned.key,
+          value: owned.value,
+          createdAt: owned.createdAt,
+          owner: owned.owner,
+          invocation: owned.invocation,
+          ...(current.inputDigest !== undefined
+            ? { inputDigest: current.inputDigest }
+            : {}),
+        },
+      },
       result: { kind: 'claimed', reclaimed: true },
     };
   }

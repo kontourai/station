@@ -1,0 +1,7 @@
+{
+  "revision": "cd332ee65d54ed3306d0c10dc1ce5a9e8ed79160",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Re-read --temp-home rows for start and fresh plus the root/state paragraph. helpers.ts change only affects --temp-home minting: a candidate the runtime-home guard rejects (e.g. TMPDIR inside a Station instance tree, as for Station-spawned agents) is removed and retried once under /tmp; other home selections, ports and channel derivation unchanged. Updated both --temp-home rows to state the /tmp fallback; a temp home is still self-rooted.","inputs":["docs/reference/cli.md","packages/cli/src/commands/helpers.ts"]}
+  ]
+}

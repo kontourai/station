@@ -72,6 +72,7 @@ export interface LayoutRegistryActionInput {
  * consumers receive the resolved same-origin `iconUrl` only when it is valid.
  */
 export interface IntegrationViewModel extends ToolDef {
+  origin?: import('@kontourai/station-contracts/tool').ToolOrigin;
   /** Names of configured secret env vars; values and backing refs never cross the API. */
   secretEnvKeys?: string[];
   /** Same-origin, output-only URL for Station-validated local raster art. */
@@ -350,18 +351,72 @@ export function useDeleteIntegrationMutation(
 }
 
 export function useReconnectIntegrationMutation(
-  options?: MutationOptions<void, string>,
+  options?: MutationOptions<IntegrationViewModel, string>,
 ) {
   return useApiMutation(
     async (id: string) => {
-      await requestIntegration<void>(`/${encodeURIComponent(id)}/reconnect`, {
-        method: 'POST',
-      });
+      return requestIntegration<IntegrationViewModel>(
+        `/${encodeURIComponent(id)}/reconnect`,
+        {
+          method: 'POST',
+        },
+      );
     },
     {
       invalidateKeys: [['integrations']],
       onSuccess: options?.onSuccess,
       onError: options?.onError,
+    },
+  );
+}
+
+export function useIntegrationAccountQuery(id: string, projectSlug?: string) {
+  return useApiQuery<
+    import('@kontourai/station-contracts/tool').ToolAccountStatus
+  >(
+    ['integration-account', id, projectSlug ?? null],
+    () =>
+      requestIntegration(
+        `/${encodeURIComponent(id)}/account${projectSlug ? `?projectSlug=${encodeURIComponent(projectSlug)}` : ''}`,
+      ),
+    { cancelWhenInactive: true },
+  );
+}
+
+export function useStartIntegrationOAuthMutation() {
+  return useApiMutation(
+    ({ id, projectSlug }: { id: string; projectSlug?: string }) =>
+      requestIntegration<{ authorizationUrl: string }>(
+        `/${encodeURIComponent(id)}/oauth/authorize`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'remote', projectSlug }),
+        },
+      ),
+    { invalidateKeys: [['integration-account'], ['integrations']] },
+  );
+}
+
+export function useFinishIntegrationOAuthMutation() {
+  return useApiMutation(
+    ({
+      id,
+      callbackUrl,
+      projectSlug,
+    }: {
+      id: string;
+      callbackUrl: string;
+      projectSlug?: string;
+    }) =>
+      requestIntegration(`/${encodeURIComponent(id)}/oauth/callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callbackUrl, projectSlug }),
+      }),
+    {
+      invalidateKeys: [['integration-account'], ['integrations']],
+      evictSettledVariables: true,
     },
   );
 }

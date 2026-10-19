@@ -112,6 +112,16 @@ its evidence limits. Configured OTel registers providers before instrument
 creation while identity I/O remains asynchronous (#2755). An instrument
 registration or exporter startup log is not collector receipt.
 
+Disclosed product observations use a separate
+[UsageTelemetryService](../src-server/services/usage-telemetry-service.ts) and
+[standalone receiver](../packages/telemetry-broker/README.md), with an explicit
+destination, current disclosure and source credential. The receiver's dedicated
+PostgreSQL store returns a commit receipt for retained source/event identities.
+This optional product path does not feed canonical EventStore accounting or
+establish collector delivery. Settings health describes the current process;
+connection checks do not substitute for an accepted observation or downstream
+query. Personal analytics continues to consume canonical usage receipts.
+
 Terminal and voice use dedicated WebSocket listeners and are not represented
 by the HTTP/SSE arrow. Browser/Device frames use a binary HTTP stream. A
 same-origin UI/API proxy does not by itself expose the dedicated socket ports;
@@ -499,7 +509,9 @@ existing in source does not mean the published CLI can execute it locally.
 ### `src-ui/` — Web UI
 
 React/Vite UI consumes SDK/Connect plus Station-owned navigation, cache and
-Device settings. The UI may be served with an API proxy or packaged in a native
+account preferences and device settings. Account choices are partitioned by the
+verified person on the connected Station; hardware, grants and geometry remain
+device-local. The UI may be served with an API proxy or packaged in a native
 shell; that choice does not merge every HTTP, SSE and dedicated WebSocket
 transport. [Frontend patterns](patterns/frontend.md), [theming](guides/theming.md)
 and [responsive contracts](guides/responsive-ui.md) locate the shared owners.

@@ -1,17 +1,14 @@
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import type { ProductTelemetryCommitReceipt as ProductCommit } from '@kontourai/station-contracts/product-telemetry';
+import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createProductBroker } from '../app.js';
-import {
-  BrokerError,
-  type ProductCommit,
-  type ProductRepository,
-} from '../store.js';
+import { BrokerError, type ProductRepository } from '../store.js';
 
 const operatorKey = `sto_${'a'.repeat(43)}`;
 const sourceKey = `stp_${'b'.repeat(43)}`;
 const batch = () => ({
   schema_version: 1,
-  inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
+  inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   distinct_id: 'a'.repeat(64),
   events: [
     {
@@ -35,6 +32,7 @@ const commit: ProductCommit = {
 };
 const store = {
   ingest: vi.fn<ProductRepository['ingest']>(),
+  probe: vi.fn<ProductRepository['probe']>(),
   createSource: vi.fn<ProductRepository['createSource']>(),
   revokeSource: vi.fn<ProductRepository['revokeSource']>(),
   receipt: vi.fn<ProductRepository['receipt']>(),
@@ -45,6 +43,13 @@ beforeEach(() => {
   vi.resetAllMocks();
   store.ingest.mockResolvedValue(commit);
   store.ready.mockResolvedValue();
+  store.probe.mockResolvedValue({
+    protocol: 'station-product-probe/v1',
+    sourceId: commit.sourceId,
+    inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+    checkedAt: '2026-10-10T12:00:02.000Z',
+    storage: 'postgres-schema-v1',
+  });
 });
 const post = (body: unknown, key = sourceKey) => ({
   method: 'POST',
@@ -52,6 +57,68 @@ const post = (body: unknown, key = sourceKey) => ({
   body: JSON.stringify(body),
 });
 describe('product receiver HTTP admission and acknowledgement boundary', () => {
+  test('the explicit probe queries source-scoped storage without ingesting observations', async () => {
+    const response = await createProductBroker(store, operatorKey).request(
+      '/v1/product/probes',
+      post({
+        protocol: 'station-product-probe/v1',
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      probe: {
+        protocol: 'station-product-probe/v1',
+        sourceId: commit.sourceId,
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+        checkedAt: '2026-10-10T12:00:02.000Z',
+        storage: 'postgres-schema-v1',
+      },
+    });
+    expect(store.probe).toHaveBeenCalledExactlyOnceWith(sourceKey);
+    expect(store.ingest).not.toHaveBeenCalled();
+    expect(store.receipt).not.toHaveBeenCalled();
+  });
+  test.each([
+    {
+      protocol: 'station-product-probe/v2',
+      inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+    },
+    { protocol: 'station-product-probe/v1', inventoryRevision: 'stale' },
+    {
+      protocol: 'station-product-probe/v1',
+      inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+      prompt: 'private-content',
+    },
+  ])(
+    'invalid probes never reach storage or echo their content',
+    async (body) => {
+      const response = await createProductBroker(store, operatorKey).request(
+        '/v1/product/probes',
+        post(body),
+      );
+      expect(response.status).toBe(400);
+      expect(store.probe).not.toHaveBeenCalled();
+      expect(await response.text()).not.toContain('private-content');
+    },
+  );
+  test('revoked source and incompatible storage probes fail without ingesting observations', async () => {
+    for (const [code, status] of [
+      ['source_unauthorized', 401],
+      ['schema_incompatible', 503],
+    ] as const) {
+      store.probe.mockRejectedValueOnce(new BrokerError(code));
+      const response = await createProductBroker(store, operatorKey).request(
+        '/v1/product/probes',
+        post({
+          protocol: 'station-product-probe/v1',
+          inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+        }),
+      );
+      expect(response.status).toBe(status);
+      expect(store.ingest).not.toHaveBeenCalled();
+    }
+  });
   test('source and operator credentials do not cross their namespaces', async () => {
     const app = createProductBroker(store, operatorKey);
     expect(

@@ -1,5 +1,48 @@
 # @kontourai/station-cli
 
+## 0.8.0
+
+### Minor Changes
+
+- 19aff2a: Add local Skill library inspection and revision-bound experience author review commands. Include a Station-curated attributed Matt Pocock engineering Agent Plugin example with portable dependency materialization and explicit workflow stops.
+
+### Patch Changes
+
+- db816d2: Desktop sidecars and installed services now share one atomic host-owner claim. `claimHostOwner` replaces
+  `claimDesktopSidecar` and refuses any other live Desktop sidecar or durable
+  service on the home under one registry lock, reaping provably stale sidecar
+  records and returning the winning owner. `station service install` reserves the home and records policy before backend
+  startup, restoring the prior entry on backend failure. The service supervisor
+  refuses missing policy or a live conflicting owner with a readable remedy,
+  and stops Station if readiness publication fails. It takes the installer's
+  reservation before starting Station. Desktop publishes its spawned child's
+  PID/birth before Listening, retaining the fence while a live orphan shuts down.
+  Direct server entrypoints remain unfenced; bare container `service run` now
+  refuses missing policy and needs an explicit policy-registration lifecycle.
+  `removeOwnedInstance` gains `removeWhenOwnerGone`.
+- 971eba6: `station plugins list`, `preview`, `install`, `update`, `remove` and
+  `registry install` report a request that hit its deadline as a timeout
+  instead of claiming Station is not reachable. A timed-out install or update
+  now says the write may still have been applied, rather than inviting a
+  blind retry. A refused connection is still reported as unreachable.
+- c6c7d4d: A request left open by an aborted turn is settled instead of staying pending.
+  `@kontourai/station-shared/request-settlement` exports
+  `requestIdsSettledByTurnAbort`, the fold the server and the CLI both apply.
+  `station approvals list` and `station operate` no longer offer such a request,
+  `approvals list` rows carry `requestEventId`, and `approvals respond` and
+  `operate` bind a decision to the request event they showed. The contracts
+  change is documentation of `request.opened.turnId` and of what a
+  `request.resolved` with status `cancelled` or `expired` means.
+- 884f77c: `station start --temp-home` and `station fresh --temp-home` no longer fail
+  when run by an agent Station spawned. That agent's `TMPDIR` is
+  `<home>/tmp/engine-spawn`, so the temporary home either was refused as a
+  non-leaf instance path or, under a self-rooted parent home, was admitted into
+  a tree the parent reaps by age. A candidate under the `tmp/` tree of
+  `STATION_HOME` or the resolved Station root, or one the runtime-home guard
+  refuses, is now removed and the home is created under `/tmp/station` instead
+  (not on Windows). When that retry is refused too, the error reports both
+  refusals. `createStationTempDirSync` accepts an optional `root`.
+
 ## 0.7.0
 
 ### Minor Changes

@@ -1,0 +1,7 @@
+{
+  "revision": "b6c88a5c570b84f069d4a46ede1977eb951d889a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed integration with main and hydration adoption against conversationOpenController, useChatDockActions, useOpenConversation and ConversationsStore. Current command currency gates cache/tab publication separately from cleanup ownership; real-store epoch regression failed before repair, 139 focused tests and UI typecheck passed, cleanup-ownership mutation fails all three healthy-adoption controls and restored source passes. Sidebar conversation rows were removed upstream; freshness applies to dock, Home and mobile picker. Browser/native/provider qualification is separate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "df7b96310914c8671c3584eb71f0b1a1a1f4af0c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Traced toast decisions through showApprovalToast, foreground chat identity, answerFromToast and existing request-bound delivery. Visible conversations preserve their layout; background approvals still open the originating conversation. Decision scope, send and inspection deadlines and receipts are unchanged. Existing 42 approval handler unit cases pass; browser journey evidence is recorded separately and does not establish provider delivery.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","src-ui/src/hooks/orchestration/approvalHandlers.ts","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "revision": "ee0285e6abae8fec0ba8570da01c65bba90da1c3",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed the refactor in the round-4 commit (one list of continuation workspace refusal codes): CONTINUATION_WORKSPACE_REFUSAL_CODES moves to the contracts execution-target module, ContinuationWorkspaceError takes its code type from it with the same seven codes, and the thread inbox spreads it into its reasonCode allowlist. No behaviour change; a scan for continuation_workspace and ContinuationWorkspaceError found no claim in this document about the code set or its location.","inputs":["docs/architecture.md","src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-recorded after the thread inbox began reading the continuation workspace refusal codes from the contracts execution-target module instead of a local list; the Held follow-ups paragraph does not name where the list lives, and its reasonCode statements are unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the refactor in the round-4 commit (one list of continuation workspace refusal codes): CONTINUATION_WORKSPACE_REFUSAL_CODES moves to the contracts execution-target module, ContinuationWorkspaceError takes its code type from it with the same seven codes, and the thread inbox spreads it into its reasonCode allowlist. No behaviour change; a scan for continuation_workspace and ContinuationWorkspaceError found no claim in this document about the code set or its location.","inputs":["docs/design/channel-home-authority.md","src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed the refactor in the round-4 commit (one list of continuation workspace refusal codes): CONTINUATION_WORKSPACE_REFUSAL_CODES moves to the contracts execution-target module, ContinuationWorkspaceError takes its code type from it with the same seven codes, and the thread inbox spreads it into its reasonCode allowlist. No behaviour change; a scan for continuation_workspace and ContinuationWorkspaceError found no claim in this document about the code set or its location.","inputs":["docs/design/isolated-agent-runs.md","src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Reviewed the refactor in the round-4 commit (one list of continuation workspace refusal codes): CONTINUATION_WORKSPACE_REFUSAL_CODES moves to the contracts execution-target module, ContinuationWorkspaceError takes its code type from it with the same seven codes, and the thread inbox spreads it into its reasonCode allowlist. No behaviour change; a scan for continuation_workspace and ContinuationWorkspaceError found no claim in this document about the code set or its location.","inputs":["docs/design/remote-execution-preparation.md","packages/contracts/src/execution-target.ts"]}
+  ]
+}

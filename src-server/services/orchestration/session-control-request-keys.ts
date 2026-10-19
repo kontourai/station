@@ -1,4 +1,13 @@
 import { createHash } from 'node:crypto';
+import {
+  type KernelCommand,
+  type KernelResult,
+  resolveKernelLimits,
+} from '@kontourai/monument';
+import {
+  openSqliteKernelStorage,
+  type SqliteKernelTables,
+} from '@kontourai/monument/sqlite';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 /**
@@ -22,12 +31,17 @@ import type { SqliteDatabase } from './sqlite-database.js';
  * tool input says, so one agent cannot replay or collide with another's keys.
  */
 
-/** Rows older than this are forgotten; a retry that late is a new request. */
+/**
+ * Completed rows older than this are forgotten; a retry that late is a new
+ * request. Unresolved claims are kept whatever their age (#3559), and past
+ * this age they stop counting toward the caps.
+ */
 export const SESSION_CONTROL_REQUEST_KEY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * The most rows one calling Session keeps. Past it, that caller's OWN oldest
  * completed rows are evicted to make room (a key that old no longer replays);
- * only when every one of its rows is an unresolved claim is the caller refused.
+ * only when every one of its counted rows is an unresolved claim younger than
+ * the TTL is the caller refused.
  * One caller therefore cannot fill the table for the others.
  */
 export const SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER = 300;
@@ -80,13 +94,21 @@ export interface SessionControlRequestKeys {
   settle(id: SessionControlRequestKeyId): void;
 }
 
-function sqliteChanges(result: unknown): number {
-  return typeof result === 'object' &&
-    result !== null &&
-    typeof (result as { changes?: unknown }).changes === 'number'
-    ? (result as { changes: number }).changes
-    : 0;
-}
+/**
+ * Station's request-key table, bound in place of the kernel's own: it stays
+ * the source of truth. The rules (the digest check, the quotas, and the TTL
+ * purge that keeps an unresolved claim and stops counting it, #3606) are
+ * Monument's.
+ */
+export const SESSION_CONTROL_REQUEST_KEY_KERNEL_TABLES: SqliteKernelTables = {
+  requestKeys: {
+    table: 'session_control_request_keys',
+    resultColumn: 'result_json',
+  },
+  turnDedup: 'unused',
+  turnBoundary: 'unused',
+  inbox: 'unused',
+};
 
 const activeId = (id: SessionControlRequestKeyId): string =>
   JSON.stringify([id.callerSessionId, id.tool, id.key]);
@@ -116,111 +138,82 @@ export function createSqliteSessionControlRequestKeys(
   } = {},
 ): SessionControlRequestKeys {
   const now = options.now ?? (() => Date.now());
-  const perCallerCap =
-    options.limits?.perCaller ??
-    SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER;
-  const stationCap =
-    options.limits?.station ?? SESSION_CONTROL_REQUEST_KEY_MAX_ROWS;
+  const kernel = openSqliteKernelStorage({
+    database: db,
+    tables: SESSION_CONTROL_REQUEST_KEY_KERNEL_TABLES,
+  });
+  const context = {
+    // Request keys have no owner to be alive or dead.
+    liveness: () => 'unknown' as const,
+    limits: {
+      requestKeyTtlMs: SESSION_CONTROL_REQUEST_KEY_TTL_MS,
+      requestKeyMaxRowsPerCaller:
+        options.limits?.perCaller ??
+        SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER,
+      requestKeyMaxRows:
+        options.limits?.station ?? SESSION_CONTROL_REQUEST_KEY_MAX_ROWS,
+    },
+  };
+  // Refuse a bad limit now, not at the first claim.
+  resolveKernelLimits(context.limits);
+  const execute = <C extends KernelCommand>(command: C): KernelResult<C> =>
+    kernel.executeSync(command, context);
   // Attempts running in THIS process. A stored claim with no result and no
   // entry here is an attempt a crash or an indeterminate outcome left behind.
   const running = new Set<string>();
 
-  const read = (id: SessionControlRequestKeyId) =>
-    db
-      .prepare(
-        `SELECT digest, decision, result_json AS resultJson
-         FROM session_control_request_keys
-         WHERE caller_session_id = ? AND tool = ? AND request_key = ?`,
-      )
-      .get(id.callerSessionId, id.tool, id.key) as
-      | {
-          digest: string;
-          decision: string | null;
-          resultJson: string | null;
-        }
-      | undefined;
-
   return {
     claim(id, digest) {
-      // A row past the TTL is forgotten before it can answer.
-      db.prepare(
-        'DELETE FROM session_control_request_keys WHERE created_at < ?',
-      ).run(now() - SESSION_CONTROL_REQUEST_KEY_TTL_MS);
-      const existing = read(id);
-      if (existing) {
-        if (existing.digest !== digest) return { kind: 'conflict' };
-        if (existing.resultJson !== null)
+      const claim = execute({
+        type: 'requestKeys.claim',
+        id,
+        digest,
+        now: now(),
+      });
+      switch (claim.kind) {
+        case 'conflict':
+          return { kind: 'conflict' };
+        case 'replay':
           return {
             kind: 'replay',
-            result: JSON.parse(existing.resultJson) as unknown,
+            result: JSON.parse(claim.result) as unknown,
           };
-        const handle = activeId(id);
-        if (running.has(handle)) return { kind: 'in-progress' };
-        running.add(handle);
-        return {
-          kind: 'resumed',
-          ...(existing.decision !== null
-            ? { decision: existing.decision }
-            : {}),
-        };
+        case 'unresolved': {
+          const handle = activeId(id);
+          if (running.has(handle)) return { kind: 'in-progress' };
+          running.add(handle);
+          return {
+            kind: 'resumed',
+            ...(claim.decision !== undefined
+              ? { decision: claim.decision }
+              : {}),
+          };
+        }
+        case 'capacity':
+          return {
+            kind: 'capacity',
+            scope: claim.scope === 'store' ? 'station' : 'caller',
+          };
+        case 'claimed':
+          running.add(activeId(id));
+          return { kind: 'claimed' };
+        case 'refused':
+          throw new Error(
+            `Session control request key refused by ${claim.participant}: ${claim.reason}`,
+          );
       }
-      // The caller's own quota first: make room by dropping ITS oldest
-      // completed rows, never an unresolved claim and never another caller's.
-      const owned = db
-        .prepare(
-          `SELECT COUNT(*) AS total FROM session_control_request_keys
-           WHERE caller_session_id = ?`,
-        )
-        .get(id.callerSessionId) as { total: number };
-      const excess = owned.total - perCallerCap + 1;
-      if (excess > 0) {
-        db.prepare(
-          `DELETE FROM session_control_request_keys WHERE rowid IN (
-             SELECT rowid FROM session_control_request_keys
-             WHERE caller_session_id = ? AND result_json IS NOT NULL
-             ORDER BY created_at ASC, rowid ASC LIMIT ?)`,
-        ).run(id.callerSessionId, excess);
-        const left = db
-          .prepare(
-            `SELECT COUNT(*) AS total FROM session_control_request_keys
-             WHERE caller_session_id = ?`,
-          )
-          .get(id.callerSessionId) as { total: number };
-        if (left.total >= perCallerCap)
-          return { kind: 'capacity', scope: 'caller' };
-      }
-      const count = db
-        .prepare('SELECT COUNT(*) AS total FROM session_control_request_keys')
-        .get() as { total: number };
-      if (count.total >= stationCap)
-        return { kind: 'capacity', scope: 'station' };
-      const inserted = db
-        .prepare(
-          `INSERT OR IGNORE INTO session_control_request_keys
-             (caller_session_id, tool, request_key, digest, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run(id.callerSessionId, id.tool, id.key, digest, now());
-      // Another connection won the insert: it owns the attempt.
-      if (sqliteChanges(inserted) !== 1) return { kind: 'in-progress' };
-      running.add(activeId(id));
-      return { kind: 'claimed' };
     },
     recordDecision(id, decision) {
-      db.prepare(
-        `UPDATE session_control_request_keys SET decision = ?
-         WHERE caller_session_id = ? AND tool = ? AND request_key = ?`,
-      ).run(decision, id.callerSessionId, id.tool, id.key);
+      execute({ type: 'requestKeys.recordDecision', id, decision });
     },
     complete(id, result) {
       try {
-        const updated = db
-          .prepare(
-            `UPDATE session_control_request_keys SET result_json = ?
-             WHERE caller_session_id = ? AND tool = ? AND request_key = ?`,
-          )
-          .run(JSON.stringify(result), id.callerSessionId, id.tool, id.key);
-        if (sqliteChanges(updated) !== 1)
+        const completed = execute({
+          type: 'requestKeys.complete',
+          id,
+          result: JSON.stringify(result),
+        });
+        if (completed.kind !== 'applied')
           throw new Error('Session control request result was not recorded.');
       } finally {
         running.delete(activeId(id));
@@ -228,11 +221,7 @@ export function createSqliteSessionControlRequestKeys(
     },
     release(id) {
       try {
-        db.prepare(
-          `DELETE FROM session_control_request_keys
-           WHERE caller_session_id = ? AND tool = ? AND request_key = ?
-             AND result_json IS NULL`,
-        ).run(id.callerSessionId, id.tool, id.key);
+        execute({ type: 'requestKeys.release', id });
       } finally {
         running.delete(activeId(id));
       }

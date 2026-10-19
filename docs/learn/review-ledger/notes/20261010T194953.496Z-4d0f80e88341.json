@@ -1,0 +1,7 @@
+{
+  "revision": "a687e68a80fc4627d228d46539ac3dd77566113f",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the additive optional Agent cost fields in UsageStats and the real source-to-route zero/missing-cost test. Existing consumers retain required aggregate counts/cost, optional absence stays unreported, and no conversation measurement parser or authority contract changed. Existing conversation compatibility claims remain accurate.","inputs":["docs/reference/contracts.md","packages/contracts/src/usage-stats.ts","src-server/analytics/__tests__/usage-observation-projection.test.ts"]}
+  ]
+}

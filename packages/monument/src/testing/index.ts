@@ -5,10 +5,12 @@
  * see `registerKernelConformance`.
  */
 export {
+  type KernelConformanceArea,
   type KernelConformanceCase,
   type KernelConformanceOutcome,
   type KernelConformanceRunner,
   kernelConformanceCases,
+  kernelConformanceCasesFor,
   registerKernelConformance,
   runKernelConformance,
 } from './conformance.js';
@@ -20,6 +22,10 @@ export {
   type KernelStorageLocation,
   openCrashPointStore,
 } from './crash-point-store.js';
+export {
+  type HostBoundaryConformanceHarness,
+  hostBoundaryConformanceCases,
+} from './host-boundary-conformance.js';
 export { memoryKernelHarness } from './memory-harness.js';
 export {
   createFakeProcessTable,
@@ -28,5 +34,6 @@ export {
 export {
   createSqliteKernelHarness,
   createSqliteKernelLocation,
+  type SqliteKernelHarnessOptions,
   type SqliteKernelLocation,
 } from './sqlite-harness.js';

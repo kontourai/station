@@ -1,8 +1,8 @@
 /* The start composer (Home, inline, and the dock's draft). No viewport
    query: the bar is one flex line that wraps. On a desktop the chips and
-   [⋯ Start] share one line. When they do not fit (a phone), the chips keep
-   row one, on one line, each shrinking to an ellipsis, and [⋯ … Start]
-   takes row two. Every target is 44px. */
+   [attach mic ⋯ Start] share one line. When they do not fit (a phone), the
+   chips keep row one, on one line, each shrinking to an ellipsis, and
+   [attach mic ⋯ … Start] takes row two. Every target is 44px. */
 .start-composer {
   display: flex;
   flex-direction: column;
@@ -81,6 +81,19 @@
 }
 .start-composer--compact .start-composer__input {
   min-height: 44px;
+}
+/* Touch: the box's focus border is the field's focus ring. A touch focus
+   matches :focus-visible on a text field, so the inner outline drew a second,
+   square ring inside the rounded one. The resize grip is too small to drag
+   with a finger; a long draft scrolls inside the field instead. */
+.start-composer[data-coarse-pointer]
+  .start-composer__box
+  .start-composer__input:focus-visible {
+  /* Match the global focus rule's priority; the box keeps its focus border. */
+  outline: none !important;
+}
+.start-composer[data-coarse-pointer] .start-composer__input {
+  resize: none;
 }
 .start-composer__bar {
   display: flex;
@@ -274,10 +287,63 @@
   width: auto;
   box-sizing: border-box;
 }
+/* Attach, dictate and the overflow, together at the start of the actions. */
+.start-composer__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.start-composer__tools:empty {
+  display: none;
+}
+.start-composer__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.start-composer__tool:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.start-composer__tools .voice-orb {
+  --vo-size: 44px;
+}
+.start-composer__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.start-composer__file {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  padding-left: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  font-size: var(--k-text-sm);
+}
+.start-composer__file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* The overflow beside Start: a 44px square drawn like the chips, not the
    quiet bordered glyph the shared trigger is elsewhere (which read as
    disabled here). */
-.start-composer__actions > .start-composer__more {
+.start-composer__tools > .start-composer__more {
   width: 44px;
   height: 44px;
   border-color: var(--border-primary);

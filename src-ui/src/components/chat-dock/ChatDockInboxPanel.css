@@ -173,6 +173,25 @@
   color: var(--text-primary);
 }
 
+/* The explicit resync sits beside New chat rather than taking a full row. */
+.chat-dock-inbox__footer > button.chat-dock-inbox__refresh {
+  width: auto;
+}
+
+.chat-dock-inbox__footer > button.chat-dock-inbox__refresh:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+/* A failed read leaves the last known rows on screen; say so. */
+.chat-dock-inbox__sync-status {
+  width: 100%;
+  margin: 0;
+  padding: 0 var(--space-3);
+  color: var(--warning-text);
+  font-size: 12px;
+}
+
 /* Sheet-host count badge beside a group label (kontourai/station#3312). */
 /**
  * Compact chrome (kontourai/station#3314): the project sidebar's Open chats
@@ -185,4 +204,10 @@
 
 .chat-dock-inbox--compact .chat-dock-inbox__item {
   min-height: 44px;
+}
+
+.chat-dock-inbox__show-more {
+  min-height: 44px;
+  width: 100%;
+  margin-top: var(--space-2);
 }

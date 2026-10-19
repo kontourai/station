@@ -42,6 +42,9 @@ vi.mock('@kontourai/station-connect', () => ({
   // hook's health composition; the catalog under test is the enumeration, so
   // a stable connected status is the neutral answer here.
   useConnectionStatus: () => ({ status: 'connected' }),
+  // #3557: the People section summarizes each tied device's access.
+  describeDeviceGrant: () => 'full device access',
+  requestedScopeTokens: (scope: string) => scope.split(' ').filter(Boolean),
 }));
 vi.mock('@kontourai/station-sdk', async () => {
   const { defaultNotificationPreferences } = await import(
@@ -126,6 +129,58 @@ vi.mock('@kontourai/station-sdk', async () => {
     isPluginVisibilityForbidden: (error: unknown) =>
       error instanceof Error && error.message === 'forbidden',
     useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
+    // #3557: the People section, in the ORDINARY operator case — one person
+    // with one tied device — for the same reason plugin visibility has data
+    // here. A person's own token panel answers the refusal an operator gets
+    // (it is not a person's device), so it renders nothing.
+    useStationPeopleQuery: () => ({
+      data: [
+        {
+          principalId: 'human:tailscale-serve:ada@example.com',
+          displayName: 'ada@example.com',
+          group: 'member',
+          assigned: false,
+          devices: [
+            {
+              id: 'dev-ada',
+              name: 'Ada laptop',
+              scope: 'orchestration:read',
+              effectiveScope: 'orchestration:read',
+            },
+          ],
+          tokens: [],
+          canHoldTokens: true,
+        },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+    }),
+    useOwnAccessTokensQuery: () => ({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: new Error('person_device_required'),
+    }),
+    isStationAccessUnavailable: (error: unknown) =>
+      error instanceof Error && error.message === 'person_device_required',
+    useSetStationPersonGroupMutation: () => ({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    }),
+    useMintStationPersonTokenMutation: () => ({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+    }),
+    useRevokeStationPersonTokenMutation: () => ({ mutateAsync: vi.fn() }),
+    useMintOwnAccessTokenMutation: () => ({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+    }),
+    useRevokeOwnAccessTokenMutation: () => ({ mutateAsync: vi.fn() }),
+    isOperatorCredentialRequired: () => false,
+    StationAccessError: class extends Error {},
+    STATION_PEOPLE_QUERY_KEY: ['station-people'],
     // #2144 slice 3: the hook takes the selected project's slug, and the
     // server reports DIFFERENT provenance for a scoped read (`scope: 'project'`
     // on whatever the project overrides). The mock keys on the slug for the
@@ -151,6 +206,14 @@ vi.mock('@kontourai/station-sdk', async () => {
     // about.
     useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
     useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useTelemetryDeliveryStatusQuery: () => {
+      throw new Error('Catalog fixture has no captured telemetry authority');
+    },
+    useCheckTelemetryConnectionMutation: () => {
+      throw new Error(
+        'Catalog fixture must not initiate a telemetry connection check',
+      );
+    },
     useInvalidateQuery: () => invalidateQuery,
     useSystemStatusForApiBaseQuery: () => ({
       data: {
@@ -663,7 +726,8 @@ describe('settings catalog completeness', () => {
   describe('scope-group captions', () => {
     const CONTROL_CAPTION = 'Saved to this Station.';
     const STATION_CAPTION = 'Saved to this Station.';
-    const DEVICE_CAPTION = 'Saved to this device.';
+    const DEVICE_CAPTION =
+      'Personal choices follow your account on this Station. Device settings stay here.';
 
     function captions(container: HTMLElement) {
       return [...container.querySelectorAll('.settings__scope-caption')].map(
@@ -1285,7 +1349,9 @@ describe('settings catalog completeness', () => {
     expectExactCatalog(
       rendered,
       SETTINGS_CATALOG.filter((entry) =>
-        ['permissions', 'agent-runs'].includes(entry.section),
+        ['account-preferences', 'permissions', 'agent-runs'].includes(
+          entry.section,
+        ),
       ).map((entry) => entry.id),
     );
     expect(window.location.search).toBe('');
@@ -1668,7 +1734,7 @@ describe('settings catalog completeness', () => {
     expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
       'This Station settings',
       'Control settings',
-      'This device settings',
+      'Personal and device settings',
       'Knowledge settings',
     ]);
     // Named regions, not styling wrappers: the name has to reach the
@@ -2087,6 +2153,58 @@ describe('settings catalog completeness', () => {
    * WOULD send; this row says whether there is anywhere to send to. Both
    * answers are the host's, and the host itself is never named.
    */
+  test('saving a publisher edit excludes a stale untouched Full choice after another device withdraws it', async () => {
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { kontour: 'off', operator: 'full' },
+      },
+      dataUpdatedAt: 1,
+    };
+    await renderSettings();
+    // Another device persists Off while this form still holds the old snapshot.
+    let persisted = { kontour: 'off', operator: 'off' };
+    updateConfig.mockImplementation(async (delta) => {
+      persisted = { ...persisted, ...delta.telemetryTier };
+    });
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Kontour telemetry' }),
+      {
+        target: { value: 'lite' },
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { kontour: 'lite' },
+      }),
+    );
+    expect(persisted).toEqual({ kontour: 'lite', operator: 'off' });
+  });
+
+  test('saving two deliberate publisher edits retains both choices', async () => {
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { kontour: 'off', operator: 'off' },
+      },
+      dataUpdatedAt: 1,
+    };
+    await renderSettings();
+    for (const name of ['Kontour telemetry', 'Operator telemetry'])
+      fireEvent.change(screen.getByRole('combobox', { name }), {
+        target: { value: 'lite' },
+      });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { kontour: 'lite', operator: 'lite' },
+      }),
+    );
+  });
+
   describe('Telemetry destination', () => {
     test('reports a configured destination without naming it', async () => {
       telemetryEndpointConfigured = true;

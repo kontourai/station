@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   type AgentId,
   agentId,
@@ -501,6 +502,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             input.conversationId,
             input.idempotencyKey,
             INTERNAL_SESSION_READ_SCOPE,
+            input.inputDigest,
           ),
         retireNativeReturnSource: async (_access, sessionId) =>
           service.retireNativeReturnSource(
@@ -539,10 +541,11 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           // drives the real service and reports no handle of its own.
           return undefined;
         },
-        sendTurn: async (_access, input) => {
+        sendTurn: async (_access, input, context) => {
           const dispatched = await service.dispatchWithReceipt(
             { type: 'sendTurn', input },
             { userId: OWNER },
+            { submissionDigest: context?.submissionDigest },
           );
           if (!dispatched.result || !('turnId' in dispatched.result))
             throw new Error('qualification dispatch returned no turn id');
@@ -654,7 +657,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
 
       const idempotencyKey = `handoff-${source.provider}-to-${target.provider}`;
       const handoffBody = {
-        message: 'Continue and recall the token.',
+        message: ' Continue and recall the token. ',
         idempotencyKey,
         target: {
           environment: { kind: 'current' },
@@ -698,6 +701,18 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           'queuedRequests',
         ]),
       );
+      // The handoff turn's start names the key the client sent it with
+      // (the dialog keys its bubble `handoff:<idempotencyKey>`), not the
+      // conversation-derived key Station deduplicates it under.
+      await eventually(() => {
+        const handoffStart = store
+          .listEvents(handoffReceipt.data.sessionId)
+          .map((row) => row.payload)
+          .find((event) => event.method === 'turn.started');
+        expect(handoffStart).toMatchObject({
+          clientTurnId: `handoff:${idempotencyKey}`,
+        });
+      });
 
       const replay = await post(
         `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
@@ -716,6 +731,68 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           },
         },
       });
+      for (const change of [
+        { message: handoffBody.message.trim() },
+        { setApprovalMode: 'ask', setApprovalModeBasedOn: null },
+        {
+          skillExperience: {
+            identity: {
+              pluginId: 'visual-skill-experience',
+              pluginVersion: '1.0.0',
+              experienceId: 'inspect',
+              incarnation: 'install-a',
+              materialization: 'materialization-a',
+              contentDigest: `sha256:${'a'.repeat(64)}`,
+              definitionDigest: 'b'.repeat(64),
+            },
+            inputs: { prompt: 'inspect this' },
+          },
+        },
+        {
+          expectedInputRequest: {
+            threadId: handoffReceipt.data.sessionId,
+            requestId: 'input-a',
+            requestEventId: 'opened-a',
+          },
+        },
+      ]) {
+        const changedRaw = await post(
+          `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
+          { ...handoffBody, ...change },
+        );
+        expect(changedRaw.status, await changedRaw.clone().text()).toBe(409);
+        expect(await changedRaw.json()).toMatchObject({
+          code: 'client_turn_input_conflict',
+        });
+      }
+      expect(targetAdapter.starts).toHaveLength(1);
+      // Simulate an accepted pre-digest row: the old handoff effect still binds
+      // trimmed text, while no retry is evidence of the original raw input.
+      const legacy = new DatabaseSync(databasePath);
+      try {
+        legacy
+          .prepare(
+            "UPDATE orchestration_turn_dedup SET input_digest = NULL, owner_json = json_remove(owner_json, '$.inputDigest') WHERE value = ?",
+          )
+          .run(`${target.provider}-handoff-turn-1`);
+        const legacyReplay = await post(
+          `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
+          { ...handoffBody, message: handoffBody.message.trim() },
+        );
+        expect(legacyReplay.status, await legacyReplay.clone().text()).toBe(
+          200,
+        );
+        expect(
+          legacy
+            .prepare(
+              'SELECT input_digest FROM orchestration_turn_dedup WHERE value = ?',
+            )
+            .get(`${target.provider}-handoff-turn-1`),
+        ).toEqual({ input_digest: null });
+      } finally {
+        legacy.close();
+      }
+      expect(targetAdapter.starts).toHaveLength(1);
       await eventually(() => expect(targetAdapter.turns).toHaveLength(1));
       expect(targetAdapter.turns[0]?.ambientContext).toContain(CONTEXT_TOKEN);
 

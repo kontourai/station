@@ -1,0 +1,7 @@
+{
+  "revision": "f5066bf6b375873e394d1febd5da8fd419741186",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Rewrote the session-start paragraph: 15s wait via optional whenSessionReady awaited before the turn-start claim, abort ends it, plain-words definitive refusals, retryable provider_session_starting, and exhausted client re-sends kept queued with Retry. Checked against adapter-shape.ts, acp-adapter.ts, orchestration-service.ts and queueDrain.ts.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

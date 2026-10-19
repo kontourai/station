@@ -41,7 +41,9 @@ New chat opens the start composer (Agent and project chips, Start) and recent
 chats from the selected workspace. A setup helper appears when the
 selected Agent cannot respond. It shows server-supplied prerequisites and links
 to engine installation instructions, existing account sign-in, or Model setup.
-Installation commands are display guidance, never automatic execution. The
+For the built-in Station assistant, **Choose AI for Station** opens the existing
+engine chooser, including ready external apps, before requiring a new Model
+account. Installation commands are display guidance, never automatic execution. The
 existing setup-return owner retains the draft and revalidates the same Station
 access before returning. Choosing a ready replacement in the draft still waits
 for Send; Home’s automatic goal path continues to use a runnable recommendation.

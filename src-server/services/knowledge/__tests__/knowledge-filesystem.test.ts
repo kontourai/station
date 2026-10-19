@@ -45,7 +45,7 @@ describe('knowledge-filesystem helpers', () => {
 
   test('listKnowledgeDocuments filters by path, tags, and metadata', async () => {
     const storageDir = join(dir, 'default');
-    await saveKnowledgeMeta(storageDir, [
+    await saveKnowledgeMeta({ storageDir, dataDir: dir, projectSlug: 'test' }, [
       {
         id: 'doc-1',
         filename: 'docs/guide.md',
@@ -96,7 +96,7 @@ describe('knowledge-filesystem helpers', () => {
     mkdirSync(join(storageDir, 'files', 'docs'), { recursive: true });
     writeFileSync(join(storageDir, 'files', 'docs', 'guide.md'), '# Guide');
     writeFileSync(join(storageDir, 'files', 'root.md'), '# Root');
-    await saveKnowledgeMeta(storageDir, [
+    await saveKnowledgeMeta({ storageDir, dataDir: dir, projectSlug: 'test' }, [
       {
         id: 'doc-1',
         filename: 'docs/guide.md',

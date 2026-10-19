@@ -873,8 +873,6 @@ describe('CI verification workflow contracts', () => {
     // Reason strings are the contract. "Publishes" means there is nothing to
     // verify before merge; "reduced PR lane" names where the PR signal lives.
     const declared: Record<string, string> = {
-      '.github/workflows/main-qualification.yml':
-        'qualifies combined main source after integration; PR: CI and the merge queue own pre-merge feedback',
       '.github/workflows/pages.yml':
         'publishes GitHub Pages from merged main; nothing to pre-verify',
       '.github/workflows/publish-packages.yml':
@@ -938,10 +936,6 @@ describe('CI verification workflow contracts', () => {
     // `cancel-in-progress` picks a winner by arrival order (#1445).
     expect(ci).toContain(
       `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
-    );
-    expect(workflow('full-regression.yml')).toContain(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      'group: hosted-full-regression-${{ inputs.source_sha }}',
     );
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
@@ -1385,7 +1379,7 @@ describe('CI verification workflow contracts', () => {
     expect(gallery).toContain('continue-on-error: true');
     expect(gallery).toContain('gallery/');
 
-    // The rot alarm is only an alarm if a pixel mismatch FAILS the job. A
+    // Capture and comparison integrity failures must still fail the job. A
     // file-level `toContain('continue-on-error')` would stay green if that
     // key migrated onto the capture/diff step, so pin it to the upload step:
     // everything before the upload must be able to fail the job.
@@ -1535,7 +1529,12 @@ describe('CI verification workflow contracts', () => {
     // half; nothing up to the upload may swallow a failure.
     const diffIndex = job.steps.findIndex((step) => step.id === 'diff');
     expect(job.steps[captureIndex]?.run).toBe('npm run test:e2e:screenshot');
-    expect(job.steps[diffIndex]?.run).toBe('npm run screenshot:diff');
+    expect(job.steps[diffIndex]?.run).toBe(
+      'npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"',
+    );
+    expect(nightlyJob.steps[nightlyCaptureIndex]?.run).toContain(
+      'npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"',
+    );
     expect(diffIndex).toBe(captureIndex + 1);
     const uploadIndex = job.steps.findIndex((step) =>
       step.uses?.startsWith('actions/upload-artifact@'),
@@ -1559,18 +1558,12 @@ describe('CI verification workflow contracts', () => {
     const artifactName = `gallery-pr-\${{ github.run_id }}-\${{ github.run_attempt }}`;
     expect(upload.with?.name).toBe(artifactName);
 
-    // The refresh instructions name that same artifact and the command that
-    // turns it into a baseline, and appear only when the DIFF failed; a
-    // capture failure gets the opposite advice.
-    const refresh = job.steps.find(
-      (step) => step.name === 'Explain how to refresh the baseline',
+    const review = job.steps.find(
+      (step) => step.name === 'Link visual review evidence',
     );
-    expect(refresh?.if).toBe("failure() && steps.diff.outcome == 'failure'");
-    expect(refresh?.env?.ARTIFACT).toBe(artifactName);
-    expect(refresh?.run).toContain(
-      `gh run download \${RUN_ID} --repo \${REPOSITORY} --name \${ARTIFACT}`,
-    );
-    expect(refresh?.run).toContain('npm run screenshot:baseline -- --gallery=');
+    expect(review?.if).toBe("always() && steps.diff.outcome != 'skipped'");
+    expect(review?.env?.ARTIFACT).toBe(artifactName);
+    expect(review?.run).toContain('GITHUB_STEP_SUMMARY');
     const pkg = JSON.parse(
       readFileSync(resolve(root, 'package.json'), 'utf8'),
     ) as { scripts: Record<string, string> };
@@ -1686,7 +1679,7 @@ describe('CI verification workflow contracts', () => {
     };
     const job = document.jobs['ui-bundle-delta'];
     expect(job.if).toBe(
-      "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}",
+      "${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}",
     );
     expect(job.if).not.toContain('merge_group');
     // Parallel to fast-checks, never behind it.
@@ -1778,10 +1771,11 @@ describe('CI verification workflow contracts', () => {
     };
     const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
       .jobs;
-    // The required status check is the job's display name. The aggregator
-    // keeps the bare id with no `name:`, so its check is exactly
-    // `fast-checks`, and no other job may report under that name.
-    expect(jobs['fast-checks'].name).toBeUndefined();
+    // Source execution is diagnostic; its trusted status reconciler owns admission.
+    expect(jobs['pr-title'].name).toBe('PR title status publisher');
+    expect(jobs['fast-checks'].name).toBe(
+      `\${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}`,
+    );
     for (const [id, job] of Object.entries(jobs))
       if (id !== 'fast-checks')
         expect(job.name ?? id, id).not.toBe('fast-checks');
@@ -1807,9 +1801,13 @@ describe('CI verification workflow contracts', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       legacy: '${{ steps.mode.outputs.legacy }}',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'full-regression': '${{ steps.merge-decision.outputs.full-regression }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       shards: '${{ steps.plan.outputs.shards }}',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'shard-count': '${{ steps.plan.outputs.shard-count }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      empty: '${{ steps.plan.outputs.empty }}',
     });
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     const legacyIf = "${{ steps.mode.outputs.legacy == 'true' }}";
@@ -1832,7 +1830,7 @@ describe('CI verification workflow contracts', () => {
       );
     expect(jobs['fast-checks-shard'].if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' }}",
+      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}",
     );
 
     // Downstream consumers still name the required check's id.
@@ -1986,30 +1984,12 @@ describe('CI verification workflow contracts', () => {
       )
       .map((step) => step.run);
     expect(shaping.length).toBeGreaterThanOrEqual(3);
-    // Action steps before the lane, compared with their inputs. Excluded, by
-    // name and with the reason: the base-policy checkout exists only for the
-    // pull-request title gate (fast-checks-statics owns that gate) and is
-    // overwritten by the candidate checkout before any test runs.
-    const REVIEWED_ACTION_EXCLUSIONS = new Map([
-      [
-        'Check out base policy for pull-request title gate',
-        'title gate only; the candidate checkout replaces it before the lane',
-      ],
-    ]);
     const laneActions = statics
       .slice(0, laneIndex)
-      .filter(
-        (step) => step.uses && !REVIEWED_ACTION_EXCLUSIONS.has(step.name ?? ''),
-      )
+      .filter((step) => step.uses)
       .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
     // Checkout, pnpm and Node: a shrinking list would pass vacuously.
     expect(laneActions).toHaveLength(3);
-    for (const name of REVIEWED_ACTION_EXCLUSIONS.keys())
-      expect(
-        statics.some((step) => step.name === name),
-        name,
-      ).toBe(true);
-
     for (const [jobId, entryName] of [
       ['fast-checks-shard', 'Run fast-checks shard'],
       ['fast-checks-plan', 'Plan the affected-test selection'],
@@ -2077,7 +2057,7 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const fastChecks = staticsJobText(ci);
     const fullRegression = ci.slice(
-      ci.indexOf('  full-regression:'),
+      ci.indexOf('\n  full-regression:'),
       ci.indexOf('  manual-completion-diagnostics:'),
     );
 
@@ -2092,16 +2072,6 @@ describe('CI verification workflow contracts', () => {
     expect(fastChecks).not.toContain('physical-host-capacity@');
     expect(fastChecks).toContain('STATION_CI_FAST_BASE');
     expect(fastChecks).toContain('run: npm run ci:fast');
-    expect(fastChecks).toContain('name: Enforce candidate UI bundle budget');
-    expect(fastChecks).toContain('run: npm run build:ui');
-    expect(fastChecks.indexOf('run: npm run ci:fast')).toBeLessThan(
-      fastChecks.indexOf('name: Enforce candidate UI bundle budget'),
-    );
-    expect(
-      fastChecks.indexOf('name: Enforce candidate UI bundle budget'),
-    ).toBeLessThan(
-      fastChecks.indexOf('name: Upload bounded fast-feedback diagnostics'),
-    );
     // #1703: the bundle delta report is a separate job, off this critical
     // path; fast-checks must not grow a second install and build.
     expect(fastChecks).not.toContain('ui-bundle-delta-report');
@@ -2137,56 +2107,6 @@ describe('CI verification workflow contracts', () => {
     expect(Math.max(...desktopWinLeaseWeights)).toBeLessThanOrEqual(9);
     expect(workflow('secret-scan.yml')).not.toContain('capacity-lease-weight:');
     expect(fullRegression).not.toContain('run: npm run full:regression');
-  });
-
-  it('validates pull-request titles from exact base policy before either candidate checkout', () => {
-    const ci = workflow('ci.yml');
-    const trigger = ci.slice(
-      ci.indexOf('  pull_request_target:'),
-      ci.indexOf('  workflow_dispatch:'),
-    );
-    expect(trigger).toContain('types: [opened, synchronize, reopened, edited]');
-
-    const fastChecks = staticsJobText(ci);
-    const forkSmoke = ci.slice(
-      ci.indexOf('  fork-smoke:'),
-      ci.indexOf('  full-regression:'),
-    );
-    for (const [job, candidateRepository, conditional] of [
-      [
-        fastChecks,
-        `repository: \${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`,
-        `if: \${{ github.event_name == 'pull_request_target' }}`,
-      ],
-      [
-        forkSmoke,
-        `repository: \${{ github.event.pull_request.head.repo.full_name }}`,
-        undefined,
-      ],
-    ] as const) {
-      const baseCheckout = job.indexOf(
-        'name: Check out base policy for pull-request title gate',
-      );
-      const titleGate = job.indexOf(
-        'name: Validate base-controlled pull-request title',
-      );
-      const candidateCheckout = job.indexOf(candidateRepository);
-      expect(baseCheckout).toBeGreaterThan(-1);
-      expect(titleGate).toBeGreaterThan(baseCheckout);
-      expect(candidateCheckout).toBeGreaterThan(titleGate);
-      expect(job).toContain(`repository: \${{ github.repository }}`);
-      expect(job).toContain(`ref: \${{ github.event.pull_request.base.sha }}`);
-      expect(job).toContain(
-        `PULL_REQUEST_TITLE: \${{ github.event.pull_request.title }}`,
-      );
-      expect(job).toContain(
-        `PULL_REQUEST_NUMBER: \${{ github.event.pull_request.number }}`,
-      );
-      expect(job).toContain(
-        'node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"',
-      );
-      if (conditional) expect(job).toContain(conditional);
-    }
   });
 
   it('runs required checks against the synthesized merge-group candidate', () => {
@@ -3559,7 +3479,11 @@ describe('hosted qualification workflow covers the full regression', () => {
       ['resolve', ...testJobs].sort(),
     );
     for (const job of testJobs)
-      expect(jobs[job].if, job).toBe("needs.resolve.outputs.reuse_run == ''");
+      expect(jobs[job].if, job).toBe(
+        ['exclusive', 'android-viewport'].includes(job)
+          ? "always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''"
+          : "needs.resolve.outputs.reuse_run == ''",
+      );
     expect(jobs['android-viewport'].steps?.map(({ run }) => run)).toContain(
       'npm run test:android',
     );
@@ -4045,12 +3969,8 @@ describe('hosted qualification workflow covers the full regression', () => {
       expect(text).not.toContain('--exclude-quarantined');
   });
 
-  it('leaves Nightly canonical: full:regression never excludes quarantined files', () => {
-    // Nightly calls the hosted full-regression workflow, which runs the
-    // canonical `npm run full:regression`; that resolves to the package
-    // scripts behind FULL_REGRESSION_PHASES. None of them may carry the
-    // queue-only flag, so a quarantined file still runs every night.
-    expect(workflow('nightly.yml')).toContain(
+  it('keeps scheduled full qualification canonical, including quarantined files', () => {
+    expect(workflow('main-qualification.yml')).toContain(
       'uses: ./.github/workflows/full-regression.yml',
     );
     const hosted = workflow('full-regression.yml');

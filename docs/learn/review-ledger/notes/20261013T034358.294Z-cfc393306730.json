@@ -1,0 +1,35 @@
+{
+  "revision": "c89d67f9356d6f77da2a9fdf728fb70d7081650a",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Updated the #3158 cancel sentence for review round 2 (08e654c7f1): an interrupt suppresses the one turn it stops, and a refused interrupt undoes only its own records (refuseCancel removes its links and unspent suppression; consume closes provisionally cancelled rows). Checked against delegation-result-delivery.ts beginCancel/refuseCancel/consume/spendSuppressions and the store-level tests.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-reviewed for review round 2 (08e654c7f1, c89d67f935): delegated-result cancellation became per-interrupt records, retry budgets were separated, unconfirmed attempts keep their Session pin and child activity refreshes ownership. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

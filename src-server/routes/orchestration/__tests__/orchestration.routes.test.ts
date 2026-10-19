@@ -1545,6 +1545,106 @@ describe('Orchestration Routes', () => {
       code: 'project_worktree_directory_invalid',
     });
   });
+  describe('POST /chat expectedEngine', () => {
+    const post = (
+      app: ReturnType<typeof createOrchestrationRoutes>,
+      expectedEngine?: unknown,
+    ) =>
+      app.request('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'Send',
+          target: {
+            environment: { kind: 'current' },
+            agent: 'station',
+            ...(expectedEngine === undefined ? {} : { expectedEngine }),
+          },
+        }),
+      });
+
+    test('forwards the precondition, with its connection id branded, to the target', async () => {
+      const executeForegroundMessage = vi.fn().mockResolvedValue({
+        conversationId: 'conversation:1',
+        sessionId: 'session:1',
+        providerTurnId: 'provider-turn-1',
+        target: { kind: 'agent', id: 'station' },
+      });
+      const app = createOrchestrationRoutes({} as any, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        getUserId: () => 'bound-user',
+        executeForegroundMessage,
+      });
+
+      expect(
+        (await post(app, { kind: 'connection', connectionId: 'opencode' }))
+          .status,
+      ).toBe(200);
+      expect(
+        executeForegroundMessage.mock.lastCall![0].target.expectedEngine,
+      ).toEqual({ kind: 'connection', connectionId: 'opencode' });
+
+      expect((await post(app, { kind: 'station' })).status).toBe(200);
+      expect(
+        executeForegroundMessage.mock.lastCall![0].target.expectedEngine,
+      ).toEqual({ kind: 'station' });
+    });
+
+    // It is a precondition: nothing that could aim a request is admitted.
+    test.each([
+      ['an unknown kind', { kind: 'peer' }],
+      [
+        'an endpoint beside a connection',
+        {
+          kind: 'connection',
+          connectionId: 'opencode',
+          endpoint: 'http://elsewhere',
+        },
+      ],
+      ['a connection with no id', { kind: 'connection' }],
+      ['an extra field on station', { kind: 'station', connectionId: 'x' }],
+    ])('rejects %s', async (_label, expectedEngine) => {
+      const executeForegroundMessage = vi.fn();
+      const app = createOrchestrationRoutes({} as any, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        getUserId: () => 'bound-user',
+        executeForegroundMessage,
+      });
+      expect((await post(app, expectedEngine)).status).toBe(400);
+      expect(executeForegroundMessage).not.toHaveBeenCalled();
+    });
+
+    test('a stale expectation is a 409 carrying its code, not malformed input', async () => {
+      const { ExecutionEngineChangedError } = await import(
+        '../../../services/execution-target/execution-target-resolver.js'
+      );
+      const app = createOrchestrationRoutes({} as any, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        getUserId: () => 'bound-user',
+        executeForegroundMessage: vi.fn().mockRejectedValue(
+          new ExecutionEngineChangedError(
+            'station',
+            { kind: 'station' },
+            {
+              kind: 'connection',
+              connectionId: 'opencode' as never,
+            },
+          ),
+        ),
+      });
+
+      const res = await post(app, { kind: 'station' });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        code: 'execution_engine_changed',
+      });
+    });
+  });
+
   test('POST /chat binds the user and forwards one canonical execution target', async () => {
     const executeForegroundMessage = vi.fn().mockResolvedValue({
       conversationId: 'conversation:1',
@@ -1594,6 +1694,8 @@ describe('Orchestration Routes', () => {
       userId: 'bound-user',
       // #2493: the test app has no auth boundary, so no grant.
       fullAccessGrant: null,
+      // #3568: stops only a same-key retry's join wait; never the send.
+      joinWaitSignal: expect.any(AbortSignal),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2274,6 +2376,8 @@ describe('Orchestration Routes', () => {
       userId: 'bound-user',
       // #2493: the test app has no auth boundary, so no grant.
       fullAccessGrant: null,
+      // #3568: stops only a same-key retry's join wait; never the send.
+      joinWaitSignal: expect.any(AbortSignal),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2383,6 +2487,45 @@ describe('Orchestration Routes', () => {
       expect(dispatchWithReceipt).not.toHaveBeenCalled();
     },
   );
+
+  test('POST /delegations answers a stale expectedEngine with its code and 409, not an uncoded 400', async () => {
+    const { ExecutionEngineChangedError } = await import(
+      '../../../services/execution-target/execution-target-resolver.js'
+    );
+    const app = createOrchestrationRoutes({} as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+      delegateTask: vi
+        .fn()
+        .mockRejectedValue(
+          new ExecutionEngineChangedError(
+            'codex',
+            { kind: 'station' },
+            { kind: 'connection', connectionId: 'opencode' as never },
+          ),
+        ),
+    });
+
+    const res = await app.request('/delegations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'Review the mobile shell',
+        target: {
+          environment: { kind: 'current' },
+          agent: 'codex',
+          expectedEngine: { kind: 'station' },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      success: false,
+      code: 'execution_engine_changed',
+    });
+  });
 
   test('POST /delegations binds the authenticated user and strips caller-supplied handle identities', async () => {
     const delegateTask = vi.fn().mockResolvedValue({

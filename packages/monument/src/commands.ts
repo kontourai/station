@@ -1,5 +1,7 @@
 import type { OwnerIdentity, OwnerLivenessVerdict } from './owner.js';
 import type {
+  InboxEntryKind,
+  InboxEntryRecord,
   RequestKeyId,
   TurnBoundaryPurpose,
   TurnBoundaryRecord,
@@ -27,18 +29,28 @@ export interface TurnDedupClaimCommand {
    * this owner dies before that point.
    */
   readonly tracking: 'tracked' | 'untracked';
+  readonly inputDigest?: string;
 }
 export type TurnDedupClaimResult =
+  | { readonly kind: 'conflict' }
   | { readonly kind: 'claimed'; readonly reclaimed: boolean }
   | { readonly kind: 'resolved'; readonly value: string }
   | { readonly kind: 'contended' }
   /** The dead owner may have started the effect. Never replay it. */
-  | { readonly kind: 'indeterminate' };
+  | { readonly kind: 'indeterminate' }
+  /**
+   * The key's resolved row was evicted by retention. Its effect ran and the
+   * result can no longer be replayed. The key is never claimable again until
+   * its tombstone is forgotten.
+   */
+  | { readonly kind: 'expired' };
 
 export interface TurnDedupBeginInvocationCommand {
   readonly type: 'turnDedup.beginInvocation';
   readonly key: string;
   readonly ownerId: string;
+  /** Stamps any tombstone the write's retention leaves. */
+  readonly now: number;
 }
 export type TurnDedupBeginInvocationResult =
   | { readonly kind: 'applied' }
@@ -50,11 +62,15 @@ export interface TurnDedupResolveCommand {
   readonly key: string;
   readonly ownerId: string;
   readonly value: string;
+  /** Stamps any tombstone the write's retention leaves. */
+  readonly now: number;
 }
 export interface TurnDedupReleaseCommand {
   readonly type: 'turnDedup.release';
   readonly key: string;
   readonly ownerId: string;
+  /** Stamps any tombstone the write's retention leaves. */
+  readonly now: number;
 }
 export type TurnDedupSettleResult =
   | { readonly kind: 'applied' }
@@ -66,15 +82,18 @@ export interface TurnDedupReadCommand {
 }
 export type TurnDedupReadResult =
   | { readonly kind: 'found'; readonly record: TurnDedupRecord }
+  /** The resolved row was evicted; only the tombstone is left. */
+  | { readonly kind: 'expired'; readonly expiredAt: number }
   | { readonly kind: 'absent' };
 
 export interface TurnDedupForgetPrefixCommand {
   readonly type: 'turnDedup.forgetPrefix';
-  /** Exact string prefix; no wildcard semantics. */
+  /** Exact string prefix; no wildcard semantics. Tombstones go with the rows. */
   readonly prefix: string;
 }
 export type TurnDedupForgetPrefixResult = {
   readonly kind: 'applied';
+  /** Rows and tombstones forgotten. */
   readonly removed: number;
 };
 
@@ -144,6 +163,8 @@ export interface TurnBoundaryObserveTerminalCommand {
   /** A session-level terminal retires every turn row on the thread. */
   readonly sessionTerminal: boolean;
   readonly terminalCreatedAt: string;
+  /** Identifies the host's persisted terminal, resolved inside the transaction. */
+  readonly terminalEventId?: string;
   /**
    * `false` records the terminal fact without retiring any row (for a
    * terminal that must not close its boundary, such as a recovery's own
@@ -256,6 +277,152 @@ export type RequestKeyReleaseResult =
   | { readonly kind: 'missing' };
 
 // ---------------------------------------------------------------------------
+// Inbox (station#3568)
+// ---------------------------------------------------------------------------
+
+/**
+ * Accept one entry into an inbox, durable once this commits. Idempotent by
+ * `key`: the same key with the same digest answers the entry already stored,
+ * a different digest is a conflict and writes nothing.
+ */
+export interface InboxSubmitCommand {
+  readonly type: 'inbox.submit';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly kind: InboxEntryKind;
+  readonly digest: string;
+  readonly payload: string;
+  readonly now: number;
+}
+export type InboxSubmitResult =
+  /**
+   * Stored at the inbox's tail. `requeued` when the key's earlier entry had
+   * been refused or cancelled, so nothing of it ran: it is queued again.
+   */
+  | {
+      readonly kind: 'accepted';
+      readonly entry: InboxEntryRecord;
+      readonly requeued: boolean;
+    }
+  /** The same submission again: the entry as it stands now. */
+  | { readonly kind: 'existing'; readonly entry: InboxEntryRecord }
+  /** The key names a different input. Nothing was written. */
+  | { readonly kind: 'conflict' }
+  /** The inbox holds its limit of unsettled entries. Nothing was written. */
+  | { readonly kind: 'capacity'; readonly limit: number };
+
+/**
+ * Take the inbox's head for placement, recording `placement` before the
+ * effect. A head that kept the placement of an earlier attempt keeps it: the
+ * host must use the entry's, not its own.
+ */
+export interface InboxClaimNextCommand {
+  readonly type: 'inbox.claimNext';
+  readonly inboxId: string;
+  readonly placement: string;
+  readonly now: number;
+}
+export type InboxClaimNextResult =
+  | { readonly kind: 'claimed'; readonly entry: InboxEntryRecord }
+  /** The head is already being placed (or was, before a crash). */
+  | { readonly kind: 'in-flight'; readonly entry: InboxEntryRecord }
+  /** The head is unconfirmed; nothing behind it is placed until it is cancelled. */
+  | { readonly kind: 'blocked'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'empty' };
+
+/** Settle a `placing` entry with what its effect did. */
+export interface InboxSettleCommand {
+  readonly type: 'inbox.settle';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly to: 'placed' | 'unconfirmed' | 'refused';
+  readonly outcome: string | null;
+  readonly now: number;
+}
+export type InboxWriteResult =
+  | { readonly kind: 'applied'; readonly entry: InboxEntryRecord }
+  /** The entry is missing or not `placing`. Nothing was written. */
+  | { readonly kind: 'stale' };
+
+/**
+ * Return a `placing` entry to the queue: its effect was refused before it
+ * ran, for a reason that passes (the target was busy). `keepPlacement` keeps
+ * the pinned target, for a refusal that cannot rule out an earlier attempt's
+ * effect landing on it.
+ */
+export interface InboxReleaseCommand {
+  readonly type: 'inbox.release';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly keepPlacement: boolean;
+  readonly now: number;
+}
+
+/**
+ * Resolve an `unconfirmed` entry once the host can prove what its effect did
+ * (station#3568): `placed` when the effect is known to have happened, or back
+ * to `queued` when it is known not to have (its placement cleared). Only an
+ * `unconfirmed` entry moves; the host owns the proof.
+ */
+export interface InboxResolveUnconfirmedCommand {
+  readonly type: 'inbox.resolveUnconfirmed';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly to: 'placed' | 'queued';
+  readonly outcome: string | null;
+  readonly now: number;
+}
+
+/**
+ * Withdraw a queued entry, or dismiss an unconfirmed or refused one. A
+ * `placing` entry cannot be withdrawn: its effect may be under way.
+ */
+export interface InboxCancelCommand {
+  readonly type: 'inbox.cancel';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly now: number;
+}
+export type InboxCancelResult =
+  | { readonly kind: 'cancelled'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'in-flight'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'placed'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'missing' };
+
+export interface InboxReadCommand {
+  readonly type: 'inbox.read';
+  readonly inboxId: string;
+  readonly key: string;
+}
+export type InboxReadResult =
+  | { readonly kind: 'found'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'absent' };
+
+/** Every retained entry of one inbox, in placement order. */
+export interface InboxListCommand {
+  readonly type: 'inbox.list';
+  readonly inboxId: string;
+}
+/** Every `queued`, `placing` or `unconfirmed` entry of every inbox (recovery). */
+export interface InboxListOpenCommand {
+  readonly type: 'inbox.listOpen';
+}
+/** Forget every entry of one inbox, settled or not (its conversation is gone). */
+export interface InboxForgetCommand {
+  readonly type: 'inbox.forget';
+  readonly inboxId: string;
+}
+export type InboxForgetResult = {
+  readonly kind: 'applied';
+  readonly removed: number;
+};
+
+export type InboxListResult = {
+  readonly kind: 'entries';
+  readonly entries: readonly InboxEntryRecord[];
+};
+
+// ---------------------------------------------------------------------------
 
 export interface KernelResults {
   'turnDedup.claim': TurnDedupClaimResult;
@@ -277,6 +444,16 @@ export interface KernelResults {
   'requestKeys.recordDecision': RequestKeyWriteResult;
   'requestKeys.complete': RequestKeyWriteResult;
   'requestKeys.release': RequestKeyReleaseResult;
+  'inbox.submit': InboxSubmitResult;
+  'inbox.claimNext': InboxClaimNextResult;
+  'inbox.settle': InboxWriteResult;
+  'inbox.release': InboxWriteResult;
+  'inbox.cancel': InboxCancelResult;
+  'inbox.read': InboxReadResult;
+  'inbox.list': InboxListResult;
+  'inbox.listOpen': InboxListResult;
+  'inbox.forget': InboxForgetResult;
+  'inbox.resolveUnconfirmed': InboxWriteResult;
 }
 
 export type KernelCommand =
@@ -298,7 +475,17 @@ export type KernelCommand =
   | RequestKeyClaimCommand
   | RequestKeyRecordDecisionCommand
   | RequestKeyCompleteCommand
-  | RequestKeyReleaseCommand;
+  | RequestKeyReleaseCommand
+  | InboxSubmitCommand
+  | InboxClaimNextCommand
+  | InboxSettleCommand
+  | InboxReleaseCommand
+  | InboxCancelCommand
+  | InboxReadCommand
+  | InboxListCommand
+  | InboxListOpenCommand
+  | InboxForgetCommand
+  | InboxResolveUnconfirmedCommand;
 
 /** A participant refused the command before any write. Nothing changed. */
 export interface ParticipantRefusal {

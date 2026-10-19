@@ -1,0 +1,7 @@
+{
+  "revision": "22ee38988b0d3a6476a61da53d55a6ad8f5c8180",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Rechecked final CSS-only polish: approval column widened to show complete labels and classification text uses the small body token. Existing selection, inline approvals and source settings instructions remain accurate.","inputs":["docs/guides/agents.md","src-ui/src/views/agent-editor/AgentToolPicker.css"]}
+  ]
+}

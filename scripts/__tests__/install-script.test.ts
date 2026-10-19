@@ -969,7 +969,7 @@ describe('one-line Station installer', {
     executable(join(fakeBin, 'curl'), '#!/bin/sh\nexit 42\n');
     const readme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
     const command =
-      /^#{2,3} (?:Install|Verified installer).*?\n[\s\S]*?```bash\n([^\n]+)\n```/m.exec(
+      /^### Verified installer[^\n]*\n[\s\S]*?```bash\n([^\n]+)\n```/m.exec(
         readme,
       )?.[1];
     expect(command).toBeTruthy();
@@ -1776,6 +1776,38 @@ describe('prebuilt archive installs (#2675 B2)', {
   timeout: MAX_INSTALLER_RUNS_PER_TEST * INSTALLER_RUN_TIMEOUT_MS,
 }, () => {
   const tempDir = trackTempDirs();
+
+  it('finishes a signed install when macOS leaves Finder metadata in the extraction stage', () => {
+    const harness = archiveHarness(tempDir('station-archive-finder-'));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const manifest = archiveManifest(harness, archive);
+    const bin = join(harness.root, 'finder-tar');
+    executable(
+      join(bin, 'tar'),
+      `#!/bin/sh
+/usr/bin/tar "$@" || exit "$?"
+case "$1:$4" in
+  -xzf:*/versions/.stage.*) printf 'Finder metadata' >"$4/.DS_Store" ;;
+esac
+`,
+    );
+    harness.guardedPath = `${bin}:${harness.guardedPath}`;
+    const result = runArchiveInstaller(harness, manifest);
+    expect(result.status, result.stderr).toBe(0);
+    expect(
+      existsSync(
+        join(harness.installRoot, 'current', '.station-install-complete'),
+      ),
+    ).toBe(true);
+    expect(cliCalls(harness).some((call) => call.includes('|start '))).toBe(
+      true,
+    );
+    expect(
+      readdirSync(join(harness.installRoot, 'versions')).some((name) =>
+        name.startsWith('.stage.'),
+      ),
+    ).toBe(false);
+  });
 
   it('installs the host archive as a read-only version with a sentinel, current, launcher v2 and state schema 4, and never builds', () => {
     const harness = archiveHarness(tempDir('station-archive-install-'));

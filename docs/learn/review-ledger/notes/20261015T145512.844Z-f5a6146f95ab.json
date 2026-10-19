@@ -1,0 +1,13 @@
+{
+  "revision": "21d82d48e1890a7746f4e7cee8cb39c8d7d1fde3",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed21d82d48e18 against delivery UI claims: its call site explicitly opts out of keepPreviousData; the existing SDK hook already pinned it false after config spread. Request authority, stale-success hiding, query timing and rendered states remain unchanged. The exact hosted retention-consumer scan failed on66cbc and passes after this explicit policy declaration; affected delivery UI controls pass. No baseline or broader visual acceptance claimed.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/settings/TelemetryDelivery.tsx"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed21d82d48e18 against delivery UI claims: its call site explicitly opts out of keepPreviousData; the existing SDK hook already pinned it false after config spread. Request authority, stale-success hiding, query timing and rendered states remain unchanged. The exact hosted retention-consumer scan failed on66cbc and passes after this explicit policy declaration; affected delivery UI controls pass. No baseline or broader visual acceptance claimed.","inputs":["docs/guides/monitoring.md","src-ui/src/views/settings/TelemetryDelivery.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed21d82d48e18 against delivery UI claims: its call site explicitly opts out of keepPreviousData; the existing SDK hook already pinned it false after config spread. Request authority, stale-success hiding, query timing and rendered states remain unchanged. The exact hosted retention-consumer scan failed on66cbc and passes after this explicit policy declaration; affected delivery UI controls pass. No baseline or broader visual acceptance claimed.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/views/settings/TelemetryDelivery.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed21d82d48e18 against canonical usage-export body/error semantics: rethrowDeadline is now the first catch statement, before the existing SyntaxError/non-OK envelope mapping. Other errors still rethrow unchanged. The hook consumer explicitly opts out of previous data while its producer remains pinned false. Both exact hosted source scans and usage-export client/delivery UI suites pass locally:46 tests total; source scans establish structural contracts, while existing bounded-body authority/oversize controls retain their behavior scope. No new timeout experiment, grants/sync, provider or native proof claimed.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/usage-export.ts"]}
+  ]
+}

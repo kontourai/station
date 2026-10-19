@@ -138,7 +138,10 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useHostRequestAuthorityScope: () => undefined,
 }));
 
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
@@ -168,6 +171,8 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useAgentsQuery: () => ({ data: selectionModelState.agents }),
+  useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({
     data: experienceInventory.current,
     refetch: vi.fn(),
@@ -1862,4 +1867,57 @@ describe('the start composer in the dock', () => {
     fireEvent.click(startButton());
     expect(onSelect.mock.calls[0][3]).toBe('Just this');
   });
+});
+
+test.each([false, true])(
+  'New Task uses the shared composer and the first send carries shaping context unless removed (%s)',
+  async (remove) => {
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startSurface
+        taskShaping
+      />,
+    );
+    const input = screen.getByPlaceholderText('Describe the idea…');
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(input, { target: { value: 'Show installer progress' } });
+    if (remove)
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Remove Shaping a Task mode' }),
+      );
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][3]).toBe('Show installer progress');
+    expect(onSelect.mock.calls[0][17]).toEqual(
+      remove ? undefined : expect.stringContaining('station-task-proposal'),
+    );
+  },
+);
+
+test('New Task start surface retains its label and Escape closes it', () => {
+  const onClose = vi.fn();
+  render(
+    <NewChatModal
+      projectIconBySlug={new Map()}
+      agents={[AGENT]}
+      projects={[]}
+      onSelect={vi.fn()}
+      onClose={onClose}
+      startSurface
+      taskShaping
+    />,
+  );
+  expect(screen.getByRole('region', { name: 'New Task' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Shape a Task' })).toBeTruthy();
+  fireEvent.keyDown(screen.getByPlaceholderText('Describe the idea…'), {
+    key: 'Escape',
+  });
+  expect(onClose).toHaveBeenCalledTimes(1);
 });

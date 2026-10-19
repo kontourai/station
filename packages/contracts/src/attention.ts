@@ -511,7 +511,14 @@ export interface PluginLifecycleProposalAttentionItem
   openHref: string;
 }
 
+export interface ToolRequestAttentionItem extends AttentionItemBase {
+  kind: 'tool-request';
+  source: { requestId: string };
+  openHref: string;
+}
+
 export type AttentionItem =
+  | ToolRequestAttentionItem
   | ApprovalAttentionItem
   | PluginLifecycleProposalAttentionItem
   | SetupIncompleteAttentionItem
@@ -579,6 +586,7 @@ export const DECISION_RESOLVED_ATTENTION_KINDS: ReadonlySet<
   'gate-review',
   // #2323 S5: resolved by completing the change or dismissing the proposal.
   'plugin-lifecycle-proposal',
+  'tool-request',
 ]);
 
 /**

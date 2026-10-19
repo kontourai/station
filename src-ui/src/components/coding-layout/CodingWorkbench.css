@@ -629,6 +629,14 @@
   justify-content: flex-start;
 }
 
+.coding-workbench__bar-leading {
+  flex: 0 1 auto;
+}
+
+.coding-workbench__bar-trailing {
+  flex: none;
+}
+
 /* The slots inherit the bar's quiet: the dock header's own bar chrome does
    not apply here, and its icon-only verbs sit as 32px ghost buttons. */
 .coding-workbench__bar .chat-dock__tab-actions--icons {

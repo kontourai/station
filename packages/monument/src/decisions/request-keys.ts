@@ -16,7 +16,9 @@ import type { RequestKeyRecord } from '../records.js';
  * caller's row.
  *
  * The inputs are counted after the TTL purge, which the transaction step runs
- * first on every claim.
+ * first on every claim. A row holds a quota slot if it has a result, or if it
+ * is unresolved and no older than the TTL; the purge forgets only completed
+ * rows, so an unresolved row past the TTL is kept but never counted.
  */
 export interface RequestKeyClaimInputs {
   readonly existing: RequestKeyRecord | undefined;

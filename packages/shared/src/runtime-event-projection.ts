@@ -1267,6 +1267,12 @@ export function projectRuntimeEventsToMessages(
         // handled above, before it ever reaches this branch.)
         break;
     }
+    // A run of content no `turn.started` opened (an engine's history replay
+    // persisted turn-less, or a window that begins mid-turn) would otherwise
+    // be emitted with no timestamp, and readers that merge rows by timestamp
+    // then cannot place it. It takes the time of the event that opened it;
+    // a turn that did start keeps that start (or its terminal) time.
+    if (turnOpen && turnTimestamp === undefined) stamp(ev.createdAt);
   }
 
   if (turnOpen) emitAssistantTurn(openTurnSessionExited);

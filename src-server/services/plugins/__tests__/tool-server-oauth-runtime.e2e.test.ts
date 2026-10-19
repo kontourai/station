@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts';
@@ -7,11 +7,8 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { z } from 'zod';
-import {
-  getInternalApiToken,
-  INTERNAL_API_TOKEN_HEADER,
-  INTERNAL_TENANT_HEADER,
-} from '../../../utils/internal-api-token.js';
+import { EventStore } from '../../orchestration/event-store.js';
+import { TaskGraphService } from '../../projects/task-graph-service.js';
 
 const runtimeSupport = vi.hoisted(() => {
   const service = new Proxy({}, { get: () => () => undefined });
@@ -51,8 +48,6 @@ const HOSTED_TENANT_REGISTRY_ENV = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
 function operatorHeaders(contentType = true): Record<string, string> {
   return {
     Authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
-    [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
-    [INTERNAL_TENANT_HEADER]: 'oauth-tenant',
     ...(contentType ? { 'content-type': 'application/json' } : {}),
   };
 }
@@ -66,6 +61,7 @@ function runtimeContext(
   loader: InstanceType<typeof ConfigLoader>,
   service: InstanceType<typeof MCPService>,
   logger: Record<string, unknown>,
+  store: EventStore,
 ) {
   const devicePairing = new Proxy(
     { identifyDevice: () => undefined },
@@ -105,6 +101,8 @@ function runtimeContext(
       // This fixture has no operator-installed account provider. The broad
       // service proxy would otherwise invent one for this optional field.
       deploymentAuthentication: undefined,
+      orchestrationEventStore: store,
+      taskGraphService: new TaskGraphService(loader.getProjectHomeDir()),
       eventBus: { emit: vi.fn() },
       environmentSecurityService,
       activeAgents: new Map(),
@@ -284,6 +282,7 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
   const home = await mkdtemp(join(tmpdir(), 'station-oauth-runtime-e2e-'));
   const previousHostedRegistry = process.env[HOSTED_TENANT_REGISTRY_ENV];
   const custody = new MCPLocalConnectionCustody();
+  const store = new EventStore(join(home, 'orchestration.sqlite'));
   try {
     const loader = new ConfigLoader({ projectHomeDir: home });
     const service = new MCPService(
@@ -312,18 +311,8 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       setLevel: vi.fn(),
       getLevel: vi.fn(() => 'info' as const),
     };
-    const hostedRegistryPath = join(home, 'hosted-tenants.json');
-    await writeFile(
-      hostedRegistryPath,
-      JSON.stringify({
-        schemaVersion: 1,
-        tenants: [
-          { id: 'oauth-tenant', authority: 'oauth-tenant.example.test' },
-        ],
-      }),
-    );
-    process.env[HOSTED_TENANT_REGISTRY_ENV] = hostedRegistryPath;
-    configureRuntimeRoutes(runtimeContext(app, loader, service, logger));
+    delete process.env[HOSTED_TENANT_REGISTRY_ENV];
+    configureRuntimeRoutes(runtimeContext(app, loader, service, logger, store));
 
     const oauthRoutes = app.routes
       .filter((route) => route.path.includes('/oauth/'))
@@ -358,8 +347,6 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
         {
           method: route.method,
           headers: {
-            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
-            [INTERNAL_TENANT_HEADER]: 'oauth-tenant',
             'content-type': 'application/json',
           },
           body:
@@ -529,6 +516,7 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
     else process.env[HOSTED_TENANT_REGISTRY_ENV] = previousHostedRegistry;
     expect((await custody.shutdown()).state).toBe('settled');
     await fixture.close();
+    await expect.poll(() => store.close().kind).toBe('closed');
     vi.unstubAllGlobals();
     await rm(home, { recursive: true, force: true });
   }

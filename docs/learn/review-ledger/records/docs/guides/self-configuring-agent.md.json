@@ -144,7 +144,13 @@
 
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx"
+    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "src-server/routes/orchestration/session-agent-control.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts"
   ],
 
   "checks": [

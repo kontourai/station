@@ -72,7 +72,7 @@ export function qualificationVerdict(needs, reuseRun) {
 
 export async function github(
   path,
-  { method = 'GET', body, env = process.env } = {},
+  { method = 'GET', body, env = process.env, responseBody = 'json' } = {},
 ) {
   const repository = env.GITHUB_REPOSITORY;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? ''))
@@ -99,7 +99,9 @@ export async function github(
     throw new Error(
       `GitHub ${method} ${path.split('?')[0]}: HTTP ${response.status}`,
     );
-  return response.status === 204 ? null : response.json();
+  return response.status === 204 || responseBody === 'none'
+    ? null
+    : response.json();
 }
 
 export async function listGithub(path, key, options) {
@@ -118,44 +120,89 @@ export async function listGithub(path, key, options) {
   throw new Error(`GitHub listing exceeded bounded pagination: ${path}`);
 }
 
-export async function findQualification(source, env = process.env) {
-  const runs = await listGithub(
-    `actions/runs?head_sha=${source}`,
-    'workflow_runs',
-    { env },
-  );
-  const candidates = runs.filter((item) =>
+const SEPARATE_DELIVERY_WORKFLOWS = new Set([
+  '.github/workflows/main-qualification.yml',
+  '.github/workflows/nightly.yml',
+]);
+const NONTERMINAL_RUN_STATES = new Set([
+  'queued',
+  'pending',
+  'waiting',
+  'requested',
+  'in_progress',
+]);
+const FULL_QUALIFICATION_JOB_NAMES = [
+  'resolve',
+  'Static and app builds',
+  'Ordinary corpus 1-2 of 8',
+  'Ordinary corpus 3-4 of 8',
+  'Ordinary corpus 5-6 of 8',
+  'Ordinary corpus 7-8 of 8',
+  'Process-heavy corpus 1 of 2',
+  'Process-heavy corpus 2 of 2',
+  'Exclusive corpora',
+  'Mobile Playwright (Android viewport)',
+  'Full source qualification',
+];
+
+function qualificationCandidate(run, source, env) {
+  const separateDelivery = SEPARATE_DELIVERY_WORKFLOWS.has(run.path);
+  return (
+    Number.isSafeInteger(run.run_attempt) &&
+    run.run_attempt > 0 &&
     reusableRun(
       {
-        ...item,
+        ...run,
+        // This only admits inspection of the source gate. The parent's actual
+        // status/conclusion is retained and never becomes qualification proof.
         conclusion: 'success',
         status:
-          [
-            '.github/workflows/main-qualification.yml',
-            '.github/workflows/nightly.yml',
-          ].includes(item.path) && item.status === 'in_progress'
+          separateDelivery && NONTERMINAL_RUN_STATES.has(run.status)
             ? 'completed'
-            : item.status,
+            : run.status,
       },
       {
         source,
         repository: env.GITHUB_REPOSITORY,
         currentRun: env.GITHUB_RUN_ID,
       },
-    ),
+    )
+  );
+}
+
+export async function findQualification(source, env = process.env) {
+  const runs = await listGithub(
+    `actions/runs?head_sha=${source}`,
+    'workflow_runs',
+    { env },
   );
   const observations = [];
-  for (const run of candidates) {
-    const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', {
-      env,
-    });
-    const gate = jobs.filter(
+  for (const run of runs.filter((item) =>
+    qualificationCandidate(item, source, env),
+  )) {
+    const jobs = await listGithub(
+      `actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
+      'jobs',
+      { env },
+    );
+    if (
+      jobs.some(
+        (job) =>
+          job.run_id !== run.id ||
+          job.run_attempt !== run.run_attempt ||
+          job.head_sha !== source,
+      )
+    )
+      return '';
+    const gates = jobs.filter(
       (job) => job.name.split(' / ').at(-1) === 'Full source qualification',
     );
-    if (gate.length !== 1) continue;
-    const completed = Date.parse(gate[0].completed_at);
+    if (gates.length !== 1) continue;
+    const gate = gates[0];
+    if (gate.status !== 'completed') return '';
+    const completed = Date.parse(gate.completed_at);
     if (!Number.isFinite(completed) || completed > Date.now()) return '';
-    observations.push({ run, jobs, gate: gate[0], completed });
+    observations.push({ run, jobs, gate, completed });
   }
   observations.sort((a, b) => b.completed - a.completed);
   for (const { run, jobs, gate, completed } of observations) {
@@ -165,31 +212,47 @@ export async function findQualification(source, env = process.env) {
       continue;
     if (
       run.conclusion !== 'success' &&
-      ![
-        '.github/workflows/main-qualification.yml',
-        '.github/workflows/nightly.yml',
-      ].includes(run.path)
+      !SEPARATE_DELIVERY_WORKFLOWS.has(run.path)
     )
       continue;
-    const corpora = jobs.filter((job) => job.name.includes('Ordinary corpus '));
+    const prefix = gate.name.slice(0, -'Full source qualification'.length);
     if (
-      corpora.length !== 4 ||
-      corpora.some((job) => job.conclusion !== 'success')
+      !FULL_QUALIFICATION_JOB_NAMES.every((name) => {
+        const matches = jobs.filter((job) => job.name === `${prefix}${name}`);
+        return (
+          matches.length === 1 &&
+          matches[0].status === 'completed' &&
+          matches[0].conclusion === 'success'
+        );
+      })
     )
-      continue;
+      return '';
     const artifacts = await listGithub(
       `actions/runs/${run.id}/artifacts`,
       'artifacts',
       { env },
     );
     if (
-      artifacts.some(
+      !artifacts.some(
         (artifact) =>
           artifact.name === `source-qualification-${source}-${run.id}` &&
           !artifact.expired,
       )
     )
-      return String(run.id);
+      continue;
+    const current = await github(`actions/runs/${run.id}`, { env });
+    if (
+      current.id !== run.id ||
+      current.run_attempt !== run.run_attempt ||
+      current.path !== run.path ||
+      current.event !== run.event ||
+      current.head_branch !== run.head_branch ||
+      !qualificationCandidate(current, source, env) ||
+      (current.conclusion !== 'success' &&
+        !SEPARATE_DELIVERY_WORKFLOWS.has(current.path))
+    )
+      return '';
+    return String(run.id);
   }
   return '';
 }

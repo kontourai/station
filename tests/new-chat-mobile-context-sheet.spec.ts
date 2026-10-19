@@ -322,3 +322,53 @@ test.describe('New Chat mobile project picker (390x844)', () => {
     await expect(chip).toHaveAttribute('aria-label', selectionBefore ?? '');
   });
 });
+
+/**
+ * The start sheet has one scroll region: the body. Its header holds only the
+ * title row, and on a phone it used to shrink alongside an overflowing body
+ * until it was a few pixels short of its own content, so the sheet showed a
+ * second scrollbar beside the title. A keyboard-height viewport makes the
+ * body overflow with the composer alone.
+ */
+test.describe('New chat start sheet scroll regions (390x560)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 560 });
+    await page.addInitScript(() => {
+      localStorage.removeItem('lastProject');
+      localStorage.removeItem('recentAgents');
+    });
+    await seedRoutes(page);
+  });
+
+  test('scrolls the body only; the header keeps its full height', async ({
+    page,
+  }, testInfo) => {
+    const modal = await openNewChat(page);
+    const header = modal.locator('.new-chat-modal__header');
+    const body = modal.locator('.chat-start__body');
+    await expect(body).toBeVisible();
+    await settleSheetEntrance(page.getByRole('dialog', { name: 'New chat' }));
+
+    const metrics = (locator: Locator) =>
+      locator.evaluate((el) => ({
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      }));
+    // Reachability first: the body must actually overflow, or the header
+    // assertion below would pass without the squeeze ever being possible.
+    const bodyBox = await metrics(body);
+    expect(bodyBox.scrollHeight).toBeGreaterThan(bodyBox.clientHeight);
+    const headerBox = await metrics(header);
+    await page.screenshot({
+      path: testInfo.outputPath('new-chat-start-390x560.png'),
+    });
+    expect(headerBox.scrollHeight).toBeLessThanOrEqual(headerBox.clientHeight);
+
+    // Scrolling the body moves it and leaves the header where it was.
+    await body.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await expect
+      .poll(() => body.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
+    expect(await header.evaluate((el) => el.scrollTop)).toBe(0);
+  });
+});

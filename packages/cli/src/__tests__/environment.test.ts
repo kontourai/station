@@ -8,8 +8,10 @@ import {
   PUBLIC_STATION_PROOF_PATH,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { publishActiveLocalStation } from '../commands/active-local-station.js';
 import {
   type EnvironmentSecurityServiceFactory,
   type EnvironmentSecurityServiceLike,
@@ -17,6 +19,10 @@ import {
   runEnvironmentCommand,
 } from '../commands/environment.js';
 import { DEFAULT_SERVER_PORT } from '../commands/helpers.js';
+import {
+  getProfileCredentialStore,
+  setProfileCredentialStore,
+} from '../commands/profile-credentials.js';
 import { upsertProfile } from '../commands/profile-store.js';
 
 /**
@@ -1524,6 +1530,115 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
     vi.unstubAllGlobals();
   });
 
+  test.each(['https://station.example.test', 'http://127.0.0.1:3241'])(
+    'a paired scope command uses only its saved device credential at %s',
+    async (endpoint) => {
+      const previousStore = getProfileCredentialStore();
+      const credential = 'explicitly-promoted-device-credential';
+      const createService = vi.fn(() => makeService());
+      const calls: { url: string; init?: RequestInit }[] = [];
+      setProfileCredentialStore({
+        get: () => credential,
+        set: () => {},
+        delete: () => {},
+        status: () => 'available',
+      });
+      upsertProfile({
+        name: 'paired-admin',
+        endpoint,
+        credentialRef: { kind: 'station-bearer', id: 'paired-admin' },
+      });
+      const device = {
+        id: 'aaaa1111',
+        name: 'Phone',
+        scope: 'orchestration:read',
+        revokedAt: null,
+      };
+      const fetcher = vi.fn(
+        async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+          calls.push({ url: String(input), init });
+          if (new URL(String(input)).pathname === '/api/pairing/devices')
+            return Response.json({ devices: [device] });
+          return Response.json({
+            ...device,
+            scope: 'orchestration:read approval:full-access',
+          });
+        },
+      );
+      vi.stubGlobal('fetch', fetcher);
+      try {
+        await runEnvironmentCommand(
+          [
+            'access',
+            'scope',
+            'aaaa1111',
+            '--add=approval:full-access',
+            '--station=paired-admin',
+          ],
+          { createService, projectHome: stationRoot, stdout },
+        );
+        expect(createService).not.toHaveBeenCalled();
+        expect(calls.map((call) => call.url)).toEqual([
+          `${endpoint}/api/pairing/devices`,
+          `${endpoint}/api/pairing/devices/aaaa1111/scope`,
+        ]);
+        for (const call of calls) {
+          expect(new Headers(call.init?.headers).get('Authorization')).toBe(
+            `Bearer ${credential}`,
+          );
+          expect(call.init?.redirect).toBe('error');
+        }
+        expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+          scope: ['orchestration:read', 'approval:full-access'],
+          expectedScope: 'orchestration:read',
+        });
+        expect(JSON.stringify(stdout.mock.calls)).not.toContain(credential);
+        expect(JSON.stringify(calls)).not.toContain(INITIAL.credential);
+      } finally {
+        setProfileCredentialStore(previousStore);
+        setClientCredentialResolver(undefined);
+      }
+    },
+  );
+
+  test.each([
+    ['insufficient_scope', 'explicit access:devices grant'],
+    ['account_bound_device_route_forbidden', 'even with access:devices'],
+  ])(
+    'a paired administration refusal explains %s without reading a local home',
+    async (code, remedy) => {
+      const previousStore = getProfileCredentialStore();
+      const createService = vi.fn(() => makeService());
+      setProfileCredentialStore({
+        get: () => 'unpromoted-device',
+        set: () => {},
+        delete: () => {},
+        status: () => 'available',
+      });
+      upsertProfile({
+        name: 'paired-limited',
+        endpoint: 'https://station.example.test',
+        credentialRef: { kind: 'station-bearer', id: 'paired-limited' },
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json({ error: { code } }, { status: 403 })),
+      );
+      try {
+        await expect(
+          runEnvironmentCommand(
+            ['access', 'devices', '--station=paired-limited'],
+            { createService, projectHome: stationRoot, stdout },
+          ),
+        ).rejects.toThrow(remedy);
+        expect(createService).not.toHaveBeenCalled();
+      } finally {
+        setProfileCredentialStore(previousStore);
+        setClientCredentialResolver(undefined);
+      }
+    },
+  );
+
   test('accepts --station=<name> for a profile with a recorded localService.baseDir whose home identity matches the loopback listener', async () => {
     upsertProfile({
       name: 'nightly-local',
@@ -2082,6 +2197,65 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
     ).rejects.toThrow(
       `--api-base=http://127.0.0.1:${DEFAULT_SERVER_PORT} if a remote Station is your default.`,
     );
+  });
+
+  test('approves on the running local Station when the default saved Station is remote', async () => {
+    const localHome = join(stationRoot, 'homes', 'local');
+    const localApiBase = 'http://127.0.0.1:43141';
+    upsertProfile({
+      name: 'brian-media',
+      endpoint: 'https://brian-media.example.test',
+      setupSource: 'paired',
+      configurationState: 'configured',
+      makeDefault: true,
+    });
+    publishActiveLocalStation(
+      { apiBase: localApiBase, ownerPid: process.pid },
+      localHome,
+    );
+    const pending = {
+      requestId: 'local-browser-request',
+      deviceName: 'Local browser',
+      source: 'same-origin' as const,
+      createdAt: 10,
+      expiresAt: 20,
+      status: 'pending' as const,
+    };
+    const request = makeServerAccessApi(INITIAL, [pending], {
+      ...pending,
+      status: 'confirmed',
+    });
+
+    await runEnvironmentCommand(
+      ['access', 'approve', pending.requestId, '--force'],
+      {
+        createService: () => makeService(),
+        projectHome: localHome,
+        request,
+        stdout,
+        stderr,
+        isInteractive: false,
+      },
+    );
+
+    expect(request.mock.calls.map(([apiBase]) => apiBase)).toEqual([
+      localApiBase,
+      localApiBase,
+      localApiBase,
+      localApiBase,
+    ]);
+    expect(request).toHaveBeenLastCalledWith(
+      localApiBase,
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      expect.objectContaining({
+        method: 'POST',
+        headers: { Authorization: `Bearer ${INITIAL.credential}` },
+      }),
+    );
+    expect(JSON.parse(stdout.mock.calls[0]![0])).toMatchObject({
+      requestId: pending.requestId,
+      status: 'confirmed',
+    });
   });
 
   test('applies the same trust derivation when a Station is addressed implicitly (default profile), not only via --station', async () => {

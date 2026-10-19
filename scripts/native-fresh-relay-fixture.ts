@@ -512,7 +512,12 @@ async function main() {
   }
   throw new Error('fixture_usage');
 }
-main().catch(() => {
-  process.stderr.write('native_fresh_fixture_refused\n');
+main().catch((error: unknown) => {
+  const reason =
+    error instanceof assert.AssertionError &&
+    /^fixture_[a-z0-9_]{1,80}$/u.test(error.message)
+      ? `: ${error.message}`
+      : '';
+  process.stderr.write(`native_fresh_fixture_refused${reason}\n`);
   process.exitCode = 1;
 });

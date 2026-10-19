@@ -46,6 +46,8 @@ describe('#749 persisted conversation revalidation', () => {
     expect(resolveOpen).toHaveBeenCalledWith(
       'conversation-749',
       'http://127.0.0.1:43210',
+      undefined,
+      expect.any(Function),
     );
   });
 

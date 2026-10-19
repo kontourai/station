@@ -1,0 +1,391 @@
+/* Settings › People and "Your access tokens" (#3557). Shared by the operator's
+   People section and a person's own token panel, which render the same token
+   sub-section. Hierarchy: section intro → one card per person (the shared
+   PersonRow, components/people/people.css) → small
+   labelled sub-sections (Devices, Access tokens) with tight rows. Actions are
+   compact and sit on the line they act on, never on a row of their own. */
+
+.people {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+  padding-top: var(--k-space-2);
+  padding-bottom: var(--k-space-3);
+}
+
+.people__intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.people__intro p {
+  margin: 0;
+}
+
+.people__groups-help summary {
+  cursor: pointer;
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  /* A disclosure is a tap target too. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  width: fit-content;
+}
+
+.people__groups-help summary:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.people__groups-help dl {
+  display: grid;
+  gap: var(--k-space-2);
+  margin: 0 0 var(--k-space-2);
+}
+
+.people__groups-help dt {
+  color: var(--k-text);
+  font-weight: 600;
+}
+
+.people__groups-help dd {
+  margin: 0;
+}
+
+.people__attention {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin-left: var(--k-space-2);
+  color: var(--k-text);
+}
+
+.people__attention-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--k-caution);
+}
+
+.person-row > .people__error,
+.person-row > .people__notice {
+  padding: 0 var(--k-space-3) var(--k-space-2);
+}
+
+.people__principal {
+  color: var(--k-text-faint);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+  word-break: break-all;
+}
+
+/* Compact and on the header line; the picker keeps a 44px tap height. */
+.people__group-select.editor-select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 6.5rem;
+  min-height: 44px;
+  font-size: var(--k-text-sm);
+}
+
+.people__notice:empty {
+  display: none;
+}
+
+/* A labelled sub-section inside a card. */
+.people__sub {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.people__sub-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  min-height: 32px;
+}
+
+.people__sub-title {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--k-tracking-wide);
+  text-transform: uppercase;
+}
+
+/* Tight rows in one bordered list, divided rather than boxed one by one. */
+.people__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+}
+
+.people__row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2) var(--k-space-3);
+  padding: var(--k-space-2) var(--k-space-3);
+  min-height: 44px;
+  min-width: 0;
+}
+
+.people__row + .people__row {
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+
+.people__row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.people__row-name {
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  word-break: break-word;
+}
+
+.people__meta {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  word-break: break-word;
+}
+
+.people__badge {
+  flex: 0 0 auto;
+  padding: 1px var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-caution);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-text);
+  font-size: var(--k-text-xs);
+  white-space: nowrap;
+}
+
+.people__error {
+  margin: 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
+}
+
+/* Compact buttons: small to look at, 44px to hit. The hit area extends past
+   the visual box rather than inflating it. */
+.button.people__compact {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 var(--k-space-3);
+  font-size: var(--k-text-sm);
+  white-space: nowrap;
+}
+
+.button.people__compact::before {
+  content: "";
+  position: absolute;
+  inset: -6px -2px;
+}
+
+/* The New token form and the one-time secret: inset panels in the card. */
+.people__form,
+.people__secret {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+}
+
+.people__form-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}
+
+.people__form-fields > .people__field:first-child {
+  flex: 1 1 14rem;
+}
+
+.people__form-fields > .people__field:last-child {
+  flex: 0 1 10rem;
+}
+
+.people__form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--k-space-2);
+}
+
+.people__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.people__field-label {
+  color: var(--k-text);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+  padding: 0;
+}
+
+.people__field .editor-select {
+  min-height: 44px;
+}
+
+.people__input,
+.people__secret-value {
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  min-width: 0;
+}
+
+.people__input:focus-visible,
+.people__secret-value:focus-visible,
+.people__choice input:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.people__choices {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0 var(--k-space-4);
+}
+
+.people__choices legend {
+  width: 100%;
+  margin-bottom: var(--k-space-1);
+}
+
+.people__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  padding-top: var(--k-space-1);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+}
+
+.people__choice > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.people__secret-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+
+.people__secret-warning {
+  color: var(--k-text);
+  font-weight: 400;
+}
+
+.people__secret-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  align-items: center;
+}
+
+.people__secret-value {
+  flex: 1 1 14rem;
+  font-family: var(--k-font-mono);
+}
+
+.people__secret .people__meta:empty {
+  display: none;
+}
+
+.people__own {
+  padding-bottom: var(--k-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-4);
+  padding-top: var(--k-space-3);
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+
+/* Revoke is destructive but quiet: danger-coloured text, no fill, so a list
+   of tokens is not a column of red blocks. */
+.button.people__revoke {
+  color: var(--k-negative);
+}
+
+.button.people__revoke:hover:not(:disabled) {
+  background: var(--k-negative-soft);
+  color: var(--k-negative);
+}
+
+/* Copy and Done travel together; on a narrow card they wrap as a pair below
+   the secret rather than leaving Done alone on a row. */
+.people__secret-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--k-space-2);
+  margin-left: auto;
+}
+
+.people__groups-help summary {
+  list-style: none;
+  gap: var(--k-space-1);
+}
+
+.people__groups-help summary::-webkit-details-marker {
+  display: none;
+}
+
+.people__groups-help summary::before {
+  content: "▸";
+  color: var(--k-text-muted);
+  transition: transform var(--k-dur) var(--k-ease);
+}
+
+.people__groups-help[open] summary::before {
+  transform: rotate(90deg);
+}
+
+/* An empty sub-section is one quiet line, not a framed card. */
+.people__none {
+  margin: 0;
+  padding: 0 var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.button.people__compact[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

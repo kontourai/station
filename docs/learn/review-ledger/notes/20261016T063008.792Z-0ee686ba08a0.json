@@ -1,0 +1,7 @@
+{
+  "revision": "60205af9b488d2f45c5f36212a74fab52d341d73",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed exact-head 91ae33 hosted Gallery run 38857646865: 56 successful captures, real recovery checks, mismatch normal/diagnostic RGBA equality, desktop 1440x900 and mobile 390x844. Refreshed only mismatch and desktop/mobile resync references. Full strict and advisory comparisons are 55/55 unchanged with no new screens, capture failures or missing images; existing volatile exception retained. Independent hosted comparison of the reference-only successor remains pending.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}

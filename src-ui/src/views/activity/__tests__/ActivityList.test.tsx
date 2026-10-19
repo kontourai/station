@@ -4,7 +4,7 @@
 
 /**
  * The Activity list (lane `activity-list`): state lanes with the dated
- * history stream, the always-present top-level "New task", the row's one
+ * history stream, the always-present top-level "New Task", the row's one
  * "⋯" menu (Stop… behind a confirmation, Open in chat), and filters that
  * compose with search. Rendered through the real `SessionsView`,
  * `SplitPaneLayout`, lane model, `DelegationLauncher` and `ConfirmModal`;
@@ -400,7 +400,7 @@ describe('Activity list', () => {
     expect(meta.textContent).toContain(', 3m');
   });
 
-  test('New task opens a TOP-LEVEL launcher even when delegated work exists', async () => {
+  test('New Task does not open delegation when delegated work exists', async () => {
     sessions = [
       session('Plan the release', {
         lifecycleState: 'running',
@@ -417,29 +417,21 @@ describe('Activity list', () => {
     ];
     renderView();
 
-    fireEvent.click(screen.getByRole('button', { name: 'New task' }));
-    const dialog = screen.getByRole('dialog', { name: 'Delegate a task' });
-    expect(within(dialog).queryByText('Child worker of')).toBeNull();
-
-    fireEvent.change(within(dialog).getByLabelText('Task'), {
-      target: { value: 'Write the changelog' },
-    });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Delegate' }));
-    await waitFor(() => expect(delegateTask).toHaveBeenCalledTimes(1));
-    const call = delegateTask.mock.calls[0][0] as {
-      input: Record<string, unknown>;
-    };
-    expect(call.input.prompt).toBe('Write the changelog');
-    expect(call.input).not.toHaveProperty('parentTaskId');
+    fireEvent.click(screen.getByRole('button', { name: 'New Task' }));
+    expect(
+      screen.queryByRole('dialog', { name: 'Delegate a task' }),
+    ).toBeNull();
+    expect(delegateTask).not.toHaveBeenCalled();
   });
 
-  test('New task is offered on an empty Activity too', () => {
+  test('New Task requests shaping on an empty Activity too', () => {
+    const listener = vi.fn();
+    window.addEventListener('station:shape-task', listener);
     renderView();
     expect(screen.getByText('Nothing has run yet')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'New task' }));
-    expect(
-      screen.getByRole('dialog', { name: 'Delegate a task' }),
-    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'New Task' }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener('station:shape-task', listener);
   });
 
   test('Stop… asks for confirmation before interrupting, and Cancel stops nothing', async () => {
@@ -890,10 +882,10 @@ describe('Activity list', () => {
     ).toBeTruthy();
   });
 
-  test('in a dock pane (no page frame) New task sits at the top of the list, not in the footer', () => {
+  test('in a dock pane (no page frame) New Task sits at the top of the list, not in the footer', () => {
     sessions = [runningChat()];
     const { container } = renderView();
-    const button = screen.getByRole('button', { name: 'New task' });
+    const button = screen.getByRole('button', { name: 'New Task' });
     expect(button.closest('.split-pane__add')).toBeNull();
     const list = container.querySelector('.split-pane__list') as HTMLElement;
     expect(list.contains(button)).toBe(true);

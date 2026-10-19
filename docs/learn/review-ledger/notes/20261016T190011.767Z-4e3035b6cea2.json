@@ -1,0 +1,15 @@
+{
+  "revision": "89ea3d4bdec229e03f7c19d1774515042425a898",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed only references to the testing guide against its new Tauri caller-test paragraph. Exact focused tests, fixture fidelity, independent assertions, host liveness scaling, pre-push routing, source ownership and hosted completion policy remain unchanged. The80s test caller envelope covers existing bounded subprocesses and does not change production deadlines or performance budgets. Bounded diagnostic output uses canonical redaction. No prose change needed; other referenced contracts outside this review.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed only references to the testing guide against its new Tauri caller-test paragraph. Exact focused tests, fixture fidelity, independent assertions, host liveness scaling, pre-push routing, source ownership and hosted completion policy remain unchanged. The80s test caller envelope covers existing bounded subprocesses and does not change production deadlines or performance budgets. Bounded diagnostic output uses canonical redaction. No prose change needed; other referenced contracts outside this review.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed only references to the testing guide against its new Tauri caller-test paragraph. Exact focused tests, fixture fidelity, independent assertions, host liveness scaling, pre-push routing, source ownership and hosted completion policy remain unchanged. The80s test caller envelope covers existing bounded subprocesses and does not change production deadlines or performance budgets. Bounded diagnostic output uses canonical redaction. No prose change needed; other referenced contracts outside this review.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed only references to the testing guide against its new Tauri caller-test paragraph. Exact focused tests, fixture fidelity, independent assertions, host liveness scaling, pre-push routing, source ownership and hosted completion policy remain unchanged. The80s test caller envelope covers existing bounded subprocesses and does not change production deadlines or performance budgets. Bounded diagnostic output uses canonical redaction. No prose change needed; other referenced contracts outside this review.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed only references to the testing guide against its new Tauri caller-test paragraph. Exact focused tests, fixture fidelity, independent assertions, host liveness scaling, pre-push routing, source ownership and hosted completion policy remain unchanged. The80s test caller envelope covers existing bounded subprocesses and does not change production deadlines or performance budgets. Bounded diagnostic output uses canonical redaction. No prose change needed; other referenced contracts outside this review.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

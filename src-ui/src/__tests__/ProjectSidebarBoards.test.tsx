@@ -60,6 +60,7 @@ const {
   reactApi,
   viewport,
   createOutcome,
+  readState,
 } = vi.hoisted(() => ({
   /**
    * Whether the panel believes it is on a phone. Configurable, because
@@ -69,6 +70,7 @@ const {
   viewport: { isMobile: false },
   /** Whether the next create is refused; see the create mock below. */
   createOutcome: { rejects: false },
+  readState: { status: 'success', refetch: vi.fn() },
   boards: [] as Array<{
     id: string;
     slug: string;
@@ -201,7 +203,12 @@ vi.mock('@kontourai/station-sdk', () => {
         () => sdk.version,
         () => sdk.version,
       );
-      return { data: [...boards] };
+      return {
+        data: readState.status === 'success' ? [...boards] : undefined,
+        isPending: readState.status === 'pending',
+        isError: readState.status === 'error',
+        refetch: readState.refetch,
+      };
     },
     useCreatePersonalLayoutMutation: (options?: {
       onSuccess?: (created: { slug: string }) => void;
@@ -273,6 +280,7 @@ vi.mock('@kontourai/station-sdk', () => {
 import * as React from 'react';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { nextBoardSlug } from '../components/project-sidebar/ProjectSidebarBoards';
+import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
@@ -322,6 +330,15 @@ async function renderSidebar(ui: ReactElement) {
 
 beforeEach(() => {
   viewport.isMobile = false;
+  readState.status = 'success';
+  readState.refetch.mockClear();
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
   setViewportWidth(DESKTOP_WIDTH);
   openSurfaceInRegion.mockClear();
   createOutcome.rejects = false;
@@ -334,8 +351,7 @@ beforeEach(() => {
   }
   window.localStorage.clear();
   // The rail's collapsed state lives in a MODULE SINGLETON, so clearing
-  // storage does not clear it: the #2083 collapse case drives the real
-  // `Collapse sidebar` control, and a failure between collapsing and
+  // storage does not clear it: the collapse cases dispatch `toggle-sidebar`, and a failure between collapsing and
   // re-expanding would otherwise leave every later test rendering a rail with
   // no Boards chrome in it — nine unrelated reds pointing at the wrong file.
   // Observed while fault-injecting that case, not hypothesised.
@@ -345,47 +361,37 @@ beforeEach(() => {
 
 /** The section's own header, found by the heading text the user reads. */
 function boardsHeader() {
-  return screen.queryByText('Boards');
+  return screen.queryByText('Personal Boards');
 }
 
 function boardMenu(name: string) {
   fireEvent.click(screen.getByRole('button', { name: `${name} actions` }));
 }
 
-describe('the Boards section is hidden until there is a Board', () => {
-  test('no Boards and no shared Boards renders no section at all', async () => {
+describe('Personal Boards stay discoverable after Projects', () => {
+  test('keeps the group and first-create action visible when empty', async () => {
     await renderSidebar(<ProjectSidebar />);
-    expect(boardsHeader()).toBeNull();
-    // Not merely a hidden heading: the section contributes no control either,
-    // so the panel is byte-for-byte the panel that shipped before #2062.
-    expect(screen.queryByRole('button', { name: 'New Board' })).toBeNull();
-    // The rest of the panel is intact — this is an absent section, not a
-    // crashed one.
-    expect(screen.getByText('Projects')).toBeDefined();
-
-    // The absence above is a DECISION, not an unresolved lazy chunk. Both
-    // look identical from outside, so this proves the difference: publishing
-    // a Board with no further awaiting makes the header appear, which is only
-    // possible if the section was already mounted and chose to render null.
-    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
-    act(() => {
-      sdk.notify();
-    });
     expect(boardsHeader()).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'New Board' })).toBeTruthy();
+    expect(screen.getByText('Dashboards across projects.')).toBeTruthy();
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
+    act(() => sdk.notify());
+    expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
+    expect(screen.queryByText('Dashboards across projects.')).toBeNull();
   });
 
-  test('one Board brings the section back, above Projects', async () => {
+  test('one Board brings the section back, after Projects', async () => {
     boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     const header = boardsHeader();
     expect(header).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Daily brief' })).toBeDefined();
-    // D3 puts Boards between Activity and Projects. Compared by document
+    // The workspace map puts personal Boards after Projects. Compared by document
     // order rather than by asserting a DOM parent, so a restyle that keeps
     // the order keeps this true.
     const projectsHeader = screen.getByText('Projects');
     expect(
-      header!.compareDocumentPosition(projectsHeader) &
+      projectsHeader.compareDocumentPosition(header!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     const activityRow = screen.getByRole('button', { name: 'Activity' });
@@ -396,23 +402,149 @@ describe('the Boards section is hidden until there is a Board', () => {
   });
 });
 
-describe('creating a Board from the panel', () => {
-  /**
-   * DISCLOSED GAP, pinned rather than papered over. #2062 asks for two things
-   * that meet here: the section is hidden when the viewer has no Boards, and
-   * the section's `+` is what creates one. Together they mean the panel
-   * offers no way to create the FIRST Board — the `+` only exists once a
-   * Board does.
-   *
-   * This is the acceptance criterion implemented as written, and the cost
-   * named. The fix is a product decision the epic owns (a palette entry, or
-   * an empty-state row that contradicts "hidden"), not something to invent
-   * here — and a test asserting the absence is how the next reader finds out
-   * instead of rediscovering it.
-   */
-  test('with no Boards the panel offers no way to create the first one', async () => {
+describe('collapsed Personal Boards navigation', () => {
+  test('opens the list, returns focus on Escape, and dismisses after selecting a Board', async () => {
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
-    expect(screen.queryByRole('button', { name: 'New Board' })).toBeNull();
+    act(() => {
+      window.dispatchEvent(new Event('toggle-sidebar'));
+    });
+    const trigger = screen.getByRole('button', {
+      name: 'Personal Boards',
+    });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const popup = screen.getByRole('dialog', { name: 'Personal Boards' });
+    expect(
+      within(popup).getByRole('button', { name: 'Daily brief' }),
+    ).toBeTruthy();
+    fireEvent.keyDown(popup, { key: 'Escape' });
+    expect(
+      screen.queryByRole('dialog', { name: 'Personal Boards' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Daily brief' }));
+    expect(navigate).toHaveBeenCalledWith('/boards/daily');
+    expect(
+      screen.queryByRole('dialog', { name: 'Personal Boards' }),
+    ).toBeNull();
+  });
+
+  test('retires the popup when the selected Station authority changes', async () => {
+    const panel = (namespace: string) => (
+      <AuthorityPersistenceContext.Provider
+        value={{ status: 'verified', namespace, observation: null }}
+      >
+        <ProjectSidebar />
+      </AuthorityPersistenceContext.Provider>
+    );
+    const view = await renderSidebar(panel('station-a'));
+    act(() => {
+      window.dispatchEvent(new Event('toggle-sidebar'));
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Personal Boards' }));
+    expect(
+      screen.getByRole('dialog', { name: 'Personal Boards' }),
+    ).toBeTruthy();
+    await act(async () => {
+      view.rerender(
+        <KeyboardShortcutsProvider>
+          {panel('station-b')}
+        </KeyboardShortcutsProvider>,
+      );
+    });
+    expect(
+      screen.queryByRole('dialog', { name: 'Personal Boards' }),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Personal Boards' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  test('creates and names the first Board inside the collapsed popup', async () => {
+    await renderSidebar(<ProjectSidebar />);
+    act(() => {
+      window.dispatchEvent(new Event('toggle-sidebar'));
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Personal Boards' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'New Board' }));
+    });
+    const input = screen.getByRole('textbox', {
+      name: 'Rename Untitled Board',
+    });
+    expect(document.activeElement).toBe(input);
+    expect(
+      screen.getByRole('dialog', { name: 'Personal Boards' }).contains(input),
+    ).toBe(true);
+    fireEvent.change(input, { target: { value: 'My desk' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByRole('button', { name: 'My desk' })).toBeTruthy();
+    expect(calls.update).toEqual([
+      { layoutSlug: 'untitled-board', update: { name: 'My desk' } },
+    ]);
+  });
+
+  test('palette creation with the rail collapsed opens the Board without a hidden rename', async () => {
+    await renderSidebar(<ProjectSidebar />);
+    act(() => {
+      window.dispatchEvent(new Event('toggle-sidebar'));
+    });
+    act(() => {
+      requestNewBoard();
+    });
+    await act(async () => {});
+    expect(navigate).toHaveBeenCalledWith('/boards/untitled-board');
+    expect(
+      screen.queryByRole('textbox', {
+        name: 'Rename Untitled Board',
+        hidden: true,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('Personal Boards read recovery', () => {
+  test.each(['pending', 'error'])(
+    'does not create from an unread %s list',
+    async (status) => {
+      readState.status = status;
+      await renderSidebar(<ProjectSidebar />);
+      expect(
+        screen
+          .getByRole('button', { name: 'New Board' })
+          .hasAttribute('disabled'),
+      ).toBe(true);
+      act(() => {
+        requestNewBoard();
+      });
+      expect(calls.create).toEqual([]);
+      if (status === 'error') {
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        expect(readState.refetch).toHaveBeenCalledOnce();
+      } else {
+        expect(screen.getByLabelText('Loading personal Boards')).toBeTruthy();
+      }
+    },
+  );
+});
+
+describe('creating a Board from the panel', () => {
+  test('creates the first Board from the visible + and focuses its name', async () => {
+    await renderSidebar(<ProjectSidebar />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'New Board' }));
+    });
+    expect(calls.create).toEqual([
+      { slug: 'untitled-board', name: 'Untitled Board' },
+    ]);
+    expect(document.activeElement).toBe(
+      screen.getByRole('textbox', { name: 'Rename Untitled Board' }),
+    );
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   /**
@@ -430,10 +562,9 @@ describe('creating a Board from the panel', () => {
    * them going red.
    */
   test('the command palette trigger creates the first Board and opens it', async () => {
-    // The viewer has NONE — the whole point of the entry. The section renders
-    // nothing at all here, so there is no `+` to click.
+    // The command palette remains an alternative to the visible first-create action.
     await renderSidebar(<ProjectSidebar />);
-    expect(screen.queryByRole('button', { name: 'New Board' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'New Board' })).toBeTruthy();
 
     // Two steps, not one `await act(async ...)`, and the split is what gives
     // the focus assertion below its power. The palette's row click is a
@@ -1059,7 +1190,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     expect(screen.queryByRole('menu')).not.toBeNull();
 
     act(() => {
-      fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+      window.dispatchEvent(new CustomEvent('toggle-sidebar'));
     });
     // The menu is GONE, not merely hidden by `.sidebar--collapsed`. jsdom
     // applies no stylesheet, so a menu still in the tree is still found here —
@@ -1068,7 +1199,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     expect(screen.queryByRole('menu')).toBeNull();
 
     act(() => {
-      fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+      window.dispatchEvent(new CustomEvent('toggle-sidebar'));
     });
     // Re-expanding must not reopen a menu nobody asked for — the second half
     // of the same defect, and the half a CSS-only fix would leave behind.
@@ -1218,8 +1349,9 @@ describe('deleting a Board from the panel', () => {
       fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     });
     expect(calls.remove).toEqual(['daily']);
-    // Last Board gone, so the whole section goes with it.
-    expect(boardsHeader()).toBeNull();
+    // The first-create action remains after the last Board is removed.
+    expect(boardsHeader()).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'New Board' })).toBeTruthy();
   });
 
   test('Cancel in the confirm deletes nothing', async () => {
@@ -1269,7 +1401,7 @@ describe('promoting a Board from the panel', () => {
     // A MOVE: the Board is no longer a Board, so the section that listed it
     // is gone. A panel that treated promote as a copy would still show it.
     expect(screen.queryByRole('button', { name: 'Daily brief' })).toBeNull();
-    expect(boardsHeader()).toBeNull();
+    expect(boardsHeader()).not.toBeNull();
   });
 
   test('with no projects the picker names the remedy instead of offering nothing', async () => {

@@ -70,7 +70,12 @@ export function fakeClaudeSpawn() {
     args: readonly string[],
     options: unknown,
   ): never => {
-    if (command !== FAKE_CLAUDE_COMMAND)
+    // #2494: a confined launch is the fake command wrapped in sandbox-exec.
+    const wrapped =
+      command === '/usr/bin/sandbox-exec' &&
+      args[0] === '-p' &&
+      args[2] === FAKE_CLAUDE_COMMAND;
+    if (command !== FAKE_CLAUDE_COMMAND && !wrapped)
       throw new Error(`a test tried to spawn a real process: ${command}`);
     return new FakeClaudeChild(
       command,
@@ -86,13 +91,13 @@ export function fakeClaudeSpawn() {
  */
 export function fakeEngineProcessModule<
   T extends {
-    createClaudeEngineProcess: (spawnChild?: never) => unknown;
+    createClaudeEngineProcess: (spawnChild?: never, wrap?: never) => unknown;
   },
 >(actual: T): T {
   return {
     ...actual,
-    createClaudeEngineProcess: () =>
-      actual.createClaudeEngineProcess(fakeClaudeSpawn() as never),
+    createClaudeEngineProcess: (_spawnChild?: never, wrap?: never) =>
+      actual.createClaudeEngineProcess(fakeClaudeSpawn() as never, wrap),
   };
 }
 
@@ -183,6 +188,7 @@ type ClaudeQueryOptions = {
     signal: AbortSignal;
   }) => SdkSpawnedProcess;
   canUseTool?: (...args: any[]) => any;
+  env?: Record<string, string | undefined>;
 };
 
 type FakeClaudeEngine = {
@@ -217,7 +223,8 @@ export function startFakeClaudeEngine(
   const process = options.spawnClaudeCodeProcess({
     command: FAKE_CLAUDE_COMMAND,
     args: [],
-    env: {},
+    // The env the adapter handed the SDK, as the SDK passes it to the spawn.
+    env: options.env ?? {},
     signal: new AbortController().signal,
   });
   // The fake command makes the fake spawn return a FakeClaudeChild, and the

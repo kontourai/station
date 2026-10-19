@@ -23,8 +23,6 @@ const EXPENSIVE = [
   'scripts/check-prepush-orchestration-transfer.mjs',
   'scripts/check-prepush-static-gates.mjs',
   'scripts/check-prepush-sdk-barrel.mjs',
-  'scripts/check-prepush-typecheck.mjs',
-  'veritas:readiness',
 ];
 
 const makeTempDir = trackTempDirs();
@@ -332,11 +330,11 @@ if (/^scripts\\/(check-prepush-|commit-message-gate)/.test(args[0] ?? '')) {
 `,
         { mode: 0o755 },
       );
-      const push = () => {
+      const push = (refs = ['feat']) => {
         writeFileSync(report, '');
         const result = spawnSync(
           'git',
-          ['-c', 'core.hooksPath=.githooks', 'push', '-q', 'origin', 'feat'],
+          ['-c', 'core.hooksPath=.githooks', 'push', '-q', 'origin', ...refs],
           {
             cwd: f.repo,
             env: { ...f.env, PATH: `${bin}:${process.env.PATH ?? ''}` },
@@ -348,11 +346,29 @@ if (/^scripts\\/(check-prepush-|commit-message-gate)/.test(args[0] ?? '')) {
         expect(result.status, result.stdout + result.stderr).toBe(0);
         return {
           output: result.stdout + result.stderr,
-          gates: readFileSync(report, 'utf8').trim().split('\n'),
+          gates: readFileSync(report, 'utf8')
+            .trim()
+            .split('\n')
+            .filter(Boolean),
         };
       };
       return { ...f, push };
     }
+
+    it('runs no gates for a deletion-only push', () => {
+      const f = hookFixture();
+      expect(f.push([':feat']).gates).toEqual([]);
+    });
+
+    it('still checks an update in a mixed deletion/update push', () => {
+      const f = hookFixture();
+      f.commit('feat.txt', 'changed feature\n', 'fix: update feature');
+      const { gates } = f.push([':feat', 'feat:updated']);
+      for (const gate of EXPENSIVE) expect(gates).toContain(gate);
+      expect(gates).toContain('lint:check');
+      expect(gates).toContain('proof:repo-governance');
+      expect(gates).toContain('scripts/commit-message-gate.mjs');
+    });
 
     it('runs only the cheap lanes for a clean merge of main', () => {
       const f = hookFixture();

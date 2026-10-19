@@ -21,6 +21,20 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 
+const accountPreferenceFixture = vi.hoisted(() => ({
+  status: 'account',
+  saving: false,
+  requestScope: undefined as
+    | { apiBase: string; authorityKey: string; isCurrent: () => boolean }
+    | undefined,
+  data: {
+    schemaVersion: 1,
+    values: { interactiveApprovalModes: {} as Record<string, string> },
+  },
+}));
+vi.mock('../contexts/AccountPreferencesContext', () => ({
+  useAccountPreferences: () => accountPreferenceFixture,
+}));
 const outboundQueueMode = vi.hoisted(() => ({ useActual: false }));
 
 class CodedOrchestrationError extends Error {
@@ -100,11 +114,16 @@ const invalidateMock = vi.fn();
 // #2310 review H1: the session-list cache the send path consults. Tests set
 // what the cache holds; the default is an empty list.
 let cachedSessionList: unknown[] = [];
+// What the agent catalog query holds, which a first send judges its
+// expectedEngine precondition against.
+let cachedAgentCatalog: unknown;
 const queryClientMock = {
   getQueryData: (key: unknown[]) =>
     JSON.stringify(key) === JSON.stringify(['orchestration-sessions'])
       ? cachedSessionList
-      : undefined,
+      : JSON.stringify(key) === JSON.stringify(['agents'])
+        ? cachedAgentCatalog
+        : undefined,
 };
 // `isProvablyNotSent` is deliberately the REAL implementation, not a stub:
 // it is the one derivation that decides whether a failed Stop reads "Stop
@@ -219,8 +238,11 @@ const stagedSnapshot = {
 
 describe('useSendMessage canonical ExecutionTarget path', () => {
   beforeEach(() => {
+    accountPreferenceFixture.requestScope = undefined;
+    accountPreferenceFixture.data.values.interactiveApprovalModes = {};
     vi.clearAllMocks();
     outboundQueueMode.useActual = false;
+    cachedAgentCatalog = undefined;
     sendExecutionMessageMock.mockResolvedValue(successReceipt());
     steerOrchestrationTurnMock.mockReset();
     activeChatsStore.initChat(sessionId, {
@@ -245,6 +267,53 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.removeChat(sessionId);
   });
 
+  it('keeps shaping instructions across a clarification and reload, then stops when mode is removed', async () => {
+    activeChatsStore.updateChat(sessionId, { taskShaping: true });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Help shape installer progress',
+      );
+    });
+    const saved = hydrateActiveChats(
+      serializeActiveChats(activeChatsStore.getSnapshot()),
+    );
+    expect(saved[sessionId].taskShaping).toBe(true);
+    activeChatsStore.updateChat(sessionId, {
+      ...saved[sessionId],
+      status: 'idle',
+      orchestrationTurnOpen: false,
+    });
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Show counts for each step',
+      );
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    for (const [, request] of sendExecutionMessageMock.mock.calls)
+      expect(request.ambientContext).toContain('station-task-proposal');
+    expect(sendExecutionMessageMock.mock.calls[1][1].message).toBe(
+      'Show counts for each step',
+    );
+    activeChatsStore.updateChat(sessionId, {
+      taskShaping: false,
+      status: 'idle',
+      orchestrationTurnOpen: false,
+    });
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'Continue chatting');
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(3);
+    expect(
+      sendExecutionMessageMock.mock.calls[2][1].ambientContext,
+    ).toBeUndefined();
+  });
   it.each(['replaced', 'removed', 'roles'] as const)(
     'refuses a captured start after a %s change to the complete draft before dispatch',
     async (change) => {
@@ -710,7 +779,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       await act(async () => {
         await result.current(sessionId, 'codex', undefined, 'go');
       });
-      return sendExecutionMessageMock.mock.calls[0][1];
+      return sendExecutionMessageMock.mock.calls.at(-1)![1];
     }
 
     it.each([
@@ -738,6 +807,81 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         'approvalMode',
       );
       expect(body).not.toHaveProperty('setApprovalMode');
+    });
+
+    it('applies a saved personal default only to the first interactive send and carries its decision basis', async () => {
+      const requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.requestScope = requestScope;
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      try {
+        const body = await bodyAfterSend();
+        expect(body).toMatchObject({
+          setApprovalMode: 'never',
+          setApprovalModeBasedOn: null,
+        });
+        expect(sendExecutionMessageMock.mock.calls[0][2].requestScope).toBe(
+          requestScope,
+        );
+        activeChatsStore.updateChat(sessionId, {
+          queuedApprovalMode: undefined,
+          orchestrationSessionStarted: true,
+          status: 'idle',
+          orchestrationStatus: 'idle',
+        });
+        expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('drops another account’s inherited default while keeping explicit chat choices', async () => {
+      activeChatsStore.updateChat(sessionId, {
+        queuedApprovalMode: 'never',
+        queuedApprovalDefaultNamespace: 'other-account',
+      });
+      expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+      activeChatsStore.updateChat(sessionId, {
+        status: 'idle',
+        orchestrationStatus: 'idle',
+        queuedApprovalMode: 'ask',
+      });
+      expect(await bodyAfterSend()).toMatchObject({ setApprovalMode: 'ask' });
+    });
+
+    it('an Agent default overrides the personal default and an explicit chat choice overrides both', async () => {
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [
+          {
+            slug: 'codex',
+            execution: { agentConnectionId: 'codex', approvalMode: 'ask' },
+          },
+        ],
+      };
+      try {
+        expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+        activeChatsStore.updateChat(sessionId, {
+          queuedApprovalMode: 'auto',
+          status: 'idle',
+          orchestrationStatus: 'idle',
+        });
+        expect(await bodyAfterSend()).toMatchObject({
+          setApprovalMode: 'auto',
+        });
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
     });
 
     it('carries a queued pick as setApprovalMode, compare-and-set against the folded decision', async () => {
@@ -1154,6 +1298,12 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   // "Retrying may help", and the only way on is an explicit send at the
   // chat's current mode, which must not carry full access again.
   it('a refused full access is not a failure: the draft returns and the resend drops full access', async () => {
+    accountPreferenceFixture.data.values.interactiveApprovalModes = {
+      codex: 'never',
+    };
+    cachedAgentCatalog = {
+      agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+    };
     activeChatsStore.updateChat(sessionId, { queuedApprovalMode: 'never' });
     sendExecutionMessageMock.mockRejectedValueOnce(
       Object.assign(
@@ -1359,6 +1509,172 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(chat?.attachments).toEqual([]);
     expect(chat?.attachmentStages).toEqual([]);
     expect(chat?.input).toBe('look');
+  });
+
+  describe('expectedEngine precondition', () => {
+    const catalog = (
+      agents: Array<{
+        slug: string;
+        execution?: { agentConnectionId?: string };
+      }>,
+      catalogState?: string,
+    ) => ({ agents, ...(catalogState ? { catalogState } : {}) });
+    const sendFirst = async (slug = 'station') => {
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, slug, undefined, 'hello');
+      });
+      return sendExecutionMessageMock.mock.calls.at(-1)?.[1].target;
+    };
+    beforeEach(() => {
+      // A new chat with no Project: its environment is explicitly this Station.
+      activeChatsStore.updateChat(sessionId, { projectSlug: undefined });
+    });
+
+    it.each([
+      ['an unbound Agent', undefined, { kind: 'station' }],
+      [
+        'an Agent bound to an engine connection',
+        'opencode',
+        { kind: 'connection', connectionId: 'opencode' },
+      ],
+    ] as const)(
+      'states the engine the snapshot showed for %s on a first send',
+      async (_label, bound, expected) => {
+        cachedAgentCatalog = catalog([
+          {
+            slug: 'station',
+            ...(bound ? { execution: { agentConnectionId: bound } } : {}),
+          },
+        ]);
+        expect((await sendFirst()).expectedEngine).toEqual(expected);
+      },
+    );
+
+    it('states nothing when the snapshot may not be what the user saw', async () => {
+      cachedAgentCatalog = catalog([{ slug: 'station' }], 'reconciling');
+      expect(await sendFirst()).not.toHaveProperty('expectedEngine');
+      cachedAgentCatalog = catalog([{ slug: 'someone-else' }]);
+      expect(await sendFirst()).not.toHaveProperty('expectedEngine');
+      cachedAgentCatalog = undefined;
+      expect(await sendFirst()).not.toHaveProperty('expectedEngine');
+    });
+
+    // The exclusions of the first-send gate. Each is a place where the cache
+    // may be arbitrarily newer or older than what the send was composed on.
+    it('states nothing for a replayed (queued/offline) send, whatever the cache holds', async () => {
+      cachedAgentCatalog = catalog([{ slug: 'station' }]);
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(
+          sessionId,
+          'station',
+          undefined,
+          'hello',
+          [],
+          undefined,
+          undefined,
+          {
+            dispatch: true,
+          } as never,
+        );
+      });
+      const target = sendExecutionMessageMock.mock.calls.at(-1)?.[1].target;
+      expect(target).not.toHaveProperty('expectedEngine');
+    });
+
+    it('states nothing when the caller names an existing conversation', async () => {
+      cachedAgentCatalog = catalog([{ slug: 'station' }]);
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(
+          sessionId,
+          'station',
+          'conversation:named',
+          'hello',
+        );
+      });
+      const target = sendExecutionMessageMock.mock.calls.at(-1)?.[1].target;
+      expect(target).not.toHaveProperty('expectedEngine');
+    });
+
+    // Under an execution override the target takes the engine from the
+    // OVERRIDE's binding, so the expectation must come from that row, not the
+    // profile's. Reading the profile row would refuse every override send.
+    it('reads the override Agent row, not the profile row, under an execution override', async () => {
+      cachedAgentCatalog = catalog([
+        { slug: 'reviewer' },
+        { slug: 'codex', execution: { agentConnectionId: 'codex-connection' } },
+      ]);
+      activeChatsStore.updateChat(sessionId, { executionAgentId: 'codex' });
+      expect((await sendFirst('reviewer')).expectedEngine).toEqual({
+        kind: 'connection',
+        connectionId: 'codex-connection',
+      });
+    });
+
+    it('states nothing for a Project chat, whose environment is the Project default', async () => {
+      cachedAgentCatalog = catalog([{ slug: 'station' }]);
+      activeChatsStore.updateChat(sessionId, { projectSlug: 'station' });
+      expect(await sendFirst()).not.toHaveProperty('expectedEngine');
+    });
+
+    it('states nothing once the conversation is bound to an engine', async () => {
+      cachedAgentCatalog = catalog([{ slug: 'station' }]);
+      activeChatsStore.updateChat(sessionId, {
+        conversationId: 'conversation:existing',
+      });
+      expect(await sendFirst()).not.toHaveProperty('expectedEngine');
+    });
+
+    // The refusal is the point: no Retry (a blind resend would run on the new
+    // engine without the user having looked), and the snapshot is re-read so
+    // the chips and the next send state the engine it is on now.
+    it('a changed engine is not retried blindly and re-reads the snapshot', async () => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const previous = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({
+            success: false,
+            error:
+              "Agent 'station' now runs on engine connection 'opencode', not Station's own engine as this request expected. Re-read the Agent and choose again.",
+            code: 'execution_engine_changed',
+          }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        )) as typeof fetch;
+      let refusal: unknown;
+      try {
+        refusal = await actual
+          .sendExecutionMessage('http://api.test', {} as never)
+          .catch((caught: unknown) => caught);
+      } finally {
+        globalThis.fetch = previous;
+      }
+      expect(refusal).toMatchObject({ code: 'execution_engine_changed' });
+      cachedAgentCatalog = catalog([{ slug: 'station' }]);
+      sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'station', undefined, 'hello');
+      });
+
+      const notice = activeChatsStore
+        .getSnapshot()
+        [sessionId]?.ephemeralMessages?.at(-1);
+      expect(notice?.content).toContain(
+        '**This Agent now runs somewhere else**',
+      );
+      expect(notice?.content).toContain('Nothing was sent.');
+      expect(notice?.content).not.toContain('Retrying may help');
+      expect(notice?.action).toBeUndefined();
+      expect(invalidateMock).toHaveBeenCalledWith(['agents']);
+      expect(invalidateMock).toHaveBeenCalledWith(['acp-connections']);
+      expect(invalidateMock).toHaveBeenCalledWith(['connections', 'engines']);
+    });
   });
 
   // The engine refuses a new session's model it did not offer
@@ -1940,7 +2256,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         const notice = chat?.ephemeralMessages?.at(-1);
         expect(notice?.content).toBe(testCase.expected);
         expect(notice?.content).not.toMatch(testCase.forbidden);
-        expect(notice?.action?.label).toBe('Discard');
+        // The message may already have reached Station: Discard asks first.
+        expect(notice?.action?.label).toBe('Discard…');
+        expect(notice?.action?.confirm).toBe('unconfirmed-discard');
         // The composer repeats this notice's Discard while a short dock hides
         // the transcript; it finds the notice by this flag, which a send
         // failure (the composer's other repeated line) must not carry.
@@ -2180,6 +2498,49 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
       'after it',
     ]);
+  });
+
+  it('a send refused because its session is still starting moves into the queue instead of failing', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'The session is still starting. Nothing was sent; try again in a moment.',
+        'provider_session_starting',
+      ),
+    );
+    // A turn is open by the time the refusal lands, so the queue waits for
+    // its end rather than draining at once (the same shape as #2324 below).
+    activeChatsStore.updateChat(sessionId, {
+      conversationId: 'conversation-start',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const sent = act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'during start');
+    });
+    activeChatsStore.updateChat(sessionId, {
+      conversationActivity: {
+        conversationId: 'conversation-start',
+        asOfSequence: 9,
+        openTurn: {
+          turnId: 'turn:start',
+          threadId: sessionId,
+          startedAt: '2026-09-23T00:00:00.000Z',
+        },
+      },
+    });
+    await sent;
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat.queuedMessages).toEqual(['during start']);
+    expect(chat.status).not.toBe('error');
+    expect(chat.error).toBeUndefined();
+    expect(chat.ephemeralMessages ?? []).toEqual([]);
+    expect(
+      chat.messages?.some(
+        (message) =>
+          message.role === 'user' && message.content === 'during start',
+      ),
+    ).toBe(false);
   });
 
   it('#2324 (D4): a send refused because the engine began its own turn moves into the queue instead of failing', async () => {
@@ -2660,6 +3021,64 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
       [],
     );
+  });
+
+  it('a durable replay into a running turn waits without spending an attempt, however often it is tried', async () => {
+    outboundQueueMode.useActual = true;
+    let entries: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => entries,
+      setItem: async (_key, next) => {
+        entries = next;
+      },
+      updateItem: async (_key, updater) => {
+        entries = updater(entries);
+      },
+    });
+    try {
+      await outboundDispatch.enqueue({
+        clientTurnId: 'waits-for-the-turn',
+        sessionId,
+        agentSlug: 'codex',
+        content: 'after the running turn',
+      });
+      const [written] = await outboundDispatch.snapshot();
+      activeChatsStore.updateChat(sessionId, { status: 'sending' });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      const replay = async (
+        turn: QueuedOutboundTurn,
+        claim: OutboundDispatchClaim,
+      ) => {
+        const outcome = await result.current(
+          turn.sessionId,
+          turn.agentSlug,
+          turn.conversationId,
+          turn.content,
+          turn.attachments,
+          turn.ambientContext,
+          turn.clientTurnId,
+          { skipInMemoryQueueOnBusy: true, dispatch: claim },
+        );
+        return outcome && typeof outcome === 'object' && 'kind' in outcome
+          ? outcome
+          : { kind: 'not-invoked' as const };
+      };
+      // More tries than OUTBOUND_QUEUE_MAX_ATTEMPTS (5) while the turn runs.
+      for (let pass = 0; pass < 6; pass += 1)
+        await act(async () => {
+          await outboundDispatch.flush(replay);
+        });
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+      expect(await outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          clientTurnId: 'waits-for-the-turn',
+          status: 'pending',
+          attempts: written!.attempts,
+        }),
+      ]);
+    } finally {
+      outboundQueueMode.useActual = false;
+    }
   });
 
   it('does not steer a durable replay into the open Claude turn', async () => {

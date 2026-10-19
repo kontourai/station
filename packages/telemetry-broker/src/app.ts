@@ -1,8 +1,9 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
 import {
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryBatch,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
+  parseProductTelemetryProbeRequest,
 } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -49,7 +50,7 @@ export function createProductBroker(
       state: 'alive',
       scope: 'process',
       productProtocol: 1,
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
     }),
   );
   app.use('/v1/operator/*', async (c, next) => {
@@ -117,6 +118,17 @@ export function createProductBroker(
         new Date(to).toISOString(),
       ),
     );
+  });
+  app.post('/v1/product/probes', async (c) => {
+    const key = c.req.header('x-api-key') ?? '';
+    if (!/^stp_[A-Za-z0-9_-]{43}$/.test(key))
+      return c.json({ error: 'source_unauthorized' }, 401);
+    try {
+      parseProductTelemetryProbeRequest(await c.req.json());
+    } catch {
+      return c.json({ error: 'invalid_product_probe' }, 400);
+    }
+    return c.json({ probe: await store.probe(key) });
   });
   app.post('/v1/product/events', async (c) => {
     const key = c.req.header('x-api-key') ?? '';

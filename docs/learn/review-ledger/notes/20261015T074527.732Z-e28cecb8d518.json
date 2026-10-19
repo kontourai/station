@@ -1,0 +1,7 @@
+{
+  "revision": "81ac140c39e57a2e85a0576248907b65878a214c",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Fix round 5: reviewed Last known source recovery, start-watermark ordering, retention and authority isolation against work-observation, stream snapshot integration and the real history-reader/rendered-row tests. Supersession is scoped to a stream epoch; replacement resets fences and invalidates pending tokens while retaining unresolved failure facts until new-epoch evidence. Focused suite 254/254; four clean-tree epoch fault controls fail as intended and restore 26/26. Browser desktop/mobile journey passes; no hosted/native/provider qualification.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx","src-ui/src/contexts/work-observation.ts","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

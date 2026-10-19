@@ -60,6 +60,7 @@ test('trusted approval retains an independent content lease through a real delay
     credentials: {
       verifyOperatorCredential: (candidate) => candidate === credential,
       identifyDevice: () => null,
+      resolveGrantedScope: () => undefined,
     },
   });
   const app = createPluginRoutes(

@@ -420,6 +420,104 @@ describe('resolveExecutionTarget', () => {
     });
   });
 
+  describe('expectedEngine precondition', () => {
+    const boundTo = (connectionId?: string) =>
+      vi.fn(async () => ({
+        slug: 'station',
+        available: true,
+        ...(connectionId
+          ? {
+              execution: {
+                agentConnectionId: engineConnectionId(connectionId),
+              },
+            }
+          : {}),
+      }));
+
+    test.each([
+      ['an unbound Agent, expecting Station', undefined, { kind: 'station' }],
+      [
+        'a bound Agent, expecting that connection',
+        'opencode',
+        { kind: 'connection', connectionId: engineConnectionId('opencode') },
+      ],
+    ] as const)('holds for %s', async (_label, bound, expectedEngine) => {
+      const result = await resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: agentId('station'),
+          expectedEngine,
+        },
+        dependencies({ getAgent: boundTo(bound) }),
+      );
+      expect(result.engine).toEqual(
+        bound
+          ? { kind: 'connection', connectionId: bound }
+          : { kind: 'station' },
+      );
+    });
+
+    // The incident shape: the composer saw Station's own engine, the target
+    // resolves the Agent to an external engine. Refused, with nothing read.
+    test('refuses when the Agent now runs on an external engine, before reading its connection', async () => {
+      const getConnection = vi.fn();
+      const failure = await resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: agentId('station'),
+          expectedEngine: { kind: 'station' },
+        },
+        dependencies({ getAgent: boundTo('opencode'), getConnection }),
+      ).catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({
+        name: 'ExecutionEngineChangedError',
+        code: 'execution_engine_changed',
+        expected: { kind: 'station' },
+        actual: { kind: 'connection', connectionId: 'opencode' },
+      });
+      expect((failure as Error).message).toContain("'opencode'");
+      expect(getConnection).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      [
+        'the Agent was external and is now Station',
+        undefined,
+        { kind: 'connection', connectionId: engineConnectionId('opencode') },
+      ],
+      [
+        'the Agent moved to another connection',
+        'codex',
+        { kind: 'connection', connectionId: engineConnectionId('opencode') },
+      ],
+    ] as const)('refuses when %s', async (_label, bound, expectedEngine) => {
+      await expect(
+        resolveExecutionTarget(
+          {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+            expectedEngine,
+          },
+          dependencies({ getAgent: boundTo(bound) }),
+        ),
+      ).rejects.toMatchObject({ code: 'execution_engine_changed' });
+    });
+
+    // A precondition can refuse but never choose: without a matching binding
+    // the expectation changes nothing about where the work runs.
+    test('absent expectation leaves resolution exactly as it was', async () => {
+      const result = await resolveExecutionTarget(
+        { environment: { kind: 'current' }, agent: agentId('station') },
+        dependencies({ getAgent: boundTo('opencode') }),
+      );
+      expect(result.engine).toEqual({
+        kind: 'connection',
+        connectionId: 'opencode',
+      });
+    });
+  });
+
   test('rejects unavailable Agents before reading an engine connection', async () => {
     const getConnection = vi.fn();
     await expect(

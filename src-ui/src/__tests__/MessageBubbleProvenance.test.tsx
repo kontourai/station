@@ -191,7 +191,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       provenance: envelope,
     });
 
-    expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy answer' })).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: /Share this answer/ }),
     ).toBeNull();

@@ -17,14 +17,18 @@
 // performed; it does not decide whether the prose is accurate.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   assertDocumentationFresh,
   checkDocumentationFreshness,
   createRepositorySnapshot,
   resolveDocumentationFreshness,
 } from './lib/documentation-freshness.mjs';
-import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
+import {
+  absentReleaseNote,
+  evaluateDocumentationReview,
+} from './lib/documentation-review.mjs';
 import { compileLearningMedia } from './lib/learning-media.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -662,6 +666,41 @@ async function recordReviewNotes(
       entry.removedSources,
       entry.addedSources,
     );
+    const reviewAbsentNote =
+      kind === 'review' &&
+      absentReleaseNote({ ...owner, sources }, new Map(), snapshot.tracked);
+    if (reviewAbsentNote) {
+      const deletion = git(root, [
+        'log',
+        '--full-history',
+        '--no-renames',
+        '--diff-filter=D',
+        '--format=%H',
+        '-1',
+        'HEAD',
+        '--',
+        entry.path,
+      ]).trim();
+      if (!deletion)
+        throw reviewError(
+          'untracked',
+          `No committed deletion for ${entry.path}`,
+        );
+      const [current, previous] = readGitObjects(root, [
+        `HEAD:${entry.path}`,
+        `${deletion}^:${entry.path}`,
+      ]);
+      if (current !== undefined || existsSync(join(root, entry.path)))
+        throw reviewError(
+          'not-committed',
+          `Reviewed deletion is not committed: ${entry.path}`,
+        );
+      if (previous === undefined)
+        throw reviewError(
+          'untracked',
+          `Deleted declaration is not available in history: ${entry.path}`,
+        );
+    }
     const inputs = [
       ...new Set([
         entry.path,
@@ -677,6 +716,7 @@ async function recordReviewNotes(
       ]),
     ];
     for (const input of [entry.path, ...sources.map((source) => source.path)]) {
+      if (input === entry.path && reviewAbsentNote) continue;
       const file = bindingFile(input);
       if (!snapshot.tracked.has(file))
         throw reviewError(

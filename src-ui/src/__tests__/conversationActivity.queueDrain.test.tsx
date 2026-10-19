@@ -311,7 +311,11 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
       ],
     });
     await vi.advanceTimersByTimeAsync(200);
-    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    // The drain makes the message durable (an async outbox step) before it
+    // dispatches.
+    await vi.waitFor(() =>
+      expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1),
+    );
     expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
       apiBase: API,
       message: 'after the gap',
@@ -402,7 +406,11 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
       ],
     });
     await vi.advanceTimersByTimeAsync(200);
-    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    // The drain makes the message durable (an async outbox step) before it
+    // dispatches.
+    await vi.waitFor(() =>
+      expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1),
+    );
   });
 
   test("a lineage child's turn.completed drains the conversation's chat, though the chat names the root", async () => {
@@ -802,7 +810,11 @@ describe('#2309 explicit sends are never held back silently', () => {
     );
     drainQueuedMessageOnTurnCompleted(API, CONVERSATION, true, true);
     await vi.advanceTimersByTimeAsync(200);
-    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    // The drain makes the message durable (an async outbox step) before it
+    // dispatches.
+    await vi.waitFor(() =>
+      expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1),
+    );
   });
 
   test('an explicit send that cannot go says why in the chat', () => {

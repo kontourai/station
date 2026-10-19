@@ -128,7 +128,7 @@ function aggregateFixture({
   shardCount = 4,
 } = {}) {
   const { directory, head } = repository();
-  const plan = { ...planFor(head, files), shardCount };
+  const plan = { ...planFor(head, files, files.length === 0), shardCount };
   const planText = `${JSON.stringify(plan, null, 2)}\n`;
   mkdirSync(join(directory, 'plan'));
   writeFileSync(join(directory, 'plan/fast-checks-plan.json'), planText);
@@ -184,6 +184,31 @@ describe('fast-checks aggregator exit status (child process)', () => {
       const result = aggregate(aggregateFixture({ shardCount }));
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain('[fast-checks] PASS');
+    },
+  );
+
+  test.each([0, 1])(
+    'omitted runners require a truly empty plan (%i files)',
+    (count) => {
+      const directory = aggregateFixture({
+        files: count ? ['a/a.test.ts'] : [],
+        omit: [1, 2, 3, 4],
+      });
+      const needs = {
+        ...successNeeds,
+        'fast-checks-plan': { result: 'success', outputs: { empty: 'true' } },
+        'fast-checks-shard': { result: 'skipped' },
+      };
+      const result = aggregate(directory, needs);
+      expect(result.status, result.stderr).toBe(count ? 1 : 0);
+      if (count)
+        expect(result.stderr).toContain(
+          'empty-shard admission requires an empty plan',
+        );
+      else
+        expect(result.stdout).toContain(
+          'no tests selected; no runner allocated',
+        );
     },
   );
 
@@ -619,14 +644,24 @@ describe('fast-checks shard execution verdicts', () => {
         },
       ],
     });
-    await runChangedVerificationShard({ deferredLanes: [] }, slice, {
-      root,
-      run: fakeRun(1, contents),
-      vitestPath: 'vitest.mjs',
-      prepareExecution: boundExecution,
-      failedReportDir: failing,
-    });
-    const kept = readFileSync(join(failing, 'ordinary-0.json'), 'utf8');
+    const failed = await runChangedVerificationShard(
+      { deferredLanes: [] },
+      slice,
+      {
+        root,
+        run: fakeRun(1, contents),
+        vitestPath: 'vitest.mjs',
+        prepareExecution: boundExecution,
+        failedReportDir: failing,
+      },
+    );
+    const retained = failed.executions[0].retainedReports.find(
+      (artifact: { path: string; sha256: string }) =>
+        !artifact.path.endsWith('.errors.json'),
+    );
+    expect(retained).toBeDefined();
+    const kept = readFileSync(resolve(root, retained!.path), 'utf8');
+    expect(digestText(kept)).toBe(retained!.sha256);
     expect(kept).toContain('numFailedTests');
     expect(kept).toContain('[REDACTED]');
     expect(kept).not.toContain('ghp_');
@@ -914,7 +949,8 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
           join(root, 'node_modules', entry),
           join(worktree, 'node_modules', entry),
         );
-      const orphan = 'scripts/lib/fast-checks-orphan-fixture.mjs';
+      // Tooling changes intentionally select supplemental documentation suites.
+      const orphan = 'src-server/fast-checks-orphan-fixture.mjs';
       writeFileSync(join(worktree, orphan), 'export const orphan = 1;\n');
       git(worktree, 'add', orphan);
       git(

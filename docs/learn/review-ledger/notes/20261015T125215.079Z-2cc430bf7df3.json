@@ -1,0 +1,9 @@
+{
+  "revision": "989ed64f1a751262f94cfb935609d6a2bc574d0e",
+
+  "notes": [
+    {"path":"packages/monument/CONTEXT.md","note":"Merged with #3675: the Inbox bullet (#3568) is kept, and the Terminal-turn facts bullet takes #3675's wording (host-supplied terminalSeen fixed at open, creation-fence ordering, coordinator still on its SQL). Checked against sqlite.ts after the merge: the inbox area and the bound turn-boundary table resolve independently in resolveTables and migrate, and the schema version is 1 on both sides.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/port.ts","packages/monument/src/step.ts","packages/monument/src/sqlite.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Re-reviewed after merging the inbox area (#3568) with #3675's bound boundaries: the bound-tables rule still holds (an omitted area keeps the adapter's own tables). Added that the inbox area has no bound form (SqliteKernelTables.inbox is 'unused' only), and the host-boundary example now marks the inbox unused, so it matches the stated no-monument-tables outcome, which sqlite-bound-boundaries.test.ts asserts.","inputs":["packages/monument/README.md","packages/monument/src/__tests__/sqlite-bound-boundaries.test.ts","src-server/services/orchestration/__tests__/fixtures/monument-boundary.ts","packages/monument/src/sqlite.ts","packages/monument/src/step.ts","packages/monument/src/port.ts","packages/monument/src/commands.ts","packages/monument/src/records.ts","packages/monument/src/testing/conformance.ts"]}
+  ]
+}

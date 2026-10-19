@@ -1,0 +1,7 @@
+{
+  "revision": "54a521873111e6c9f842ebaaa08f0053b5c20c26",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the status fill regression and bounded raster diagnostic in screenshots.spec.ts. Primary PNG/hash and strict comparison stay unchanged; finished finite cancellation and the auxiliary PNG remain after primary capture. The regression checks metadata only after capture.json is written, preserving original failure evidence. Current-main before-fix capture failed for retainedCount1; changed three-scene properly admitted capture passes count0/restnone-opacity1 and primary/aux identical pixels. Component12PASS, E2Etypes/fixtures pass. An earlier positive dispatch followed a refused guard and remains diagnostic only. No Linux exact-pixel cure, repeat determinism or release proof is claimed.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

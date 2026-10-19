@@ -1,0 +1,7 @@
+{
+  "revision": "9ae07f9803c982ff48404b1389976cdc861a3d8f",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"ensureOrchestrationEventStream now coalesces session read-model refreshes (one throttle window, single-flight with a trailing re-read); the ADR's claim that it dedupes the stream by apiBase and the connection budget are unchanged","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

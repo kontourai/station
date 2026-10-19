@@ -147,7 +147,8 @@ the reusable environment credential:
 On successful completion the browser receives a revocable HttpOnly Device
 session and can reconnect. A paired browser is not automatically an approver:
 approval requires the route's current operator/local-home authority or an
-explicitly promoted `access:approve` Device. Use the connection manager's
+explicitly promoted `access:approve` Device (one tied to a person only while
+that person's Station group is Admin). Use the connection manager's
 **Paired devices** view to revoke access. Registration, successful enrollment
 and an authenticated subsequent request are separate observations.
 
@@ -156,6 +157,13 @@ stack. Use `./station start --temp-home` for local development so credentials
 and hot reload stay outside the published image contract.
 
 ## Monitoring Stack
+
+The optional [private telemetry companion](../../deployment/telemetry/README.md)
+now has an explicit receiver image target and a separate pinned Compose profile.
+It requires private credential files and loopback exposure; consumer validation,
+actual delivery, backup/restore and release qualification are still pending.
+Its source is distinct from the development template below and existing dogfood
+receipts.
 
 The standalone stack in `monitoring/` is independently managed from the
 production Station container. It maps OTLP HTTP to 4318, Prometheus to 9090,
@@ -167,8 +175,18 @@ Read [the monitoring guide](monitoring.md) before enabling the stack or setting
 `OTEL_EXPORTER_OTLP_ENDPOINT`. `localhost` in a container names that container,
 not an independently launched collector. Choose the intended reachable endpoint
 and private exposure explicitly. Configured export is not collector receipt;
-the guide records the startup meter-binding limitation and separates telemetry
-from durable product outcomes.
+the guide explains synchronous provider registration and the remaining
+collection, temporality and downstream storage qualification boundaries.
+
+Disclosed product observations use the separate
+[receiver](../../packages/telemetry-broker/README.md), its dedicated PostgreSQL
+store and distinct source/operator keys. They are not accepted by the Collector
+and do not become canonical personal usage receipts. The
+[configuration reference](../reference/config.md#telemetry-destinations)
+describes saved addresses, exact instance key grants and restart activation.
+No product or collector destination is enabled by default. The optional stack
+still needs its own pinned-release, outage/restart, retention and backup/restore
+qualification; a successful connection probe is not that acceptance.
 
 ## Private cloud environment
 
@@ -570,6 +588,22 @@ The example port is the Nightly default, not discovery. The
 [command implementation](../../packages/cli/src/commands/environment.ts) resolves
 saved Station targets and verifies local identity/proof before sending the host
 credential.
+
+Device administration can also use an explicitly promoted paired principal.
+On the host, grant `access:devices` to an already-paired CLI/device through
+`environment access scope <device> --add=access:devices` with the correct home
+and loopback endpoint. A person-bound device must also be in the Admin group;
+that group alone never grants administration. The paired CLI can then run
+`environment access devices|scope|revoke|remove --station=<name>` remotely using
+its own credential. Its holder cannot delegate `access:devices`, manage people
+or provision peers. Legacy `access:manage` and `approval:full-access` do not
+confer administration. Update the host and client before using the new scope;
+see the [CLI reference](../reference/cli.md#environment).
+
+Account-bound guest principals remain restricted by their separate route
+allowlist: it excludes device administration even with an Admin group and an
+`access:devices` grant. Use an operator-approved personal Device or the host
+operator channel. The CLI reports this policy refusal distinctly.
 
 When exposing a lifecycle-managed instance over the tailnet, map its configured
 UI proxy port, not an inferred API-plus-offset port. The dogfood installer below

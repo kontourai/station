@@ -1,0 +1,7 @@
+{
+  "revision": "7e0891d5ededd9adba26b663d4359c7c874aa80b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed the fixture-only compatibility delta after the process mutation proof: replaced Promise.withResolvers with the existing ES2022-compatible deferred-promise pattern; child/parent handshake, contention observation, watchdog distinction, and both persisted process updates are unchanged. The JsonFileMutationAuthority explanation remains accurate. The server-tests typecheck and all three repaired cases pass, the real synchronous-acquisition mutation fails all three at the causal watchdog assertion, and exact production restoration passes. This review is limited to the changed test source and does not assert hosted regression or neighbor timing qualification.","inputs":["docs/architecture/module-map.md","src-server/domain/__tests__/config-loader-storage.process.test.ts"]}
+  ]
+}

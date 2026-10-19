@@ -36,8 +36,6 @@
 
     "ops/nightly/install-macos.zsh",
 
-    "package.json",
-
     "schemas/release-artifact-manifest.schema.json",
 
     "scripts/__tests__/release-artifacts.test.ts",

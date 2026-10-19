@@ -186,23 +186,56 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 ## Actions workflow inventory
 
+Routine documentation readiness runs repository-validation suites, including
+actual ledger/capture freshness, links, generated artifacts and public-content
+checks. The impact, freshness-policy and review-note framework suites use
+disposable fixtures; they run through affected selection for tooling/schema
+changes and full qualification, rather than every readiness invocation.
+Dependency/runtime changes retain full-test escalation. This removes repeated
+framework testing without treating stale repository documentation as valid.
+
+Title and body edits run only `PR title status publisher` in `PR: CI`.
+It publishes the mutable commit-status context `PR title policy`, first pending,
+then success or failure after live validation. Trusted workflow code validates
+all open main-target PRs sharing that exact head; a truncated inventory fails.
+Publishers serialize by SHA and never wait for source jobs or install dependencies. Source pushes and base retargets still run the
+source checks. On metadata-only events the skipped source aggregate has a
+different name, so it cannot replace a failing required `fast-checks` result.
+The `PR title policy` status is required before queue admission. Its merge-group
+job acknowledges that admission; it does not revalidate titles after enqueue.
+
+`Repo: Superseded PR checks` runs when `PR: CI` is requested and when a
+same-repository main-target PR closes merged. The merged-close path retires
+qualified optional delivery as described below. On a new CI request, it reads the
+current same-repository PR head and cancels queued or running checks for older
+heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
+cancellation rechecks the PR head and run attempt. It never cancels merge-group,
+main-push, manual diagnostic or publication runs. Missing PR attribution leaves
+a run alone; API failures stop the sweep. GitHub has no atomic head-conditional
+cancellation API, so the final head read bounds rather than eliminates the race
+with a concurrent force-push. Existing per-SHA concurrency groups remain in
+place to prevent delayed events from cancelling newer-head checks (#1445).
+The sweep checks out only the workflow's trusted revision and installs no
+dependencies. Its owner is `scripts/pr-ci-supersession.mjs`.
+
 The sidebar names below describe the primary trigger or delivery family.
-`PR:` checks can also run on main pushes; `Main:` qualification is scheduled
-after main source changes with an hourly fallback. `Repo:` identifies housekeeping even when scheduled
+`PR:` checks can also run on main pushes; `Main:` qualification runs every six
+hours or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
 or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
 maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
 Schedules below are cron expressions in UTC; path filters and job admission
 still apply. Renaming a workflow does not change its required job contexts.
 
 Reusable workflows inherit their caller family when it is shared. Two have
-callers in several families: `Main: Full qualification` serves main, Nightly,
+callers in several families: `Main: Full qualification` serves main,
 release and manual PR CI qualification; `Release: TestFlight delivery` serves
 release, Nightly and the internal TestFlight tool. Their names describe their
 shared authority rather than implying one exclusive caller. Portable archives
-also serve release/Nightly callers alongside their direct PR/main triggers.
+also serve release/Nightly callers and the shared delivery-validation workflow.
 
 | Workflow file | Previous sidebar name | Sidebar name | When it runs |
 | --- | --- | --- | --- |
+| [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested; same-repository main-target PR merged close. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
@@ -214,33 +247,34 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
 | [`dependency-advisory.yml`](../../.github/workflows/dependency-advisory.yml) | Scheduled dependency advisory floor | **Repo: Dependency advisory** | UTC schedule: `23 2,8,14,20 * * *`; manual dispatch. |
-| [`desktop-clean-checkout.yml`](../../.github/workflows/desktop-clean-checkout.yml) | Desktop clean-checkout build | **PR: Desktop clean checkout** | PR events (path filtered); main pushes (path filtered); manual dispatch. |
-| [`desktop-rust.yml`](../../.github/workflows/desktop-rust.yml) | Desktop Rust tests | **PR: Desktop Rust** | PR events (path filtered); main pushes (path filtered); manual dispatch. |
+| [`delivery-validation.yml`](../../.github/workflows/delivery-validation.yml) | — | **Delivery validation** | selected after PR core checks; all families after scheduled full qualification. |
+| [`desktop-clean-checkout.yml`](../../.github/workflows/desktop-clean-checkout.yml) | Desktop clean-checkout build | **PR: Desktop clean checkout** | reused by `Delivery validation`; manual dispatch. |
+| [`desktop-rust.yml`](../../.github/workflows/desktop-rust.yml) | Desktop Rust tests | **PR: Desktop Rust** | reused by `Delivery validation`; manual dispatch. |
 | [`docs-freshness-sweep.yml`](../../.github/workflows/docs-freshness-sweep.yml) | Documentation freshness sweep | **Repo: Docs freshness sweep** | UTC schedule: `37 5 * * *`; manual dispatch. |
 | [`docs-kit.yml`](../../.github/workflows/docs-kit.yml) | Main: Docs kit | **PR: Docs kit** | PR events; merge queue; main pushes; manual dispatch. |
-| [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | PR events (path filtered); manual dispatch. |
+| [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | reused by `Delivery validation`; manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
-| [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `Nightly`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
+| [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
 | [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events; merge queue. |
-| [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | PR events (path filtered); manual dispatch. |
+| [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | reused by `Delivery validation`; manual dispatch. |
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
 | [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
-| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | Main source pushes; UTC fallback: `17 * * * *`; manual dispatch. |
-| [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
+| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
+| [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic: Merge integration** | manual full-corpus diagnosis; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
 | [`nightly-gallery.yml`](../../.github/workflows/nightly-gallery.yml) | Nightly gallery | **Nightly: Gallery** | UTC schedule: `30 7 * * *`; manual dispatch. |
 | [`nightly-native-cohort.yml`](../../.github/workflows/nightly-native-cohort.yml) | Nightly native cohort | **Nightly: Native cohort** | reused by `Nightly`. |
 | [`nightly-native-stage.yml`](../../.github/workflows/nightly-native-stage.yml) | Nightly native staging | **Nightly: Native staging** | reused by `Nightly`. |
-| [`nightly.yml`](../../.github/workflows/nightly.yml) | Nightly | **Nightly** | UTC schedule: `43 6 * * *`; manual dispatch. |
+| [`nightly.yml`](../../.github/workflows/nightly.yml) | Nightly | **Nightly** | UTC decision schedule: `47 * * * *`; six-hour minimum publication interval; manual dispatch. |
 | [`node-pty-prebuilds.yml`](../../.github/workflows/node-pty-prebuilds.yml) | node-pty Linux prebuilds | **Tool: node-pty prebuilds** | manual dispatch. |
 | [`pages.yml`](../../.github/workflows/pages.yml) | GitHub Pages | **Main: Pages** | main pushes (path filtered); manual dispatch. |
 | [`portable-nightly-publish.yml`](../../.github/workflows/portable-nightly-publish.yml) | Portable server Nightly publication | **Nightly: Portable publication** | reused by `Nightly`; manual dispatch. |
-| [`portable-server-archives.yml`](../../.github/workflows/portable-server-archives.yml) | Portable server archives | **PR: Portable archives** | PR events (path filtered); main pushes (path filtered); reused by `Nightly: Portable publication`; manual dispatch. |
+| [`portable-server-archives.yml`](../../.github/workflows/portable-server-archives.yml) | Portable server archives | **PR: Portable archives** | reused by `Delivery validation` and `Nightly: Portable publication`; manual dispatch. |
 | [`pr-duplicate-sweep.yml`](../../.github/workflows/pr-duplicate-sweep.yml) | PR duplicate sweep | **Repo: Duplicate sweep** | UTC schedule: `27 */6 * * *`; manual dispatch. |
 | [`publish-packages.yml`](../../.github/workflows/publish-packages.yml) | Publish Packages | **Main: Publish packages** | main pushes; manual dispatch. |
 | [`publish-release.yml`](../../.github/workflows/publish-release.yml) | Publish Station release | **Release: Publish** | manual dispatch. |
@@ -321,23 +355,24 @@ comments into a trend table; `--json` also works for history.
 | Measure | Definition |
 | --- | --- |
 | Merge groups built, failed, failure rate | Distinct queue branches across workflows; a group fails if any workflow run attempt concludes `failure`. Groups with cancelled or timed-out runs have separate counts (which may overlap failed groups). Rate divides failed groups by all built groups, including unfinished groups. |
-| Integration failures and duration | Failed groups containing the legacy required `Merge-queue regression` job; median/p90 elapsed time of concluded, non-cancelled `PR: Merge integration` or historical `Merge integration` / `Merge-queue regression` workflow attempts (`run_started_at` to `updated_at`, including runner waits), not the short aggregator job. |
+| Integration failures and duration | Failed groups containing the required `Merge-queue regression` job; median/p90 elapsed time of concluded, non-cancelled owning workflow attempts (`run_started_at` to `updated_at`, including runner waits). `ci.yml` owns new candidates only when that exact attempt contains the integration aggregate; its custom run display name does not determine ownership. Legacy integration workflows remain measurable; mixed candidates prefer the new owner without counting both. |
 | PRs with a failed group, bot removals | PR membership from the queue branch, REST run metadata and synthetic commit subjects; `removed_from_merge_queue` events by actor login `github-merge-queue[bot]` for those PRs inside the window. Other bot actors are excluded. Removals within one minute of a merge are excluded. |
 | Re-entries: new commits / passed unchanged | A removal followed by queue entry with a commit or `head_ref_force_pushed` event in between, versus neither event followed by merge without another failed removal. Timeline `created_at` decides event order when present. A commit without event time falls back to committer date, then author date; if neither exists, it cannot establish an intervening change. These are observed correlations, not proof that a code change was necessary. Pending and unresolved unchanged attempts are separate. Outcomes stop at the window end. |
-| Executed / skipped jobs; runner-hours / waiting hours | Executed jobs have a non-skipped conclusion and start/end timestamps; skipped jobs have conclusion `skipped`. Runner time is start to end; wait is creation to start, floored at zero. Unfinished jobs (null conclusion) have a separate count and wait-so-far median/p90 as of `until`: creation to start for running jobs, creation to `until` for queued jobs, floored at zero. They contribute to waiting hours, wait shares and OS wait distributions; runner-hours remain completed-job measurements. |
-| Time with >=18 jobs running | Sweep-line share including idle gaps; running unfinished jobs extend to `until`, while queued jobs contribute zero runner slots from creation through `until`. Completed jobs span start to completion, with completion floored at start for inverted timestamps; simultaneous completions precede starts. |
-| Jobs waiting >5 / >20 minutes; OS wait | Shares among executed and unfinished jobs using their observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
+| Executed / skipped jobs; runner-hours / waiting hours | Executed jobs require an assigned runner ID, a non-skipped conclusion and start/end timestamps. Queued jobs can have placeholder start timestamps; those never establish execution. Cancelled jobs without a runner contribute waiting time only. Missing attribution for other running or terminal jobs makes the snapshot incomplete and excludes their timing. Runner-hours remain completed-job measurements; runner and waiting hours are clipped to the window. Unfinished jobs have a separate count and wait-so-far distribution through `until`. |
+| Time with >=18 jobs running | Sweep-line share clipped to `since`–`until`, including idle gaps. Only assigned, non-queued jobs occupy runners; unfinished execution extends to `until`. JSON separates hosted and self-hosted concurrency from the combined inventory. Free-pool comparisons use hosted occupancy. Simultaneous completions precede starts. |
+| Jobs waiting >5 / >20 minutes; OS wait | Shares among attributed executed jobs, known unfinished jobs and cancellations before runner assignment, using observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
 | Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. When a run's `pull_requests` list is empty, its PR comes from the PRs whose head is the run's branch, found by commit and then by branch name: among those created before the run, the ones still open at the run own it, otherwise the latest-created one. A run with no such PR sets `incomplete: true` with a reason naming the run, commit and branch. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
 | PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
 
-Runs are selected by creation time in the half-open window; all job durations
-and available attempts for those runs are counted, even when completion lies
-outside the window. Percentiles use the baseline's sorted upper-rank definition
+Runs are selected by creation time in the half-open window, including available
+attempts. Capacity intervals are clipped to the window and exclude jobs created
+after its end. Completed per-PR and per-merge-group cost samples retain full
+job durations, even when completion lies outside the window. Percentiles use the baseline's sorted upper-rank definition
 (index `floor(n * p)`, capped at `n - 1`); empty populations are `null`/`n/a`.
 Any unfinished jobs set `incomplete: true` with reason
 `window includes N unfinished jobs` and exit nonzero. Their wait and concurrency
-stop at `until`; completed-job durations still use their full intervals.
+stop at `until`; per-PR and per-merge-group cost samples use full completed intervals.
 Collection is not an atomic GitHub snapshot. Re-running a window can change
 pending conclusions or reveal additional attempts.
 
@@ -387,6 +422,27 @@ and digest-bound by the changed-verification receipt. A failing run explicitly
 marks incomplete identities instead of presenting aggregate counts as a
 diagnosable bundle, and `incompleteReasons` names every shortfall in words
 rather than leaving a bare `complete: false`.
+
+A companion Vitest reporter keeps failed-test error names, primary messages,
+nested causes, stacks and durations separate. Excerpts prefer the observed
+primary message and cause; missing, malformed or ambiguous companion data falls
+back to standard JSON's excerpt with an explicit `primaryErrorUnavailable`.
+Standard JSON remains authoritative for test outcomes. The existing verdict
+rules still check counts, parsing, child status and provenance.
+
+Before temporary reports are removed, a failing unsharded run writes redacted
+standard and companion JSON under
+`.kontourai/test-impact/failed-reports/<test-changed-request-key>/`, within the
+changed and fast-feedback lanes' declared outputs. Filenames include the digest
+of the retained bytes, so later failures for the same request preserve earlier
+reports. The changed receipt
+and its attached diagnostic bind the retained paths and SHA-256 digests; PR CI
+uploads this failed-report directory separately from canonical text artifacts
+under verification-output. Raw reports exceeding 16 MiB and
+missing reports produce explicit omission files. If retention cannot write,
+`retentionFailure` names the error and private temporary directory, which is
+preserved for recovery. Reporter diagnostics and retention failures never turn
+a failed run into a pass or change test selection or deadlines.
 
 Changed-test execution discovers Vitest's related files first, combines them
 with the enabled explicit manifest targets, and runs each selected file once.
@@ -459,10 +515,11 @@ coordinator exposes active leases and capacity through
 `node scripts/run-verification.mjs status`, and prints bounded summaries whose
 redacted raw output is digest-addressed under `.kontourai/verification-output/`.
 
-Run `npm run ci:fast` for bounded (fifteen-minute) per-push feedback after focused
-evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
-invariants, not the global static/build chain or full corpus.
-Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
+Run local `npm run ci:fast` only to reproduce a specific failure or when
+explicitly requested. It runs affected tests and fixed invariants within a
+fifteen-minute budget. Normal push hooks and required hosted checks own the
+broad verification; do not add a routine local pass before them.
 GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
 The iOS relevance check compares pull-request and merge-queue candidates from
 their merge base to the candidate head, so changes added only to a newer base
@@ -475,18 +532,55 @@ classifier is missing, fails, or returns anything other than one exact
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
-Nightly and tagged preview and stable promotions pass one exact source SHA
-to the hosted qualification authority.
+Source execution and admission are separate: the `fast-checks` aggregate validates
+the actual plan, statics and shard receipts. The trusted source-policy publisher
+reconciles that result for the newest applicable exact-head source run, keeping
+metadata-only suites from replacing it. Missing or incomplete proof remains
+pending; failed or cancelled proof remains non-passing. The required-context
+rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
+
+PR source computation has repository-wide FIFO ceilings: at most two statics
+jobs and two affected-test shard jobs run across all PRs. Both families split
+work into two buckets; one-shard PRs can use both shard buckets, and larger
+plans retain every shard. Waiting jobs consume no runner. Different-head
+supersession still cancels obsolete source runs; same-head duplicates wait
+rather than cancelling another run's proof. Merge-group, push and manual
+diagnostic jobs use separate source-specific groups. These four PR computation
+slots exclude planners, security checks, platform builds and status publishers;
+they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source qualification receipt. It runs every canonical phase in hosted
-shards and additionally runs Android viewport tests. Scheduled main qualification,
-daily Nightly, and tagged Preview/Stable use that authority. Promotion requires
-success, with bounded exact-source reuse; native Nightly staging can run alongside
-qualification but cannot publish before it passes. See [the release process](releasing.md). A
-manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
-The full Vitest corpus is phase-attested there, separately from the fast
-feedback loop.
+exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must
+succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
+
+Nightly runs independently. Its hourly decision checks the default six-hour
+minimum publication interval before running lint, all typecheck lanes, native
+boundary checks and deterministic browser smoke against one exact source SHA.
+Signing, staged inventory, provenance, provider admission and readback remain
+mandatory. This usability gate does not claim full qualification.
+
+Optional PR delivery checks wait for core fast checks, source publication and
+the existing repository-scan, bundle-delta and title jobs to settle. The trusted
+base-owned `scripts/pr-delivery-plan.mjs` checks the live PR is still open at
+the same head and repository before selecting affected families through
+`scripts/pr-delivery-paths.json`. Closed or superseded heads select no delivery
+work. `delivery-validation.yml` sequences install,
+portable, native, desktop and ecosystem families; scheduled main qualification
+runs them all after the corpus succeeds. The families retain every exercise
+while reducing 20 jobs to 15: installer eight to six, native four to one,
+portable five, desktop two and ecosystem one. Installer waves and portable
+fanout are capped at two, so one invocation uses at most two runners. The shared native FIFO group admits one background invocation before any
+runner starts; required integration and release qualification have separate
+classes. Other workflows and repositories can overlap; this is not an
+organization-wide reservation.
+A trusted merged-PR close handler can retire remaining optional delivery in
+that PR run after verifying successful source checks and a complete recognized
+current-attempt job inventory. It rechecks the run, PR and shared-head ownership
+before requesting cancellation. Missing evidence, unknown jobs, failed source
+or another open PR sharing the head prevents cancellation. Manual, merge-queue,
+release and qualification runs are excluded. A cancellation request is not
+terminal cancellation proof. Required PR checks and merge-queue admission
+remain unchanged. See [the release process](releasing.md).
 
 Hosted matrix fanout uses the repository's Free runner profile by default;
 `STATION_QUALIFICATION_RUNNER_PROFILE=expanded` selects the larger profile only
@@ -623,7 +717,7 @@ unless the push is a pure merge of main (below).
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
 already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
-barrel, Veritas readiness and typecheck; biome, the governance proof and the
+barrel; biome, the governance proof and the
 commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
 second parent must be on `main` as the remote itself reports it (`git
@@ -713,7 +807,12 @@ including bundled examples. This proves directory staging, not Rust compilation
 or bundled file contents. The same focused step runs the
 [Tauri context caller tests](../../scripts/__tests__/tauri-context.test.ts),
 checking real installed npm/local Tauri versions and explicit missing
-prerequisites on Windows. These tooling checks do not establish native app
+prerequisites on Windows. The report caller tests have an 80-second harness
+bound (scaled only for local host liveness), covering the existing 60-second
+report child, Windows fixture compilation and parent overhead. Production
+probe deadlines remain 10/30 seconds. Per-call start/return evidence under
+`.kontourai/verification-output/tauri-context-test-*` retains redacted probe traces before assertions, capped at 64 KiB with an
+explicit truncation flag. A missing return records an interrupted child. These tooling checks do not establish native app
 startup, packaging or device behavior. A repair to this base-controlled workflow must land
 on `main` before a dependent PR's head can use it.
 
@@ -969,7 +1068,10 @@ committing a new baseline until the change is intentional.
 The gallery-wide system-status handler preserves the live status response and
 replaces only the displayed hostname with `Gallery host`. This keeps a Docker
 container's random name out of exact-pixel references without changing readiness
-or device locality. Screen-specific status fixtures retain their declared scenarios.
+or device locality. Screen-specific status fixtures retain their declared scenarios. The conversation
+resync scenarios retain their route fixtures through the screenshot and recovery
+checks, then release them in per-screen cleanup. Unregistering those routes in
+`afterGoto` lets live polling replace the asserted state before it is photographed.
 
 `.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
 daily, in a **digest-pinned Playwright container** on a hosted runner. That is
@@ -1015,30 +1117,32 @@ select only the application source being qualified.
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
 on pull requests and synthesized merge-queue candidates, in the same container
 (#2428, #3342). PRs compare their exact head; the queue compares the combined
-candidate. A gallery-relevant change must carry reviewed reference images from
-that renderer. Irrelevant changes skip the capture job, producing GitHub's
+candidate. Pixel differences are advisory in both workflows: `--report-only` retains the
+exact changed rows and diff PNGs, but exits successfully for visual changes.
+The job summary includes the comparison table and the PR artifact link. An
+unchanged capture has no `REVIEW` advisory. Capture failures, missing screens,
+invalid PNGs, missing/corrupt baselines, partial unscoped captures and zero
+actual comparisons still fail. The default local `screenshot:diff` command
+remains strict; advisory mode is explicit and never rewrites references.
+Irrelevant changes skip the capture job, producing GitHub's
 successful skipped check without a browser run. The `classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
 base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
-whole product through `./station start`, not just `src-ui/`. When the diff
-fails, the job summary prints the exact refresh commands: download the run's
-`gallery-pr-<run>-<attempt>` artifact, then
-`npm run screenshot:baseline -- --gallery=<download dir>`, and commit the
-baseline on its own. The check's re-run on that commit catches a baseline
-from any other renderer, as long as the PR does not also change the capture or
-diff scripts; the nightly on main, running trusted code, remains the
-authoritative check. The baseline writer refuses a capture whose screen name is
+whole product through `./station start`, not just `src-ui/`. Review changed images in the run's `gallery-pr-<run>-<attempt>` artifact.
+When an intentional change should become the new reference, download that
+hosted artifact and run `npm run screenshot:baseline -- --gallery=<download dir>`.
+Commit reviewed baseline updates separately; they are optional for a green
+Gallery check. Never refresh from a broken capture or a different renderer.
+The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
 each PR head against its own baseline and checks combinations again on the
-merge-queue candidate. Enable `Gallery exact-pixel diff` as a main ruleset requirement after observing
-its PR and merge-queue contexts from the installed workflow;
-a red advisory check alone cannot prevent visual drift from landing.
-`Main: Health` tracks a failed `Nightly: Gallery` run as one main incident and
-clears it only when the capture and exact-diff job passes. Skipping the optional
-API image review does not hide that completed pixel check.
+merge-queue candidate. Gallery is advisory visual evidence, not a required exact-pixel merge gate.
+`Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
+intentional pixel changes alone do not open a main incident. Skipping the
+optional API image review does not hide the comparison report.
 
 Two consequences worth stating plainly:
 
@@ -1046,18 +1150,20 @@ Two consequences worth stating plainly:
   own commit that changes nothing else. A regeneration on a developer machine
   bakes in that machine's fonts along with whatever upstream drift has
   accumulated, under whoever happens to be holding the branch.
-- **Bump the container in lockstep with `@playwright/test`**, and expect a
-  re-baseline to be part of that change. A rebuilt base image published under
-  the same tag is a different renderer wearing the same name, which is why the
-  pin is a digest rather than `v1.63.0-noble`.
+- **Bump the container in lockstep with `@playwright/test`** and review renderer
+  differences separately. Baseline changes need a reviewed commit of their own.
+  A rebuilt base image published under the same tag is a different renderer
+  wearing the same name, which is why the pin is a digest rather than
+  `v1.64.1-noble`.
 
   What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
   **version** in the image reference equals the `@playwright/test` version
   resolved in `pnpm-lock.yaml` (the lockfile, not the caret range in
-  `package.json`, so a resolved minor bump cannot slip past). The **digest** is
-  not checked and cannot be — nothing in this repository derives it. A digest
-  that no longer matches its tag's contents therefore surfaces as a Playwright
-  launch error in the nightly, not as a silent renderer change.
+  `package.json`, so a resolved minor bump cannot slip past). The local test
+  checks the **digest** syntax, not its registry contents. Before updating the
+  pin, verify the published tag's OCI index and selected platform manifest and
+  config against their content digests. That registry check is separate from
+  an actual container/browser run and Gallery pixel review.
 
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
@@ -1218,6 +1324,14 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 
 ### Host typecheck slots and incremental compiles
 
+On Linux, `ci:fast` and the full `typecheck` aggregate refuse to run inside a
+live `station-<instance>.service` cgroup. Verification started by a hosted Agent
+inherits that service's memory failure domain: an OOM kill can terminate Station
+and every active conversation with it. Run those aggregates from an external
+shell or hosted CI. Focused tests and individual typecheck lanes remain available
+inside Station; the admission guard does not impose a memory budget on arbitrary
+shell commands.
+
 Station uses the pinned native TypeScript 7 compiler for type checks and
 package declaration builds. `typescript-api` is an alias for TypeScript 5.9.3,
 retained only for policy scanners and tests using its JavaScript AST API;
@@ -1230,9 +1344,12 @@ Every `typecheck:*` lane compiles through `scripts/tsc-slot.mjs`, which holds
 one of N host-wide slots for the life of the compiler and adds `--incremental`
 with a per-project build info file under the ignored
 `node_modules/.cache/station-tsbuildinfo/`. The slots are lock files in
-`/tmp/station-typecheck-slots-<uid>` on macOS and Linux (a fixed path, not
-`$TMPDIR`, so sandboxes and sudo join the same pool; private to the user and
-refused if another user owns it) and in the per-user temp directory on Windows.
+`/tmp/station-typecheck-slots-<uid>` on macOS and Linux (a fixed path independent
+of `$TMPDIR`, private to the user and refused if another user owns it) and in the
+per-user temp directory on Windows. A Linux `PrivateTmp` mount gives callers
+separate pools even when the path has the same spelling. Callers in different
+mount namespaces need an explicit shared `STATION_TYPECHECK_SLOT_DIR` to share
+one pool.
 Every caller must resolve the same directory: a second directory is a second
 pool with its own N. N is one slot per 8 GiB of RAM, rounded, between 1 and 4
 (2 on a ~15.6 GiB hosted runner, 4 on a 48 GB workstation); the `typecheck`
@@ -1249,6 +1366,34 @@ Overrides: `STATION_TYPECHECK_SLOTS` (count), `STATION_TYPECHECK_SLOT_WAIT_MS`
 `STATION_TYPECHECK_INCREMENTAL=0` for a cold compile. A warm run reports the
 same diagnostics as a cold one: TypeScript checks every input's content hash
 and replays stored errors for unchanged files.
+
+#### Choosing the compiler
+
+`scripts/tsc-slot.mjs` runs one of three compilers through the same slots:
+
+| Name | Compiler | Notes |
+| --- | --- | --- |
+| `tsc` | TypeScript 7.0.2 | The reference compiler. |
+| `tsc-ts` | [tsc-ts](https://github.com/vercel-labs/tsc-ts), an experimental TypeScript 7.0.2 port | Same flags and incremental mode as `tsc`, with faster cold and edit-after-change checks. Diagnostics matched `tsc` on Station's projects but are not guaranteed to (for example, `--target es5` reports differently). |
+| `bun` | Bun's checker | Cold project checks only; see below. |
+
+The `DEFAULT_COMPILERS` constant in that file sets the default: currently
+`tsc-ts` locally and `tsc` when `CI` is set, so hosted checks stay on the
+reference compiler. Change it there to move the default. Override it for a
+shell or a single run:
+
+```sh
+STATION_TYPECHECK_COMPILER=tsc npm run typecheck:ui
+node scripts/tsc-slot.mjs --compiler=tsc-ts -p src-ui/tsconfig.json --noEmit
+```
+
+An explicit choice that cannot run fails. A default that cannot run here
+(tsc-ts has no build for the platform or is not installed, or Bun does not
+accept the arguments) quietly uses `tsc`. Each non-`tsc` compiler keeps its
+own build info file. If `tsc-ts` and `tsc` disagree, treat `tsc` as
+authoritative and report the difference upstream. A test fails when the
+installed `tsc-ts` and `typescript` report different versions, so update them
+together.
 
 #### Optional Bun diagnostics
 
@@ -1267,14 +1412,15 @@ and its share of available CPUs across the host's compiler slots. It writes no
 build metadata or declaration output. Run `npm run dist:freshness` first when
 the selected project consumes package builds.
 
-This command is diagnostic; pre-push, `ci:fast`, and required hosted checks use
+This command is diagnostic; `ci:fast` and required hosted checks use
 TypeScript 7. Bun has no persistent incremental cache, and a single project
 check does not replace the typecheck aggregate or the scripts coverage gate.
 Do not add `@types/bun` to Station's Node/browser projects to make a check pass.
 Compare diagnostics before treating a disagreement as a Station defect.
 
 
-The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
+Required hosted `fast-checks-statics` owns Veritas readiness and the full
+typecheck through `ci:fast`; the pre-push hook retains cheap and scoped checks. Locally, iterate
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
 the full aggregate or `ci:fast` in the background and poll for its result.
 
@@ -1366,7 +1512,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | Lane | Command | Trigger | Expected scope | Resource class | Evidence | Invalidated by |
 | --- | --- | --- | --- | --- | --- | --- |
 | `full-regression` | `npm run full:regression` | promotion / explicit diagnosis | repo-governance + sdk/app builds + static gates + full Vitest corpus | completion gate | completion (trust floor) | command only |
-| `ci-fast` | `npm run ci:fast` | per-push / bounded feedback | base-pinned affected Vitest tests + fixed static invariants (configured timeout: 15m) | static / integration | diagnostic | test-impact manifest |
+| `ci-fast` | `npm run ci:fast` | hosted feedback / explicit local diagnosis | base-pinned affected Vitest tests + fixed static invariants (configured timeout: 15m) | static / integration | diagnostic | test-impact manifest |
 | `test-changed` | `npm run test:changed` | per-edit local feedback | Vitest related imports + dynamic-boundary edges | changed-scope selector | diagnostic | test-impact manifest |
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
 | `test-full` | `npm run test:full` | diagnostic full corpus | resource-profiled Vitest corpus + dogfood-reconcile | static / integration | diagnostic | command only |
@@ -1481,14 +1627,16 @@ changing fleet labels or adding a capacity-leased workflow.
 
 ### Merge integration (required)
 
-The `PR: Merge integration` workflow retains the legacy required context
+The `PR: CI` workflow owns the legacy required context
 `Merge-queue regression` for ruleset compatibility. It checks the combined
 candidate diff and the incident-owner integration pause. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
 
-On each merge-queue candidate the workflow also recomputes the fast-checks
-plan against the queue base, using the same planner and inputs as `fast-checks`.
+On each merge-queue candidate, `fast-checks-plan` computes one plan against
+the queue base. The merge decision consumes those same local bytes; test
+shards consume that run's uploaded plan. There is no second planner install
+or cross-workflow artifact lookup.
 [`merge-queue-regression-decision.mjs`](../../scripts/merge-queue-regression-decision.mjs)
 then chooses a path:
 
@@ -1501,7 +1649,7 @@ then chooses a path:
   event store, leaves its consumers to the queue on purpose. The candidate
   runs the hosted [full regression](../../.github/workflows/full-regression.yml)
   on its own SHA, with exact-source reuse allowed. The required check passes
-  only when that run passes.
+  only when that run and `fast-checks` pass.
 - **Fast path.** Any other candidate, including one deferred only to a narrower
   lane, skips the full regression. The check
   reports `no deferred lane: fast path`.
@@ -1509,14 +1657,18 @@ then chooses a path:
 The decision fails closed. A missing, unreadable or invalid plan runs the full
 regression, and so does a plan for another head or base. If the planner or its
 install fails, or the decision step writes nothing, the full regression runs
-too, because it is skipped only when the decision is exactly `false`. Pull
-requests never run it. In this workflow, `pull_request_target` only reports
-the skipped required context.
+too. The fast path requires both a successful plan job and an exact `false`
+decision; an earlier false output cannot hide a failed planner. Old candidates
+without the decision CLI also take the full path. Pull requests do not run
+this regression. The former merge-integration workflow remains available as
+a manual full-corpus diagnostic.
 
-[Main: Qualification](../../.github/workflows/main-qualification.yml) runs after main source changes, with an hourly fallback outside the queue. A pass may start a Nightly for that commit
-([release procedure](releasing.md#release-procedure)). A failure collects the available independent
-failures and starts one bounded repair episode instead of repeatedly dequeuing
-unrelated PRs. See [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).
+[Main: Qualification](../../.github/workflows/main-qualification.yml) runs every
+six hours or manually outside the queue, testing combined merged changes.
+After a successful corpus it runs all delivery families. Nightly uses its own
+source usability gate and schedule. A full-qualification failure collects the
+available independent failures and starts one bounded repair episode. See
+[qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).
 
 Never `gh pr update-branch` a bot-owned PR: let the bot regenerate its branch.
 An opted-in `station-autoland` PR can be armed by deterministic landing automation
@@ -2020,7 +2172,11 @@ The required `fast-checks` check is an aggregator (#2709). `fast-checks-plan`
 computes the affected-test selection once; `fast-checks-shard` runs it as one
 to four deterministic round-robin slices. `FAST_CHECKS_FILES_PER_SHARD` in
 `scripts/lib/fast-checks-shards.mjs` sets the initial threshold at 40 files:
-0–40 use one job, 41–80 two, 81–120 three, and 121+ four. The planner knows
+1–40 use one job, 41–80 two, 81–120 three, and 121+ four. With
+`STATION_FAST_CHECKS_SKIP_EMPTY_SHARDS=true`, an empty plan allocates no shard
+runner. The aggregate independently validates that the exact-head plan is empty
+and requires successful plan/statics jobs; it does not fabricate an execution
+receipt. Without that compatibility opt-in, empty plans retain the old shard path. The planner knows
 file count, not test duration. This is a tunable proxy, justified by #3101's
 2026-10-01 sample: 1.4 minutes of setup for 0.2 minutes of tests per shard
 (86% setup) while the 20-job pool was saturated. Hosted runs must establish
@@ -2029,14 +2185,15 @@ only planned legs; omitted legs need no receipt and cannot keep the aggregate
 pending. The workflow opts in with `STATION_FAST_CHECKS_ADAPTIVE_SHARDS=true`.
 Without that handshake, a new planner retains four shards for the old base
 workflow. Older candidates that emit no adaptive outputs also retain four shards.
-Each slice runs inside the fifteen-minute budget and
+Each allocated slice runs inside the fifteen-minute budget and
 writes a receipt (an empty slice passes explicitly with an `empty`
 receipt); `fast-checks-statics` runs `ci:fast` with
 `STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
-UI bundle budget. `fast-checks` fails unless every part job succeeded and
-the `aggregate` command of `scripts/fast-checks-shard.mjs` proves each shard ran exactly its
-slice of that plan; a skipped or cancelled part, a missing receipt, or a
-receipt for another plan or head fails it. A deferred selection (the
+UI bundle budget, enforced by the fresh browser startup build rather than a
+second standalone UI build. `fast-checks` requires successful plan/statics jobs.
+The `aggregate` command independently validates empty-plan omission or proves
+that each allocated shard ran its exact slice. An unexpected skip, cancellation,
+missing receipt, or receipt for another plan or head fails the check. A deferred selection (the
 selector's exit 3) is reported and passes, as it does in unsharded `ci:fast`.
 Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
 Transitionally, a pull request branched before the sharded lane (no
@@ -2120,3 +2277,63 @@ AWS SDK and other provider wrappers use route/service integration tests with an
 injected or mocked provider boundary for deterministic contracts. Keep real
 provider execution in an explicit opt-in live lane; a browser interception is
 not evidence that the server-side SDK integration works.
+
+### Review repeated Gallery evidence once
+
+Gallery's comparator reports exact rendering differences, not product intent.
+Keep capture failures, pixel/dimension changes, demonstrated product defects,
+and screens without baseline coverage separate. Equal pixel counts establish
+no image identity or common cause. Read the live main rules before landing:
+when Gallery is absent from required contexts, its red result alone must not
+hold an otherwise eligible PR. A demonstrated product defect still needs an
+explicit owner disposition. PR-head checks, synthesized merge-candidate checks,
+and exact-SHA promotion receipts establish different things.
+
+Use `scripts/gallery-review-evidence.mjs` to link repeated visual review without
+reusing a verdict or skipping capture. Run it in the exact candidate checkout
+against the downloaded artifact and that checkout's baseline:
+
+```sh
+node scripts/gallery-review-evidence.mjs --gallery=/path/to/artifact --context=/path/to/context.json --out=/path/to/review.json
+# For a later run, add --previous=/path/to/previous-reviewed-report.json
+```
+
+The context JSON must supply `sourceSha` (full candidate SHA), `runUrl`,
+`renderer` (verified pinned container/browser/font environment identity), and
+`captureContract` (SHA-256 fingerprint of the executed capture/comparison
+contract). Establish that fingerprint from the exact executed screenshot spec,
+fixture helpers, comparator/report generator, workflow and lockfile bytes. If
+those inputs or renderer provenance cannot be established, do not link reviews.
+Renderer and contract provenance are caller-supplied verified inputs; the tool
+does not establish them from a label. This is a visual-review fingerprint,
+never a complete build-cache key.
+
+After inspecting the actual images, retain the report with a `review` object
+containing `owner`, `disposition`, and `evidenceUrl`. A later report links it only
+when all image bytes, decoded pixels, dimensions, controls/capture diagnostics,
+baseline entries/reference bytes, renderer and contract match. The tool checks
+claimed primary and auxiliary PNG hashes against actual files. It refuses
+outside-gallery paths and never links incomplete or failed captures. Changing
+any signature input requires renewed review. Each report retains its own source
+and run identity and comparator exit status; a linked review does not turn red
+green or establish source correctness, determinism, merge or promotion proof.
+
+Keep retained packets in durable scratch storage with their original negative
+results. Agents should coalesce an identical signature into the original owner
+review instead of downloading or visually inspecting it again. New controls,
+routes, dimensions, missing/new screens or capture failures reopen the review.
+Do not rebaseline, mask, add thresholds, rerun unchanged code, or promote Gallery
+to a required gate as a way to dispose of repeated notifications.
+
+An observed hosted sample, run `38767328336` (2026-10-15), spent 317 seconds in
+its Gallery job: capture 186s, dependency installation 53s, container setup 34s,
+comparison 2s, artifact upload 2s. Classification took another 19s; runner queue
+wait is separate. These are one run's step timings, not averages or a speedup
+claim. Capture dominates that sample. First remove repeated triage; keep PR and
+merge-group captures intact until reuse has complete input fingerprints and
+reliable invalidation. Exact comparison itself was a small part of this cost.
+
+Two additional hosted samples (`38730257388`, `38737332985`) took 314s and
+310s overall, capture 193s and 209s, install 36s and 35s, comparison 3s each.
+Across these three observed jobs, capture remained the largest step. The sample
+does not establish a workload-wide average or authorize capture reuse.

@@ -43,6 +43,12 @@ device, TestFlight, or App Store package. The command prints the resulting
 `.app` path. Archive that app only for a workspace or service that accepts iOS
 simulator artifacts; it cannot be installed on a physical iPhone or iPad.
 
+Post-init resource staging restores the amber Dev app-icon set from the
+explicit Dev build configuration, even when init preserves a Stable project
+specification. The completion command checks the input catalog
+and compares the packaged iPhone @2x icon pixels with that set. This does not
+prove every compiled asset rendition or an installed home-screen update.
+
 ## Qualify native relay link intake
 
 The [iOS intake implementation](../../src-desktop/src/native_relay_ios_launch.rs)
@@ -470,7 +476,14 @@ On macOS, pending activation may present a native-owned cover so the WebView
 can render while the proof proceeds. It shows the application icon and
 **Starting Station**; when the epoch becomes overdue it switches in place to
 **Station is taking longer than usual to start.** with native **Restart**
-(default) and **Quit** buttons, replacing the former modal alert. While the
+(default) and **Quit** buttons, replacing the former modal alert. The read-only
+`startup_window_admitted` observation waits for a visible window and, on macOS,
+checks the main-thread view hierarchy for actual cover removal and restored
+WebView opacity. The readiness phase alone can precede that cover task. The
+WebView's launch animation counts time only after that observation, while
+native identity proof and window reveal retain their own authority. A ready
+app skips an unseen intro; it does not wait for the native cover to start a
+brand animation. While the
 cover is up, a window-scoped key monitor evicts the hidden WebView from first
 responder (WebKit can retake it) and routes key-down/key-up events (modifier-only
 `flagsChanged` events still reach the page): it maps Return to Restart, lets

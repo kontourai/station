@@ -888,3 +888,9 @@
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
+
+.activity-show-more {
+  min-height: 44px;
+  width: 100%;
+  margin-top: var(--space-2);
+}

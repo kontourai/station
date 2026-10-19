@@ -159,6 +159,8 @@ with two explicit, structurally identical exceptions, both off by default and ne
 - **Tool** — one callable: a function from an integration, or a `station-control` platform function.
 - **Command** — a slash command.
 - **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
+- **Personal access token** — a credential a person makes for a script (`stp_…`): it acts as them, carries Read and optionally Operate, never exceeds their own access, and can expire or be revoked (#3557). It is not a paired device: it cannot manage Station access or a Project's members.
+- **Station group** — Admin or Member: what any device tied to a person may do at most, Station-wide (#3557). Not a Project role: Project roles (Viewer, Contributor, Admin, Owner) say what a person may do in one Project, and neither grants the other. The operator is the Owner, outside both.
 - **Plugin visibility** — which installed plugins one principal may see and compose a Board or a personal agent from (#2067). Installation stays instance-wide: visibility is a *projection* of that one installed set onto one person, derived from the operator's grant record plus the live inventory, never a stored `visible` label. The operator sees everything; anybody else sees only what they have been granted, and a plugin outside their projection is absent from their plugin list rather than flagged. It is a listing and composition projection only — the execution authority for a plugin remains its permission grants, which every invocation rechecks.
 
 > **MCP passthrough (exception 1):** an ACP-connected External agent's connection can
@@ -178,8 +180,8 @@ with two explicit, structurally identical exceptions, both off by default and ne
 
 ## Tasks & work items
 
-- **Task** — Station's friendly label for a work item plus its dispatch affordance (the Tasks board on a project's page): create it, assign an agent/skill, and dispatch it into a session. Its statuses (`TaskStatus` in `@kontourai/station-contracts/task-graph`) are aligned to the flow-agents neutral work-item vocabulary — `todo`, `ready`, `triage`, `in_progress`, `blocked`, `review`, `verification`, `done` — with `canceled` kept as a documented **Station-local extension** (a task a user abandons before completion; the neutral contract itself has no such state).
-- **Work item** — the provider-neutral unit from `@kontourai/flow-agents`' work-item contract (`schemas/backlog-provider-settings.schema.json`, published by that package — not a file in this repo): a piece of backlog work identified independent of any one tracker (e.g. a GitHub issue). A Station `TaskRecord` may carry `sourceProvider`/`workItemRef` to reference the work item it originated from, without Station reaching into that provider's internals.
+- **Task** — Station's friendly label for a work item plus its dispatch affordance (the Tasks board on a project's page): create it, assign an agent/skill, and dispatch it into a session. Its statuses (`TaskStatus` in `@kontourai/station-contracts/task-graph`) are aligned to the flow-agents neutral work-item vocabulary — `todo`, `ready`, `in_progress`, `blocked`, `review`, `verification`, `done` — with `triage` (local intake) and `canceled` (a task a user abandons before completion) kept as explicit **Station-local extensions**. Neither has an automatic mapping to a shared status.
+- **Work item** — the provider-neutral unit from `@kontourai/flow-agents`' work-item contract (`schemas/backlog-provider-settings.schema.json`, published by that package — not a file in this repo): a piece of backlog work identified independent of any one tracker (e.g. a GitHub issue). A Station `TaskRecord` may carry `sourceProvider`/`workItemRef` to reference the work item it originated from, without Station reaching into that provider's internals. The [tracker sync handoff](plans/task-tracker-sync-upstream-gaps.md) records the published-contract gaps blocking write-back and ChangeProvider close-out.
 - The direction of travel from the Session Board to a Console board (a work-item-aware view) is governed by epic **#580** — this glossary entry documents the vocabulary alignment (issue **#581**); the board convergence itself is tracked separately under that epic.
 
 ## The three "planes"
@@ -270,14 +272,16 @@ retired names.
   [design/placement.md](design/placement.md)) — Coding and Chat kinds render
   in the main region only.
 - **Board** — a Layout owned by a principal: the viewer's own, project-less
-  page, listed in the left panel's `Boards` section between Activity and
-  Projects and rendered by the same layout renderer a project Layout is
+  page, listed in the left panel's **Personal Boards** section after Projects
+  and rendered by the same layout renderer a project Layout is
   (#2062; [design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
   decision D1). A Board can be **promoted** — MOVED into a project, where it
   becomes that project's Layout under the same id; the personal record is gone
   afterwards, so promote is never a copy. A Board may also be held by a dock
   region as a pane beside Chat (`board:<layoutId>`, #2157;
-  [design/placement.md](design/placement.md)).
+  [design/placement.md](design/placement.md)). Its dashboard editor supports
+  live sections, notes and links. Chat proposals require explicit preview and
+  Apply; see [Personal Boards](user/personal-boards.md).
 
   Board has other qualified meanings in this codebase: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
   a layout `type`) and the **board face** (`NavigationView`'s `board` member at

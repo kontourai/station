@@ -185,7 +185,7 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
   if (env.GITHUB_OUTPUT)
     appendFileSync(
       env.GITHUB_OUTPUT,
-      `shards=${JSON.stringify(Array.from({ length: plan.shardCount }, (_, index) => index + 1))}\nshard-count=${plan.shardCount}\n`,
+      `shards=${JSON.stringify(Array.from({ length: plan.shardCount }, (_, index) => index + 1))}\nshard-count=${plan.shardCount}\nempty=${env.STATION_FAST_CHECKS_SKIP_EMPTY_SHARDS === 'true' && plan.fileCount === 0 ? 'true' : 'false'}\n`,
     );
   report(
     `[fast-checks] plan: ${plan.fileCount} test file(s) over ${plan.groups.length} resource group(s), ${plan.shardCount} shard(s)` +

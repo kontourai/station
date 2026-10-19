@@ -86,6 +86,8 @@ interface RuntimeServiceBootstrapContext {
     EnvironmentSecurityService,
     | 'verifyCredential'
     | 'resolveGrantedScope'
+    // #3586: the terminal WebSocket refuses account-bound devices and tokens.
+    | 'identifyDevice'
     | 'authorizeCredential'
     | 'credentialLocality'
   >;

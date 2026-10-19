@@ -1,0 +1,7 @@
+{
+  "revision": "3127c5d894ff1d994a5fe12c674ac8118e7bf792",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the Profile usage delta through retained-source aggregation, optional Agent reported/estimated cost markers, model and token measurement displays, scope-bound panels, disclosure mounting, and the real event-store/analytics route regression. Missing measurements remain distinct from reported zero; current Agent defaults do not fill historical attribution. Shared analytics polling remains context-owned. Native billing and unretained provider activity are outside this proof.","inputs":["docs/guides/monitoring.md","packages/contracts/src/usage-stats.ts","src-server/analytics/__tests__/usage-observation-projection.test.ts","src-server/analytics/usage-aggregator-state.ts","src-ui/src/components/usage-stats/UsageStatsPanel.tsx","src-ui/src/pages/ProfilePage.css","src-ui/src/pages/ProfilePage.tsx","src-ui/src/components/usage-stats/UsageBreakdownSection.tsx","src-ui/src/components/usage-stats/UsageDrillDownModal.tsx","src-ui/src/components/usage-stats/UsageSummaryCards.tsx","src-ui/src/components/usage-stats/period.ts","src-ui/src/components/usage-stats/UsageTrendChart.tsx"]}
+  ]
+}

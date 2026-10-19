@@ -1,0 +1,7 @@
+{
+  "revision": "757b510858ea116c0e722d5eda68c5d30b95739a",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#561: process-utils.ts adds registerDetachedOwnedChild (shared registration for already-detached spawns) and the startup sweep now drops, never signals, a record with no engine birth once its owner is gone (new unverifiable count). Re-read the lab teardown and owned-process cleanup claims; they concern the lab runner's own process ownership and stay accurate. No prose change.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/infra/process-utils.ts"]}
+  ]
+}

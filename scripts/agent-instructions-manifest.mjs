@@ -61,7 +61,7 @@ export const GENERATED_BLOCK_OWNERS = Object.freeze({
   'verification-scheduling': 'docs/guides/testing.md',
   'verification-policy': 'docs/guides/testing.md',
 });
-export const GOVERNANCE_BLOCK = `<!-- veritas:governance-block:start -->\nThis repo uses Veritas for AI governance. Read \`.veritas/GOVERNANCE.md\` before making changes.\nAfter changes, run \`veritas readiness\` and address any FAIL lines before finishing.\n<!-- veritas:governance-block:end -->\n`;
+export const GOVERNANCE_BLOCK = `<!-- veritas:governance-block:start -->\nThis repo uses Veritas for AI governance. Read \`.veritas/GOVERNANCE.md\` before making changes.\nAfter changes, run \`npx --no @kontourai/veritas readiness\` and address any FAIL lines before finishing.\n<!-- veritas:governance-block:end -->\n`;
 export const ROOT_UNIVERSAL_MARKERS = Object.freeze([
   'Diagnose the failure rather than rerun-to-green',
   'signal to diagnose, not a request to rerun until green',

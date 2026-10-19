@@ -34,8 +34,10 @@ import {
 import { normalizeHostInput } from '../core/hostInput';
 import { MOBILE_APP_DOWNLOADS } from '../core/mobileAppDownloads';
 import {
+  encodeBrowserPairingLink,
   encodePairingDeepLink,
   type PairingDeepLinkChannel,
+  parseBrowserPairingLink,
 } from '../core/pairingDeepLink';
 import {
   rememberPairingEndpoint,
@@ -522,7 +524,10 @@ export function JoinDevicePairingPanel({
   };
 
   const reviewPayload = (payload: string) => {
-    const offer = decodeDevicePairingPayload(payload.trim());
+    const browserLink = parseBrowserPairingLink(payload.trim());
+    const offer = decodeDevicePairingPayload(
+      browserLink?.status === 'ok' ? browserLink.payload : payload.trim(),
+    );
     if (!offer) {
       setError('This is not a valid Station pairing code.');
       return;
@@ -1038,6 +1043,7 @@ function authHeaders(credential: string | undefined): HeadersInit {
 
 async function pairingOfferError(response: Response): Promise<{
   message: string;
+  operatorHandoff?: boolean;
   /** The rejection answers for THIS device's own access (the 401 class). */
   auth: boolean;
 }> {
@@ -1053,11 +1059,25 @@ async function pairingOfferError(response: Response): Promise<{
         "This device's access to this Station needs review. Reconnect it, then try again.",
     };
   }
-  if (response.status === 403 || code === 'origin_forbidden') {
+  if (code === 'insufficient_scope') {
+    return {
+      auth: false,
+      operatorHandoff: true,
+      message: 'This device cannot create pairing codes.',
+    };
+  }
+  if (code === 'origin_forbidden') {
     return {
       auth: false,
       message:
         'This Station does not allow pairing from the current app address. Update its trusted app address, then try again.',
+    };
+  }
+  if (response.status === 403) {
+    return {
+      auth: false,
+      message:
+        'This Station refused to create a pairing code. Ask its operator to review this device’s access.',
     };
   }
   if (response.status === 429 || code === 'rate_limited') {
@@ -1103,32 +1123,18 @@ function isDevicePairingOffer(value: unknown): value is DevicePairingOffer {
   );
 }
 
-/**
- * The presets THIS interactive device-pairing UI offers. Standard is the
- * default — the read-only preset is an explicit opt-in for a device the
- * operator wants to intentionally under-power (e.g. "pair my phone
- * read-only" from the issue's story).
- *
- * station#1123 slice 1 added a third preset, `'delegation'`, to
- * `PAIRING_SCOPE_PRESETS` — deliberately NOT offered here. This flow pairs
- * an interactive device a human is holding (QR/manual code, joiner names
- * itself); a delegation grant is for a PEER STATION and is minted through
- * the dedicated provisioning path (`station environment peers add` /
- * `POST /api/environments/peers`), not this UI. Slice 5 ("Add a peer" UI)
- * is where a delegation-producing flow would live, if one is ever built
- * here at all. Iterating a fixed tuple rather than
- * `Object.keys(PAIRING_SCOPE_PRESETS)` keeps this screen byte-identical as
- * the preset set grows.
- */
-const OFFERED_SCOPE_PRESETS = [
-  'standard',
-  'read-only',
-] as const satisfies readonly PairingScopePreset[];
+/** Device invitations offer use permissions; administration stays with the host. */
+const OFFERED_SCOPE_PRESETS = ['full-device', 'standard', 'read-only'] as const;
 
 const SCOPE_PRESET_COPY: Record<
   (typeof OFFERED_SCOPE_PRESETS)[number],
   { label: string; description: string }
 > = {
+  'full-device': {
+    label: 'Full device access',
+    description:
+      'Can run commands and use full access without approval prompts.',
+  },
   standard: {
     label: 'Standard',
     description: 'Can use chats, files, and the terminal.',
@@ -1204,13 +1210,22 @@ export function HostDevicePairingPanel({
       ? personalApprovalSelection.requests
       : new Set<string>();
   const [devices, setDevices] = useState<PairedDevice[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const errorOwner = useRef<'poll' | 'action' | null>(null);
+  const setError = useCallback(
+    (message: string | null, owner: 'poll' | 'action' = 'action') => {
+      errorOwner.current = message ? owner : null;
+      setErrorState(message);
+    },
+    [],
+  );
   // #1796 (G3): what the last access change or revoke did to full access.
   const [revocation, setRevocation] =
     useState<FullAccessRevocationOutcome | null>(null);
   // True only when `error` came from an authentication rejection of THIS
   // device's own access (401 class) — the state `onReconnect` addresses.
   const [authBlocked, setAuthBlocked] = useState(false);
+  const [operatorHandoff, setOperatorHandoff] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
   // operator last created an offer with for this Station) outranks the active
@@ -1219,9 +1234,9 @@ export function HostDevicePairingPanel({
   const [endpoint, setEndpoint] = useState(
     () => suggestPairingEndpoint(apiBase) ?? publicEndpoint,
   );
-  const [scopePreset, setScopePreset] = useState<PairingScopePreset>(
-    DEFAULT_PAIRING_SCOPE_PRESET,
-  );
+  const [scopePreset, setScopePreset] = useState<
+    PairingScopePreset | 'full-device'
+  >(DEFAULT_PAIRING_SCOPE_PRESET);
   const [clientChannel, setClientChannel] =
     useState<Exclude<PairingDeepLinkChannel, 'dev'>>(initialClientChannel);
   // Per pending device request: what the approver keeps of what it asked
@@ -1239,12 +1254,24 @@ export function HostDevicePairingPanel({
   );
   const [now, setNow] = useState(Date.now());
   const refreshGeneration = useRef(0);
+  const pollingPaused = useRef(false);
   const requestActionIdsRef = useRef(new Set<string>());
   const deviceActionIdsRef = useRef(new Set<string>());
   const payload = useMemo(
     () => (offer ? encodeDevicePairingPayload(offer) : ''),
     [offer],
   );
+  const [browserUrl, setBrowserUrl] = useState(() =>
+    /^https?:$/.test(window.location.protocol) ? window.location.origin : '',
+  );
+  const browserPairingLink = useMemo(() => {
+    if (!payload || !browserUrl) return undefined;
+    try {
+      return encodeBrowserPairingLink({ payload, browserUrl });
+    } catch {
+      return undefined;
+    }
+  }, [payload, browserUrl]);
   const pairingLink = useMemo(
     () =>
       payload ? encodePairingDeepLink({ payload, clientChannel }) : undefined,
@@ -1288,6 +1315,7 @@ export function HostDevicePairingPanel({
   );
 
   const refresh = useCallback(async () => {
+    if (pollingPaused.current) return;
     const generation = ++refreshGeneration.current;
     try {
       const [requestResponse, deviceResponse] = await Promise.all([
@@ -1299,15 +1327,47 @@ export function HostDevicePairingPanel({
         deviceResponse.ok ? deviceResponse.json() : undefined,
       ]);
       if (generation !== refreshGeneration.current) return;
+      if (
+        [requestResponse.status, deviceResponse.status].some(
+          (status) => status === 401 || status === 403,
+        )
+      ) {
+        pollingPaused.current = true;
+        setRequests([]);
+        setDevices([]);
+        if (errorOwner.current !== 'action') {
+          const authenticationFailed =
+            requestResponse.status === 401 || deviceResponse.status === 401;
+          setAuthBlocked(authenticationFailed);
+          setOperatorHandoff(!authenticationFailed);
+          setError(
+            authenticationFailed
+              ? "This device's access to this Station needs review. Reconnect it, then try again."
+              : 'This device cannot manage pairing requests. Continue on the computer running Station.',
+            'poll',
+          );
+        }
+        return;
+      }
+      if (
+        requestResponse.ok &&
+        deviceResponse.ok &&
+        errorOwner.current === 'poll'
+      ) {
+        setError(null);
+        setAuthBlocked(false);
+        setOperatorHandoff(false);
+      }
       if (requestBody) setRequests(requestBody.requests ?? []);
       if (deviceBody) setDevices(deviceBody.devices ?? []);
     } catch {
       // Polling is best-effort. A later generation retries without allowing a
       // slow or failed response to overwrite newer inbox state.
     }
-  }, [authenticatedFetch]);
+  }, [authenticatedFetch, setError]);
 
   useEffect(() => {
+    pollingPaused.current = false;
     void refresh();
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -1570,21 +1630,28 @@ export function HostDevicePairingPanel({
   };
 
   const createOffer = async () => {
+    pollingPaused.current = false;
     setError(null);
     setAuthBlocked(false);
+    setOperatorHandoff(false);
     try {
       const response = await authenticatedFetch('/api/pairing/offers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           endpoint,
-          scope: pairingScopePresetString(scopePreset),
+          scope:
+            scopePreset === 'full-device'
+              ? FULL_DEVICE_ACCESS_SCOPE
+              : pairingScopePresetString(scopePreset),
+          approval: 'on-create',
         }),
       });
       if (!response.ok) {
         const outcome = await pairingOfferError(response);
         setError(outcome.message);
         setAuthBlocked(outcome.auth);
+        setOperatorHandoff(outcome.operatorHandoff ?? false);
         return;
       }
       const value: unknown = await response.json();
@@ -1600,6 +1667,7 @@ export function HostDevicePairingPanel({
 
   const reconnect = async () => {
     if (!onReconnect || reconnecting) return;
+    pollingPaused.current = false;
     setError(null);
     setAuthBlocked(false);
     setReconnecting(true);
@@ -2020,10 +2088,8 @@ export function HostDevicePairingPanel({
       {!offer ? (
         <>
           <p style={{ margin: 0, color: 'var(--text-secondary, #999)' }}>
-            Create a code and scan it with your phone camera to open Station.
-            Review the connection on your phone, then approve access here. Both
-            devices connect to the same Station server. Your phone must be able
-            to reach its address.
+            Create a single-use invitation with the access selected below.
+            Anyone with it can pair until it expires.
           </p>
           <fieldset
             style={{
@@ -2062,12 +2128,9 @@ export function HostDevicePairingPanel({
               </label>
             ))}
           </fieldset>
-          <button type="button" onClick={createOffer} style={primaryBtnStyle}>
-            Create pairing code
-          </button>
           <div>
             <label style={{ display: 'grid', gap: 6 }}>
-              Station server address your phone can reach
+              Station address
               <input
                 aria-label="Pairing endpoint"
                 inputMode="url"
@@ -2084,17 +2147,18 @@ export function HostDevicePairingPanel({
             </label>
             {endpointIsLoopback ? (
               <small role="note" style={{ color: 'var(--status-error, #e66)' }}>
-                A phone cannot reach this address — localhost and 127.0.0.1
-                point to the phone itself. Use this server’s LAN or tailnet
-                address (for example a Tailscale Serve HTTPS URL).
+                Localhost points to the phone. Use your computer’s reachable
+                address.
               </small>
             ) : (
               <small style={{ color: 'var(--text-secondary, #999)' }}>
-                Use this server’s LAN or tailnet address. Localhost and
-                127.0.0.1 point to the phone itself when opened there.
+                Your phone must be able to reach this address.
               </small>
             )}
           </div>
+          <button type="button" onClick={createOffer} style={primaryBtnStyle}>
+            Create pairing code
+          </button>
         </>
       ) : (
         <div style={{ display: 'grid', justifyItems: 'center', gap: 10 }}>
@@ -2127,6 +2191,28 @@ export function HostDevicePairingPanel({
           <div>
             Manual code: <strong>{offer.manualCode}</strong>
           </div>
+          <button
+            type="button"
+            style={secondaryBtnStyle}
+            onClick={async () => {
+              setError(null);
+              try {
+                const response = await authenticatedFetch(
+                  `/api/pairing/offers/${encodeURIComponent(offer.offerId)}`,
+                  { method: 'DELETE' },
+                );
+                if (!response.ok)
+                  throw new Error('Invitation cancellation refused');
+                setOffer(null);
+              } catch {
+                setError(
+                  'Could not cancel this invitation. Check the connection and try again.',
+                );
+              }
+            }}
+          >
+            Cancel invitation
+          </button>
           <small style={{ color: 'var(--text-secondary, #999)' }}>
             Access: {describeDeviceScope(offer.scope)}
           </small>
@@ -2188,6 +2274,29 @@ export function HostDevicePairingPanel({
           >
             Copy pairing link
           </button>
+          <label style={{ display: 'grid', gap: 6, width: '100%' }}>
+            Browser app address
+            <input
+              aria-label="Browser app address"
+              type="url"
+              value={browserUrl}
+              onChange={(event) => setBrowserUrl(event.target.value)}
+              style={inputStyle}
+            />
+          </label>
+          <small>
+            Use an address the other device can open in its browser.
+          </small>
+          <button
+            type="button"
+            disabled={!browserPairingLink}
+            onClick={() =>
+              void navigator.clipboard?.writeText(browserPairingLink ?? '')
+            }
+            style={secondaryBtnStyle}
+          >
+            Copy browser link
+          </button>
           <small style={{ color: 'var(--text-secondary, #999)' }}>
             Install the selected Station app on your phone before scanning with
             its camera. Already in Station? Choose “Scanner inside Station”
@@ -2218,6 +2327,27 @@ export function HostDevicePairingPanel({
           onStopSession={stopSession}
         />
       )}
+      {operatorHandoff && (
+        <section
+          aria-label="Create an invitation on your computer"
+          style={{ display: 'grid', gap: 8 }}
+        >
+          <p>
+            Open Station on your computer and choose <strong>Pair phone</strong>
+            .
+          </p>
+          <details>
+            <summary>Running Station from a terminal?</summary>
+            <p>For a Nightly installation:</p>
+            <code>station-nightly environment offer</code>
+            <CopyCommandButton command="station-nightly environment offer" />
+            <p>
+              Source checkout: <code>./station environment offer</code>.
+            </p>
+            <small>Use the same Station home and instance.</small>
+          </details>
+        </section>
+      )}
       {error && (
         <div className="pairing-error" role="alert">
           <p>{error}</p>
@@ -2229,6 +2359,18 @@ export function HostDevicePairingPanel({
               style={primaryBtnStyle}
             >
               {reconnecting ? 'Reconnecting…' : 'Reconnect this Station'}
+            </button>
+          )}
+          {authBlocked && !onReconnect && (
+            <button
+              type="button"
+              style={secondaryBtnStyle}
+              onClick={() => {
+                pollingPaused.current = false;
+                void refresh();
+              }}
+            >
+              Check connection again
             </button>
           )}
         </div>

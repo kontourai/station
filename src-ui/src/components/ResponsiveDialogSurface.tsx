@@ -368,6 +368,12 @@ export function ResponsiveDialogSurface({
       return;
     }
     if (event.key !== 'Tab') return;
+    const panel = panelRef.current;
+    // React portal events bubble through owners outside their DOM subtree;
+    // Tab order there belongs to the portaled content, not this panel.
+    // Escape above still dismisses from a portaled child that leaves it
+    // unhandled, as it did before Tab containment learned about portals.
+    if (!panel?.contains(event.target as Node)) return;
     const controls = Array.from(
       panelRef.current?.querySelectorAll<HTMLElement>('*') ?? [],
     ).filter(
@@ -381,10 +387,19 @@ export function ResponsiveDialogSurface({
     }
     const first = controls[0];
     const last = controls.at(-1)!;
-    if (event.shiftKey && document.activeElement === first) {
+    const activeControl = controls.find(
+      (control) => control === document.activeElement,
+    );
+    if (
+      document.activeElement === panel ||
+      !panel.contains(document.activeElement)
+    ) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && activeControl === first) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
+    } else if (!event.shiftKey && activeControl === last) {
       event.preventDefault();
       first.focus();
     }

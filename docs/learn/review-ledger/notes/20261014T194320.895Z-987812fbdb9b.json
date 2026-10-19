@@ -1,0 +1,7 @@
+{
+  "revision": "9a28c63f04fc18a1a9dae5ee23da357dbc055cbf",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Third fix round: givenUp now reads the row and is true only for an unresolved claim this owner still owns and retained, never another owner's reused-key claim however old; it probes no process. The Interface sentence says so.","inputs":["docs/architecture/module-map.md","src-server/services/turn-idempotency.ts"]}
+  ]
+}

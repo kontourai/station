@@ -1,0 +1,7 @@
+{
+  "revision": "af77bc60ae5f1f6dde4eb492e5999e853f38538c",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Reviewed af77bc60ae5 selector test addition against this fixture explanation. The new source-only Starter registry case uses the real manifest and shard planner; it does not alter the representative demo, fixture files, elapsedMs meaning, or CLI liveness limit. Existing fixture guidance remains accurate; no prose change needed.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

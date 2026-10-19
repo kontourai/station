@@ -1,0 +1,7 @@
+{
+  "revision": "574632b2174a0d7f80edde4bfe1b352064d2e2be",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Reviewed host boundary owner layouts, insertion-only durable fences, preserved NULL and owner fields, terminalSeen replacing default facts, missing-event retention, WAL read locks and nested writer acquisition. The bound and real-append suites plus nine restored fault mutations support these claims; runtime Station wiring and an older executable rollout remain unqualified.","inputs":["packages/monument/README.md","packages/monument/src/__tests__/sqlite-bound-boundaries.test.ts","packages/monument/src/decisions/turn-boundary.ts","packages/monument/src/port.ts","packages/monument/src/sqlite.ts","packages/monument/src/step.ts","src-server/services/orchestration/__tests__/monument-boundary-append.test.ts"]}
+  ]
+}

@@ -118,6 +118,7 @@ function build(origin: string | null = ORIGIN): Harness {
         candidate === 'N'.repeat(43)
           ? { name: 'No id' }
           : (DEVICES[candidate] ?? null),
+      resolveGrantedScope: (candidate) => DEVICES[candidate]?.scope,
     },
     passkeys: service,
   });
@@ -1221,6 +1222,7 @@ describe('review round: races and live device state', () => {
       credentials: {
         verifyOperatorCredential: () => false,
         identifyDevice: (c) => DEVICES[c] ?? null,
+        resolveGrantedScope: (c) => DEVICES[c]?.scope,
       },
       passkeys: exploding,
     });
@@ -1274,6 +1276,7 @@ describe('review round: races and live device state', () => {
       credentials: {
         verifyOperatorCredential: () => false,
         identifyDevice: (c) => DEVICES[c] ?? null,
+        resolveGrantedScope: (c) => DEVICES[c]?.scope,
       },
       passkeys: raising,
     });

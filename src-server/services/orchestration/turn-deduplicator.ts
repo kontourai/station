@@ -1,11 +1,13 @@
 import {
   awaitTurnResolution,
+  type TurnClaimInspection,
   type TurnIdempotencyStore,
 } from '../turn-idempotency.js';
 
 /**
  * Owns exactly one client turn per (threadId, clientTurnId). Claims are
- * idempotent per pair: an unresolved claim is contended, a resolved claim is
+ * idempotent per pair: known input digest mismatches conflict before any
+ * replay or reclaim. Legacy input stays unknown. An unresolved claim is contended, a resolved claim is
  * replayable, and only the winning claim's opaque handle may resolve or
  * release it. SQLite updates are
  * atomic and persist across process restart; release returns the pair to the
@@ -13,7 +15,8 @@ import {
  *
  * #3559: a claim whose owner process died is taken over only if that owner
  * never called `beginInvocation`. Otherwise the provider may already have the
- * turn, so the claim answers `indeterminate` and is never replayed.
+ * turn, so the claim answers `indeterminate` and is never replayed. A key
+ * whose resolved row retention evicted answers `expired`, never a new claim.
  */
 export interface TurnClaim {
   /**
@@ -34,20 +37,63 @@ export interface TurnClaim {
    * settlement, both transition methods reject.
    */
   release(): void;
+  /**
+   * Gives up an owned claim that may have reached the provider: it stays
+   * unresolved and is never released, and both the delivery lookup and a
+   * same-key claim in this process answer it `indeterminate` rather than in
+   * flight or contended. Settles the handle.
+   */
+  retain(): void;
 }
 
 export interface TurnDeduplicator {
-  claim(input: { threadId: string; clientTurnId: string }):
+  claim(input: {
+    threadId: string;
+    clientTurnId: string;
+    inputDigest?: string;
+  }):
+    | { kind: 'conflict' }
     | { kind: 'owner'; claim: TurnClaim }
     | { kind: 'contended'; turnId?: string }
-    /** The dead owner may have invoked the provider. Never send this turn. */
-    | { kind: 'indeterminate' };
+    /**
+     * The owner may have invoked the provider and will never resolve the
+     * claim: it died, or (in this process) retained it. Never send this turn.
+     */
+    | { kind: 'indeterminate' }
+    /**
+     * #3559: the key's resolved row was evicted. The turn was sent, and its
+     * id can no longer be replayed. Never send this turn again.
+     */
+    | { kind: 'expired' };
+  /**
+   * Waits (bounded) for the pair's turn id. Returns nothing early when the
+   * claim is released, or when its owner in this process retained it after a
+   * possible effect; {@link givenUp} tells the two apart.
+   */
   awaitResolution(input: {
     threadId: string;
     clientTurnId: string;
+    inputDigest?: string;
     timeoutMs?: number;
     intervalMs?: number;
   }): Promise<string | undefined>;
+  /**
+   * Whether this process's own owner retained the pair's unresolved claim
+   * after a possible effect, so nothing will ever resolve it. False for any
+   * other process's claim, however old.
+   */
+  givenUp(input: { threadId: string; clientTurnId: string }): boolean;
+  /**
+   * Read-only: what {@link claim} would meet for this pair, without claiming,
+   * reclaiming or touching retention. A supplied digest throws the typed input
+   * conflict only when the row retains different original proof. For the delivery lookup a client uses
+   * to decide whether resending the same key is safe.
+   */
+  inspect(input: {
+    threadId: string;
+    clientTurnId: string;
+    inputDigest?: string;
+  }): TurnClaimInspection;
 }
 
 export function createTurnDeduplicator(options: {
@@ -55,16 +101,19 @@ export function createTurnDeduplicator(options: {
   keyFor: (threadId: string, clientTurnId: string) => string;
 }): TurnDeduplicator {
   return {
-    claim: ({ threadId, clientTurnId }) => {
+    claim: ({ threadId, clientTurnId, inputDigest }) => {
       const claim = options.store.claim(
         options.keyFor(threadId, clientTurnId),
         Date.now(),
         'tracked',
+        inputDigest,
       );
-      if (!claim.claimed)
-        return claim.indeterminate
-          ? { kind: 'indeterminate' }
-          : { kind: 'contended', turnId: claim.value };
+      if (!claim.claimed) {
+        if (claim.conflict) return { kind: 'conflict' };
+        if (claim.indeterminate) return { kind: 'indeterminate' };
+        if (claim.expired) return { kind: 'expired' };
+        return { kind: 'contended', turnId: claim.value };
+      }
       let settled = false;
       let intent:
         | { kind: 'resolve'; turnId: string }
@@ -103,15 +152,35 @@ export function createTurnDeduplicator(options: {
             ),
           release: () =>
             settle({ kind: 'release' }, () => options.store.release(key)),
+          retain: () => {
+            if (settled) throw new Error('Turn claim has already settled.');
+            settled = true;
+            options.store.retain(key);
+          },
         },
       };
     },
-    awaitResolution: ({ threadId, clientTurnId, timeoutMs, intervalMs }) =>
+    givenUp: ({ threadId, clientTurnId }) =>
+      options.store.givenUp(options.keyFor(threadId, clientTurnId)),
+    inspect: ({ threadId, clientTurnId, inputDigest }) =>
+      options.store.inspect(
+        options.keyFor(threadId, clientTurnId),
+        Date.now(),
+        inputDigest,
+      ),
+    awaitResolution: ({
+      threadId,
+      clientTurnId,
+      timeoutMs,
+      intervalMs,
+      inputDigest,
+    }) =>
       awaitTurnResolution(
         options.store,
         options.keyFor(threadId, clientTurnId),
         timeoutMs,
         intervalMs,
+        inputDigest,
       ),
   };
 }

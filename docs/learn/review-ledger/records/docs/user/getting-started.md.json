@@ -218,7 +218,19 @@
 
     "install.ps1",
 
-    "scripts/lib/publish-nightly-desktop.mjs"
+    "scripts/lib/publish-nightly-desktop.mjs",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts"
   ],
 
   "checks": [

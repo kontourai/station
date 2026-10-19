@@ -25,6 +25,7 @@ import type {
   UpdateEvidence,
   UpdateFields,
 } from '@kontourai/station-contracts/knowledge-store';
+import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   KnowledgeRecordNotFoundError,
@@ -332,6 +333,16 @@ export class KitDefaultStoreAdapter implements KnowledgeStoreAdapter {
     }
 
     const id = input.id || randomUUID();
+    if (!isSafePathSegment(id)) {
+      throw new MissingEvidenceError(
+        'create: record id must be a safe single path segment',
+      );
+    }
+    if (id.length > 200) {
+      throw new MissingEvidenceError(
+        'create: record id must be at most 200 characters',
+      );
+    }
     if (this.readRecord(id)) {
       throw new MissingEvidenceError('create: record id already exists');
     }

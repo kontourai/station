@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-shared",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Shared runtime helpers, config parsing, and compatibility re-exports for Station",
   "type": "module",
   "engines": {
@@ -121,9 +121,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.8.0",
+    "@kontourai/station-contracts": "^0.9.0",
     "@kontourai/thread": "0.5.0",
-    "@modelcontextprotocol/client": "2.2.0",
+    "@modelcontextprotocol/client": "2.3.1",
     "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",
     "jose": "6.2.12"

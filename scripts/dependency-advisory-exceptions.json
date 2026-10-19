@@ -3,53 +3,13 @@
   "exceptions": [
     {
       "scope": "root",
-      "package": "node-forge",
-      "advisory": "GHSA-86w9-cpqp-85rv",
-      "severity": "high",
-      "owner": "station-maintainers",
-      "reason": "Unpatched upstream (digitalbazaar/forge#1152 open). Production-graph transitive via @voltagent/core -> @mymediset/sap-ai-provider -> @sap-cloud-sdk -> jks-js, reached only when the SAP provider is explicitly configured, and only to parse an operator-supplied local JKS keystore. Station verifies no attacker-controlled RSA signatures through this chain, so the forgery primitive in CVE-2026-85393 has no reachable target. Re-run npm run audit:policy on every VoltAgent core or @mymediset/sap-ai-provider update.",
-      "trackingIssue": "https://github.com/kontourai/station/issues/3122",
-      "expires": "2026-10-16"
-    },
-    {
-      "scope": "root",
-      "package": "http-cache-semantics",
-      "advisory": "GHSA-ch52-4w7c-c8xp",
-      "severity": "high",
-      "owner": "station-maintainers",
-      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: GitHub advisory names <=4.2.0 and no first patched version; npm latest is 4.3.0. Issue #3150 retains integrity-verified dependency-boundary reproduction in 4.2.0 and 4.3.0: max-stale can select a shared response whose TTL was zeroed for Set-Cookie. Threat model: unauthenticated caller selecting another user response from a shared HTTP cache. Production graph is present; a reachable Station HTTP exploit or non-reachability remains unproved. Exact-scope seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified remediation lands. No unrelated critical/high identity is accepted.",
-      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-17"
-    },
-    {
-      "scope": "root",
       "package": "braces",
       "advisory": "GHSA-vfj7-8cjw-p6xm",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: npm latest remains 3.0.3; GitHub advisory covers <=3.0.3 with no first patched version. Threat model: an untrusted deeply nested brace pattern reaching expansion and exhausting a Station Node process stack. Dependency paths include micromatch/fast-glob and VoltAgent; Station-specific entry-point exploitability and non-reachability remain unproved. Exact-root seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified mitigation lands. No unrelated critical/high identity is accepted.",
+      "reason": "Brian Anderson explicitly approved this exact renewal, on 2026-10-18, recorded at https://github.com/kontourai/station/issues/3150#issuecomment-6244355601: temporary risk acceptance until exclusive 2026-10-25T00:00:00Z. Registry/advisory review on 2026-10-18 still identifies latest braces 3.0.3 as affected, with no first patched release. Threat: untrusted deeply nested brace expansion exhausting the Node process stack. Production dependency presence is known; a reachable Station exploit or non-reachability remains unproved. No graph or policy workaround is proposed. Reassess upstream releases and graph/entry-point changes; remove only after verified mitigation. Keep #3150 open.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-17"
-    },
-    {
-      "scope": "sdk",
-      "package": "http-cache-semantics",
-      "advisory": "GHSA-ch52-4w7c-c8xp",
-      "severity": "high",
-      "owner": "station-maintainers",
-      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: GitHub advisory names <=4.2.0 and no first patched version; npm latest is 4.3.0. Issue #3150 retains integrity-verified dependency-boundary reproduction in 4.2.0 and 4.3.0: max-stale can select a shared response whose TTL was zeroed for Set-Cookie. Threat model: unauthenticated caller selecting another user response from a shared HTTP cache. Production graph is present; a reachable Station HTTP exploit or non-reachability remains unproved. Exact-scope seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified remediation lands. No unrelated critical/high identity is accepted.",
-      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-17"
-    },
-    {
-      "scope": "shared",
-      "package": "http-cache-semantics",
-      "advisory": "GHSA-ch52-4w7c-c8xp",
-      "severity": "high",
-      "owner": "station-maintainers",
-      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: GitHub advisory names <=4.2.0 and no first patched version; npm latest is 4.3.0. Issue #3150 retains integrity-verified dependency-boundary reproduction in 4.2.0 and 4.3.0: max-stale can select a shared response whose TTL was zeroed for Set-Cookie. Threat model: unauthenticated caller selecting another user response from a shared HTTP cache. Production graph is present; a reachable Station HTTP exploit or non-reachability remains unproved. Exact-scope seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified remediation lands. No unrelated critical/high identity is accepted.",
-      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-17"
+      "expires": "2026-10-25"
     }
   ],
   "residuals": [
@@ -94,37 +54,43 @@
       "trackingUrl": "https://github.com/kontourai/station/issues/3510",
       "expires": "2026-11-07",
       "recheckTrigger": "Run npm run audit:policy after every VoltAgent core update and remove this exact residual when VoltAgent publishes a compatible uuid remediation."
-    },
+    }
+  ],
+  "remediations": [
     {
       "scope": "root",
-      "package": "sprintf-js",
-      "version": "1.0.3",
-      "advisory": "GHSA-hp3w-g68c-fv3c",
-      "severity": "moderate",
-      "reachability": "production",
+      "package": "node-forge",
+      "advisory": "GHSA-86w9-cpqp-85rv",
+      "severity": "high",
       "owner": "station-maintainers",
-      "disposition": "Brian explicitly approved machine-bound acceptance conditional on good/bad drift/restoration proof and independent review. These conditions passed at guard revision e319df1a89. Exact root production sprintf-js1.0.3/GHSA-hp3w-g68c-fv3c only, until2026-10-13; no automatic renewal or identity-only fallback. This is a locally remediated numeric precision primitive still reported by upstream version, not a claim of upstream remediation or proven absence of production format control.",
-      "controls": "Machine guard requires structured binding at the actual policy acceptance seam. Observes current parsed workspace+lock references, exact patch bytes/hash, accounted installed source+min formatter bytes and Node24; refuses missing/drift, package/caller-directory/file/symlink/case-equivalent shadows and unaccounted copies. Proof: six source/min CJS/global/AMD paths/66supported comparisons at228505, exact patched bytes unchanged in composed source-map1.2.2 graph29cd; guard109good/bad/restored tests and finalowner-bypass17FAIL/2PASS followed109PASS at e319, fourth independent reviewPASS. Production presence is confirmed; attacker-controlled Station format reachability remains unproven. Legacy YAML/CLI supported, oversizedprecision andg0 bounded rounding. Width/padding/parser growth remain outside scope. Actual composed installation/audit/hosted verification remain separate.",
-      "trackingUrl": "https://github.com/kontourai/station/pull/3445",
-      "expires": "2026-10-13",
-      "recheckTrigger": "Before expiry and on upstream compatible release, dependency/patch/source-or-minified artifact/hash/Node-runtime change, additional formatter entrypoint, or discovery of untrusted production format control: recheck exact applied bytes and bounded numeric plus supported-format/YAML/CLI controls, withdraw this disposition on mismatch, and remove it when compatible upstream remediation passes. No automatic renewal.",
+      "trackingIssue": "https://github.com/kontourai/station/issues/3122",
+      "version": "1.4.0",
+      "reason": "Station-managed backport of digitalbazaar/forge#1152 at ceba34402e329f0365134f23fe19898756527d65 rejects extra nested DigestAlgorithm children. Covers lib/rsa.js and both shipped browser bundles. Public-key-only forgery and valid-signature controls exercise each installed public API. This record remediates only GHSA-86w9-cpqp-85rv at the exact installed version and hashes; registry severity remains high. It is not a claim about Station endpoint reachability or an official upstream release. Replace with an independently verified upstream release and remove this binding when available; recheck on any patch, dependency, provider or entrypoint change.",
       "patchBinding": {
         "schemaVersion": 1,
-        "package": "sprintf-js",
-        "version": "1.0.3",
-        "patchPath": "patches/sprintf-js-1.0.3.patch",
-        "patchSha256": "d7a96af1a095bea6b7a54d87e9a4e736387a6ffcec096307717f80b699ecc4c6",
+        "package": "node-forge",
+        "version": "1.4.0",
+        "patchPath": "patches/node-forge-1.4.0.patch",
+        "patchSha256": "c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e",
+        "nodeMajor": 24,
         "installedEntrypoints": [
           {
-            "path": "node_modules/sprintf-js/src/sprintf.js",
-            "sha256": "99e901c0ae0e17adc28b962525031c6f432b340eba8f4d3099058869306db083"
+            "path": "node_modules/node-forge/lib/index.js",
+            "sha256": "c231851a9d065df1fae045d6e6fb17cf5688b260f9ee0db4965fe1ef3c0607ab"
           },
           {
-            "path": "node_modules/sprintf-js/dist/sprintf.min.js",
-            "sha256": "71024e953ebe9c73ccf298776c15508a328469fb68c2d8b876319b61f46017c4"
+            "path": "node_modules/node-forge/lib/rsa.js",
+            "sha256": "c9b1e3799e230528b6d6815c1f6cd3c6058b9d45975264b55d995abb976589af"
+          },
+          {
+            "path": "node_modules/node-forge/dist/forge.min.js",
+            "sha256": "ef3be90b3604ef95427040949136ebfd440fccef9c0f23db0356988c9ffc6ff6"
+          },
+          {
+            "path": "node_modules/node-forge/dist/forge.all.min.js",
+            "sha256": "c6f575cd72b56bf78b5a0e4acb274ce8f41e804228c0b508bfe0e3856e704882"
           }
-        ],
-        "nodeMajor": 24
+        ]
       }
     }
   ]

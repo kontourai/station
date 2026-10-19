@@ -50,6 +50,41 @@ vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => ({
   }) => <output data-testid="basis-origin">{`${sessionId}/${turnId}`}</output>,
 }));
 
+const createProposalTask = vi.hoisted(() => vi.fn());
+const proposalCardProps = vi.hoisted(
+  () => [] as Array<{ conversationId?: string; sessionId: string }>,
+);
+vi.mock('../components/chat/TaskProposalCard', async (original) => {
+  const actual =
+    await original<typeof import('../components/chat/TaskProposalCard')>();
+  return {
+    ...actual,
+    TaskProposalCard: (
+      props: Parameters<typeof actual.TaskProposalCard>[0],
+    ) => {
+      proposalCardProps.push(props);
+      return actual.TaskProposalCard(props);
+    },
+  };
+});
+vi.mock('@kontourai/station-sdk', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk')>()),
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn().mockResolvedValue(undefined),
+  }),
+  useSessionRelationsQuery: () => ({ data: { links: [] } }),
+  useCreateTaskMutation: () => ({
+    mutateAsync: createProposalTask,
+    isPending: false,
+  }),
+}));
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigation: () => ({ navigate: vi.fn() }),
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [{ slug: 'alpha', name: 'Alpha' }] }),
+}));
+
 const { MessageBubble } = await import('../components/chat/MessageBubble');
 
 function row(message: ChatMessage, conversationId?: string) {
@@ -61,6 +96,7 @@ function row(message: ChatMessage, conversationId?: string) {
         id: 'replacement-session',
         ...(conversationId ? { conversationId } : {}),
         agentSlug: 'station',
+        projectSlug: 'alpha',
         messageCount: 1,
       }}
       agents={[]}
@@ -153,4 +189,82 @@ describe('MessageBubble answer Session identity', () => {
     );
     expect(screen.queryByTestId('input-origin')).toBeNull();
   });
+});
+
+const proposalText =
+  '```station-task-proposal\n' +
+  JSON.stringify({
+    title: 'Installer progress',
+    goal: 'See the current step.',
+    doneWhen: ['Steps have counts.'],
+    firstStep: 'Find the installer.',
+  }) +
+  '\n```';
+
+test('a completed chat answer renders a provisional Task card; user text and incomplete answers cannot offer acceptance', () => {
+  const view = render(
+    row(
+      {
+        role: 'assistant',
+        content: proposalText,
+        sessionId: 'original-session',
+        turnId: 'shape-turn',
+        answerEligible: true,
+      },
+      'conversation-1',
+    ),
+  );
+  expect(
+    screen.getByRole('region', { name: 'Task proposal' }).textContent,
+  ).toContain('Steps have counts.');
+  expect(createProposalTask).not.toHaveBeenCalled();
+  view.rerender(
+    row({ role: 'user', content: proposalText, turnId: 'shape-turn' }),
+  );
+  expect(screen.queryByRole('region', { name: 'Task proposal' })).toBeNull();
+  view.rerender(
+    row({
+      role: 'assistant',
+      content: proposalText,
+      turnId: 'shape-turn',
+      answerEligible: false,
+    }),
+  );
+  expect(screen.queryByRole('button', { name: 'Create Task' })).toBeNull();
+});
+
+test('the proposal card receives the conversation so acceptance can clear shaping after a Session change', () => {
+  proposalCardProps.length = 0;
+  render(
+    row(
+      {
+        role: 'assistant',
+        content: proposalText,
+        sessionId: 'original-session',
+        turnId: 'shape-turn',
+        answerEligible: true,
+      },
+      'conversation-1',
+    ),
+  );
+  expect(proposalCardProps.at(-1)).toMatchObject({
+    conversationId: 'conversation-1',
+    sessionId: 'original-session',
+  });
+});
+
+test('a proposal with unknown source identity stays readable without offering acceptance', () => {
+  const view = render(
+    row(
+      {
+        role: 'assistant',
+        content: proposalText,
+        turnId: 'shape-turn',
+        answerEligible: true,
+      },
+      'conversation-1',
+    ),
+  );
+  expect(screen.queryByRole('region', { name: 'Task proposal' })).toBeNull();
+  expect(view.container.textContent).toContain('station-task-proposal');
 });

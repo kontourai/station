@@ -1,0 +1,7 @@
+{
+  "revision": "717c699a94a50737ad4341a997937e5fb735aa37",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Re-reviewed the complete server scope instructions against the changed development-guide package row at 717c699a94a. The guide now describes the already-reviewed Monument boundary delegation and separates publisher bootstrap from functional release qualification. Route/domain ownership, focused gate routing, async installed-package digest guidance, runtime lifecycle/security conventions and the development-guide link remain correct; no protected instruction bytes changed. Local merged boundary suites passed 448, compiled package build and four-entrypoint plain-Node/type smoke passed. This note does not claim hosted, merge or release qualification.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

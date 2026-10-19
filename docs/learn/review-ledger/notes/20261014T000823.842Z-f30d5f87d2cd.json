@@ -1,0 +1,7 @@
+{
+  "revision": "7fda2eee6d29d9c0b4993ce8510cc9fd637f28c9",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Added that list_project_activity always lists the caller's own conversation (its current Session, marked self) whatever its scope, matching the existing digest sentence. Checked against session-project-activity.ts (isOwnSession bypass; candidates include caller.sessionId and its current conversation Session) and the route tests (host self caller, unreadable caller, moved-past caller).","inputs":["docs/reference/api.md"]}
+  ]
+}

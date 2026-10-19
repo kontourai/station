@@ -26,10 +26,6 @@
 
     "packages/sdk/src/queryFactories.ts",
 
-    "packages/shared/package.json",
-
-    "pnpm-lock.yaml",
-
     "scripts/mobile-css-ratchet.mjs",
 
     "scripts/responsive-surface-ratchet.mjs",
@@ -88,7 +84,27 @@
 
     "src-ui/src/components/StartupScreen.tsx",
 
-    "src-ui/index.html"
+    "src-ui/index.html",
+
+    "src-ui/src/lib/startup-mark-geometry.ts",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/files",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-ui/src/lib/startup-presentation.ts",
+
+    "src-ui/src/components/StartupHandoff.tsx",
+
+    "src-ui/src/platform/native/startupPresentation.ts",
+
+    "src-ui/src/__tests__/startup-presentation.browser.test.tsx"
   ],
 
   "checks": [

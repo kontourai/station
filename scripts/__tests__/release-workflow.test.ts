@@ -272,7 +272,7 @@ describe('frozen stable client-build provenance', () => {
       'echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"',
     );
     expect(stage.run).toBe(
-      'STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs',
+      'STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs --config "$RUNNER_TEMP/tauri.ios.channel.json"',
     );
   });
 
@@ -322,7 +322,7 @@ describe('frozen stable client-build provenance', () => {
     // The regeneration deletes gen/apple, so the gitignored provenance
     // resource must be staged again afterwards or IPA verification fails.
     const restage =
-      '(cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs)';
+      '(cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs --config "$RUNNER_TEMP/tauri.ios.channel.json")';
     expect(run.indexOf('rm -rf gen/apple')).toBeGreaterThanOrEqual(0);
     expect(run.indexOf(restage)).toBeGreaterThan(
       run.indexOf('rm -rf gen/apple'),

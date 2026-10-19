@@ -21,17 +21,20 @@ const SAMPLES: Record<KernelCommand['type'], KernelCommand> = {
     type: 'turnDedup.beginInvocation',
     key: 'k',
     ownerId: owner.id,
+    now: 1,
   },
   'turnDedup.resolve': {
     type: 'turnDedup.resolve',
     key: 'k',
     ownerId: owner.id,
+    now: 1,
     value: 'v',
   },
   'turnDedup.release': {
     type: 'turnDedup.release',
     key: 'k',
     ownerId: owner.id,
+    now: 1,
   },
   'turnDedup.read': { type: 'turnDedup.read', key: 'k' },
   'turnDedup.forgetPrefix': { type: 'turnDedup.forgetPrefix', prefix: 'k' },
@@ -95,10 +98,62 @@ const SAMPLES: Record<KernelCommand['type'], KernelCommand> = {
   },
   'requestKeys.complete': { type: 'requestKeys.complete', id, result: 'r' },
   'requestKeys.release': { type: 'requestKeys.release', id },
+  'inbox.submit': {
+    type: 'inbox.submit',
+    inboxId: 'i',
+    key: 'k',
+    kind: 'follow-up',
+    digest: 'd',
+    payload: 'p',
+    now: 1,
+  },
+  'inbox.claimNext': {
+    type: 'inbox.claimNext',
+    inboxId: 'i',
+    placement: 's',
+    now: 2,
+  },
+  'inbox.settle': {
+    type: 'inbox.settle',
+    inboxId: 'i',
+    key: 'k',
+    to: 'placed',
+    outcome: null,
+    now: 3,
+  },
+  'inbox.release': {
+    type: 'inbox.release',
+    inboxId: 'i',
+    key: 'k',
+    keepPlacement: false,
+    now: 4,
+  },
+  'inbox.cancel': { type: 'inbox.cancel', inboxId: 'i', key: 'k', now: 5 },
+  'inbox.read': { type: 'inbox.read', inboxId: 'i', key: 'k' },
+  'inbox.list': { type: 'inbox.list', inboxId: 'i' },
+  'inbox.listOpen': { type: 'inbox.listOpen' },
+  'inbox.forget': { type: 'inbox.forget', inboxId: 'i' },
+  'inbox.resolveUnconfirmed': {
+    type: 'inbox.resolveUnconfirmed',
+    inboxId: 'i',
+    key: 'k',
+    to: 'placed',
+    outcome: null,
+    now: 6,
+  },
 };
 
+const READS = [
+  'inbox.list',
+  'inbox.listOpen',
+  'inbox.read',
+  'turnBoundary.hasPossibleEffect',
+  'turnBoundary.list',
+  'turnDedup.read',
+];
+
 describe('participants and command kinds', () => {
-  it('classifies every command type, and only the three reads as read-only', () => {
+  it('classifies every command type, and only the reads as read-only', () => {
     expect(Object.keys(KERNEL_COMMAND_READ_ONLY).sort()).toEqual(
       Object.keys(SAMPLES).sort(),
     );
@@ -107,11 +162,7 @@ describe('participants and command kinds', () => {
         .filter(([, readOnly]) => readOnly)
         .map(([type]) => type)
         .sort(),
-    ).toEqual([
-      'turnBoundary.hasPossibleEffect',
-      'turnBoundary.list',
-      'turnDedup.read',
-    ]);
+    ).toEqual(READS);
   });
 
   it('every write command reaches a participant commit; reads do not', async () => {
@@ -125,14 +176,7 @@ describe('participants and command kinds', () => {
       await storage.execute(command, { liveness: processes.liveness });
     expect(seen.sort()).toEqual(
       Object.keys(SAMPLES)
-        .filter(
-          (type) =>
-            ![
-              'turnDedup.read',
-              'turnBoundary.list',
-              'turnBoundary.hasPossibleEffect',
-            ].includes(type),
-        )
+        .filter((type) => !READS.includes(type))
         .sort(),
     );
   });

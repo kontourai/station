@@ -164,7 +164,7 @@ Notes for K2's planner:
 
 ### Transactional file publication (#2253)
 
-The default and Obsidian adapters preserve the public `KnowledgeStoreAdapter` contract and Kit-compatible file layouts, but they no longer perform independent raw whole-file mutations. The older project-document service uses the same boundary for `files/` content and `metadata.json`. All three caller families compose the private `KnowledgeFileTransactions` Module, so one process-identity lock in Station's `STATION_HOME` coordination directory and one root-local rollback journal cover every authoritative file mutation.
+The default and Obsidian adapters preserve the public `KnowledgeStoreAdapter` contract and Kit-compatible file layouts, but they no longer perform independent raw whole-file mutations. The older project-document service uses the same protocol for `files/` content and `metadata.json`. The two adapters compose the private `KnowledgeFileTransactions` Module; project documents use [ProjectFileTransactions](../architecture/module-map.md#projectfiletransactions)' document capability, which also holds the Project lock and keeps the same root-identity lock name and journal format. So one process-identity lock in Station's `STATION_HOME` coordination directory and one root-local rollback journal cover every authoritative file mutation.
 
 Records and project-document files plus metadata are authoritative; vector entries remain derived. A transaction stages its complete write set, verifies the bytes, directory listings, and legacy-source snapshots it read, persists a prepared journal, publishes record/document content before metadata and derived indexes, and performs removals last. Each file replacement is durable temp-write + fsync + rename + parent-directory fsync. A prepared journal rolls back on the next locked open; a committed journal is cleanup-only. A current file matching neither the journal's before nor after hash is an external conflict and is never overwritten by recovery. Project-document update/delete commits file and metadata authority before best-effort vector derivation. Every derived vector carries the committed content hash, and search/injected context return it only when that hash matches transaction-gated metadata. Missing legacy hashes fail closed until authoritative content is hashed and the derived index rebuilt. A vector failure therefore cannot rewrite authority or expose uncommitted text and remains repairable from authoritative files.
 
@@ -353,8 +353,8 @@ Migration path (K3, one-time, **explicit command — never automatic on startup*
 
 1. `./station knowledge migrate [--project <slug>]` reads, per project namespace: the document
    metadata + `files/` content (canonical text, with stored chunk text as a fallback)
-   and the old `vectors.json`. The current importer checks vector width, not model
-   identity: matching dimensions can permit reuse from a different embedding model.
+   and the old `vectors.json`. The importer never reuses those vectors: they record no
+   model, so it rebuilds each migrated root with the current embedder (#2727).
 2. Each project's namespace is re-expressed as a project-scoped K2 store root: documents become Kit
    `raw` records (provenance noting the migration) via the root's adapter — written only through
    the §8 contract.
@@ -510,6 +510,10 @@ explicit validation AC.
 >   (no connection registered, or the lazy real-driver load failed) — never a crash, never a silent
 >   empty success.
 > - **Record-id traversal hardening at the route layer.** Discovered while landing
+>   Historical route-layer rationale follows. The default adapter now rejects
+>   unsafe IDs on create, including IDs over 200 ASCII characters. Other adapter
+>   calls still rely on the transaction owner's store-root path boundary; see
+>   [Store formats and external edits](../guides/knowledge.md#store-formats-and-external-edits).
 >   `knowledge-record-routes.ts`: `kit-default-store`'s `recordPath(id)` joins a caller-supplied id
 >   straight into `records/<id>.md` with no validation of its own, so the new HTTP boundary is a real
 >   traversal vector for any id-shaped input reaching that join (`create`'s optional `id`, `link`'s

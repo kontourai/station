@@ -516,17 +516,17 @@ describe('SessionTurnBoundaryAuthority', () => {
           '2026-09-05T00:05:00.000Z',
         ),
       ).toEqual({ kind: 'busy' });
-      expect(
-        authority.observe({
-          eventId: 'terminal:uncertain-start',
-          provider: 'claude',
-          threadId: 'uncertain-start',
-          sessionId: 'uncertain-start',
-          method: 'session.exited',
-          createdAt: '2026-09-05T00:05:01.000Z',
-          exitCode: 0,
-        }),
-      ).toEqual({ kind: 'applied' });
+      const exited: CanonicalRuntimeEvent = {
+        eventId: 'terminal:uncertain-start',
+        provider: 'claude',
+        threadId: 'uncertain-start',
+        sessionId: 'uncertain-start',
+        method: 'session.exited',
+        createdAt: '2026-09-05T00:05:01.000Z',
+        exitCode: 0,
+      };
+      restarted.appendEvent(exited);
+      expect(authority.observe(exited)).toEqual({ kind: 'applied' });
       expect(authority.hasPossibleEffect('uncertain-start')).toEqual({
         kind: 'available',
         active: false,
@@ -599,17 +599,17 @@ describe('SessionTurnBoundaryAuthority', () => {
     expect(
       authority.claim('thread-restart', '2026-08-16T00:00:03.000Z'),
     ).toEqual({ kind: 'busy' });
-    expect(
-      authority.observe({
-        eventId: 'session-exited:thread-restart',
-        provider: 'claude',
-        threadId: 'thread-restart',
-        sessionId: 'thread-restart',
-        createdAt: '2026-08-16T00:00:04.000Z',
-        method: 'session.exited',
-        exitCode: 1,
-      }),
-    ).toEqual({ kind: 'applied' });
+    const exited: CanonicalRuntimeEvent = {
+      eventId: 'session-exited:thread-restart',
+      provider: 'claude',
+      threadId: 'thread-restart',
+      sessionId: 'thread-restart',
+      createdAt: '2026-08-16T00:00:04.000Z',
+      method: 'session.exited',
+      exitCode: 1,
+    };
+    restarted.appendEvent(exited);
+    expect(authority.observe(exited)).toEqual({ kind: 'applied' });
     expect(authority.hasPossibleEffect('thread-restart')).toEqual({
       kind: 'available',
       active: false,
@@ -1054,4 +1054,78 @@ describe('SessionTurnBoundaryAuthority', () => {
       ),
     ).toEqual({ kind: 'unavailable' });
   });
+});
+
+// Empty provider ids were accepted by the host authority before Monument.
+// They must not turn a matching empty terminal into proof of completion.
+test('an empty provider id cannot terminally retire an engine-opened boundary', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const authority = store.sessionTurnBoundaryAuthority();
+    expect(
+      authority
+        .prepareProviderTurn(
+          'empty-turn-thread',
+          '',
+          '2030-01-01T00:00:00.000Z',
+        )
+        .record(),
+    ).toEqual({ kind: 'applied' });
+    expect(
+      authority.observe({
+        eventId: 'empty-terminal',
+        provider: 'claude',
+        threadId: 'empty-turn-thread',
+        turnId: '',
+        method: 'turn.completed',
+        createdAt: '2030-01-01T00:00:01.000Z',
+      }),
+    ).toEqual({ kind: 'applied' });
+    // Observe alone must keep the legacy possible-effect fact; runtime history
+    // reconciliation is a separate host path with its own existing contract.
+    expect(
+      store['db']
+        .prepare(
+          'SELECT COUNT(*) AS count FROM orchestration_turn_boundaries WHERE thread_id = ?',
+        )
+        .get('empty-turn-thread'),
+    ).toEqual({ count: 1 });
+  } finally {
+    store.close();
+  }
+});
+
+// #3568: turn boundaries and the conversation inbox are separate Monument
+// storages on EventStore's one connection, and only the inbox's owns the
+// inbox machine. A boundary write must create no inbox table of its own.
+test('turn-boundary storage owns no inbox table: a store whose inbox was never opened has none after a boundary write', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const authority = store.sessionTurnBoundaryAuthority();
+    expect(
+      authority
+        .prepareProviderTurn(
+          'inbox-free-thread',
+          'turn-1',
+          '2030-01-01T00:00:00.000Z',
+        )
+        .record(),
+    ).toEqual({ kind: 'applied' });
+    const inboxTables = () =>
+      store['db']
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'monument_inbox%'",
+        )
+        .all();
+    expect(inboxTables()).toEqual([]);
+    expect(
+      store.readPendingThreadInboxSubmission('inbox-free-thread', 'turn-1'),
+    ).toBeUndefined();
+    expect(inboxTables()).toEqual([]);
+    // Control: the inbox's own storage does create it.
+    store.threadInboxStore();
+    expect(inboxTables()).toEqual([{ name: 'monument_inbox_entries' }]);
+  } finally {
+    store.close();
+  }
 });

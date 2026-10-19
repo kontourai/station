@@ -103,8 +103,8 @@ describe('the dev mark matches the dev launcher icon', () => {
   it('swaps the raster mark, which the brand token cannot reach', () => {
     // Retinting --k-brand colours buttons and chrome but not an <img>, so the
     // dev build showed amber controls beside the release logo. The swapped
-    // file is rendered with the same water-hue shift as the dev launcher
-    // icon, where a CSS filter could only approximate it.
+    // file is rendered with the same palette as the dev launcher icon, where
+    // a CSS filter could only approximate it.
     const css = read('index.css');
     const rule = css.match(
       /:root\.is-dev-build img\[src="\/favicon\.png"\]\s*\{[^}]*\}/,

@@ -12,13 +12,13 @@
   "sources": [
     ".flow/config.json",
 
-    "package.json",
-
     "packages/contracts/src/runtime-events.ts",
 
     "src-server/services/flow/__tests__/flow-run-service.test.ts",
 
-    "src-server/services/flow/flow-run-service.ts"
+    "src-server/services/flow/flow-run-service.ts",
+
+    "package.json#/dependencies/@kontourai~1flow"
   ],
 
   "checks": [

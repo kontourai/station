@@ -26,3 +26,7 @@
     "calt" 0,
     "liga" 0;
 }
+
+.tool-call__approve-error {
+  overflow-wrap: anywhere;
+}

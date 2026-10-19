@@ -49,6 +49,8 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useAgentsQuery: () => ({ data: [] }),
+  useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({
     data: experienceRead.inventory,
     refetch: experienceRead.refetch,
@@ -56,7 +58,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
 }));
 const screenSize = vi.hoisted(() => ({ mobile: false }));
-vi.mock('../hooks/useIsMobile', () => ({
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => screenSize.mobile,
 }));
 vi.mock('../hooks/useDevicePresentation', () => ({

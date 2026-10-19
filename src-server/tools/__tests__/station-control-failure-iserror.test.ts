@@ -42,6 +42,16 @@ function registeredTools(): Record<string, { handler: Handler }> {
  * `station-control-policy-routes.test.ts`.) Every other tool runs with `{}`.
  */
 const MINIMAL_ARGS: Record<string, Record<string, unknown>> = {
+  propose_personal_board: {
+    slug: 'daily',
+    revision: null,
+    definition: {
+      version: 1,
+      name: 'Daily',
+      description: '',
+      sections: [],
+    },
+  },
   continue_task: { taskId: 'task:1', message: 'One more thing' },
   propose_plugin_install: { source: '/tmp/plugin', rationale: 'Needed.' },
   validate_plugin: { source: '/tmp/plugin' },

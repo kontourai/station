@@ -70,6 +70,7 @@ export async function createLearningSourceFixture(
     verifyCredential: (credential: string) => allowed.has(credential),
     authorizeCredential: (credential: string) => allowed.has(credential),
     resolveGrantedScope: () => grant,
+    identifyDevice: () => null,
     credentialLocality: (credential: string) =>
       credential === 'local-fixture' && locality
         ? ('home-possession' as const)

@@ -290,33 +290,6 @@ describe('repo hook wiring', () => {
     .filter((line) => !line.trimStart().startsWith('#'))
     .join('\n');
 
-  it('runs governance, readiness and the scoped typecheck at push time', () => {
-    expect(commands).toContain('lint:check');
-    expect(commands).toContain('proof:repo-governance');
-    expect(commands).toContain('veritas:readiness');
-    expect(commands).toContain('check-prepush-typecheck.mjs');
-  });
-
-  /**
-   * Readiness re-executes the governance proof as a routed evidence-check, so
-   * running it first would report a governance break half a minute late and
-   * under the wrong name.
-   */
-  it('reports the governance proof before the readiness run that re-executes it', () => {
-    expect(commands.indexOf('proof:repo-governance')).toBeLessThan(
-      commands.indexOf('veritas:readiness'),
-    );
-  });
-
-  /**
-   * The aggregate is ~82s. Unconditionally it would break the hook's own
-   * stated doctrine, so the hook must reach it through the scope guard.
-   */
-  it('reaches the aggregate only through the scope guard', () => {
-    expect(commands).not.toContain('typecheck-aggregate.mjs');
-    expect(commands).not.toMatch(/npm run (--silent )?typecheck\b/);
-  });
-
   it('leaves moving-main composition freshness to the required merge queue', () => {
     expect(commands).not.toContain('git fetch');
     expect(commands).not.toContain('check-merge-base-fresh.mjs');
@@ -567,22 +540,28 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
       ).toBe(0);
       expect(remote.status, remote.stderr).toBe(0);
       expect(remote.stdout.trim()).toBe(f.pushedHead);
-      expect(f.observations().map((entry) => entry.gate)).toContain(
+      expect(f.observations().map((entry) => entry.gate)).toEqual([
+        'lint:check',
+        'proof:repo-governance',
+        'scripts/check-prepush-orchestration-transfer.mjs',
+        'scripts/check-prepush-static-gates.mjs',
+        'scripts/check-prepush-sdk-barrel.mjs',
         'scripts/commit-message-gate.mjs',
-      );
+      ]);
     });
 
-    it('still refuses the actual push when a gate fails and publishes no remote ref', () => {
-      const f = fixture();
-      const result = f.push('refused', 'veritas:readiness');
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(
-        'INTENTIONAL_GATE_REFUSAL veritas:readiness',
-      );
-      expect(f.remoteRef('refused').status).not.toBe(0);
-      expect(f.observations().map((entry) => entry.gate)).not.toContain(
-        'scripts/check-prepush-typecheck.mjs',
-      );
-    });
+    it.each(['lint:check', 'proof:repo-governance'])(
+      'refuses the actual push when %s fails and publishes no remote ref',
+      (gate) => {
+        const f = fixture();
+        const result = f.push('refused', gate);
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(`INTENTIONAL_GATE_REFUSAL ${gate}`);
+        expect(f.remoteRef('refused').status).not.toBe(0);
+        expect(f.observations().map((entry) => entry.gate)).not.toContain(
+          'scripts/check-prepush-orchestration-transfer.mjs',
+        );
+      },
+    );
   },
 );

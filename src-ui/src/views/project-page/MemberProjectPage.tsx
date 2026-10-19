@@ -9,7 +9,9 @@ import {
   useScopedMemberProjectSharedTaskDetails,
   useScopedMemberProjectSharedTasksQuery,
 } from '../../contexts/ProjectsContext';
+import { ToolLibraryClientContext } from '../agent-editor/ToolLibraryContext';
 import { AccessSection } from '../project-settings/AccessSection';
+import { ProjectAgentsPanel } from '../project-settings/ProjectAgentsPanel';
 import { MemberProjectHeader } from './ProjectPageHeader';
 import '../project-page-frame.css';
 
@@ -25,6 +27,7 @@ export function MemberProjectPage({
   accessWriteDisabledReason?: string;
 }) {
   const [selectedShareId, setSelectedShareId] = useState<string | null>(null);
+  const [toolsProjectId, setToolsProjectId] = useState<string>();
   const sharedWork = useScopedMemberProjectSharedTasksQuery(
     { id: project.id, slug: project.slug },
     requestScope,
@@ -58,6 +61,21 @@ export function MemberProjectPage({
             />
           </details>
         )}
+        {project.actions.includes('manage-members') &&
+          (toolsProjectId === project.id ? (
+            <ToolLibraryClientContext.Provider
+              value={{
+                apiBase: requestScope.apiBase,
+                options: { requestScope },
+              }}
+            >
+              <ProjectAgentsPanel project={project} />
+            </ToolLibraryClientContext.Provider>
+          ) : (
+            <Button onClick={() => setToolsProjectId(project.id)}>
+              Agents and tools
+            </Button>
+          ))}
         <section aria-labelledby="member-project-shared-work-title">
           <h2 id="member-project-shared-work-title">Shared work</h2>
           {sharedWork.isPending ? (

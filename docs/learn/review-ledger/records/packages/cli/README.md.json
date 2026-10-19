@@ -14,8 +14,6 @@
 
     "packages/cli/bundle-externals.mjs",
 
-    "packages/cli/package.json",
-
     "packages/cli/src/cli.ts",
 
     "packages/cli/src/commands/checkpoints.ts",
@@ -42,7 +40,27 @@
 
     "scripts/station-dev.mjs",
 
-    "station"
+    "station",
+
+    "packages/cli/package.json#/name",
+
+    "packages/cli/package.json#/bin",
+
+    "packages/cli/package.json#/files",
+
+    "packages/cli/package.json#/scripts",
+
+    "packages/cli/package.json#/engines",
+
+    "packages/cli/package.json#/publishConfig",
+
+    "packages/cli/src/bin.ts",
+
+    "packages/cli/src/help.ts",
+
+    "packages/cli/src/__tests__/core-http.test.ts",
+
+    "scripts/station-cli-implementation.ts"
   ],
 
   "checks": [

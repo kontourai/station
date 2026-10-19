@@ -1,0 +1,7 @@
+{
+  "revision": "59a52fe88ae7d751ac1ed1466f47780906e24d30",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"Capture re-reviewed against the orchestration-service change in this branch: it only adds provider_session_starting to the retryable adapter refusal codes. The captured request-inspection flow does not send a turn during a session start and shows no refusal, so the capture still matches the product.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

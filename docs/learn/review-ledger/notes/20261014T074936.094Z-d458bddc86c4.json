@@ -1,0 +1,7 @@
+{
+  "revision": "4bc60df6872e59361724c6572a56d6239ab95350",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Pages bundle step now runs Corpus 08c62cc; still continue-on-error (fails open, previous bundle kept), still builds docs-bundle.json from corpus.json with the publish:false manual. Build passes at the new pin with identical output apart from the added purpose gate line.","inputs":["docs/pages/README.md",".github/workflows/pages.yml"]}
+  ]
+}

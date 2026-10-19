@@ -1,0 +1,7 @@
+{
+  "revision": "757b510858ea116c0e722d5eda68c5d30b95739a",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#561: vitest-resource-manifest.mjs adds flow-run-service.owned-process.test.ts to the process-heavy group. Re-read the Vitest worker policy and resource-group description (process-heavy at two workers, new child-process users must be classified); still accurate. No prose change.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

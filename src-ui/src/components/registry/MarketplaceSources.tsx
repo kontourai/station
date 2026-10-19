@@ -12,9 +12,11 @@ import { SkeletonList } from '../state';
 export function MarketplaceSources({
   selected,
   onSelect,
+  kinds,
 }: {
   selected: string;
   onSelect: (id: string, kind?: RegistrySource['kind']) => void;
+  kinds?: readonly RegistrySource['kind'][];
 }) {
   const sources = useRegistrySourcesQuery();
   const mutation = useRegistrySourceActionMutation();
@@ -22,7 +24,7 @@ export function MarketplaceSources({
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [adapter, setAdapter] = useState<'manifest' | 'github' | 'directory'>(
-    'github',
+    kinds && !kinds.includes('skills') ? 'manifest' : 'github',
   );
   const [notice, setNotice] = useState<string | null>(null);
   const act = (
@@ -61,12 +63,14 @@ export function MarketplaceSources({
             }
           >
             <option value="all">All marketplaces</option>
-            {(sources.data ?? []).map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.displayName}
-                {!source.enabled ? ' (disabled)' : ''}
-              </option>
-            ))}
+            {(sources.data ?? [])
+              .filter((source) => !kinds || kinds.includes(source.kind))
+              .map((source) => (
+                <option key={source.id} value={source.id}>
+                  {source.displayName}
+                  {!source.enabled ? ' (disabled)' : ''}
+                </option>
+              ))}
           </select>
         </label>
         <Button
@@ -98,76 +102,78 @@ export function MarketplaceSources({
         {sources.isLoading && (
           <SkeletonList count={3} label="Loading marketplaces" />
         )}
-        {(sources.data ?? []).map((source) => (
-          <article key={source.id} className="marketplaces__source">
-            <div>
-              <strong>{source.displayName}</strong>
-              <span className="page__meta-pill">{source.status}</span>
-              <p>
-                {source.origin === 'plugin'
-                  ? `Provided by plugin ${source.owner ?? ''}`
-                  : source.origin === 'station'
-                    ? 'Station collection'
-                    : 'Connected by this Station'}
-              </p>
-              {source.location && <code>{source.location}</code>}
-              {source.lastSuccessfulAt && (
+        {(sources.data ?? [])
+          .filter((source) => !kinds || kinds.includes(source.kind))
+          .map((source) => (
+            <article key={source.id} className="marketplaces__source">
+              <div>
+                <strong>{source.displayName}</strong>
+                <span className="page__meta-pill">{source.status}</span>
                 <p>
-                  Last successful catalog:{' '}
-                  {new Date(source.lastSuccessfulAt).toLocaleString()}
+                  {source.origin === 'plugin'
+                    ? `Provided by plugin ${source.owner ?? ''}`
+                    : source.origin === 'station'
+                      ? 'Station collection'
+                      : 'Connected by this Station'}
                 </p>
-              )}
-              {source.error && <p role="status">{source.error}</p>}
-            </div>
-            <div>
-              <ActionRow
-                className="marketplaces__actions"
-                overflowLabel={`More actions for ${source.displayName}`}
-                primary={
-                  <Button
-                    variant="secondary"
-                    disabled={mutation.isPending || !source.enabled}
-                    onClick={() => act(source, 'refresh')}
-                  >
-                    Refresh
-                  </Button>
-                }
-                secondary={
-                  source.origin !== 'plugin' ? (
+                {source.location && <code>{source.location}</code>}
+                {source.lastSuccessfulAt && (
+                  <p>
+                    Last successful catalog:{' '}
+                    {new Date(source.lastSuccessfulAt).toLocaleString()}
+                  </p>
+                )}
+                {source.error && <p role="status">{source.error}</p>}
+              </div>
+              <div>
+                <ActionRow
+                  className="marketplaces__actions"
+                  overflowLabel={`More actions for ${source.displayName}`}
+                  primary={
                     <Button
                       variant="secondary"
-                      disabled={mutation.isPending}
-                      onClick={() =>
-                        act(source, source.enabled ? 'disable' : 'enable')
-                      }
+                      disabled={mutation.isPending || !source.enabled}
+                      onClick={() => act(source, 'refresh')}
                     >
-                      {source.enabled ? 'Disable' : 'Enable'}
+                      Refresh
                     </Button>
-                  ) : undefined
-                }
-                overflow={
-                  source.origin === 'user'
-                    ? [
-                        {
-                          key: 'remove',
-                          label: 'Remove source',
-                          tone: 'danger',
-                          disabled: mutation.isPending,
-                          onSelect: () => act(source, 'remove'),
-                        },
-                      ]
-                    : []
-                }
-              />
-              {source.origin === 'plugin' && (
-                <p>
-                  Enable, disable, or revoke this source through its owning
-                  plugin.
-                </p>
-              )}
-            </div>
-          </article>
-        ))}
+                  }
+                  secondary={
+                    source.origin !== 'plugin' ? (
+                      <Button
+                        variant="secondary"
+                        disabled={mutation.isPending}
+                        onClick={() =>
+                          act(source, source.enabled ? 'disable' : 'enable')
+                        }
+                      >
+                        {source.enabled ? 'Disable' : 'Enable'}
+                      </Button>
+                    ) : undefined
+                  }
+                  overflow={
+                    source.origin === 'user'
+                      ? [
+                          {
+                            key: 'remove',
+                            label: 'Remove source',
+                            tone: 'danger',
+                            disabled: mutation.isPending,
+                            onSelect: () => act(source, 'remove'),
+                          },
+                        ]
+                      : []
+                  }
+                />
+                {source.origin === 'plugin' && (
+                  <p>
+                    Enable, disable, or revoke this source through its owning
+                    plugin.
+                  </p>
+                )}
+              </div>
+            </article>
+          ))}
       </details>
       {notice && <p role="status">{notice}</p>}
       {mutation.error && <p role="alert">{mutation.error.message}</p>}
@@ -226,9 +232,13 @@ export function MarketplaceSources({
                   setAdapter(event.target.value as typeof adapter)
                 }
               >
-                <option value="github">Public GitHub skill library</option>
+                {(!kinds || kinds.includes('skills')) && (
+                  <option value="github">Public GitHub skill library</option>
+                )}
                 <option value="manifest">Station JSON manifest</option>
-                <option value="directory">Local skill directory</option>
+                {(!kinds || kinds.includes('skills')) && (
+                  <option value="directory">Local skill directory</option>
+                )}
               </select>
             </label>
             <label>

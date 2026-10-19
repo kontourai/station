@@ -1,12 +1,22 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  applyIosChannelIcons,
+  iosIconChannelForConfig,
+} from './ios-channel-icons.mjs';
+import {
   BUILD_MANIFEST_FILENAME,
   readNativeClientBuildManifest,
 } from './lib/desktop-build-manifest.mjs';
 import { stageIosLaunchScreen } from './lib/ios-launch-screen.mjs';
 
 const projectRoot = process.cwd();
+const args = process.argv.slice(2);
+if (args.length !== 0 && (args.length !== 2 || args[0] !== '--config'))
+  throw new Error(
+    'Usage: node scripts/write-ios-build-manifest.mjs [--config <Tauri overlay>]',
+  );
+const channel = iosIconChannelForConfig(projectRoot, args[1]);
 const manifest = readNativeClientBuildManifest(projectRoot);
 const appleProjectDir = join(projectRoot, 'src-desktop', 'gen', 'apple');
 const assetsDir = join(appleProjectDir, 'assets');
@@ -15,7 +25,10 @@ if (!existsSync(appleProjectDir)) {
     `Cannot stage iOS build provenance: ${assetsDir} does not exist. Run \`npx tauri ios init\` first.`,
   );
 }
-stageIosLaunchScreen(projectRoot);
+applyIosChannelIcons(channel, {
+  root: projectRoot,
+});
+stageIosLaunchScreen(projectRoot, { channel });
 
 if (!manifest) {
   console.warn(

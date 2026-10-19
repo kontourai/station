@@ -1,0 +1,33 @@
+{
+  "revision": "a480d9ef37099dd9958da04b26de717abe5c685a",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed context relationships against the module-map legacy-document compatibility clarification. Operations still owns knowledge and Workspace Surfaces owns Projects; no relationship claims deleted-Project document writes are refused. No prose change required.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed Operations knowledge ownership and module-map implementation routing against the legacy-document limit. Document/index ownership remains separate and this overview promises no deleted-Project refusal. No prose change required.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reviewed the architecture reading-path link after the ProjectFileTransactions compatibility clarification. It routes to the canonical module map and makes no document deletion guarantee. No prose change required.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed contributor reading paths and module-map ownership after the legacy-document compatibility clarification. Navigation remains correct; no duplicated deletion semantics need changing.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the legacy document content-hash comparison and ProjectFileTransactions capability link. The clarified post-deletion admission limit does not change hash validation or the linked evidence route. No claim of post-deletion refusal is made here.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed module-map composition references and retained EventStore ledger disposition. The legacy document lock/admission limit changes none of these orchestration ledger claims. No prose change required.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed module-map references and Project/Layout vocabulary for the document compatibility clarification. Vocabulary and shared-surface routing do not promise legacy write admission after deletion. No prose change required.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed persisted Agent identity and removal inventory claims against the document compatibility clarification. No identity grammar, inventory, or migration claim changes. No prose change required.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed settings catalog routes, authority scopes and delivery limits against the module-map document clarification. No settings behavior or persisted schema changes in this delta. No prose change required.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Inspected regenerated station-docs-content.ts against module-map.md: ProjectFileTransactions topic includes the explicit legacy post-deletion write limit and digest changes; retrieval remains static and credential-free. This is source/generator inspection, not live engine or release evidence.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed user concept reading routes against the module-map document clarification. This page makes no stronger guarantee about legacy document writes after Project deletion. No prose change required.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed export semantics: module purpose is attributed canonical content and exact bytes are observed independently of HEAD. The module-map compatibility clarification changes exported prose, not provenance, import or evidence guarantees. No prose change required.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed server routing and storage boundary instructions against ProjectFileTransactions document ownership and its admission limit. Existing instructions route to the canonical module map without adding a refusal guarantee. No instruction change required.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed module-map routing, contract and navigation requirements against the legacy document limit. No UI contract or state owner changes. No instruction change required.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

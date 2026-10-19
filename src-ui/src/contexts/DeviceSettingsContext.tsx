@@ -6,10 +6,12 @@
  * module-level store directly rather than threading a React context value.
  */
 
+import { ACCOUNT_PREFERENCE_KEYS } from '@kontourai/station-contracts/account-preferences';
 import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';
 import { useCallback, useSyncExternalStore } from 'react';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { setHapticsUserEnabled } from '../platform/native/haptics';
+import { useAccountPreferences } from './AccountPreferencesContext';
 
 // Keep the fire-and-forget haptic gate in lockstep with the preference
 // without requiring every call site to read device settings (archive#1954).
@@ -47,6 +49,7 @@ export interface DeviceSettingsActions {
 }
 
 export function useDeviceSettingsActions(): DeviceSettingsActions {
+  const account = useAccountPreferences();
   const setDeviceSetting = useCallback(
     <K extends keyof DeviceSettings>(key: K, value: DeviceSettings[K]) => {
       deviceSettingsStore.set(key, value);
@@ -62,9 +65,16 @@ export function useDeviceSettingsActions(): DeviceSettingsActions {
 
   const resetDeviceSettings = useCallback(
     (keys: readonly (keyof DeviceSettings)[]) => {
-      deviceSettingsStore.resetMany(keys);
+      deviceSettingsStore.resetMany(
+        account.status === 'account'
+          ? keys.filter(
+              (key) =>
+                !ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key),
+            )
+          : keys,
+      );
     },
-    [],
+    [account.status],
   );
 
   return { setDeviceSetting, resetDeviceSetting, resetDeviceSettings };

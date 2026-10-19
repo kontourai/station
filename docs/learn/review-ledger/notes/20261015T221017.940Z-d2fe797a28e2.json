@@ -1,0 +1,9 @@
+{
+  "revision": "741ac0395684d3c9c707f93204bb12350ab09986",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the API-reference delta against this public-boundary routing guide. Explicit managed Station authoring changes no authentication or integration boundary; hosted delivery remains a target and execution evidence stays separate.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the inherited generated ledger projection against deploy-ledger.json and renderLedgerMarkdown: byte-identical for kontourai/station. This confirms projection fidelity only; no artifact publication, device install or live release qualification was repeated.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

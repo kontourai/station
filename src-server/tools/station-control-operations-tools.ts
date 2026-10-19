@@ -685,7 +685,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
 
   server.tool(
     'send_message',
-    'Send a message to an Agent through the canonical Environment + Agent execution target (non-blocking, returns conversation and resolution receipt)',
+    'Send a message to an Agent through the canonical Environment + Agent execution target (non-blocking, returns conversation and resolution receipt). A new conversation that names no projectSlug or projectPath on this Station starts in your own Project, when it has a working folder; an agent may start or steer Sessions only in its own Project (or, from the global space, only there).',
     {
       agent: z
         .string()
@@ -698,8 +698,20 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .describe(
           'Verified Station environment ID; omit for the current Station',
         ),
-      projectSlug: z.string().min(1).optional(),
-      projectPath: z.string().min(1).optional(),
+      projectSlug: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'Project slug on the selected Station environment; omit with projectPath to start a new conversation in your own Project',
+        ),
+      projectPath: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'Folder to run in: inside projectSlug when both are given, else a plain folder; omit with projectSlug to use your own Project',
+        ),
       model: z.string().min(1).optional().describe('Optional model override'),
       message: z.string().describe('Message content'),
       conversationId: z
@@ -902,7 +914,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
 
   server.tool(
     'delegate_task',
-    'Delegate a resumable task to an Agent in the current or a verified SSH environment',
+    'Delegate a resumable task to an Agent in the current or a verified SSH environment. A task that names no projectSlug or projectPath on this Station starts in your own Project, when it has a working folder; an agent may start Sessions only in its own Project (or, from the global space, only there).',
     {
       prompt: z.string().min(1).describe('Work to delegate'),
       environmentId: z
@@ -916,7 +928,9 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .string()
         .min(1)
         .optional()
-        .describe('Project slug on the selected Station environment'),
+        .describe(
+          'Project slug on the selected Station environment; omit with projectPath to use your own Project on this Station',
+        ),
       projectPath: z
         .string()
         .min(1)

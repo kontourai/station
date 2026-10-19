@@ -1,0 +1,7 @@
+{
+  "revision": "ae88f6972ebb9235192c3f12b87f4050add7d07b",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Re-checked after src-server/tools/station-docs-content.ts was regenerated from docs/architecture/module-map.md, whose StationControlDispatchScope section now describes ownProjectSlug, the own-Project default for a station-control Session that names no workspace and station_control_out_of_scope refusals. This manual's claims about the compiled content (static shipped prose and architecture topics, digest identifies shipped content not live state) are unchanged, and its station-control and dispatch passages describe no scope rule or refusal code; no prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

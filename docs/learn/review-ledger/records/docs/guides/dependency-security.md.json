@@ -22,11 +22,7 @@
 
     "config/dependency-lifecycle-allowlist.json",
 
-    "package.json",
-
     "patches/voltagent-core-2.10.0.patch",
-
-    "pnpm-lock.yaml",
 
     "pnpm-workspace.yaml",
 
@@ -92,7 +88,39 @@
 
     "packages/shared/src/mcp-connection.ts",
 
-    "packages/shared/package.json"
+    "patches/js-yaml-3.15.2-argparse2-cli.patch",
+
+    "scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts",
+
+    "package.json#/scripts",
+
+    "package.json#/engines",
+
+    "package.json#/packageManager",
+
+    "package.json#/name",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/shared/package.json#/engines",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/files",
+
+    "patches/node-forge-1.4.0.patch",
+
+    "scripts/__tests__/node-forge-rsa-backport.test.ts",
+
+    "scripts/__tests__/dependency-patch-binding.test.ts",
+
+    ".github/workflows/source-verification-policy.yml",
+
+    "scripts/source-verification-policy.mjs"
   ],
 
   "checks": [

@@ -1,0 +1,9 @@
+{
+  "revision": "95e329be553900710493b29d13995c38296ceedb",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed export-only OrchestrationService diff85f37: added usage reader import and a new read-only forwarder; request-inspection/decision getters and routes, renderer/styles, header, controlled backend are unchanged. Inspected original PNG and five sampled existing video frames showing open→identity expansion→close without decision. Media bytes/digests and actual captured revisions retained; no new capture, native/browser/provider acceptance or blanket scene approval. New usage export behavior UNEXECUTED; no baseline advancement.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed export-only OrchestrationService diff85f37: added usage reader import and a new read-only forwarder; request-inspection/decision getters and routes, renderer/styles, header, controlled backend are unchanged. Inspected original PNG and five sampled existing video frames showing open→identity expansion→close without decision. Media bytes/digests and actual captured revisions retained; no new capture, native/browser/provider acceptance or blanket scene approval. New usage export behavior UNEXECUTED; no baseline advancement.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

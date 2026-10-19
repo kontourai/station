@@ -38,6 +38,7 @@ export interface ToolCallLike {
 }
 
 export interface ContentPartBlock<P> {
+  key?: string;
   type: 'content-part';
   index: number;
   part: P;

@@ -192,12 +192,12 @@ describe('resolveLayoutChatPlacement', () => {
       false,
       'center',
     ],
-    // A bottom-only device keeps Chat in its (maximized) dock in PR1.
+    // Phone Coding uses the same central Chat owner.
     [
       'the built-in Coding layout, bottom-only',
       { type: 'coding', config: {} },
       true,
-      'none',
+      'center',
     ],
     [
       'a plugin-contributed layout typed coding',
@@ -223,7 +223,7 @@ describe('resolveLayoutChatPlacement', () => {
     ],
     ['the tasks layout', { type: 'tasks', config: {} }, false, 'none'],
     ['an unregistered type', { type: 'custom', config: {} }, false, 'none'],
-  ] as const)('%s', (_name, layout, bottomOnly, expected) => {
-    expect(resolveLayoutChatPlacement(layout, { bottomOnly })).toBe(expected);
+  ] as const)('%s', (_name, layout, _bottomOnly, expected) => {
+    expect(resolveLayoutChatPlacement(layout)).toBe(expected);
   });
 });

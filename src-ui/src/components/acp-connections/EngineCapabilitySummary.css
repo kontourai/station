@@ -49,3 +49,15 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+
+.engine-capability-summary__recovery > summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  color: var(--k-text-muted);
+}
+
+.engine-capability-summary__recovery > summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "b6c88a5c570b84f069d4a46ede1977eb951d889a",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Rechecked Last known status, per-source recovery, sequence and epoch fences against work-observation, history reader and authoritative open/retry callers after main integration. Hydration currency now blocks old cache/tab writes and preserves adopted tabs. User concept remains accurate without further prose changes. Real-store lifecycle plus shared-row tests passed; no physical multi-device or native claim.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","src-ui/src/hooks/orchestration/useSessionEventWindow.ts","src-ui/src/views/home/work-status.ts"]}
+  ]
+}

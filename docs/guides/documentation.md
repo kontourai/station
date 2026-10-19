@@ -12,14 +12,35 @@ topic before creating another one. Update that owner with the behavior change.
 | Contributor or operator task | `docs/guides/` | Setup, implementation, operation, and verification |
 | Contract details | `docs/reference/` | Inputs, outputs, defaults, and errors |
 | Module ownership | `docs/architecture/` | Interfaces, composition, and source routing |
-| Proposal or decision | `docs/design/` or `docs/adr/` | Alternatives, rationale, and decision status |
+| Proposal | `docs/design/` | Alternatives, rationale, and status |
+| Decision | `docs/decisions/<slug>.md` | The current answer for one subject; see [Record a decision](#record-a-decision) |
 | Execution plan | `docs/plans/` | Implementation sequence for an issue |
 | Runnable example | `examples/` | Buildable extension with explicit prerequisites |
 
 Use lowercase, hyphen-separated names for new prose files. Keep established
 entry-point names such as `README.md`, `AGENTS.md`, and `CONTEXT.md`, and the
-numbered ADR convention. Prefer topic names over `new`, `final`, or bare issue
+existing numbered ADR filenames. Prefer topic names over `new`, `final`, or bare issue
 numbers. Link new guides from the documentation map or their owning guide.
+
+## Record a decision
+
+The numbered ADRs in `docs/adr/` are frozen history. Do not add, rename, or
+renumber one; fix only a typo or a broken link in an existing ADR. Record a new
+decision, or a changed answer to an old one, as `docs/decisions/<slug>.md` in
+[Corpus's decision record format](https://github.com/kontourai/corpus/blob/main/docs/decisions.md):
+frontmatter with a `status` of `current`, `superseded`, `merged`, or
+`needs-decision`, a one-line `subject`, the `decided` date, and `evidence`.
+Cite an ADR the record builds on or replaces as `adr` evidence whose `ref` is
+the ADR's path. ADR status words such as `accepted` are refused.
+
+Run `npm run gen:decisions-index` to regenerate `docs/decisions/index.md`, and
+`npm run check:decisions` to validate the records and the index. `ci:fast` runs
+that check in the required `fast-checks` lane against the pull request's or
+merge group's base, so a file added under `docs/adr/` fails there. Locally the
+base is `origin/main`, and only committed files are compared. Corpus is not on
+npm: both commands fetch it with `npm exec` from the commit that
+`scripts/corpus-decisions.mjs` pins. The Docs kit gate and Pages bundle use the
+reviewed Corpus source selected in their owning workflows.
 
 ## Make authority explicit
 
@@ -211,11 +232,18 @@ unchanged inputs is allowed (`--rereview` remains accepted for compatibility).
 `--verify-bindings` applies only to legacy digest records; path-only records
 have no bindings to verify.
 
-A cited JSON value can still use a JSON Pointer, for example
+A cited JSON or YAML value can use a JSON Pointer, for example
 `package.json#/scripts/docs:truth:gate`. Git comparisons compute the value's
 change at runtime; unrelated committed manifest edits do not require a review
-of that value. No value digest is stored in a record. Other formats use whole
-file paths. Notes document review decisions, not automated semantic approval.
+of that value. A lock citation can name a reviewed resolution, for example
+`pnpm-lock.yaml#/packages/yaml@2.9.1/resolution/integrity`, without citing unrelated
+workspace version labels. YAML value bindings refuse malformed documents,
+duplicate keys, aliases, unsupported tags, non-string mapping keys and non-JSON
+values. Missing or unreadable values stay stale and cannot be recorded as
+reviewed. No value digest is stored in a path-only record. Other formats use
+whole file paths. Narrow a citation only after reviewing the claim it supports;
+retain version fields when the claim actually depends on that version.
+Notes document review decisions, not automated semantic approval.
 
 ### Ledger layout and merges
 
@@ -349,7 +377,12 @@ behavior.
 A purpose-classified release-note file under `.changeset/` may become absent
 without invalidating the retained classification. It must have no behavioral
 source/check claims; absence does not prove that a release consumed it. The
-README, current guides, malformed records and missing behavioral dependencies
+ordinary `docs:review:record` command can record a reviewed, committed deletion
+of a previously tracked note. Declared checks remain separate from appended
+review notes, so recording the deletion does not invent a new check claim.
+Any existing check claim needs an explicit reviewed reclassification first.
+The review records absence, not release consumption or publication.
+The README, current guides, malformed records and missing behavioral dependencies
 are still errors. Catch-up reporting keeps these lifecycle states separate from
 claims that need source review. New generated owners need their own reviewed
 contract and refusal tests; `kind: generated` alone never exempts a file.
@@ -514,16 +547,16 @@ documentation tests, and generated Pages output. They do not prove every prose
 claim or deployment. Inspect changed instructions against source and report
 runtime steps not exercised. New Pages content must be explicitly admitted in
 `docs/pages/public-docs.json`; creating a guide does not publish it there.
-The root `docs-kit.json` must track `public-docs.json` (same sources, sections
+The root `corpus.json` must track `public-docs.json` (same sources, sections
 and order): the Pages workflow publishes its `docs-bundle.json`, which feeds the
-[Kontour docs hub](https://kontourai.github.io/) and the shared `docs-kit mcp`
+[Kontour docs hub](https://kontourai.github.io/) and the shared `corpus mcp`
 server. It also lists the [shipped manual](../reference/station-docs.md) as a
 bundle-only document (`"publish": false`, so it gets no page) and mirrors the
 `docs/learn/mcp-topics.json` topics as anchors into it, so the shared server
 answers with the same sections as Station Docs. `docs-kit-manifest.test.ts`
-fails when either drifts. `PR: Docs kit` runs `docs-kit check` on pull
+fails when either drifts. `PR: Docs kit` runs `corpus check` on pull
 requests, merge-queue entries and main as an advisory, non-required check; run
-`npx -y github:kontourai/docs-kit#<sha> docs-kit check` locally for faster
+`npx -y github:kontourai/corpus#<sha> check` locally for faster
 feedback.
 
 The learning atlas and Station Docs MCP share the concept catalog and module

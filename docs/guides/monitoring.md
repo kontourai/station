@@ -5,12 +5,14 @@ Station has three separate measurement paths:
 | Path | Owner and destination | What enables it |
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
-| OTel metrics and traces | OpenTelemetry SDK → configured collector | `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
-| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
+| OTel metrics and traces | OpenTelemetry SDK → configured collector | Saved collector address or `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
+| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, operator tier resolves to Full, DO_NOT_TRACK permits sending, and the current disclosure receipt is acknowledged |
 
 Product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every
-event. The optional [product receiver](../../packages/telemetry-broker/README.md)
+event. Full product telemetry is pseudonymous: its installation hash rotates
+monthly and is never linked to an account by Station. Lite is identifier-free
+by contract, but has no sender in this foundation. The optional [product receiver](../../packages/telemetry-broker/README.md)
 authenticates separate product source keys, durably commits PostgreSQL observations,
 and deduplicates retained source/event UUIDs. Its operator queries describe received
 observations with unknown delivery coverage; these observations are separate from
@@ -40,6 +42,45 @@ remain untouched. This repairs
 [#2755](https://github.com/kontourai/station/issues/2755); it does not qualify a
 deployed collector, storage backend or dashboard. The tables below remain
 declarations and recording call sites, not proof of those destinations.
+
+## Canonical usage export source
+
+The `GET /api/analytics/usage-export` path selects retained canonical
+usage observations in committed global order. It reuses the EventStore receipt
+SELECT, mapping and pricing projection. Dates are inclusive UTC Station-observed
+days, at most 366 days; each page selects at most 100 observation events. One
+event can produce distinct token and provider-cost receipts. Continuation fixes
+the stream epoch/high watermark and binds the source, request principal, tenant,
+owner set, scope and dates. It is pagination data, never an authentication grant.
+
+`scope=individual` selects only the verified person's own recorded owner id.
+`personal-account` explicitly selects the existing approved personal-conversation
+owner set; hosted mode refuses that broader scope and keeps exact owner+tenant
+selection. Runtime composition refuses unverified/operator-only person claims,
+rechecks existing credential/account authority at response release, and rechecks
+the owner set/source epoch. Unknown query keys and malformed continuations refuse.
+
+Coverage stays unknown: retained observation pages do not establish missing
+provider reports, source deletions or complete history. This source path does
+not issue a companion grant or borrow a peer bearer. Durable grants and person
+destination credential custody, transactional invalidations, restored-home
+generation fencing, index/checkpoint transactions and clone/mirror policy are
+still pending under #3459/#3460. Stream epoch is copied by backups; it is not
+a restore-generation fence. Focused mounted-route and runtime-composition
+controls have exercised more than 500 retained observations, fixed-head paging,
+owner/tenant scope, membership and queued-body revocation, verified person-bound
+Device and account reads, and cumulative-history refusal. They use controlled
+identity fixtures; live enrollment, durable sync, measured query performance,
+full gates and deployment qualification remain separate. The source
+refuses cumulative-cost projection when selected threads exceed a combined
+1,000-event sequence budget, before hydrating their history; its evidence read
+also has a row bound. It reports unavailable rather than truncate cost segments.
+Durable cost-segment indexing and measured larger-history budgets remain open.
+
+The [scoped SDK reader](../reference/sdk.md#canonical-usage-export) validates
+receipt observation clocks, source/window/scope, committed order and a captured
+continuation snapshot without folding page facts into totals. Its fetcher and
+two-observer query controls have executed; a query key grants no source access.
 
 ## Developer diagnostics
 
@@ -78,7 +119,18 @@ principal or provider writer and remain unallocated in those dimensions even if
 arbitrary metadata names them. Engine person attribution uses the server-stamped `turn.started`
 principal; usage-event principal fields cannot override it. Current app or Agent configuration
 never fills historical gaps.
-The hero graph shows the last 14 UTC days rather than the last 14 populated rows.
+The hero graph shows the last 14 UTC days rather than the last 14 populated rows,
+with full date endpoints at narrow widths. The usage summary shows retained activity,
+conversations, active UTC days and recorded cost. It does not divide a partial token
+or cost sum by all turns to imply a measured per-turn average. Model rankings show
+only recorded model identities and disclose unattributed turns; current Agent defaults
+do not establish historical model-to-Agent relationships. Model and Agent rows and
+details distinguish absent cost from a reported or estimated zero. Agent cost buckets
+retain optional `reportedCostUsd` and `estimatedCostUsd` alongside their combined `cost`.
+Paired people, the operator breakdown, peer receipts, milestones, diagnostics and
+history mount when their disclosure is opened and unmount when closed. Shared
+analytics queries, including milestone data, continue to follow their context
+ownership. Existing authorization rules still apply to the connected Station.
 
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
 snapshot on an active read when the previous scan is at least a minute old.
@@ -233,8 +285,14 @@ two engines are declared to count cached input differently. Costs in different
 currencies, and estimates under different price snapshots, are listed side by
 side and not added together. The tree covers sessions on this Station only.
 
-Delegated tasks are found from the delegation context Station stamps at
-launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+Delegated tasks are found through an indexed projection of parent mentions
+in `session.started` and later `session.configured` events: delegation context,
+legacy `parentConversationId`, or a `parentTaskId` the request names. The
+[storage migration](../../src-server/domain/migrations/016-session-parent-mentions.ts)
+backfills existing events and maintains mentions in the event write transaction.
+The read preserves context precedence and matching-start provenance; these
+mentions describe naming, not authority to stop a child. They do not record an
+exact initiating Session or a detached lifetime. For a Claude Code or Codex
 session's `delegate_task` call Station derives the context from the calling
 session's own record; for Station's own agent the runtime attests it from the
 conversation the tool call ran in. A task launched through a caller-less
@@ -313,11 +371,24 @@ The Grafana dashboard auto-provisions from `monitoring/grafana/dashboards/statio
 
 | Variable                    | Required | Default     | Description                                      |
 |-----------------------------|----------|-------------|--------------------------------------------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint. Unset means no OTel SDK initialization; local monitoring remains available. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint when no saved collector address exists. Without either address, no OTel SDK initializes; local monitoring remains available. |
 | `OTEL_SERVICE_NAME` | No | `station` | OTel service name. |
-| `STATION_TELEMETRY_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
+| `STATION_OTEL_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
+| `STATION_TELEMETRY_API_KEY` | No | — | Legacy alias for the OTel key; a nonempty canonical key wins. |
 | `STATION_EVENT_LOG_RETENTION_DAYS` | No | `30` | UTC daily monitoring files retained on disk. |
 | `STATION_EVENT_LOG_MAX_BYTES` | No | `268435456` | Maximum retained monitoring-event bytes; the active UTC day's file is protected. |
+
+Product observations use separate `STATION_PRODUCT_TELEMETRY_*` variables and
+disclosure authority; see [usage telemetry](../reference/usage-telemetry.md).
+Legacy names remain supported until a separate release decision. Bootstrap
+notices name aliases or conflicts without printing key material.
+
+Settings → Telemetry distinguishes exporter initialization, metric and trace
+callback acceptance/failure, and explicit connection checks. An OTLP check sends
+empty trace and metric requests and establishes only collector HTTP acceptance.
+The response marks downstream delivery unverified; stored metrics, trace
+queries and dashboards need their own runtime qualification. Status and
+connection results describe the current Station process.
 
 To enable telemetry against the local stack:
 
@@ -717,8 +788,10 @@ name/duration also travel into the local result event. Follow the
 caller instead of copying a partial snippet that changes those conditions.
 
 The optional SDK shutdown joins Station's shared 1.5-second network-teardown
-budget. It is best effort; process exit or that deadline is not proof of
-collector delivery.
+budget. Configured exporters can flush during that budget. Expiry fences their
+credentials and probes immediately, even if SDK shutdown is still pending;
+later callbacks cannot record an accepted delivery. It is best effort; process
+exit or that deadline is not proof of collector delivery.
 
 ## Application-Level Monitoring (MonitoringEmitter)
 

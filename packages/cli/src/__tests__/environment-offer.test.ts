@@ -147,6 +147,9 @@ describe('environment offer', () => {
       await runEnvironmentCommand(['offer'], deps);
 
       expect(deps.stdout).toHaveBeenCalledOnce();
+      expect(deps.stdout.mock.calls[0]?.[0]).toContain(
+        'Pairing code: PAIRME2345',
+      );
       expect(request).toHaveBeenCalledTimes(3);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -168,55 +171,78 @@ describe('environment offer', () => {
     });
   });
 
-  test('mints the existing pairing offer protocol and prints a QR, payload, endpoint, and expiry', async () => {
-    const request = vi
-      .fn<OperatorJsonRequest>()
-      .mockImplementation(async (_apiBase, path, init?: RequestInit) => {
-        if (path === '/.well-known/station/v1') {
-          return { environmentId: SNAPSHOT.environmentId };
-        }
-        if (path === '/.well-known/station/v1/proof') {
-          const body = JSON.parse(String(init?.body)) as { nonce: string };
-          return proofFor(body.nonce);
-        }
-        if (path === '/api/pairing/offers') {
-          expect(init?.headers).toMatchObject({
-            Authorization: `Bearer ${CREDENTIAL}`,
-          });
-          expect(JSON.parse(String(init?.body))).toEqual({
-            endpoint: API_BASE,
-            // A QR or link is for a person's device: the Paired devices
-            // panel's grant, never the default grant's access:manage.
-            scope: 'orchestration:read orchestration:operate terminal:operate',
-          });
-          return {
-            protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
-            environmentId: '11111111-1111-4111-8111-111111111111',
-            offerId: 'offer-123',
-            challenge: 'challenge-123',
-            manualCode: 'PAIRME2345',
-            endpoint: API_BASE,
-            scope: pairingScopePresetString('standard'),
-            expiresAt: Date.now() + 60_000,
-          };
-        }
-        throw new Error(`unexpected path ${path}`);
-      });
-    const deps = dependencies(request);
+  test.each([
+    {
+      args: [],
+      scope: pairingScopePresetString('standard'),
+      approval: 'on-create',
+    },
+    {
+      args: [
+        '--scope=orchestration:read',
+        '--require-approval',
+        '--browser-url=https://web.station.test',
+      ],
+      scope: 'orchestration:read',
+      approval: undefined,
+    },
+  ])(
+    'mints and prints an invitation with explicit access and approval options ($args)',
+    async ({ args, scope, approval }) => {
+      const request = vi
+        .fn<OperatorJsonRequest>()
+        .mockImplementation(async (_apiBase, path, init?: RequestInit) => {
+          if (path === '/.well-known/station/v1') {
+            return { environmentId: SNAPSHOT.environmentId };
+          }
+          if (path === '/.well-known/station/v1/proof') {
+            const body = JSON.parse(String(init?.body)) as { nonce: string };
+            return proofFor(body.nonce);
+          }
+          if (path === '/api/pairing/offers') {
+            expect(init?.headers).toMatchObject({
+              Authorization: `Bearer ${CREDENTIAL}`,
+            });
+            expect(JSON.parse(String(init?.body))).toEqual({
+              endpoint: API_BASE,
+              // A QR or link is for a person's device: the Paired devices
+              // panel's grant, never the default grant's access:manage.
+              scope,
+              ...(approval ? { approval } : {}),
+            });
+            return {
+              protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
+              environmentId: '11111111-1111-4111-8111-111111111111',
+              offerId: 'offer-123',
+              challenge: 'challenge-123',
+              manualCode: 'PAIRME2345',
+              endpoint: API_BASE,
+              scope,
+              expiresAt: Date.now() + 60_000,
+            };
+          }
+          throw new Error(`unexpected path ${path}`);
+        });
+      const deps = dependencies(request);
 
-    await runEnvironmentCommand(['offer'], deps);
+      await runEnvironmentCommand(['offer', ...args], deps);
 
-    const output = deps.stdout.mock.calls[0]?.[0] as string;
-    expect(output).toContain('Endpoint: http://127.0.0.1:43141');
-    expect(output).toContain('Expires: ');
-    expect(output).toContain('station-pairing:v1:');
-    expect(output).toContain(
-      'station-stable://pair?linkVersion=1&clientChannel=stable&payload=',
-    );
-    expect(output).toContain('QR-BLOCKS');
-    expect(output).toContain('phone cannot reach it directly');
-    expect(request).toHaveBeenCalledTimes(3);
-  });
+      const output = deps.stdout.mock.calls[0]?.[0] as string;
+      expect(output).toContain('Endpoint: http://127.0.0.1:43141');
+      expect(output).toContain('Expires: ');
+      expect(output).toContain('station-pairing:v1:');
+      expect(output).toContain(
+        'station-stable://pair?linkVersion=1&clientChannel=stable&payload=',
+      );
+      expect(output).toContain('QR-BLOCKS');
+      expect(output).toContain('phone cannot reach it directly');
+      if (!approval) {
+        expect(output).toContain('https://web.station.test/#station-pairing=');
+        expect(output).toContain('Access: orchestration:read');
+      }
+      expect(request).toHaveBeenCalledTimes(3);
+    },
+  );
 
   test('prints only a decodable payload carrying an explicit forwarded endpoint', async () => {
     const forwarded = 'http://127.0.0.1:45678';
@@ -374,6 +400,7 @@ describe('environment offer', () => {
             // A QR or link is for a person's device: the Paired devices
             // panel's grant, never the default grant's access:manage.
             scope: 'orchestration:read orchestration:operate terminal:operate',
+            approval: 'on-create',
           });
           return {
             protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
@@ -435,6 +462,7 @@ describe('environment offer', () => {
             // A QR or link is for a person's device: the Paired devices
             // panel's grant, never the default grant's access:manage.
             scope: 'orchestration:read orchestration:operate terminal:operate',
+            approval: 'on-create',
           });
           return {
             protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,

@@ -40,6 +40,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'peerCredentials',
   'peerEnrollments',
   'personalLayouts',
+  'personalBoards',
   'pluginVisibility',
   'knowledgeStores',
   'mcpPromptRun',
@@ -57,11 +58,13 @@ const PUBLIC_QUERY_DOMAINS = [
   'skillExperiences',
   'skills',
   'sshEnvironments',
+  'stationPeople',
   'stationUsage',
   'usageRollup',
   'systemRuntime',
   'taskGraph',
   'taskRoomWork',
+  'telemetryDelivery',
   'trustBundles',
   'veritasReadiness',
   'workflowTasks',
@@ -77,6 +80,8 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  sessionStructuralSharing:
+    'shared cache-identity policy for session query hooks; not a public query or mutation.',
   catalogRequests:
     "backs catalog.ts's hooks internally; its raw fetchers are deliberately not public.",
   chatRuntimeCoding:
@@ -93,6 +98,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'implementation detail folded into chatRuntime.ts via `export *`.',
   insightsResponse:
     'lazy response validator used by fetchInsights; keep the Insights-only schema out of the application entry.',
+  usageExport:
+    'published only from the documented `@kontourai/station-sdk/usage-export-query` subpath; keep protected export paging and its validator outside the eager root query barrel.',
   sessionSummaryNormalize:
     'lazy parser used only by the summary fetcher so strict persisted-data validation does not enter the application shell.',
   developerRuntime:

@@ -1,0 +1,272 @@
+{
+  "schemaVersion": 2,
+  "purpose": "A local-first workspace where agent work keeps execution history, review evidence, and receipts beside it.",
+  "builtOn": [
+    {
+      "product": "conduit",
+      "via": [
+        "@kontourai/conduit"
+      ],
+      "for": "Project agent hook outcomes through framework host adapters."
+    },
+    {
+      "product": "console",
+      "via": [
+        "@kontourai/console-core",
+        "@kontourai/console-server",
+        "@kontourai/console-ui"
+      ],
+      "for": "Resolve consent-bound intents and render current operating state."
+    },
+    {
+      "product": "datum",
+      "via": [
+        "@kontourai/datum"
+      ],
+      "for": "Parse and materialize secret references through the public runner contract."
+    },
+    {
+      "product": "dispatch",
+      "via": [
+        "@kontourai/dispatch"
+      ],
+      "for": "Route model requests through execution plans with dispatch receipts."
+    },
+    {
+      "product": "ephemeris",
+      "via": [
+        "@kontourai/ephemeris"
+      ],
+      "for": "Validate schedules and calculate upcoming job occurrences."
+    },
+    {
+      "product": "fieldwork",
+      "via": [
+        "@kontourai/fieldwork"
+      ],
+      "for": "Validate owner-provided reviewed source descriptors and currentness."
+    },
+    {
+      "product": "flow",
+      "via": [
+        "@kontourai/flow"
+      ],
+      "for": "Read and evaluate workflow gates with bound evidence references."
+    },
+    {
+      "product": "flow-agents",
+      "via": [
+        "@kontourai/flow-agents"
+      ],
+      "for": "Read workflow sidecars, validate run correlation, and project process status."
+    },
+    {
+      "product": "relay",
+      "via": [
+        "@kontourai/relay"
+      ],
+      "for": "Report typed model invocation failures in fleet inference."
+    },
+    {
+      "product": "surface",
+      "via": [
+        "@kontourai/surface"
+      ],
+      "for": "Derive trust assessments and render Task Basis evidence panels."
+    },
+    {
+      "product": "survey",
+      "via": [
+        "@kontourai/survey"
+      ],
+      "for": "Present workflow review items and apply review session decisions."
+    },
+    {
+      "product": "thread",
+      "via": [
+        "@kontourai/ferry",
+        "@kontourai/thread"
+      ],
+      "for": "Normalize retained tool results and export portable conversations."
+    },
+    {
+      "product": "ui",
+      "via": [
+        "@kontourai/ui"
+      ],
+      "for": "Render shared React controls and semantic visual primitives."
+    },
+    {
+      "product": "veritas",
+      "via": [
+        "@kontourai/veritas"
+      ],
+      "for": "Classify changed files to route review lenses."
+    }
+  ],
+  "product": "station",
+  "title": "Station",
+  "tagline": "The agent workspace where work ships with receipts.",
+  "repo": "kontourai/station",
+  "landing": "README.md",
+  "documents": [
+    {
+      "source": "docs/user/getting-started.md",
+      "section": "Start Here"
+    },
+    {
+      "source": "docs/user/concepts.md",
+      "section": "Understand Station"
+    },
+    {
+      "source": "docs/user/native-recovery.md",
+      "section": "Use Station"
+    },
+    {
+      "source": "docs/user/work-board.md",
+      "section": "Use Station"
+    },
+    {
+      "source": "docs/user/personal-boards.md",
+      "section": "Use Station"
+    },
+    {
+      "source": "docs/user/contributing.md",
+      "section": "Contribute"
+    },
+    {
+      "source": "docs/guides/contributing.md",
+      "section": "Contribute"
+    },
+    {
+      "source": "docs/guides/keyboard-shortcuts.md",
+      "section": "Use Station"
+    },
+    {
+      "source": "docs/guides/product-law-authoring.md",
+      "section": "Build Station"
+    },
+    {
+      "source": "docs/reference/product-laws.md",
+      "section": "Reference"
+    },
+    {
+      "source": "docs/reference/contributor-commands.md",
+      "section": "Reference"
+    },
+    {
+      "source": "docs/reference/station-docs.md",
+      "section": "Reference",
+      "publish": false
+    }
+  ],
+  "topics": [
+    {
+      "id": "station-overview",
+      "title": "What Station is",
+      "source": "docs/reference/station-docs.md#what-station-is"
+    },
+    {
+      "id": "station-docs",
+      "title": "These docs, and what they cannot do",
+      "source": "docs/reference/station-docs.md#these-docs-and-what-they-cannot-do"
+    },
+    {
+      "id": "projects",
+      "title": "Projects",
+      "source": "docs/reference/station-docs.md#projects"
+    },
+    {
+      "id": "agents-and-engines",
+      "title": "Agents and engines",
+      "source": "docs/reference/station-docs.md#agents-and-engines"
+    },
+    {
+      "id": "connections",
+      "title": "Connections",
+      "source": "docs/reference/station-docs.md#connections"
+    },
+    {
+      "id": "builtin-assistant",
+      "title": "The built-in assistant, and what it needs",
+      "source": "docs/reference/station-docs.md#the-built-in-assistant-and-what-it-needs"
+    },
+    {
+      "id": "sessions-and-runs",
+      "title": "Sessions, turns, and runs",
+      "source": "docs/reference/station-docs.md#sessions-turns-and-runs"
+    },
+    {
+      "id": "tasks",
+      "title": "Tasks and the task workspace",
+      "source": "docs/reference/station-docs.md#tasks-and-the-task-workspace"
+    },
+    {
+      "id": "scheduled-jobs",
+      "title": "Scheduled jobs and notifications",
+      "source": "docs/reference/station-docs.md#scheduled-jobs-and-notifications"
+    },
+    {
+      "id": "skills",
+      "title": "Skills",
+      "source": "docs/reference/station-docs.md#skills"
+    },
+    {
+      "id": "tool-servers",
+      "title": "MCP tool servers, integrations, and tools",
+      "source": "docs/reference/station-docs.md#mcp-tool-servers-integrations-and-tools"
+    },
+    {
+      "id": "trust-and-receipts",
+      "title": "Trust, gates, evidence, and receipts",
+      "source": "docs/reference/station-docs.md#trust-gates-evidence-and-receipts"
+    },
+    {
+      "id": "fleet",
+      "title": "Fleet inference across Stations",
+      "source": "docs/reference/station-docs.md#fleet-inference-across-stations"
+    },
+    {
+      "id": "plugins",
+      "title": "Plugins and the registry",
+      "source": "docs/reference/station-docs.md#plugins-and-the-registry"
+    },
+    {
+      "id": "plugin-authoring",
+      "title": "Writing a plugin: manifest, Workspace Panes, SDK hooks, validation and install",
+      "source": "docs/reference/station-docs.md#writing-a-plugin-manifest-workspace-panes-sdk-hooks-validation-and-install"
+    },
+    {
+      "id": "vocabulary",
+      "title": "Station vocabulary",
+      "source": "docs/reference/station-docs.md#station-vocabulary"
+    }
+  ],
+  "exclude": [
+    "docs/*.md",
+    "docs/adr/**",
+    "docs/architecture/**",
+    "docs/conformance/**",
+    "docs/contexts/**",
+    "docs/design/**",
+    "docs/learn/**",
+    "docs/pages/**",
+    "docs/patterns/**",
+    "docs/plans/**",
+    "docs/reviews/personal-boards-20261016/README.md",
+    "docs/reviews/workspace-map-20261015/README.md",
+    "docs/security/**",
+    "docs/strategy/**",
+    "docs/testing/**",
+    "docs/third-party/**",
+    "docs/guides/!(contributing|keyboard-shortcuts|product-law-authoring).md",
+    "docs/reference/!(contributor-commands|product-laws|station-docs).md",
+    "docs/user/workspace-checkpoints.md",
+    "docs/decisions/**"
+  ],
+  "decisions": {
+    "adr": {
+      "dir": "docs/adr"
+    }
+  }
+}

@@ -19,6 +19,10 @@ import { afterAll, afterEach } from 'vitest';
  *     const makeTempDir = trackTempDirs();
  *     beforeEach(() => { home = makeTempDir('station-x-'); });
  *
+ * `base` creates the directories somewhere other than `os.tmpdir()`, for a
+ * suite whose paths must stay short (a Unix socket path is capped at about
+ * 104 bytes, and the vitest run root alone uses most of that).
+ *
  * `lifetime: 'file'` removes at `afterAll` of the enclosing scope (the
  * `describe`, or the file at top level) instead, for directories a
  * `beforeAll` shares across the tests in that scope. The directory stays in
@@ -37,14 +41,14 @@ import { afterAll, afterEach } from 'vitest';
  * route through here.
  */
 export function trackTempDirs(
-  options: { lifetime?: 'test' | 'file' } = {},
+  options: { lifetime?: 'test' | 'file'; base?: string } = {},
 ): (prefix: string) => string {
   const created: string[] = [];
   const cleanup = () => removeTempDirs(created.splice(0));
   if (options.lifetime === 'file') afterAll(cleanup);
   else afterEach(cleanup);
   return (prefix) => {
-    const directory = mkdtempSync(join(tmpdir(), prefix));
+    const directory = mkdtempSync(join(options.base ?? tmpdir(), prefix));
     created.push(directory);
     return directory;
   };

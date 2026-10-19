@@ -1,8 +1,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
-import { defaultRun, type ServiceRegistration } from '../commands/service.js';
+import {
+  type CommandRunner,
+  defaultRun,
+  type ServiceRegistration,
+} from '../commands/service.js';
 import { inspectServiceSchedulingPolicy } from '../commands/service-scheduling.js';
 import {
   applyWindowsTaskSettings,
@@ -25,12 +29,32 @@ const SYSTEM32 = 'C:\\Windows\\System32';
 const created: string[] = [];
 const makeTempDir = trackTempDirs();
 
+function timedRun(phase: string): CommandRunner {
+  return (command, args, options) => {
+    const started = performance.now();
+    const label = `[task-scheduler] ${phase} ${basename(command)}`;
+    console.log(`${label} start`);
+    try {
+      const result = defaultRun(command, args, options);
+      console.log(
+        `${label} end durationMs=${Math.round(performance.now() - started)} status=${result.status} error=${result.error?.name ?? 'none'}`,
+      );
+      return result;
+    } catch (error) {
+      console.log(
+        `${label} threw durationMs=${Math.round(performance.now() - started)} error=${error instanceof Error ? error.name : 'unknown'}`,
+      );
+      throw error;
+    }
+  };
+}
+
 function schtasks(args: string[]) {
-  return defaultRun(join(SYSTEM32, 'schtasks.exe'), args);
+  return timedRun(`schtasks ${args[0]}`)(join(SYSTEM32, 'schtasks.exe'), args);
 }
 
 function currentAccount(): string {
-  const result = defaultRun(join(SYSTEM32, 'whoami.exe'), [
+  const result = timedRun('current-account')(join(SYSTEM32, 'whoami.exe'), [
     '/user',
     '/fo',
     'csv',
@@ -102,7 +126,7 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
       '<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>',
     );
     const stale = inspectServiceSchedulingPolicy(registration, {
-      run: defaultRun,
+      run: timedRun('inspect-stale'),
     });
     console.log(`default settings as status reads them: ${stale.observed}`);
     expect(stale).toMatchObject({
@@ -114,7 +138,7 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
     expect(stale.observed).toContain('DisallowStartIfOnBatteries=True');
     expect(stale.observed).toContain('StopIfGoingOnBatteries=True');
 
-    applyWindowsTaskSettings(registration, defaultRun);
+    applyWindowsTaskSettings(registration, timedRun('apply-settings'));
 
     // Read back through the task's XML, independently of the PowerShell
     // formatter that the install and status share.
@@ -135,7 +159,9 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
       '<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>',
     );
     expect(
-      inspectServiceSchedulingPolicy(registration, { run: defaultRun }),
+      inspectServiceSchedulingPolicy(registration, {
+        run: timedRun('inspect-current'),
+      }),
     ).toEqual({
       expected: EXPECTED_TASK_SETTINGS,
       observed: EXPECTED_TASK_SETTINGS,
@@ -158,7 +184,7 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
       `@echo off\r\necho run %TIME%>>"${runs}"\r\nexit /b 3\r\n`,
     );
     const registration = registerLikeInstall(wrapper);
-    applyWindowsTaskSettings(registration, defaultRun);
+    applyWindowsTaskSettings(registration, timedRun('apply-settings'));
     const started = schtasks(['/Run', '/TN', registration.taskName as string]);
     expect(started.status, started.stderr).toBe(0);
 

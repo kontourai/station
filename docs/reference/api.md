@@ -38,6 +38,19 @@ credential. Tokens for one server cannot open the other, and in-process tokens
 cannot be presented over HTTP. Ordinary API and Project authorization still
 apply to each tool operation.
 
+## Personal preferences
+
+`GET /api/me/preferences` reads the verified person's preferences on this
+Station. `PATCH` changes named fields; null resets a field. The server derives
+the person and trusted tenant boundary from the request, never a supplied owner.
+Unbound Devices and internal Agent callers are refused. Device-only keys and
+unknown fields return 400. Model-picker replacement requires the current
+`If-Match` revision; a conflict returns 409. `?onlyMissing=true` imports only
+unset choices under the write lock. Preferences grant no execution access.
+
+See [account preference contracts](contracts.md#account-preferences) and
+[the SDK](sdk.md#account-preferences).
+
 ## Endpoint Legend
 
 - Method and path identify the route, not its permission tier.
@@ -90,6 +103,15 @@ Environment's dispatch that names no Project
 is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.
+
+## Create a Task from a chat proposal
+
+`POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
+when a person accepts a chat proposal. The normal `title` carries the proposal title; `description`
+carries the Goal sentence, and `proposalBrief` carries the accepted markdown for the shared Task document. Station requires an authorized, normally completed
+assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
+same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
+refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
 ## Personal Task room agent requests
 
@@ -588,6 +610,46 @@ GET /agents/:slug/health
 
 ---
 
+## Project tool library
+
+All routes below use `/api/tool-library`, return `Cache-Control: no-store`, and
+revalidate current person, Device scope and Project authority. Project mutations
+pin `projectId` and `expectedActor`. Global Agent mutation APIs remain
+operator-only; these scoped routes do not enable member execution.
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /access` | Current Station role and effective roles across Projects |
+| `GET /catalog?project=<slug>` | Safe source metadata, descriptions, provenance, recorded actions, Project permission and request state |
+| `POST /sources/:id/discover` | Refresh safe action metadata using the caller’s own account; does not attach tools |
+| `POST /add` | Operator installs/connects an integration (`id`, `kind: "integration"`, `expectedActor`); plugins use existing package preview/consent |
+| `GET /requests?project=<slug>` | Project requests; operator may list all |
+| `POST /requests` | Admin/Owner requests a permitted catalog source |
+| `POST /requests/:id/approve` | Operator begins installation/setup |
+| `POST /requests/:id/complete` | Operator resumes setup and admits a ready, exact-source request |
+| `POST /requests/:id/decline` | Operator resolves a request, including an obsolete Project request |
+| `PUT /projects/:slug/policy` | Owner changes `mode`, `sources` with expected `revision` |
+| `PUT /sources/:id/sharing` | Operator changes source availability to Projects |
+| `GET /projects/:slug/agents` | Admin/Owner reads agents authored through this Project surface |
+| `POST /projects/:slug/agents` | Admin/Owner creates a constrained Project agent |
+| `PUT /projects/:slug/agents/:agent` | Admin/Owner edits a bound agent in the same Project incarnation |
+| `GET /accounts/:id?project=<slug>` | Own personal account status for a permitted source |
+| `POST /accounts/:id/authorize` | Start own personal account sign-in |
+| `POST /accounts/:id/callback` | Finish own personal account sign-in |
+
+Agent drafts accept `name`, optional `description`, `prompt`, `engineId`, and
+`tools` (`mcpServers`, `available`, `autoApprove`, `askBeforeUse`). Unknown fields
+are refused. `engineId: "station"` selects managed Station and is persisted
+without `execution.agentConnectionId`; other choices name an available engine
+connection. The catalog includes Station separately from connection inventory.
+The server generates identity, binds the exact Project, selects Ask
+posture and replaces harness MCP configuration. Request states are `pending`,
+`setting-up`, `available`, `declined`, and `failed`; installed alone is not
+available. Approving installation cannot widen the Owner's policy or sign in to
+a personal account. Personal tool accounts require the managed Station engine;
+external delivery reports those sources as unsupported. The owning implementation is
+[tool-library routes](../../src-server/routes/tool-library.ts).
+
 ## Integration Management
 
 These routes manage MCP integration definitions through the
@@ -601,6 +663,14 @@ a successful probe, and tool availability on an Agent are separate states.
 augmented with `builtin`, `usedBy`, recorded `connected` status, known tool
 names/descriptions, and `renderAllowed`. This is not a complete raw definition
 or proof that every listed tool can currently execute.
+
+`POST /integrations/:id/reconnect` returns a redacted definition with the latest
+`probe`. Check `probe.ok` independently of HTTP success. Successful discovery
+includes up to 200 `probe.tools` entries with raw `name`, optional `description`
+(up to 2,000 characters), and optional `group` (up to 100 characters). Legacy
+`probe.toolNames` remains available. Package-owned and personal-account probes
+can return this metadata without persisting it to a local integration definition.
+Discovery metadata is a browsing snapshot, not execution authority.
 
 ### Create Integration
 
@@ -823,7 +893,11 @@ backfill a catalog contribution. See [plugin identity projection](#which-routes-
 `{name: "Renamed"}`, and returns the updated Board. Omitted top-level fields
 remain stored; each update reads and writes under the owner's record transaction.
 Concurrent replacements of the same field still have ordinary last-write
-semantics, and `config` is not a deep merge of independent nested edits.
+semantics, and `config` is not a deep merge of independent nested edits. Dashboard fields are an
+exception: generic create/update cannot supply `config.dashboard` or
+`config.dashboardProposal`, and generic config replacement is refused once
+those fields exist. Use the revisioned authoring API below. Renaming a saved
+dashboard updates its display definition in the same mutation.
 
 The schema refuses `id`, `slug`, owner, and timestamps. It tolerates then discards
 `paneReferences`. This does **not** make an entire GET response a valid PUT body;
@@ -858,8 +932,35 @@ adding a separate membership decision in this service.
 
 Create-then-delete preserves the record if the process stops between writes,
 but can temporarily leave both copies. Repeating promotion recognizes the
-matching ID at the destination and finishes the personal deletion. That recovery
-is not a transaction spanning both stores.
+matching ID and equivalent admitted content at the destination before finishing
+the personal deletion. If either copy was edited, promotion returns 409 and
+retains both. A pending dashboard proposal also returns 409 until applied or
+dismissed. This recovery is not a transaction spanning both stores.
+
+### Personal Board authoring
+
+These endpoints share the same authenticated owner resolution as `/api/me/layouts`:
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| GET | `/api/me/boards/:layoutSlug` | Layout, opaque whole-record `revision`, saved `definition`, optional `proposal` |
+| POST | `/api/me/boards/:layoutSlug/proposal` | `{revision, definition}`; null revision creates a new draft-only Board, existing revisions must match |
+| PUT | `/api/me/boards/:layoutSlug` | `{revision, definition}`; saves the exact reviewed dashboard and clears its proposal |
+| DELETE | `/api/me/boards/:layoutSlug/proposal` | `{revision}`; dismisses only the proposal |
+
+Responses use `{success:true,data:PersonalBoardDocument}`. A revision mismatch
+returns 409 without changing either definition. A new proposal's sidebar name is
+marked `(draft)`; the saved dashboard remains unchanged for an existing Board.
+Agent-originated requests cannot use PUT or DELETE to publish/dismiss; the
+`propose_personal_board` tool reaches only the proposal endpoint. The principal
+is never a body field.
+
+Definitions have version 1, name, description and at most 24 sections. Live
+sources are Tasks, attention, recent work and Projects; notes and safe HTTP/HTTPS
+or Station links are authored text. Runtime validation bounds all fields and
+refuses duplicate section IDs. Definitions contain configuration, not live rows.
+See [the SDK](sdk.md#personal-board-authoring) and
+[Personal Boards](../user/personal-boards.md) for editing and recovery.
 
 ---
 
@@ -1061,6 +1162,52 @@ A field being present in `AppConfig` does not mean this generic endpoint may
 write it: first-run decisions and revisioned log-level changes have separate
 routes, and contribution/full-access choices have additional checks.
 See [config reference](config.md) for effective defaults and consumer limits.
+
+Raising telemetry tiers (including legacy enabled writes), or changing destinations
+and references, requires the operator or `access:manage`. Standard paired devices
+may lower tiers, including to Off. An internal-agent request cannot write these fields. Invalid
+addresses fail before persistence. Product destination changes fence the old
+queue and requests; saved collector changes require restart activation. See
+[telemetry settings](config.md#telemetry-destinations) for the exact fields.
+
+### Telemetry tiers
+
+`GET /api/usage-telemetry/status` uses the existing `orchestration:read` read
+scope and returns `data.publishers.kontour` and `data.publishers.operator`, each
+with an effective `tier` (`off`, `lite`, `full`) and `reason` (`DNT`, `policy`,
+`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`) and optional saved `userChoice`. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
+field catalog in `liteInventory`, and the optional build-time author endpoint. Responses are private/no-store;
+a service not yet constructed returns 503 `telemetry_not_ready`.
+
+Save a choice with `PUT /config/app`, for example
+`{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
+preserved. Raising a tier requires the operator or `access:manage`; a standard
+paired device may lower it. Agents are refused. `telemetryTier` must be an object
+with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed maps
+return a validation error with 400 before mutation. Full without a current
+publisher disclosure remains effectively Lite. Agents also receive 403 from
+`POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
+While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
+remains pending and needs confirmation after DNT is removed.
+Only the existing operator Full stream has a sender in this foundation. The
+[usage reference](usage-telemetry.md) owns the program and deployment limits.
+
+### Telemetry delivery status and connection checks
+
+`GET /api/usage-telemetry/delivery-status` requires `orchestration:read` and
+returns the current process's product queue, exact-receipt acknowledgements,
+loss/failure counters and OTel callback/probe state. It carries presence flags
+and counters rather than addresses, keys, installation IDs or receipt IDs.
+Unsupported versions and unavailable state must not be replaced with healthy
+defaults or cached success.
+
+`POST /api/usage-telemetry/connection-checks/product` and
+`POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.
+Product checks use a separate content-free source/schema probe;
+OTel checks send empty metrics and trace requests. Neither creates product
+disclosure consent or establishes downstream delivery/query acceptance. The
+[usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
+owns the protocol, saved authority and failure limits.
 
 ---
 
@@ -1367,6 +1514,14 @@ the current package grant; ordinary user controls omit that frame admission.
 See the [Session API](session-api.md#visual-skill-presentation) for ownership and
 unavailable-history behavior.
 
+Existing keyed foreground, background, continue and explicit handoff sends reject a different
+submission under the same key with HTTP `409` and
+`code: client_turn_input_conflict`, before any additional engine send. This
+bounded contract retains legacy unknown-input rows and optional-key behavior;
+it does not cover the private Station-engine stream ledger. See
+[keyed send identity](session-api.md#find-out-what-became-of-a-send) and the
+[submission digest contract](../architecture/module-map.md#turndeduplicator).
+
 `POST /api/orchestration/chat` carries model selection under
 `target.model: {override?, options?}`, alongside the Agent and Environment target.
 The [route schema](../../src-server/routes/orchestration/orchestration.ts),
@@ -1483,8 +1638,10 @@ can reduce them. Earlier summaries remain in `legacySummary` as unverified
 migration evidence, excluded from current totals. `unallocated` keeps missing
 or ambiguous date/model/provider/principal allocations explicit. `tokenReports`
 distinguishes a measured zero from an unmeasured compatibility sum. Optional
-`reportedCostUsd` and `estimatedCostUsd` remain separate. Ordinary usage and
-rescan responses omit `byPrincipal`.
+`reportedCostUsd` and `estimatedCostUsd` remain separate, including in Agent
+buckets alongside their combined compatibility `cost`. An omitted component is
+unreported; a supplied zero is measured. Ordinary usage and rescan responses omit
+`byPrincipal`.
 A completed scan does not prove historical totals or every provider's accounting
 are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
@@ -1529,6 +1686,39 @@ cumulative updates retain earlier measured dimensions; unsupported combined
 model/pricing attribution stays unknown or unpriced. The window records
 observations, not a billing statement or precise consumption dates. See
 [Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people).
+
+### Export Retained Canonical Usage Observations
+
+`GET /api/analytics/usage-export` returns
+`{success: true, data: UsageExportPage}`. Required `from`/`to` are inclusive
+UTC Station-observed dates, at most 366 days. `scope` defaults to `individual`;
+`personal-account` explicitly selects the existing approved personal owner set
+and refuses nonmembers or hosted use. `pageSize` is 1–100 observation events;
+`cursor` continues the fixed committed source watermark. Unknown/repeated
+query keys, invalid dates and malformed continuations refuse with 400.
+
+The page contains `schemaVersion: 1`, `stationId`, `streamEpoch`, `highWater`,
+`scope`, `window`, `observations: [{globalSequence, receipts}]`, optional
+`nextCursor`, and unknown `coverage`. Canonical token and provider-cost receipts
+remain distinct; no page total or provider-completeness claim is manufactured.
+One event can yield multiple receipts. The continuation binds the source,
+verified request person, tenant, owner set, scope and dates; it is not a grant.
+
+Production uses the canonical request authority and checks its current
+credential/account and personal owner set before response release and queued
+chunks. Unbound Device attribution, local operator fallback, foreign scope or
+a changed continuation context are refused. Source/storage failures and
+over-budget cumulative-cost projection return 503. All responses use
+`Cache-Control: no-store`.
+
+Focused mounted-route and runtime-composition controls have exercised paging,
+scope and revocation with controlled identity fixtures. This does not qualify
+live source enrollment or persistent deployment. The path does not provide a
+companion source credential, deletion journal,
+restore-generation fence or durable sync checkpoint/index. A backup copies
+`streamEpoch`; it does not establish current restore authority. See
+[the monitoring guide](../guides/monitoring.md#canonical-usage-export-source)
+for source bounds and the open #3459/#3460 acceptance.
 
 ### Get Achievements
 
@@ -3086,7 +3276,8 @@ Project (or the global space), newest activity first, one per conversation, each
 turnRunning, lastActivityAt, workingDirectory?, worktree?, self?}`. `status` is
 the status ladder's word. `limit` is 1 to 50 (default 25); anything else is
 `project_activity_limit_out_of_range`, and a `cursor` the list did not return is
-`project_activity_cursor_invalid`.
+`project_activity_cursor_invalid`. The caller's own conversation (its current
+Session, marked `self`) is listed whatever its scope, as its digest is read.
 
 The digest returns `{session, turns, page, nextCursor, delegatedChildrenIncomplete?}`,
 folded from recorded events only: `session` is `{sessionId, conversationId, title?,
@@ -3515,17 +3706,144 @@ sealing, activation, cancellation, recovery and evidence limits.
 ---
 
 
+## Administer paired-device access
+
+The operator credential or a current ordinary Device explicitly granted
+`access:devices` can use these exact method/path pairs:
+
+- `GET /api/pairing/devices`
+- `POST /api/pairing/devices/:deviceId/scope` with `{ scope: string[], expectedScope?: string, resetFullAccess?: boolean }`
+- `DELETE /api/pairing/devices/:deviceId`
+- `DELETE /api/pairing/devices/:deviceId/record` (already revoked only)
+
+A person-bound Device also needs the Admin group ceiling. Only the operator can
+add or remove `access:devices`; delegated administrators may change other device
+scopes, including `approval:full-access`. A stale `expectedScope` is 409
+`scope_changed`. Authority is checked again after body parsing; revocation or
+scope withdrawal before commit refuses the change. Internal/delegation callers,
+personal tokens and legacy `access:manage` do not qualify. The separate
+account-bound guest allowlist excludes these routes even with the scope.
+Existing full-access reset reports and live-connection retirement still apply.
+Successful mutations log credential-free `station.device_access.changed` records;
+revocation provenance uses `device-access` for a delegated administrator.
+
+## People and Station groups
+
+People `GET` is admitted by the pairing family's operator/local-grant boundary;
+`access:devices` does not admit it. Changing a group needs the operator
+credential itself:
+
+- `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
+  with a group assignment, a live device tied to them, or a personal access
+  token (a token outlives its person's devices), each with `group`,
+  `assigned`, and their tied devices' granted `scope` and `effectiveScope`
+  (the scope capped by the group).
+- `PUT /api/pairing/people/:principalId/group` with `{ "group": "admin" |
+  "member" }` places a person (a `human:` principal id) in a group; Member
+  removes the assignment. Live connections of the person's devices
+  re-authenticate, and a full access the group no longer allows is reset
+  (`revocations`, keyed by device id). `400 invalid_group` or
+  `invalid_principal` refuses anything else.
+
+Device lists (`GET /api/pairing/devices`) also carry `effectiveScope` on each
+live device: its granted `scope` capped by its person's group, equal to `scope`
+for a device tied to no person. See the
+[threat model](../security/remote-access-threat-model.md#scope-model)
+for what each group allows.
+
+## Personal access tokens
+
+A person manages their own tokens from a paired device tied to them (a
+verified Tailscale identity or an account). Anything else, including a token,
+the operator credential and a device tied to no one, is `403
+person_device_required`:
+
+- `GET /api/access/tokens` (`orchestration:read`) returns `{ tokens:
+  PersonalAccessToken[] }`, the caller's person's tokens, never a secret.
+- `POST /api/access/tokens` (`orchestration:operate`) with `{ "name":
+  string, "scope": "orchestration:read" | "orchestration:read
+  orchestration:operate", "expiresInDays"?: 1..365 }` returns `201 { token,
+  secret }`. The secret is shown only here. A scope the calling device may not
+  use now is `400 scope_exceeds_access`; a malformed body is `400
+  invalid_request`; a person already holding 20 active tokens gets `409
+  token_limit_reached`; a token record Station cannot trust is `503
+  tokens_unavailable`; a person tied by an account Station cannot vouch for
+  is `400 account_bound_person` (see below).
+- `DELETE /api/access/tokens/:tokenId` (`orchestration:read`: revoking only
+  reduces access) revokes one of the caller's person's tokens; anything else
+  is `404 not_found`, and an untrusted token record `503
+  tokens_unavailable`.
+
+Present the secret as `Authorization: Bearer stp_…`. The operator credential
+manages anyone's tokens: `GET /api/pairing/people` lists each person's
+`tokens` and whether a token can be made for them (`canHoldTokens`), `POST /api/pairing/people/:principalId/tokens` (same body; `404
+person_not_found` unless a live device is tied to the person) mints one, and
+`DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
+operator-minted token is bounded by the person's Station group rather than
+by their devices. The desktop's local grant lists them but cannot mint or
+revoke. A token is refused (`403`) on a Project's member-administration
+routes (`GET /api/projects/:slug/access` and `POST
+/api/projects/:slug/access/**`).
+
+A person tied by a Station local account can hold a token too (#3586). It
+acts as that account without an account session, is held to the account's
+Project membership, and works only while the account exists, is enabled and
+has not been signed out everywhere since the token was made; otherwise it is
+`401`. Deleting the account ends it too, and re-enabling a disabled account
+does not revive tokens made before it was disabled. It must be presented alone: beside an account cookie or session
+continuation, or an ingress identity, it is `401 { "error": { "code":
+"account_identity_conflict" } }`. It reaches only the account-bound device
+routes, minus the account routes, `/api/access/tokens` and every Project
+access route (`403 account_bound_device_route_forbidden` or `403
+insufficient_scope`). No personal access token, and no account-bound device,
+opens the terminal or voice WebSocket, whatever its scope. Minting for an account-tied person is `400
+account_bound_person` when the Station has no local accounts (any other
+deployment provider), the account belongs to another issuer, or it is not
+current. An account-bound device manages its own tokens through `GET`/`POST
+/api/access/tokens` and `DELETE /api/access/tokens/:tokenId` alongside its
+account session.
+
+## Create a device invitation
+
+`POST /api/pairing/offers` accepts `endpoint`, optional `scope`, and optional
+`approval: "on-create" | "on-request"`. The host CLI and pairing panel send
+`on-create`: creating the invitation approves the selected access, and its
+first recipient can request and exchange it once before expiry without another
+approval. The returned offer retains its existing wire shape; the approval
+record is private server state. `DELETE /api/pairing/offers/:offerId` cancels it.
+
+The default is `on-request` for older callers and the desktop SSH flow. Public
+access requests always need confirmation; a requester cannot set its own
+approval policy. Preapproved offers must be ordinary Devices with an explicit
+scope that excludes `access:manage` and protected operator-promotion scopes,
+including `relay:manage`, `access:approve` and `consent:decide`. Explicit
+`coding:exec` and `approval:full-access` Device-use grants remain available.
+Invitations do not grant the creator's private host-possession provenance.
+
+A host-issued browser session may create/cancel invitations, decide pending
+requests and manage already-paired Devices while retaining its effective
+`access:manage`. Its server-recorded `home-possession` locality and `ui-bootstrap`
+mint kind distinguish it from an ordinary Device with the same wire scope.
+This does not grant operator identity, people/account administration, passkey
+administration, or the native consent broker's `local-grant` authority.
+The browser cannot transfer protected management or consent scopes through
+either offer mode, final request approval, or newly added Device permissions.
+Existing operator request-time approval and explicitly promoted Device
+administrators keep their separate authority.
+
 ## Decide a pending paired-device request
 
-A current operator, qualifying local-grant credential, or Device explicitly
-promoted with `access:approve` can use these exact routes:
+A current operator, qualifying local-grant credential, host-issued browser
+session with its private `ui-bootstrap` provenance and effective `access:manage`,
+or Device explicitly promoted with `access:approve` can use these exact routes:
 
 - `GET /api/pairing/requests`
 - `POST /api/pairing/requests/:requestId/confirm`
 - `DELETE /api/pairing/requests/:requestId`
 
 The promotion satisfies the pending-request route scope without granting
-`access:manage`. Authority is rechecked before publishing a decision. It does
+`access:manage`. A Device tied to a person uses it only while that person's
+Station group (Admin) allows it. Authority is rechecked before publishing a decision. It does
 not admit other Device-management routes or verified-person/account binding.
 Ordinary Device presets do not include the promotion.
 
@@ -3544,7 +3862,8 @@ nightly build, otherwise `npx @kontourai/station-cli@latest`).
 a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
-credential or a qualifying local-grant credential; an `access:approve` Device or
+credential, a qualifying local-grant credential or that host-issued browser
+session; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device

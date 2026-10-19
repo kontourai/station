@@ -49,18 +49,29 @@ import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
+  capScopeToGroup,
+  type StationGroup,
+} from '@kontourai/station-contracts/station-groups';
+import {
   assertExistingSecurityDirectory,
   EnvironmentSecurityRecordError,
   readEnvironmentSecurityRecord,
   readExistingEnvironmentSecurityRecord,
 } from '@kontourai/station-shared/environment-security-record';
-import { isPairingApprovalLeaf } from '../../security/pairing-route-scopes.js';
+import {
+  isDeviceAccessManagementLeaf,
+  isPairingApprovalLeaf,
+  matchPairingScopeRule,
+  requiredPairingScope,
+} from '../../security/pairing-route-scopes.js';
 
 export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/environment-security-record';
 
 import packageJson from '../../../package.json' with { type: 'json' };
 import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
 import { sleep } from '../../utils/sleep.js';
+import { principalForDeviceBinding } from '../access/device-binding-principal.js';
+import { StationGroupsService } from '../access/station-groups-service.js';
 import { DevicePairingService } from './device-pairing-service.js';
 
 const SECURITY_DIRECTORY = 'security';
@@ -200,6 +211,7 @@ export class EnvironmentSecurityService {
   readonly #isProcessAlive: (pid: number) => boolean;
   readonly #hostIdentity: string;
   #devicePairingService?: DevicePairingService;
+  readonly #groups: StationGroupsService;
 
   constructor(options: EnvironmentSecurityServiceOptions) {
     this.#homeDir = options.homeDir;
@@ -212,6 +224,67 @@ export class EnvironmentSecurityService {
     this.#now = options.now ?? Date.now;
     this.#isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
     this.#hostIdentity = options.hostIdentity ?? resolveHostname();
+    this.#groups = new StationGroupsService({ securityDir: this.#securityDir });
+  }
+
+  /**
+   * #3557: what a device may actually use. A device tied to a person is
+   * capped by that person's Station group. Uncapped: a device tied to no
+   * person (the operator's own, including the desktop's home-possession
+   * credentials, which are never tied to anyone) and a peer Station
+   * delegation.
+   */
+  #capScope = (device: PairedDevice): string => {
+    if (!device.principalBinding || device.kind === 'delegation')
+      return device.scope;
+    return capScopeToGroup(
+      device.scope,
+      this.#groups.groupOf(
+        principalForDeviceBinding(device.principalBinding).id,
+      ),
+    );
+  };
+
+  /**
+   * #3557, first use only: people whose tied devices already held a
+   * permission Member would remove before groups applied start as Admin, so
+   * turning groups on takes nothing away. Afterwards the operator decides.
+   * That groups have applied is marked apart from the record, so a lost
+   * record is never reseeded: a stored grant the operator raised or capped
+   * since would otherwise re-promote someone. Everyone then sits in Member.
+   */
+  async #seedGroups(pairing: DevicePairingService): Promise<void> {
+    if (this.#groups.activated()) return;
+    if (!this.#groups.exists()) {
+      const admins = new Set<string>();
+      for (const device of pairing.listDevices()) {
+        if (
+          device.revokedAt !== null ||
+          !device.principalBinding ||
+          device.kind === 'delegation'
+        )
+          continue;
+        if (capScopeToGroup(device.scope, 'member') !== device.scope)
+          admins.add(principalForDeviceBinding(device.principalBinding).id);
+      }
+      await this.#groups.seed([...admins]);
+    }
+    await this.#groups.markActivated(this.#now());
+  }
+
+  /** #3557: the group a person sits in. */
+  groupOf(principalId: string): StationGroup {
+    return this.#groups.groupOf(principalId);
+  }
+
+  /** #3557: every explicit group assignment. */
+  groupAssignments() {
+    return this.#groups.assignments();
+  }
+
+  /** #3557: puts a person in a group (operator only; the route checks). */
+  async assignGroup(principalId: string, group: StationGroup): Promise<void> {
+    await this.#groups.assign(principalId, group);
   }
 
   async initialize(): Promise<EnvironmentSecurityRecord> {
@@ -229,7 +302,9 @@ export class EnvironmentSecurityService {
       homeDir: this.#homeDir,
       environmentId: record.environmentId,
       now: this.#now,
+      capScope: this.#capScope,
     });
+    await this.#seedGroups(this.#devicePairingService);
     return record;
   }
 
@@ -262,7 +337,11 @@ export class EnvironmentSecurityService {
         homeDir: this.#homeDir,
         environmentId: current.environmentId,
         now: this.#now,
+        capScope: this.#capScope,
       });
+      // #3557: personal access tokens go first, so a reset that cannot
+      // revoke them fails before changing anything.
+      await this.#devicePairingService.clearPersonalTokens();
       const reset = createRecord();
       const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
       this.#ensureRevisionEvidenceKey(reset.environmentId);
@@ -281,6 +360,9 @@ export class EnvironmentSecurityService {
       });
       this.#fsyncSecurityDirectory();
       this.#devicePairingService.resetEnvironment(reset.environmentId);
+      // Again, for a token minted while the reset ran. A mint finishing after
+      // this can still survive, but its person's devices are gone by then.
+      await this.#devicePairingService.clearPersonalTokens();
       return reset;
     });
   }
@@ -307,6 +389,27 @@ export class EnvironmentSecurityService {
         deviceId,
         PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
       ) ?? false
+    );
+  }
+
+  /**
+   * #3568: whether the device or personal access token that queued a chat
+   * message may still send one: live (not revoked, not expired) and holding,
+   * after its person's group cap (#3557), the scope the live route itself
+   * requires, read from the route table rather than restated here. One tied
+   * to an account also needs it current: enabled, and not signed out
+   * everywhere at or after `since` (when the message was queued).
+   */
+  deviceMaySendChat(credentialId: string, since?: number): boolean {
+    const required = requiredPairingScope('POST', '/api/orchestration/chat');
+    return (
+      required !== undefined &&
+      (this.#devicePairingService?.credentialHoldsScope(
+        credentialId,
+        required,
+        since,
+      ) ??
+        false)
     );
   }
 
@@ -365,7 +468,9 @@ export class EnvironmentSecurityService {
   resolveGrantedScope(candidate: string): string | undefined {
     if (this.verifyOperatorCredential(candidate))
       return DEFAULT_GRANT_PAIRING_SCOPE;
-    return this.#devicePairingService?.identifyDevice(candidate)?.scope;
+    // #3557: never the raw grant: a device tied to a person is capped by
+    // that person's Station group, here and in every reader of this.
+    return this.#devicePairingService?.effectiveScope(candidate);
   }
 
   verifyOperatorCredential(candidate: string): boolean {
@@ -511,12 +616,45 @@ export class EnvironmentSecurityService {
     ) {
       return false;
     }
+    if (
+      matchPairingScopeRule(request.method, request.path)?.personalTokens ===
+        'refused' &&
+      this.identifyDevice(candidate)?.credentialKind === 'personal-token'
+    )
+      return false;
     if (request.path.startsWith('/api/pairing')) {
+      if (
+        isDeviceAccessManagementLeaf(request) &&
+        this.#devicePairingService?.deviceAccessAdministrator(candidate)
+      ) {
+        return request.activity
+          ? this.#devicePairingService.recordCredentialActivity(
+              candidate,
+              request.activity.lastSeenFrom,
+            )
+          : true;
+      }
       // Native desktop credentials prove home possession at local-grant mint
       // time. They are the desktop operator's authority for this family,
       // unlike ordinary paired devices (even those carrying access:manage).
       // The HTTP scope gate still checks the current grant for each route.
       if (this.#devicePairingService?.isLocalGrantMintedCredential(candidate)) {
+        return request.activity
+          ? this.#devicePairingService.recordCredentialActivity(
+              candidate,
+              request.activity.lastSeenFrom,
+            )
+          : true;
+      }
+      if (
+        this.#devicePairingService?.credentialMayManagePairing(candidate) &&
+        (isPairingApprovalLeaf(request) ||
+          isDeviceAccessManagementLeaf(request) ||
+          (request.method.toUpperCase() === 'POST' &&
+            request.path === '/api/pairing/offers') ||
+          (request.method.toUpperCase() === 'DELETE' &&
+            /^\/api\/pairing\/offers\/[^/]+$/.test(request.path)))
+      ) {
         return request.activity
           ? this.#devicePairingService.recordCredentialActivity(
               candidate,
@@ -561,8 +699,8 @@ export class EnvironmentSecurityService {
   /**
    * Whether `candidate` would be admitted by {@link authorizeCredential} to
    * the pending-request approval leaves (#765 D5): the operator credential,
-   * or a device the operator promoted with `access:approve`
-   * ({@link DevicePairingService.credentialMayApprovePairing}). The SAME two
+   * a host-issued browser session, or a device explicitly promoted with `access:approve`
+   * ({@link DevicePairingService.credentialMayApprovePairing}). These same
    * derivations that branch composes at the HTTP boundary, exported so a
    * read-side surface (the attention projection's Approve/Deny affordance)
    * consumes the boundary's own predicate rather than re-deriving it — a
@@ -575,7 +713,8 @@ export class EnvironmentSecurityService {
   credentialMayDecidePairingRequests(candidate: string): boolean {
     if (
       this.verifyOperatorCredential(candidate) ||
-      this.#devicePairingService?.isLocalGrantMintedCredential(candidate)
+      this.#devicePairingService?.isLocalGrantMintedCredential(candidate) ||
+      this.#devicePairingService?.credentialMayManagePairing(candidate)
     )
       return true;
     return (

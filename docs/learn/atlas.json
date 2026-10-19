@@ -71,7 +71,8 @@
         "docs/design/pane-host-contract.md",
         "docs/guides/commands.md",
         "docs/guides/responsive-ui.md",
-        "docs/user/work-board.md"
+        "docs/user/work-board.md",
+        "docs/user/personal-boards.md"
       ],
       "modules": [
         "DestinationRegistry",
@@ -84,7 +85,8 @@
         "MobileDeviceHost",
         "BrowserSessionService",
         "Shared live surface",
-        "Personal Work Board"
+        "Personal Work Board",
+        "Personal Board authoring"
       ],
       "questions": [
         "Which interface owns navigation, and which owns the work behind a view?",
@@ -105,6 +107,7 @@
         "docs/learn/walkthroughs.md#connections"
       ],
       "modules": [
+        "AccountPreferences",
         "DeploymentAuthentication",
         "VirtualApplicationIngress",
         "NativeRelayGrantRenewalSupervisor",
@@ -223,6 +226,7 @@
         "NativeInvocationRuns",
         "Monitoring history and Agent catalog reads",
         "ProductTelemetryReceiver",
+        "CanonicalUsageExport",
         "Native notification feed"
       ],
       "questions": [

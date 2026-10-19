@@ -39,6 +39,10 @@ attributed work on separately approved compute. Joining does not offer the
 collaborator's files, credentials or computer. A viewing device needs neither
 an agent engine nor a checkout.
 
+Project roles are not Station groups. A Station group (Admin or Member, #3557)
+caps what any device tied to a person may do across the Station; a Project role
+says what that person may do in one Project. Neither grants the other.
+
 Use **Device** for what connects and **Station** for what it connects to, as
 [the glossary](../glossary.md#station-device-client) requires. In this document,
 "client software" means the UI/SDK on that device, not the glossary's **Client**
@@ -203,6 +207,24 @@ Missing, stale and unavailable authorization fail closed with distinguishable
 outcomes. Recheck after asynchronous preparation and immediately before the
 commit or external effect; record the actual membership/grant revision used.
 
+## Project agent authoring and tool acquisition
+
+The scoped `/api/tool-library` surface permits current Admins and Owners to
+create/edit constrained agents bound to the exact local Project ID. Owners can
+narrow the default all-shared-sources policy. Operators install sources;
+Project admins request missing permitted sources through a durable Inbox item.
+Operator installation approval does not widen a selected Project policy.
+Personal OAuth remains owned by the requesting principal and Project.
+
+**My access** projects Station authority and current Project roles without
+promoting an account merely because its browser also presents an operator
+credential. These authoring leaves are separately admitted for account-bound
+Devices; legacy Agent mutation and member turn gates remain unchanged. Agent
+execution is still unavailable to members. See
+[Shared Projects](../guides/agents.md#shared-projects),
+[route authority](../../src-server/runtime/routes/tool-library-runtime.ts) and
+[Project transaction owner](../../src-server/services/projects/project-membership-service.ts).
+
 ## Agent audience
 
 > Status: the declaration and the list/read/turn refusal are implemented for
@@ -219,11 +241,15 @@ owning Project. Absent means operator only, so every existing Agent stays hidden
 from members.
 
 **Who is a member caller.** A member caller is a request that resolves to a
-deployment account: an account session on a credential that is not
-account-bound, or a station-control tool call whose session that account owns
-(#2377 slice B). This uses the same rule as the Project routes'
-`authenticatedProjectMember`. A station-control call that resolves to no
-principal is admitted to no Agent. The operator, personal and peer Devices, and
+deployment account: an authenticated account session, a personal access token
+tied to an account whose standing is current (#3586), or a station-control
+tool call whose session that account owns (#2377 slice B). One rule,
+[`accountMemberCaller`](../../src-server/runtime/bootstrap/account-member-caller.ts),
+decides this for the Project routes, the Project catalogue, `/events` Project
+frames and the Agent audience gate. An account credential that does not
+authenticate, a token that no longer resolves, and a station-control call that
+resolves to no principal are no caller at all: they read no Project and are
+admitted to no Agent. The operator, personal and peer Devices, and
 Tailnet persons keep the operator's rules. Device and Station identities are
 not Project members. Account-bound collaborator Devices are refused every Agent
 path by their own gate before audience is consulted.

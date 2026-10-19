@@ -41,9 +41,8 @@ function railMarkup(): string {
       `<span class="coding-workbench__rail-tip-anchor"><button type="button" class="coding-workbench__rail-item" data-rail-item="pane-${index}" aria-label="Pane ${index}">${index}</button></span>`,
   ).join('');
   // The shell's own chain above the layout, as the app mounts it: the route
-  // wrapper keeps its automatic minimum height (flow routes scroll in
-  // `.content-view`), so nothing above the workbench bounds its height.
-  return `<div id="root"><div class="app app--with-sidebar"><div class="app__main"><main class="main-content" id="station-main"><div class="content-view"><div class="route-transition"><div class="workspace-host-actions__frame"><div class="workspace-host-actions__content">
+  // wrapper bounds viewport layouts; flow routes retain their scrolling body.
+  return `<div id="root"><div class="app app--with-sidebar"><div class="app__main"><main class="main-content" id="station-main"><div class="content-view"><div class="route-transition route-transition--fill"><div class="workspace-host-actions__frame"><div class="workspace-host-actions__content">
   <div class="coding-workbench" data-mode="panels">
     <div class="coding-workbench__main"><div class="coding-workbench__pages"></div></div>
     <nav class="coding-workbench__rail" aria-label="Views">${items}
@@ -65,6 +64,45 @@ describe.skipIf(!chromiumAvailable)(
     });
     afterAll(async () => {
       await browser?.close();
+    });
+
+    test('a conversation beside a tall file pane keeps its composer inside the Coding viewport', async () => {
+      const css =
+        resolveCssImports(INDEX_CSS_PATH) +
+        '\n' +
+        readFileSync(ROUTE_TRANSITION_CSS_PATH, 'utf8') +
+        '\n' +
+        readFileSync(HOST_ACTIONS_CSS_PATH, 'utf8') +
+        '\n' +
+        readFileSync(WORKBENCH_CSS_PATH, 'utf8');
+      assertNoImportsSurvive(css);
+      const page = await browser.newPage({ viewport: VIEWPORT });
+      try {
+        await page.setContent(`<!doctype html><html><head><style>${css}
+          html,body{height:100%;margin:0}
+        </style></head><body>${railMarkup()}</body></html>`);
+        await page.evaluate(() => {
+          const pages = document.querySelector('.coding-workbench__pages')!;
+          pages.innerHTML = `<div class="coding-workbench__row" data-side="open"><section class="coding-workbench__page coding-workbench__page--chat"><div class="chat-dock chat-workspace-pane--fullscreen"><div class="chat-dock__workspace"><div class="chat-dock__conversation-surface"><div class="chat-dock__content-area"><div class="chat-dock__body"><div class="chat-messages"><p style="min-height:1800px;flex-shrink:0">A long conversation</p></div><div class="chat-input-container"><div class="chat-input"><textarea aria-label="Message"></textarea><button>Send</button></div></div></div></div></div></div></div></section><section class="coding-workbench__page coding-workbench__page--drill-in"><div class="workspace-file-preview"><div style="min-height:800px">A tall file preview</div></div></section></div>`;
+        });
+        await page.evaluate(() =>
+          Promise.all(document.getAnimations().map((a) => a.finished)),
+        );
+        const composer = page.getByRole('textbox', { name: 'Message' });
+        const box = await composer.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.y).toBeGreaterThanOrEqual(0);
+        expect(box!.y + box!.height).toBeLessThanOrEqual(VIEWPORT.height);
+        await composer.fill('The composer is reachable.');
+        expect(await composer.inputValue()).toBe('The composer is reachable.');
+        expect(
+          await page
+            .locator('.content-view')
+            .evaluate((e) => e.scrollHeight - e.clientHeight),
+        ).toBeLessThanOrEqual(1);
+      } finally {
+        await page.close();
+      }
     });
 
     test('at 800px tall with 20 items the rail scrolls to its last item, and a fixed flyout and tooltip placed from an item render unclipped', async () => {

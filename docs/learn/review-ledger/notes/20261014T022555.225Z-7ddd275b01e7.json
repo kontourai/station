@@ -1,0 +1,7 @@
+{
+  "revision": "f5066bf6b375873e394d1febd5da8fd419741186",
+
+  "notes": [
+    {"path":"docs/acp-chat-architecture.md","note":"Reviewed for this fix round (keyword sweep: whenSessionReady, turn-start claim, lifecycle lock, retryable, provider_session_starting, still starting, redrain, queued failure; each hit read): orchestration now awaits the optional adapter whenSessionReady before runTurnStart, so a send waiting for an ACP session start holds no turn-start claim or workspace reservation; the request abort signal and a Stop end that wait with nothing sent; the ACP wait is 15s; start-failure and still-starting refusals use plain copy; the client's exhausted automatic re-sends leave the message queued with a reason and Retry. This document makes no claim contradicted by that; a send waiting for its start is still counted as dispatched for lifecycle checks. Its statements remain accurate.","inputs":["docs/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

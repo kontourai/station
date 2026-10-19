@@ -2,8 +2,14 @@
  * @vitest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
  * The approval popover's restores are scheduled on the next frame (they have
@@ -17,6 +23,7 @@ async function flushRestore() {
   });
 }
 
+const historyRead = vi.fn();
 const dismissToast = vi.fn();
 const dismissAllToasts = vi.fn();
 const setProject = vi.fn();
@@ -25,16 +32,13 @@ const navigate = vi.fn();
 let notifications: Array<Record<string, unknown>> = [];
 
 vi.mock('../contexts/ToastContext', () => ({
-  useNotificationHistory: () => notifications,
+  useNotificationHistory: () => {
+    historyRead();
+    return notifications;
+  },
   useToast: () => ({
     dismissToast,
     dismissAllToasts,
-  }),
-}));
-
-vi.mock('../contexts/ActiveChatsContext', () => ({
-  useAllActiveChats: () => ({
-    'session-1': {},
   }),
 }));
 
@@ -60,9 +64,18 @@ vi.mock('../contexts/NavigationContext', () => {
 
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
 import { claimApprovalThreads } from '../components/status/approvalReveal';
+import { activeChatsStore } from '../contexts/active-chats-store';
 
 describe('NotificationContainer', () => {
+  afterEach(() => {
+    cleanup();
+    for (const id of Object.keys(activeChatsStore.getSnapshot()))
+      activeChatsStore.removeChat(id);
+  });
   beforeEach(() => {
+    for (const id of Object.keys(activeChatsStore.getSnapshot()))
+      activeChatsStore.removeChat(id);
+    activeChatsStore.initChat('session-1');
     dismissToast.mockClear();
     dismissAllToasts.mockClear();
     setProject.mockClear();
@@ -79,6 +92,24 @@ describe('NotificationContainer', () => {
         metadata: { detail: 'Permission denied' },
       },
     ];
+  });
+
+  test('chat content updates do not render toasts and key-order changes refresh shortcuts', () => {
+    activeChatsStore.initChat('session-2');
+    notifications[0] = {
+      ...notifications[0],
+      sessionId: 'session-2',
+      onNavigate: vi.fn(),
+    };
+    render(<NotificationContainer />);
+    expect(screen.getByText(/^(Ctrl\+|⌘)2$/)).toBeTruthy();
+    historyRead.mockClear();
+    act(() => activeChatsStore.updateChat('session-2', { input: 'draft' }));
+    expect(historyRead).not.toHaveBeenCalled();
+    act(() => activeChatsStore.removeChat('session-1'));
+    expect(screen.getByText(/^(Ctrl\+|⌘)1$/)).toBeTruthy();
+    act(() => activeChatsStore.removeChat('session-2'));
+    expect(screen.queryByText(/^(Ctrl\+|⌘)1$/)).toBeNull();
   });
 
   test('renders tool activity toasts with their label and detail', () => {

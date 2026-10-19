@@ -1,5 +1,5 @@
 import {
-  ChartGlyph,
+  CalendarGlyph,
   FolderGlyph,
   MessageGlyph,
   MoneyGlyph,
@@ -43,14 +43,14 @@ export function describeCostCoverage(
 }
 
 export function UsageSummaryCards({
-  avgCostPerMessage,
+  daysActive,
   engineUsageCoverage,
   totalConversations,
   totalCost,
   totalMessages,
   costMeasured = true,
 }: {
-  avgCostPerMessage: number;
+  daysActive?: number;
   engineUsageCoverage?: EngineUsageCoverage;
   totalConversations: number;
   totalCost: number;
@@ -78,12 +78,14 @@ export function UsageSummaryCards({
         detail={costCoverage}
       />
       <StatCard
-        icon={<ChartGlyph />}
-        label="Avg/Message"
+        icon={<CalendarGlyph />}
+        label="Active days"
         value={
-          costMeasured ? `$${avgCostPerMessage.toFixed(4)}` : 'Not reported'
+          daysActive === undefined
+            ? 'Not recorded'
+            : daysActive.toLocaleString()
         }
-        detail={costCoverage ? 'Over the measured cost above.' : undefined}
+        detail="UTC · retained activity"
       />
     </div>
   );

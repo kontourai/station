@@ -29,6 +29,8 @@ import {
   type DevicePrincipalBinding,
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
+  PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_GRANT_PATHS,
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPES,
@@ -46,12 +48,25 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import type { NativePushRegistrationRequest } from '@kontourai/station-contracts/native-push';
 import {
+  isPersonalTokenScope,
+  MAX_PERSONAL_TOKEN_LIFETIME_MS,
+  MAX_PERSONAL_TOKENS_PER_PERSON,
+  type MintedPersonalAccessToken,
+  type PersonalAccessToken,
+} from '@kontourai/station-contracts/personal-tokens';
+import {
   humanPrincipal,
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { RelayManagementApproval } from '../../security/relay-management-authority.js';
+import {
+  PersonalTokenStore,
+  PersonalTokenUnavailableError,
+  type StoredPersonalToken,
+} from '../access/personal-token-store.js';
+import type { AccountDirectory } from '../identity/account-directory.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import {
   isValidNativePushRequest,
@@ -62,6 +77,16 @@ import {
   type NativePushRegistration,
   NativePushRegistrationStore,
 } from '../notifications/native-push-registration-store.js';
+
+/** Host browser device use grants must not transfer administration or consent. */
+export function isProtectedPairingPromotionScope(token: PairingScope): boolean {
+  const paths = PAIRING_SCOPE_GRANT_PATHS[token];
+  return (
+    paths.length === 1 &&
+    paths[0] === 'operator-promotion' &&
+    deviceRequestedExtraScopes(token).length === 0
+  );
+}
 
 const REGISTRY_SCHEMA_VERSION = 3 as const;
 const PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION = 1;
@@ -250,6 +275,8 @@ interface DeviceRegistry {
 }
 
 interface PairingOfferState extends DevicePairingOffer {
+  /** Private authorization recorded when the operator creates an invitation. */
+  preapproved?: true;
   principalBinding?: DevicePrincipalBinding;
   status: 'open' | 'requested' | 'confirmed' | 'used' | 'cancelled';
   request?: DevicePairingRequest;
@@ -380,7 +407,13 @@ export type PairingApproval =
   | { readonly kind: 'unauthenticated' }
   | RelayManagementApproval;
 
-type DeviceRevocationActor = 'operator-credential';
+export type DeviceAccessApproval =
+  | PairingApproval
+  | { readonly kind: 'device-access'; readonly credential: string };
+
+type DeviceRevocationActor =
+  | 'operator-credential'
+  | { readonly kind: 'device-access'; readonly credential: string };
 
 /**
  * Whether an exact Station-internal caller with no pairing credential may
@@ -448,6 +481,12 @@ interface DevicePairingServiceOptions {
    * global: no self-declared client field is an authority key.
    */
   maxActiveCredentialsWithoutVerifiedIdentity?: number;
+  /**
+   * #3557: the scope a device may actually use, given its granted scope.
+   * Station groups cap a device tied to a person; the caller decides who is
+   * capped. Omitted, a device uses exactly what it was granted.
+   */
+  capScope?: (device: PairedDevice) => string;
 }
 
 export class DevicePairingError extends Error {
@@ -460,6 +499,7 @@ export class DevicePairingError extends Error {
       | 'identity_credential_quota_reached'
       | 'unattributed_credential_quota_reached'
       | 'invalid_request'
+      | 'account_bound_person'
       | 'request_not_found'
       | 'request_not_confirmed'
       | 'request_denied'
@@ -561,6 +601,27 @@ function requesterPrincipal(device: StoredDevice): PrincipalRef | null {
         device.requester.login,
       )
     : null;
+}
+
+/** #3557: a personal access token, seen as a headless device of its owner. */
+function personalTokenDevice(token: StoredPersonalToken): PairedDevice {
+  return {
+    id: token.id,
+    name: token.name,
+    scope: token.scope,
+    kind: 'device',
+    credentialKind: 'personal-token',
+    principalBinding: structuredClone(token.binding),
+    createdAt: token.createdAt,
+    issuedAt: token.createdAt,
+    ...(token.lastUsedAt !== null ? { lastUsedAt: token.lastUsedAt } : {}),
+    activityTracking: 'unobserved-before-activity-tracking',
+    lastSeenFrom: null,
+    usageCount: null,
+    lastActiveDay: null,
+    revokedAt: null,
+    revocation: { state: 'not-revoked' },
+  };
 }
 
 function publicDevice(device: StoredDevice): PairedDevice {
@@ -778,7 +839,8 @@ function isValidRevocation(value: unknown, revokedAt: unknown): boolean {
   return (
     record.state === 'recorded' &&
     typeof revokedAt === 'number' &&
-    ((record.actor === 'operator-credential' &&
+    (((record.actor === 'operator-credential' ||
+      record.actor === 'device-access') &&
       record.reason === 'owner-request') ||
       (record.actor === 'same-client-replacement' &&
         record.reason === 'same-client-replacement')) &&
@@ -1101,6 +1163,15 @@ export class DevicePairingService {
   readonly #maxActiveOffers: number;
   readonly #maxActiveCredentialsPerVerifiedIdentity: number;
   readonly #maxActiveCredentialsWithoutVerifiedIdentity: number;
+  readonly #capScope: NonNullable<DevicePairingServiceOptions['capScope']>;
+  /** #3557: personal access tokens, resolved as headless devices. */
+  readonly #tokens: PersonalTokenStore;
+  /**
+   * #3586: the standing an account-tied token is checked against. Absent
+   * unless Station's own local accounts are configured: then no token is
+   * made for, or accepted from, an account-tied person.
+   */
+  #accountDirectory: AccountDirectory | undefined;
   readonly #offers = new Map<string, PairingOfferState>();
   #registry: DeviceRegistry;
   #pendingRegistryMigrationPersist = false;
@@ -1113,6 +1184,11 @@ export class DevicePairingService {
   readonly #accessListeners = new Set<(deviceId: string) => void>();
 
   constructor(options: DevicePairingServiceOptions) {
+    this.#capScope = options.capScope ?? ((device) => device.scope);
+    this.#tokens = new PersonalTokenStore({
+      securityDir: join(options.homeDir, 'security'),
+      ...(options.now ? { now: options.now } : {}),
+    });
     this.#registryPath = join(options.homeDir, 'security', REGISTRY_FILE);
     this.#nativePush = new NativePushRegistrationStore(options.homeDir);
     this.#nativePushIos = new NativePushIosRegistrationStore(
@@ -1178,6 +1254,7 @@ export class DevicePairingService {
     endpoint: string;
     scope?: string;
     kind?: PairedDeviceKind;
+    approval?: 'on-create' | 'on-request';
   }): DevicePairingOffer {
     let endpoint: URL;
     try {
@@ -1197,7 +1274,8 @@ export class DevicePairingService {
     if (
       parsedScope === null ||
       (input.scope !== undefined &&
-        parsedScope.includes(PAIRING_SCOPE_HOME_CONTROL))
+        (parsedScope.includes(PAIRING_SCOPE_HOME_CONTROL) ||
+          parsedScope.includes(PAIRING_SCOPE_ACCESS_DEVICES)))
     ) {
       throw new DevicePairingError('invalid_request');
     }
@@ -1205,6 +1283,15 @@ export class DevicePairingService {
       input.kind !== undefined &&
       input.kind !== 'device' &&
       input.kind !== 'delegation'
+    ) {
+      throw new DevicePairingError('invalid_request');
+    }
+    // Preapproval has no later operator decision at which to review promotion.
+    if (
+      input.approval === 'on-create' &&
+      ((input.kind !== undefined && input.kind !== 'device') ||
+        parsedScope.includes(PAIRING_SCOPE_ACCESS_MANAGE) ||
+        parsedScope.some(isProtectedPairingPromotionScope))
     ) {
       throw new DevicePairingError('invalid_request');
     }
@@ -1222,6 +1309,7 @@ export class DevicePairingService {
       scope,
       expiresAt: this.#now() + this.#offerTtlMs,
       status: 'open',
+      ...(input.approval === 'on-create' ? { preapproved: true as const } : {}),
       kind: input.kind ?? 'device',
     };
     this.#offers.set(offer.offerId, offer);
@@ -1267,6 +1355,7 @@ export class DevicePairingService {
         !equalSecret(input.proof.toUpperCase(), offer.manualCode)) ||
       (input.accountCandidate === undefined) !==
         (input.accountCandidateSessionId === undefined) ||
+      (offer.preapproved === true && input.requireAccountBinding === true) ||
       (input.requireAccountBinding === true &&
         input.accountCandidate === undefined) ||
       (input.accountCandidate !== undefined &&
@@ -1308,7 +1397,8 @@ export class DevicePairingService {
     };
     offer.request = request;
     offer.requesterPosition = input.requesterPosition;
-    offer.status = 'requested';
+    offer.status = offer.preapproved ? 'confirmed' : 'requested';
+    if (offer.preapproved) request.status = 'confirmed';
     return cloneRequest(request);
   }
 
@@ -1667,11 +1757,16 @@ export class DevicePairingService {
     };
   }
 
-  denyRequest(requestId: string): DevicePairingRequest {
+  denyRequest(
+    requestId: string,
+    expectedKind?: PairedDeviceKind,
+  ): DevicePairingRequest {
     const offer = [...this.#offers.values()].find(
       (candidate) => candidate.request?.requestId === requestId,
     );
     if (!offer) throw new DevicePairingError('request_not_found');
+    if (expectedKind !== undefined && offer.kind !== expectedKind)
+      throw new DevicePairingError('approval_requires_operator');
     this.#ensureNotExpired(offer);
     if (
       (offer.status !== 'requested' && offer.status !== 'confirmed') ||
@@ -2044,9 +2139,11 @@ export class DevicePairingService {
     return true;
   }
 
-  cancelOffer(offerId: string): void {
+  cancelOffer(offerId: string, expectedKind?: PairedDeviceKind): void {
     const offer = this.#offers.get(offerId);
     if (!offer) throw new DevicePairingError('invalid_offer');
+    if (expectedKind !== undefined && offer.kind !== expectedKind)
+      throw new DevicePairingError('approval_requires_operator');
     offer.status = 'cancelled';
   }
 
@@ -2127,8 +2224,87 @@ export class DevicePairingService {
     return (
       device?.revokedAt === null &&
       device.pendingEnrollmentId === undefined &&
-      pairingScopeIncludes(device.scope, scope)
+      pairingScopeIncludes(this.#capScope(publicDevice(device)), scope)
     );
+  }
+
+  /**
+   * #3568: whether the credential with id `credentialId` is still live and
+   * still holds `scope` after its person's group cap (#3557), whatever kind
+   * it is: a paired device (not revoked, not pending enrolment) or a personal
+   * access token (not revoked, not expired). Either kind tied to an account
+   * also needs that account current (#3586): it exists, is enabled, and was
+   * not signed out everywhere at or after `since` (the action's own time;
+   * for a token, never earlier than its making). A live request from such a
+   * device needs a signed-in account session; this is the part of that
+   * check that can be asked later. The one by-id lookup for an action
+   * recorded earlier and performed later, so revoking or narrowing either
+   * kind stops it. A device is judged by its own grant, not an alias's: an
+   * id names the device, not the credential used.
+   */
+  credentialHoldsScope(
+    credentialId: string,
+    scope: PairingScope,
+    since?: number,
+  ): boolean {
+    const device = this.#registry.devices.find(
+      (item) => item.id === credentialId,
+    );
+    if (device)
+      return (
+        device.revokedAt === null &&
+        device.pendingEnrollmentId === undefined &&
+        (device.principalBinding === undefined ||
+          this.#accountStandingCurrent(device.principalBinding, since)) &&
+        pairingScopeIncludes(this.#capScope(publicDevice(device)), scope)
+      );
+    const token = this.#tokens
+      .list()
+      .find(
+        (candidate) =>
+          candidate.id === credentialId &&
+          this.#accountStandingCurrent(
+            candidate.binding,
+            Math.max(candidate.createdAt, since ?? candidate.createdAt),
+          ),
+      );
+    return (
+      token !== undefined &&
+      pairingScopeIncludes(this.#capScope(personalTokenDevice(token)), scope)
+    );
+  }
+
+  /**
+   * #3557: the scope `candidate` may actually use: its granted scope (an
+   * alias's own), capped by its person's Station group. `undefined` for an
+   * invalid or revoked credential. Device lists and every authorization
+   * read this, never the raw stored scope.
+   */
+  effectiveScope(candidate: string): string | undefined {
+    const device = this.identifyDevice(candidate);
+    return device ? this.#capScope(device) : undefined;
+  }
+
+  /** Current, explicit device administration; never an agent or personal token. */
+  deviceAccessAdministrator(candidate: string): PairedDevice | null {
+    const device = this.identifyDevice(candidate);
+    return device?.kind === 'device' &&
+      device.credentialKind !== 'personal-token' &&
+      (pairingScopeIncludes(
+        this.#capScope(device),
+        PAIRING_SCOPE_ACCESS_DEVICES,
+      ) ||
+        this.credentialMayManagePairing(candidate))
+      ? device
+      : null;
+  }
+
+  /** #3557: a live device's effective scope, by id (device lists). */
+  effectiveScopeOfDevice(deviceId: string): string | undefined {
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    return device?.revokedAt === null
+      ? this.#capScope(publicDevice(device))
+      : undefined;
   }
 
   /** Private current incarnation for an explicitly promoted home-control grant. */
@@ -2199,9 +2375,20 @@ export class DevicePairingService {
   }
 
   revokeDevice(deviceId: string, actor: DeviceRevocationActor): PairedDevice {
+    if (
+      actor !== 'operator-credential' &&
+      !this.deviceAccessAdministrator(actor.credential)
+    )
+      throw new DevicePairingError('approval_requires_operator');
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (
+      actor !== 'operator-credential' &&
+      this.credentialMayManagePairing(actor.credential) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt === null) {
@@ -2210,7 +2397,7 @@ export class DevicePairingService {
       cascadeCredentialAliasRevocation(device, revokedAt);
       device.revocation = {
         state: 'recorded',
-        actor,
+        actor: actor === 'operator-credential' ? actor : 'device-access',
         reason: 'owner-request',
       };
       // Revocation explicitly severs push, not just credential lookup — a
@@ -2370,11 +2557,20 @@ export class DevicePairingService {
     deviceId: string,
     actor: DeviceRevocationActor,
   ): PairedDevice {
-    if (actor !== 'operator-credential') {
+    if (
+      actor !== 'operator-credential' &&
+      !this.deviceAccessAdministrator(actor.credential)
+    ) {
       throw new DevicePairingError('approval_requires_operator');
     }
     const device = this.#registry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (
+      actor !== 'operator-credential' &&
+      this.credentialMayManagePairing(actor.credential) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt === null)
@@ -2429,13 +2625,15 @@ export class DevicePairingService {
    *    the contracts warn must not grow — a promotion path for it was never
    *    intended to exist, so this refuses rather than quietly offering one.
    *
+   * An access:devices approval rechecks its credential and group ceiling.
+   * Only the operator may grant or remove access:devices itself.
    * The scope is re-serialised through the vocabulary order so the stored
    * string stays canonical rather than recording the caller's spelling.
    */
   setDeviceScope(
     deviceId: string,
     scope: readonly PairingScope[],
-    approval: PairingApproval,
+    approval: DeviceAccessApproval,
     /**
      * The scope the caller believes the device currently has (archive#3816
      * review). A scope edit submits a COMPLETE replacement, so without this
@@ -2449,7 +2647,11 @@ export class DevicePairingService {
   ): PairedDevice {
     if (
       approval.kind !== 'presented-credential' &&
-      approval.kind !== 'local-grant'
+      approval.kind !== 'local-grant' &&
+      !(
+        approval.kind === 'device-access' &&
+        this.deviceAccessAdministrator(approval.credential)
+      )
     ) {
       throw new DevicePairingError('approval_requires_operator');
     }
@@ -2465,10 +2667,38 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (
+      approval.kind === 'device-access' &&
+      this.credentialMayManagePairing(approval.credential) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
+    if (
+      approval.kind === 'device-access' &&
+      this.credentialMayManagePairing(approval.credential) &&
+      scope.some(
+        (token) =>
+          isProtectedPairingPromotionScope(token) &&
+          !pairingScopeIncludes(device.scope, token),
+      )
+    )
+      throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt !== null) {
       throw new DevicePairingError('device_revoked');
+    }
+    if (
+      scope.includes(PAIRING_SCOPE_ACCESS_DEVICES) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('scope_not_grantable');
+    if (
+      approval.kind === 'device-access' &&
+      pairingScopeIncludes(device.scope, PAIRING_SCOPE_ACCESS_DEVICES) !==
+        scope.includes(PAIRING_SCOPE_ACCESS_DEVICES)
+    ) {
+      throw new DevicePairingError('approval_requires_operator');
     }
     if (expectedScope !== undefined && device.scope !== expectedScope) {
       throw new DevicePairingError('scope_changed');
@@ -2547,9 +2777,9 @@ export class DevicePairingService {
    * and nothing else in the `/api/pairing` family.
    */
   credentialMayApprovePairing(candidate: string): boolean {
-    const device = this.identifyDevice(candidate);
-    if (!device) return false;
-    return (parsePairingScope(device.scope) ?? []).includes(
+    const scope = this.effectiveScope(candidate);
+    if (scope === undefined) return false;
+    return (parsePairingScope(scope) ?? []).includes(
       PAIRING_SCOPE_ACCESS_APPROVE,
     );
   }
@@ -2677,6 +2907,30 @@ export class DevicePairingService {
     } finally {
       this.#notifyNativePushRetired();
     }
+  }
+
+  /**
+   * The device's current registration id on either platform, or `null` when
+   * neither file holds one (or the device is not active). Picks the newer
+   * record like {@link listNativePushRegistrationsByPlatform}. An unreadable
+   * file throws rather than reading as "not registered", which would make
+   * the phone register again over a registration that still exists.
+   */
+  nativePushRegistrationId(deviceId: string): string | null {
+    if (!this.#activeDeviceIds().has(deviceId)) return null;
+    const [android, ios] = onBothNativePushFiles<
+      NativePushRegistration | undefined
+    >([
+      () => this.#nativePush.list().get(deviceId),
+      () => this.#nativePushIos.list().get(deviceId),
+    ]);
+    const current =
+      android && ios
+        ? ios.updatedAt > android.updatedAt
+          ? ios
+          : android
+        : (android ?? ios);
+    return current?.registrationId ?? null;
   }
 
   /**
@@ -2913,7 +3167,10 @@ export class DevicePairingService {
   }
 
   verifyCredential(candidate: string): boolean {
-    return this.#resolveActiveCredential(candidate) !== undefined;
+    return (
+      this.#resolveActiveCredential(candidate) !== undefined ||
+      this.#resolveToken(candidate) !== undefined
+    );
   }
 
   /** Private runtime signal: aliases require their bound continuation + PoP. */
@@ -2936,7 +3193,8 @@ export class DevicePairingService {
   ): boolean {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = this.#findActiveDevice(nextRegistry, candidate);
-    if (!device) return false;
+    // #3557: a personal access token's use is recorded on the token.
+    if (!device) return this.#resolveToken(candidate) !== undefined;
     const now = this.#now();
     device.lastUsedAt = now;
     if (device.activityTracking === 'tracked-since-issued') {
@@ -2956,10 +3214,172 @@ export class DevicePairingService {
    */
   identifyDevice(candidate: string): PairedDevice | null {
     const match = this.#resolveActiveCredential(candidate);
-    if (!match) return null;
+    if (!match) {
+      // #3557: a personal access token acts as a headless device of its
+      // owner, so principal resolution, the group cap and scope checks
+      // treat it exactly like a device tied to that person.
+      const token = this.#resolveToken(candidate);
+      return token ? personalTokenDevice(token) : null;
+    }
     const device = publicDevice(match.device);
     if (match.alias) device.scope = match.alias.scope;
     return device;
+  }
+
+  /**
+   * #3586: installs (or removes) the account directory account-tied tokens
+   * are checked against. Runtime composition sets it once local accounts
+   * load; without one, account-tied tokens are refused.
+   */
+  setAccountDirectory(directory: AccountDirectory | undefined): void {
+    this.#accountDirectory = directory;
+  }
+
+  /**
+   * #3586: whether a token can be made for the person `binding` names: a
+   * Tailscale-tied person always; an account-tied person only when this
+   * Station's account directory answers for their issuer.
+   */
+  canHoldPersonalToken(binding: DevicePrincipalBinding): boolean {
+    if (!('kind' in binding) || binding.kind !== 'account') return true;
+    return this.#accountDirectory?.issuer === binding.issuer;
+  }
+
+  /**
+   * #3586: an account-tied token acts only while its account is current:
+   * it exists, is enabled, and has not been signed out everywhere since the
+   * token was made. Any other token is not checked here.
+   */
+  #accountStandingCurrent(
+    binding: DevicePrincipalBinding,
+    since?: number,
+  ): boolean {
+    if (!('kind' in binding) || binding.kind !== 'account') return true;
+    const directory = this.#accountDirectory;
+    if (!directory || directory.issuer !== binding.issuer) return false;
+    try {
+      return directory.standing(binding.subject, since) === 'current';
+    } catch {
+      // An unreadable account store vouches for no one.
+      return false;
+    }
+  }
+
+  /** #3557: the active token for `candidate`, touching its last use. */
+  #resolveToken(candidate: string): StoredPersonalToken | undefined {
+    const token = this.#tokens.find(candidate);
+    if (!token) return undefined;
+    if (!this.#accountStandingCurrent(token.binding, token.createdAt))
+      return undefined;
+    const now = this.#now();
+    if (
+      token.lastUsedAt === null ||
+      now - token.lastUsedAt >= LAST_USED_WRITE_INTERVAL_MS
+    ) {
+      // Bookkeeping only, as for devices: never refuse over a timestamp,
+      // and never wait on the file lock to answer a request.
+      if (!this.#touching.has(token.id)) {
+        this.#touching.add(token.id);
+        void this.#tokens
+          .touch(token.id, now)
+          .catch(() => undefined)
+          .finally(() => this.#touching.delete(token.id));
+      }
+    }
+    return token;
+  }
+
+  /** #3557: tokens whose last-use write is in flight. */
+  readonly #touching = new Set<string>();
+
+  /** #3557: revokes every personal access token (an environment reset). */
+  async clearPersonalTokens(): Promise<void> {
+    await this.#tokens.clear();
+  }
+
+  /**
+   * #3557: makes a personal access token for the person `binding` names.
+   * The caller has already decided the scope is within that person's own
+   * access; this checks only that it is a scope a token may carry.
+   */
+  async mintPersonalToken(input: {
+    name: string;
+    binding: DevicePrincipalBinding;
+    ownerPrincipalId: string;
+    scope: string;
+    expiresAt: number | null;
+  }): Promise<MintedPersonalAccessToken> {
+    const name = input.name.trim();
+    const now = this.#now();
+    // #3586: a token tied to an account is checked against the account's
+    // standing instead of a session, which only Station's own local
+    // accounts can answer for. Any other account-tied person is refused.
+    if (!this.#accountStandingCurrent(input.binding))
+      throw new DevicePairingError('account_bound_person');
+    if (
+      name.length === 0 ||
+      name.length > 64 ||
+      !safeRequesterText(name, 64) ||
+      !isPersonalTokenScope(input.scope) ||
+      (input.expiresAt !== null &&
+        (!Number.isFinite(input.expiresAt) ||
+          input.expiresAt <= now ||
+          input.expiresAt > now + MAX_PERSONAL_TOKEN_LIFETIME_MS))
+    )
+      throw new DevicePairingError('invalid_request');
+    const minted = await this.#tokens.mint(
+      { ...input, name },
+      MAX_PERSONAL_TOKENS_PER_PERSON,
+    );
+    if (!minted)
+      throw new DevicePairingError('identity_credential_quota_reached');
+    return { token: this.#tokenView(minted.token), secret: minted.secret };
+  }
+
+  /** #3557: a person's tokens (or everyone's), newest first; never secrets. */
+  listPersonalTokens(ownerPrincipalId?: string): PersonalAccessToken[] {
+    return this.#tokens
+      .list()
+      .filter(
+        (token) =>
+          ownerPrincipalId === undefined ||
+          token.ownerPrincipalId === ownerPrincipalId,
+      )
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .map((token) => this.#tokenView(token));
+  }
+
+  /**
+   * #3557: revokes a token. With `ownerPrincipalId`, only that person's own:
+   * nobody revokes someone else's token by guessing its id.
+   */
+  async revokePersonalToken(
+    id: string,
+    ownerPrincipalId?: string,
+  ): Promise<boolean> {
+    if (!this.#tokens.usable()) throw new PersonalTokenUnavailableError();
+    const target = this.#tokens
+      .list()
+      .find(
+        (token) =>
+          token.id === id &&
+          (ownerPrincipalId === undefined ||
+            token.ownerPrincipalId === ownerPrincipalId),
+      );
+    return target ? await this.#tokens.revoke(id) : false;
+  }
+
+  #tokenView(token: StoredPersonalToken): PersonalAccessToken {
+    return {
+      id: token.id,
+      name: token.name,
+      ownerPrincipalId: token.ownerPrincipalId,
+      scope: token.scope,
+      effectiveScope: this.#capScope(personalTokenDevice(token)),
+      createdAt: token.createdAt,
+      expiresAt: token.expiresAt,
+      lastUsedAt: token.lastUsedAt,
+    };
   }
 
   /**
@@ -2988,6 +3408,17 @@ export class DevicePairingService {
     return !match?.alias && match?.device.locality === 'home-possession'
       ? match.device.mintKind
       : undefined;
+  }
+
+  /** Host-issued browser sessions may manage device access, never native consent. */
+  credentialMayManagePairing(candidate: string): boolean {
+    return (
+      this.credentialMintKind(candidate) === 'ui-bootstrap' &&
+      pairingScopeIncludes(
+        this.effectiveScope(candidate) ?? '',
+        PAIRING_SCOPE_ACCESS_MANAGE,
+      )
+    );
   }
 
   /**
@@ -3203,6 +3634,7 @@ export class DevicePairingService {
       status: _status,
       request: _request,
       clientInstanceId: _clientInstanceId,
+      preapproved: _preapproved,
       ...safe
     } = offer;
     return safe;

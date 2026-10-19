@@ -1,0 +1,7 @@
+{
+  "revision": "9ae07f9803c982ff48404b1389976cdc861a3d8f",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"client-side read-model refresh scheduling changed in ensureOrchestrationEventStream; the contracts reference describes server append/publish ordering and the child-work contract, none of which this touches","inputs":["docs/reference/contracts.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

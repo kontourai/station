@@ -1,0 +1,7 @@
+{
+  "revision": "81ac140c39e57a2e85a0576248907b65878a214c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Fix round 5: re-read status recovery/precedence and shared freshness claims against work-observation and the epoch-change stream snapshot path. Documented same-epoch supersession and replacement invalidation of old read tokens with unresolved failures retained. Real-reader/renderer tests cover lower-sequence new-epoch recovery, late old success/failure and retained Last known; 254/254 focused tests and desktop/mobile browser journey pass. Other composer policy and historical evidence remain unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/contexts/work-observation.ts"]}
+  ]
+}

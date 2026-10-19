@@ -1,0 +1,15 @@
+{
+  "revision": "ecc489e48f0c609aaa705690ff0cdbb6019cf938",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Re-read after the #3631 review round lowered the admission wait ceiling to 15 minutes in full-regression.yml; this document makes no claim about that ceiling or the resolve job timeouts, so no prose change.","inputs":[".veritas/README.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-read after the #3631 review round lowered the admission wait ceiling to 15 minutes in full-regression.yml; this document makes no claim about that ceiling or the resolve job timeouts, so no prose change.","inputs":["docs/guides/code-quality.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Re-read after the #3631 review round lowered the admission wait ceiling to 15 minutes in full-regression.yml; this document makes no claim about that ceiling or the resolve job timeouts, so no prose change.","inputs":["docs/guides/development.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Re-read after the #3631 review round: the capacity admission paragraph now states the 15-minute ceiling, matching scripts/release-pipeline.mjs and the resolve step timeout.","inputs":["docs/guides/releasing.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-read after the #3631 review round lowered the admission wait ceiling to 15 minutes in full-regression.yml; this document makes no claim about that ceiling or the resolve job timeouts, so no prose change.","inputs":["docs/guides/testing.md",".github/workflows/full-regression.yml"]}
+  ]
+}

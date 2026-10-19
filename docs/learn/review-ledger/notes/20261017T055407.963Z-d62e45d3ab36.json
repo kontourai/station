@@ -1,0 +1,15 @@
+{
+  "revision": "79786be93b04fdce488081d68d3f61f855f1eeb8",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the full-regression delta at79786be93b0: process-heavy jobs now install and preflight the existing checksum-pinned actionlint1.7.12 prerequisite. No protected standard, authority, readiness route or enforcement level changed. Missing-tool evidence remains failure, not success; hosted Linux bootstrap still needs its own execution receipt.","inputs":[".veritas/README.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the pinned actionlint bootstrap addition against normal hooks and hosted completion ownership. It repairs a process-heavy runner prerequisite without changing lint policy, test selection, code-health thresholds, source admission or promotion requirements. Local real actionlint workflow checks and focused cases pass; this is not full qualification.","inputs":["docs/guides/code-quality.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed process-heavy actionlint installation before corpus preparation against the current developer feedback and exact-source qualification route. The existing binary version/checksum is reused; dependencies:ci is not claimed to install host tools. No setup, source authority, provider or artifact contract changes.","inputs":["docs/guides/development.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed full-regression process-heavy bootstrap and the capacity-class test expectation. Integration FIFO class, read-only permissions, exact-source reuse, qualification admission and Nightly versus Preview/Stable requirements remain unchanged. Missing actionlint caused actual hosted prerequisite failures; the new pinned install and version preflight have not yet executed on hosted Linux in this successor.","inputs":["docs/guides/releasing.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed current corpus prerequisite repair and fixture fidelity at79786be93b0. Four owner suites reproduced6failures/43passes: additive integration capacity input, missing QueryClient/cache identity and fork callback shape, and accidental authority replacement on revision rerender. Repaired selections pass69 and expanded99 cases; real actionlint1.7.12 passes compatibility tests, while controlled missing PATH produces the intended ENOENT prerequisite failure. History-erasure and stale-list production faults fail the retained named assertions; byte-identical restoration passes. Profile/mismatch/desktop+mobile recovery captures pass with real route assertions. UI/E2E types, fixture policy and workflow gate pass. No assertion was skipped or weakened, no production hook changed, and Linux bootstrap/full hosted qualification remain pending.","inputs":["docs/guides/testing.md",".github/workflows/full-regression.yml"]}
+  ]
+}

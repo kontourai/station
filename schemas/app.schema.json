@@ -189,9 +189,37 @@
       "enum": ["trace", "debug", "info", "warn", "error"],
       "description": "Minimum severity Station writes to its server logs."
     },
+    "telemetryTier": {
+      "type": "object",
+      "properties": {
+        "kontour": { "enum": ["off", "lite", "full"] },
+        "operator": { "enum": ["off", "lite", "full"] }
+      },
+      "additionalProperties": false
+    },
     "telemetryEnabled": {
       "type": "boolean",
-      "description": "Allow documented anonymous product usage telemetry when an endpoint is configured."
+      "description": "Legacy input: true requests pseudonymous operator Full telemetry, requiring the current disclosure acknowledgement and a configured endpoint; false turns off both built-in publishers."
+    },
+    "productTelemetryEndpoint": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https?://[^\\s?#@]+$"
+    },
+    "productTelemetryKeyRef": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "otelTelemetryEndpoint": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https?://[^\\s?#@]+$"
+    },
+    "otelTelemetryKeyRef": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
     },
     "mobileDeviceHubUrl": {
       "type": "string",

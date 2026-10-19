@@ -1,0 +1,7 @@
+{
+  "revision": "d726ffae00f8a420f3ec905d5070f8467806f78f",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Checked starter dispatch claims against the added modified-click assertion in ProjectTasksSection.test.tsx; it only verifies the Project settings link opens normally on plain clicks and is left to the browser on modified clicks. No guide claim changes.","inputs":["docs/guides/starter-work.md","src-ui/src/__tests__/ProjectTasksSection.test.tsx"]}
+  ]
+}

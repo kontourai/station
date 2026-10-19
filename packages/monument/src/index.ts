@@ -11,6 +11,15 @@
  */
 export type * from './commands.js';
 export {
+  decideInboxCancel,
+  decideInboxClaimNext,
+  decideInboxRelease,
+  decideInboxResolveUnconfirmed,
+  decideInboxSettle,
+  decideInboxSubmit,
+  inboxHead,
+} from './decisions/inbox.js';
+export {
   decideRequestKeyClaim,
   type RequestKeyClaimDecision,
   type RequestKeyClaimInputs,
@@ -55,3 +64,20 @@ export {
   KernelStorageClosedError,
 } from './port.js';
 export type * from './records.js';
+export {
+  type ConversationKeyInspection,
+  conversationKeyDecision,
+  decideSessionDelivery,
+  deliverSessionMessage,
+  keyInFlightError,
+  parseSessionDeliveryDecision,
+  type SessionDeliveryBranch,
+  type SessionDeliveryDecision,
+  type SessionMessageDelivery,
+  type SessionMessageDeliveryPorts,
+  type SessionSendMode,
+  type SessionStartResult,
+  type SessionSteerResult,
+  startUnlessDelivered,
+} from './session-message-delivery.js';
+export { resolveKernelLimits } from './step.js';

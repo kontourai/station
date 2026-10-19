@@ -93,6 +93,7 @@ function app(
       target: (ref) =>
         ref.kind === 'conversation' ? TARGETS[ref.conversationId] : undefined,
       conversationExists: () => true,
+      ownProjectSlug: () => undefined,
     },
     logger: { warn() {} },
   });

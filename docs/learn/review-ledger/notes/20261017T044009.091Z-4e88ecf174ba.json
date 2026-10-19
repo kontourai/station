@@ -1,0 +1,7 @@
+{
+  "revision": "26a0eefd03971fdbd9a4432fb801903373e40ae9",
+
+  "notes": [
+    {"path":"docs/design/isolated-agent-runs.md","note":"CI failure follow-up: the existing foreground source-identity assertion now normalizes execGitSync string-or-Buffer output with toString before trim. The compared full commit and metadata guarantee are unchanged; no prose change is needed. Reproduced TS2339 at 0d1227f, built the existing Connect prerequisite, then passed typecheck:server-tests and all 57 focused foreground tests. No runtime implementation or assertion strength changed.","inputs":["docs/design/isolated-agent-runs.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]}
+  ]
+}

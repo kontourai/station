@@ -1,0 +1,7 @@
+{
+  "revision": "2c5dab36fe25d00fea821d1055db95a11f2b6ab4",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Fix round 2: re-read conversation-open resolution, history windows and restored execution sections against controller and reader call sites. Resolved/unavailable/throw authority and dedicated SDK imports remain intact. The UI observation owner now separates open, main-history and older-history failures; SDK wire shape and continuation decisions are unchanged. Focused real-reader and recovery tests passed; no public SDK API change.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

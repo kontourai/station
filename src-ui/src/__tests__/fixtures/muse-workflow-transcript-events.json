@@ -1,0 +1,50 @@
+[
+  {
+    "eventId": "ab86d126-f9a8-4aae-8ed5-e9aa6af54e80",
+    "provider": "muse",
+    "threadId": "muse-session-1",
+    "createdAt": "2026-10-14T14:25:00.000Z",
+    "method": "child-work.updated",
+    "delta": {
+      "kind": "snapshot",
+      "producer": "engine-subagent",
+      "reporterThreadId": "muse-session-1",
+      "running": [
+        {
+          "producer": "engine-subagent",
+          "reporterThreadId": "muse-session-1",
+          "childId": "first",
+          "status": "running",
+          "parent": {
+            "turnId": "turn-1",
+            "toolCallId": "call_workflow_1"
+          },
+          "title": "first",
+          "kindLabel": "workflow",
+          "backgrounded": true,
+          "controls": {
+            "stop": "provider-task-stop"
+          },
+          "startedAt": "2026-10-14T14:25:00.000Z"
+        },
+        {
+          "producer": "engine-subagent",
+          "reporterThreadId": "muse-session-1",
+          "childId": "second",
+          "status": "running",
+          "parent": {
+            "turnId": "turn-1",
+            "toolCallId": "call_workflow_1"
+          },
+          "title": "second",
+          "kindLabel": "workflow",
+          "backgrounded": true,
+          "controls": {
+            "stop": "provider-task-stop"
+          },
+          "startedAt": "2026-10-14T14:25:00.000Z"
+        }
+      ]
+    }
+  }
+]

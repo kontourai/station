@@ -183,6 +183,7 @@ export type { QRScannerProps } from './react/QRScanner';
 export { QRScanner } from './react/QRScanner';
 export {
   defaultKeptScope,
+  describeDeviceGrant,
   elevatedLabels,
   keptScopeForApproval,
   RequestedScopeChecklist,

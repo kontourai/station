@@ -1,6 +1,6 @@
 name: "PR: Docs kit"
 
-# Advisory @kontourai/docs-kit gate over docs-kit.json: manifest, links and
+# Advisory @kontourai/docs-kit gate over corpus.json: manifest, links and
 # anchors, reachability, topics, local paths, and (on pull requests and
 # merge-queue entries) freshness against the base. It is deliberately not a
 # required check.
@@ -34,12 +34,11 @@ concurrency:
 jobs:
   gate:
     name: Docs kit gate
-    # kontourai/.github main at "fix(docs-gate): run docs-kit outside the
-    # checkout with npm config isolated (#55)", reviewed in actionlint-gate.mjs.
-    uses: kontourai/.github/.github/workflows/docs-gate.yml@246be3494a5cfde4b76fb2e3dc0a84db44218893
+    # Corpus v2 reusable gate, reviewed in actionlint-gate.mjs.
+    uses: kontourai/.github/.github/workflows/docs-gate.yml@ac67c2a7484cc79cc51f81fa8b68c855c3879f94
     with:
-      # The docs-kit commit pages.yml publishes the bundle with (v0.4.0).
-      docs-kit-ref: 6945efbe0309bc46ce4efafe0fccaff9b3302603
+      # Reviewed Corpus 0.7 source, shared with Pages bundle publishing.
+      corpus-ref: b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05
       repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
       ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
     permissions:

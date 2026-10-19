@@ -1,0 +1,19 @@
+{
+  "revision": "c783c07e9cec8e3519e120330ceeff7ff39174fb",
+
+  "notes": [
+    {"path":"docs/design/project-membership.md","note":"Reviewed state-only UI changes in My access and Project authoring against current admin/owner and execution boundaries. Canonical waits/empty state and intrinsic wrapping do not alter authority or persistence.","inputs":["docs/design/project-membership.md","src-ui/src/components/profile/MyAccessPanel.tsx","src-ui/src/views/project-settings/ProjectAgentsPanel.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed tool-library action inventory, shared states, intrinsic wrapping and consolidated notification CSS. No new responsive media rule or raised ceiling; 390px runtime tool rows fit without horizontal overflow and approval controls measure 44px high. Shared Dialog retains containment and focus ownership.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the responsive action-inventory delta: no token/theme contract changed. Tool and profile layouts retain public k tokens and shared primitives; this note does not claim complete theme or platform contrast qualification.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed UI action inventory changes against this backend-pattern reference. No server/provider/domain ownership changed; no prose change needed.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed canonical state rendering and tool-approval wrapping against feature-view and query boundaries. React Query and existing mutation/unsaved-navigation owners are preserved; no new request abstraction.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed tool-source descriptions, individual actions, approvals and Project access summaries after shared-state and layout repairs. Existing current-state descriptions remain accurate; optional absent action descriptions no longer add filler text.","inputs":["docs/reference/station-docs.md","src-ui/src/views/agent-editor/AgentToolLibrary.tsx"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed Add tools discovery, About this source and Check for new tools path after layout repair. Example registration and MCP-UI sandbox delivery are untouched; existing instructions remain accurate. No MCP-UI/native runtime claim added.","inputs":["examples/mcp-ui-demo/README.md","src-ui/src/views/agent-editor/AgentToolLibrary.tsx"]}
+  ]
+}

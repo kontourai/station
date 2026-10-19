@@ -12,7 +12,6 @@
  */
 import type { SettingDefinition } from '@kontourai/station-contracts/settings-registry';
 import type { ReactNode } from 'react';
-import { PageRow } from '../../components/PageRow';
 import { Toggle } from '../../components/Toggle';
 import {
   CUSTOM_ROW_RENDERERS,
@@ -21,6 +20,7 @@ import {
 import type { RegistryRowComponentProps } from './registry-row-types';
 import { SettingDescription } from './SettingDescription';
 import { SettingRowStatus } from './SettingRowStatus';
+import { SettingsPageRow as PageRow } from './SettingsPageRow';
 import {
   settingsCatalogEntryForConfigKey,
   settingsRow,

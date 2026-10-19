@@ -153,15 +153,18 @@ function NewProjectDetails({ state }: { state: NewProjectModalState }) {
     <>
       <NewProjectDirectoryInput state={state} />
       <NewProjectIdentityInput state={state} />
-      <NewProjectDescriptionField
-        description={draft.description}
-        onChange={draft.setDescription}
-      />
-      <NewProjectEnvironmentPicker
-        id="new-project-default-environment"
-        value={draft.defaultEnvironment}
-        onChange={draft.setDefaultEnvironment}
-      />
+      <details className="new-project-modal__options">
+        <summary>More options</summary>
+        <NewProjectDescriptionField
+          description={draft.description}
+          onChange={draft.setDescription}
+        />
+        <NewProjectEnvironmentPicker
+          id="new-project-default-environment"
+          value={draft.defaultEnvironment}
+          onChange={draft.setDefaultEnvironment}
+        />
+      </details>
       <NewProjectStarterPicker
         codingStarter={starter.codingStarter}
         gitWorkspaceDetected={starter.gitWorkspaceDetected}

@@ -98,6 +98,7 @@ function setup(
           verifyOperatorCredential: (candidate) =>
             candidate === OPERATOR_CREDENTIAL,
           identifyDevice: () => null,
+          resolveGrantedScope: () => undefined,
         },
       })
     : undefined;
@@ -550,6 +551,7 @@ describe('the grant channel (station#3677 PR 2): distinct-origin consent only', 
         verifyOperatorCredential: (candidate) =>
           candidate === OPERATOR_CREDENTIAL,
         identifyDevice: () => null,
+        resolveGrantedScope: () => undefined,
       },
     });
     const app = new Hono();

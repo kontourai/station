@@ -11897,8 +11897,44 @@ fn startup_window_admitted_for(label: &str, main_window_admitted: bool) -> bool 
 
 #[cfg(not(mobile))]
 #[tauri::command]
-fn startup_window_admitted(window: tauri::WebviewWindow, app: AppHandle) -> bool {
-    startup_window_admitted_for(window.label(), main_window_activation_available(&app))
+async fn startup_window_admitted(window: tauri::WebviewWindow, app: AppHandle) -> bool {
+    if !startup_window_admitted_for(window.label(), main_window_activation_available(&app))
+        || !window.is_visible().unwrap_or(false)
+    {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSUserInterfaceItemIdentification, NSView};
+        use objc2_foundation::ns_string;
+
+        // Ready can precede the dispatcher applying cover removal. Observe
+        // the actual main-thread hierarchy instead of spending intro time
+        // behind the still-opaque native cover.
+        let (sender, mut receiver) = tauri::async_runtime::channel(1);
+        if window
+            .with_webview(move |webview| {
+                let view = unsafe { &*webview.inner().cast::<NSView>() };
+                let ns_window = unsafe { &*webview.ns_window().cast::<objc2_app_kit::NSWindow>() };
+                let identifier = ns_string!("io.kontourai.station.startup-cover");
+                let covered = ns_window.contentView().is_none_or(|content| {
+                    content.subviews().iter().any(|child| {
+                        child
+                            .identifier()
+                            .as_deref()
+                            .is_some_and(|value| value.isEqualToString(identifier))
+                    })
+                });
+                let _ = sender.try_send(!covered && view.alphaValue() >= 1.0);
+            })
+            .is_err()
+        {
+            return false;
+        }
+        receiver.recv().await.unwrap_or(false)
+    }
+    #[cfg(not(target_os = "macos"))]
+    true
 }
 
 #[cfg(not(mobile))]

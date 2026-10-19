@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type {
   ProductTelemetryBatch,
+  ProductTelemetryCommitReceipt,
   ProductTelemetryObservation,
+  ProductTelemetryProbeReceipt,
 } from '@kontourai/station-contracts/product-telemetry';
+import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 export class BrokerError extends Error {
@@ -21,15 +24,6 @@ export class BrokerError extends Error {
   ) {
     super(code);
   }
-}
-export interface ProductCommit {
-  protocol: 'station-product-commit/v1';
-  receiptId: string;
-  sourceId: string;
-  eventIds: string[];
-  inserted: number;
-  alreadyPresent: number;
-  storedAt: string;
 }
 export interface ProductSource {
   id: string;
@@ -54,14 +48,21 @@ export interface ProductTrends {
   }>;
 }
 export interface ProductRepository {
-  ingest(key: string, batch: ProductTelemetryBatch): Promise<ProductCommit>;
+  ingest(
+    key: string,
+    batch: ProductTelemetryBatch,
+  ): Promise<ProductTelemetryCommitReceipt>;
+  probe(key: string): Promise<ProductTelemetryProbeReceipt>;
   createSource(
     id: string,
     label: string,
     credentialHash: string,
   ): Promise<ProductSource>;
   revokeSource(id: string): Promise<boolean>;
-  receipt(key: string, id: string): Promise<ProductCommit | null>;
+  receipt(
+    key: string,
+    id: string,
+  ): Promise<ProductTelemetryCommitReceipt | null>;
   trends(from: string, to: string): Promise<ProductTrends>;
   ready(): Promise<void>;
 }
@@ -308,6 +309,21 @@ export class PgProductRepository implements ProductRepository {
       await this.assertSchema(client);
     });
   }
+  async probe(key: string): Promise<ProductTelemetryProbeReceipt> {
+    return this.transaction(async (client) => {
+      const source = await this.source(client, key);
+      const { rows } = await client.query<{ checked_at: Date }>(
+        'SELECT clock_timestamp() AS checked_at',
+      );
+      return {
+        protocol: 'station-product-probe/v1',
+        sourceId: source.id,
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+        checkedAt: rows[0].checked_at.toISOString(),
+        storage: 'postgres-schema-v1',
+      };
+    });
+  }
   private async source(client: PoolClient, key: string): Promise<SourceRow> {
     if (!/^stp_[A-Za-z0-9_-]{43}$/.test(key))
       throw new BrokerError('source_unauthorized');
@@ -366,7 +382,7 @@ export class PgProductRepository implements ProductRepository {
   async ingest(
     key: string,
     batch: ProductTelemetryBatch,
-  ): Promise<ProductCommit> {
+  ): Promise<ProductTelemetryCommitReceipt> {
     return this.transaction(async (client) => {
       const source = await this.source(client, key);
       // Serializes admission and storage bounds across all sources, without changing Station's execution concurrency.
@@ -430,7 +446,7 @@ export class PgProductRepository implements ProductRepository {
           values,
         );
       }
-      const receipt: ProductCommit = {
+      const receipt: ProductTelemetryCommitReceipt = {
         protocol: 'station-product-commit/v1',
         receiptId: randomUUID(),
         sourceId: source.id,
@@ -451,11 +467,16 @@ export class PgProductRepository implements ProductRepository {
       return receipt;
     });
   }
-  async receipt(key: string, id: string): Promise<ProductCommit | null> {
+  async receipt(
+    key: string,
+    id: string,
+  ): Promise<ProductTelemetryCommitReceipt | null> {
     if (!uuid(id)) throw new BrokerError('invalid_source');
     return this.transaction(async (client) => {
       const source = await this.source(client, key);
-      const { rows } = await client.query<{ body: ProductCommit }>(
+      const { rows } = await client.query<{
+        body: ProductTelemetryCommitReceipt;
+      }>(
         'SELECT body FROM station_telemetry.commits WHERE id=$1 AND source_id=$2',
         [id, source.id],
       );

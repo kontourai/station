@@ -69,7 +69,7 @@ import {
 import { LazyBoundary } from '../components/LazyBoundary';
 import { Empty, ErrorState, SkeletonList } from '../components/state';
 import { useNavigationActions } from '../contexts/NavigationContext';
-import { useDockFoldsToOneRegion, useIsMobile } from '../hooks/useIsMobile';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
 import {
   type NativePlatformAdapter,
@@ -517,9 +517,8 @@ function BuiltinCodingLayoutHost({
   // The Coding stack (#928): which page the URL names, and whether the
   // centre shows Chat — the same derivation App suspends the dock's Chat by.
   const stackSelection = useCodingStackSelection();
-  const bottomOnly = useDockFoldsToOneRegion();
   const centerChat =
-    resolveLayoutChatPlacement({ type: 'coding' }, { bottomOnly }) === 'center';
+    resolveLayoutChatPlacement({ type: 'coding' }) === 'center';
   // Past the wide fold a pane opens beside the centre's Chat (#3040) — only
   // where the centre HAS Chat; a bottom-only device keeps the drill-in.
   const wide = useCodingWide() && centerChat;

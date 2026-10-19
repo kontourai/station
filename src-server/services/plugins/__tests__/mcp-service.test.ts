@@ -76,6 +76,7 @@ const connectMCPMock = vi.mocked(connectMCP);
 
 function createMockConfigLoader() {
   const loader = withAtomicUpdate({
+    getProjectHomeDir: () => MCP_TEMP_ROOT,
     listIntegrations: vi
       .fn()
       .mockResolvedValue([{ id: 'mcp-1', name: 'Test' }]),
@@ -1756,7 +1757,7 @@ describe('MCPService', () => {
       await rm(home, { recursive: true, force: true });
     }
   });
-  test('records probe completion time after a delayed successful connection', async () => {
+  test('retains bounded browsing metadata and completion time after a delayed successful discovery', async () => {
     vi.useFakeTimers();
     const loader = createMockConfigLoader();
     let resolveConnection!: (value: unknown) => void;
@@ -1777,10 +1778,36 @@ describe('MCPService', () => {
     );
     const pending = svc.probeIntegration('mcp-1');
     vi.setSystemTime(new Date('2026-08-14T10:00:05.000Z'));
-    resolveConnection({ tools: [], disconnect: vi.fn() });
+    resolveConnection({
+      tools: Array.from({ length: 201 }, (_, index) => ({
+        name: `mcp-1_report_${index}`,
+        originalName: `report_${index}`,
+        serverId: 'mcp-1',
+        description:
+          index === 0 ? 'Explain quarterly revenue' : 'x'.repeat(2100),
+        _meta: {
+          'ai.kontour/tool-group': 'Reporting',
+          private: 'must not be projected',
+        },
+        inputSchema: { type: 'object' },
+      })),
+      disconnect: vi.fn(),
+    });
     const result = await pending;
 
     expect(result.probe?.checkedAt).toBe('2026-08-14T10:00:05.000Z');
+    expect(result.probe?.toolCount).toBe(201);
+    expect(result.probe?.tools).toHaveLength(200);
+    expect(result.probe?.tools?.[0]).toEqual({
+      name: 'report_0',
+      description: 'Explain quarterly revenue',
+      group: 'Reporting',
+    });
+    expect(result.probe?.tools?.[1].description).toHaveLength(2000);
+    expect(loader.saveIntegration).toHaveBeenCalledWith(
+      'mcp-1',
+      expect.objectContaining({ probe: result.probe }),
+    );
     vi.useRealTimers();
   });
   test('ordinary edits preserve hidden binding references', async () => {

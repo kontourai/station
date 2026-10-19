@@ -2,6 +2,7 @@ import type {
   PluginInstallationRevision,
   PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import { recordIntegrationOrigin } from '../../services/plugins/integration-origin.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -87,6 +88,7 @@ import {
 } from './plugin-person-approval.js';
 
 interface RegistryRouteDeps {
+  authorizeOperator?: (c: Context) => Promise<void>;
   /**
    * Caller resolution for the operator-only plugin-catalog routes (#2067).
    * Absent means this composition is not serving authenticated HTTP callers,
@@ -174,6 +176,28 @@ export function createRegistryRoutes(
   const app = new Hono();
   const projectHomeDir = configLoader.getProjectHomeDir();
   const sources = registrySourceManager(projectHomeDir);
+  app.use('*', async (c, next) => {
+    if (
+      c.req.method === 'POST' &&
+      ['/integrations/install', '/plugins/install', '/agents/install'].includes(
+        c.req.path.replace(/^\/api\/registry/, ''),
+      ) &&
+      deps?.authorizeOperator
+    ) {
+      try {
+        await deps.authorizeOperator(c);
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error: 'Only the Station operator can install sources.',
+          },
+          403,
+        );
+      }
+    }
+    await next();
+  });
   const manageSources = operatorOnly(deps?.visibility, 'manage marketplaces');
   app.get(
     '/sources',
@@ -724,11 +748,18 @@ export function createRegistryRoutes(
       const { id } = getBody(c);
       registryOps.add(1, { operation: 'install-integration', item: id });
 
-      const result = await getIntegrationRegistryProvider().install(id);
+      const provider = getIntegrationRegistryProvider();
+      const installed = provider.installWithDefinition
+        ? await provider.installWithDefinition(id)
+        : {
+            result: await provider.install(id),
+            definition: (await provider.getToolDef(id)) ?? undefined,
+          };
+      const result = installed.result;
       if (!result.success) return c.json(result, 500);
 
       // Auto-generate integration.json from provider metadata
-      const toolDef = await getIntegrationRegistryProvider().getToolDef(id);
+      const toolDef = installed.definition;
       if (toolDef) {
         let existing:
           | Awaited<ReturnType<ConfigLoader['loadIntegration']>>
@@ -753,6 +784,12 @@ export function createRegistryRoutes(
         // binding authority. It can never author a reference.
         delete persisted.secretEnvRefs;
         await configLoader.saveIntegration(toolDef.id, persisted);
+        if ('origin' in installed && installed.origin)
+          recordIntegrationOrigin(
+            configLoader.getProjectHomeDir(),
+            persisted,
+            installed.origin,
+          );
       }
 
       return c.json(result);

@@ -365,6 +365,15 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
   prompt?: string;
+  /**
+   * The idempotency key of the send this turn came from
+   * (`OrchestrationSendTurnInput.clientTurnId`), stamped by Station when the
+   * accepted send produced this event — never by an adapter. Lets the sending
+   * client match its own message to the turn exactly. Absent on events
+   * persisted before it existed, on steers, and on turns no keyed send
+   * produced (an engine-opened turn, another app's transcript).
+   */
+  clientTurnId?: string;
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**

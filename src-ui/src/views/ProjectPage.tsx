@@ -1,27 +1,22 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
-import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
 import {
   StationHttpError,
   useApplyProjectLayoutMutation,
   useAvailableProjectLayoutsQuery,
-  useEngineConnectionsQuery,
   useKnowledgeDocsQuery,
   useKnowledgeNamespacesQuery,
   useKnowledgeStatusQuery,
   useProjectConversationsQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
-import { useMemo, useReducer, useState } from 'react';
-import { selectChatReadyAgents } from '../components/agent-selection-policy';
+import { useReducer, useState } from 'react';
 import { Button } from '../components/Button';
 import { HomeStartComposer } from '../components/home/HomeStartComposer';
 import { BranchGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
-import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
-import { useAgents } from '../contexts/AgentsContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
   type ProjectConfig,
@@ -30,7 +25,6 @@ import {
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { trackRecentLayout } from '../hooks/useRecentLayouts';
-import { requestProjectChat } from '../lib/projectChatEvents';
 import { errorText } from '../utils/errorText';
 import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
@@ -50,7 +44,6 @@ import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
-import { projectChatCta } from './project-page/projectChatCta';
 import type { AvailableLayout, ConversationRecord } from './project-page/types';
 import './project-page-frame.css';
 import './ProjectPage.css';
@@ -204,8 +197,7 @@ function ProjectOperatorPage({
   slug: string;
   project: ProjectConfig;
 }) {
-  const { setLayout, setConversation, navigate, setDockState } =
-    useNavigation();
+  const { setLayout, setConversation, navigate } = useNavigation();
   // #801: the page renders as soon as the *project* query settles, so a
   // layouts fetch still in flight used to reach the section as an empty array
   // and render the empty state for a project that has layouts.
@@ -215,25 +207,6 @@ function ProjectOperatorPage({
     isError: layoutsError,
     refetch: refetchLayouts,
   } = useProjectLayoutsQuery(slug);
-  const agents = useAgents();
-  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
-    data?: ConnectionConfig[];
-  };
-  // ONE fact drives the "New here?" banner's copy AND whether it appears at
-  // all: which Agents can start a chat in this project. See
-  // `projectChatCta`.
-  const chatCta = useMemo(
-    () =>
-      projectChatCta(
-        selectChatReadyAgents({
-          agents,
-          agentConnections,
-          selectedProjectSlug: slug,
-          selectedProjectAgentFilter: project?.agents,
-        }),
-      ),
-    [agentConnections, agents, project?.agents, slug],
-  );
   const { data: gitStatus } = useGitStatus(slug, project?.workingDirectory);
   const { data: gitLog = [] } = useGitLog(slug, project?.workingDirectory, 5);
   const {
@@ -373,42 +346,6 @@ function ProjectOperatorPage({
             }}
             pending={null}
           />
-        )}
-
-        {conversations.length === 0 && !navigator.webdriver && chatCta && (
-          // In a stack even as the only callout: the stack owns the rhythm
-          // between a callout and the page under it, so a page that renders
-          // one directly loses the space the card it replaces had.
-          <PageCalloutStack>
-            <PageCallout
-              calloutId="project-chat-cta"
-              ariaLabel="Start a chat in this project"
-              title={chatCta.headline}
-              action={
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    // Reveal the dock first: its New Chat dialog renders inside
-                    // the dock shell, which is collapsed to its header strip
-                    // while closed. Then ask the dock to route — it focuses a
-                    // chat already bound to this project, or opens the picker
-                    // preselected to it. `setDockState(true)` alone was the bug:
-                    // it just revealed whatever conversation was last active.
-                    setDockState(true);
-                    requestProjectChat({
-                      projectSlug: slug,
-                      projectName: project.name || slug,
-                      source: 'project-page-cta',
-                    });
-                  }}
-                >
-                  {chatCta.actionLabel}
-                </Button>
-              }
-            >
-              {chatCta.detail}
-            </PageCallout>
-          </PageCalloutStack>
         )}
 
         {gitStatus && gitStatus.isRepo === false && (

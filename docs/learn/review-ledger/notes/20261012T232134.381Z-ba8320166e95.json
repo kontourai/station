@@ -1,0 +1,7 @@
+{
+  "revision": "3f11efe1d5eac2d32e225de1dc7e56da20bfc5ca",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"3f11efe1d5 re-baselines 50 gallery screens from the PR gallery artifact gallery-pr-38320444683-1 (CI's digest-pinned Linux Chromium), via npm run screenshot:baseline --gallery=<download>, as its own commit. Every changed screen's differing pixels lie only in the Station mark (sidebar 24px, mobile header 22px, or the same mark blurred behind a modal backdrop). The guide's baseline workflow, renderer binding and refresh route are unchanged and were followed as written.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-bound.png","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}

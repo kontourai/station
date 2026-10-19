@@ -1,0 +1,7 @@
+{
+  "revision": "d16332677236ecc3467e929d7851e264ae59c021",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Windows Nightly installation/launcher paragraph against install.ps1 generated core and packages/shared/src/installer/full-install.ts: default launcher is USERPROFILE/.local/bin/station-nightly.cmd, and installation only prints a PATH hint. Replaced the later bare launch with PowerShell's explicit invocation operator and quoted full launcher path. Real Windows signed archive 248009 installed; explicit isolated launcher start/open exited zero and UI returned 200 twice fifteen seconds apart in a live SSH session. This does not claim default-home adoption, service/reboot survival, or native/store qualification. Other onboarding claims and examples unchanged. docs:mcp:generate executed with no generated delta.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

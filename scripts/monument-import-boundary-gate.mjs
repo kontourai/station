@@ -447,7 +447,10 @@ export function allowedPackageFile(file) {
       !file.slice(MONUMENT_ROOT.length + 1).includes('/')) ||
     file === `${MONUMENT_ROOT}/LICENSE` ||
     file === `${MONUMENT_ROOT}/package.json` ||
-    file === `${MONUMENT_ROOT}/tsconfig.json`
+    file === `${MONUMENT_ROOT}/tsconfig.json` ||
+    // The publish build's config (`npm run build`); its `dist/` output is
+    // plain `.js` and `.d.ts`, which are source and scanned like any other.
+    file === `${MONUMENT_ROOT}/tsconfig.build.json`
   );
 }
 

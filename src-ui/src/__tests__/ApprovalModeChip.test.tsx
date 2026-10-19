@@ -55,11 +55,49 @@ function chipValue() {
 }
 
 describe('ApprovalModeChip', () => {
-  test('an inherited mode keeps Default visible when the engine receipt arrives', () => {
+  test('Codex Ask discloses the unknown reviewer while preserving picker selection', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <ApprovalModeChip
+        engineConnectionId="codex"
+        sessionOverride="ask"
+        lastAppliedApprovalMode="ask"
+        onChange={onChange}
+      />,
+    );
+    expect(trigger().getAttribute('title')).toContain(
+      'Codex reviewer not reported here; sandbox escalations may be approved automatically.',
+    );
+    expect(trigger().getAttribute('aria-label')).toContain(
+      'Codex reviewer not reported here',
+    );
+    await openSheet();
+    expect(
+      option(
+        /Ask first.*untrusted commands.*reviewer may approve sandbox escalations automatically/i,
+      ),
+    ).toHaveProperty('checked', true);
+    fireEvent.click(option(/^Auto/));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('auto');
+
+    rerender(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="ask"
+        onChange={onChange}
+      />,
+    );
+    expect(trigger().getAttribute('title')).not.toContain('Codex reviewer');
+    await openSheet();
+    expect(option(/Ask first.*Claude asks/i)).toBeTruthy();
+    expect(screen.queryByText(/configured reviewer may approve/i)).toBeNull();
+  });
+
+  test('an inherited mode shows what the engine confirmed in the visible chip', () => {
     const { rerender } = render(
       <ApprovalModeChip engineConnectionId="codex" onChange={vi.fn()} />,
     );
-    expect(chipValue()).toBe('Default');
+    expect(chipValue()).toBe('Engine default');
     rerender(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -67,11 +105,11 @@ describe('ApprovalModeChip', () => {
         onChange={vi.fn()}
       />,
     );
-    expect(chipValue()).toBe('Default');
+    expect(chipValue()).toBe('Full access');
     expect(trigger().getAttribute('title')).toContain(
       'Never ask (full access)',
     );
-    expect(trigger().getAttribute('aria-label')).toContain('Default');
+    expect(trigger().getAttribute('aria-label')).toContain('Full access');
   });
   test('renders nothing for an engine whose adapter has no approval knob', () => {
     const { rerender, container } = render(
@@ -142,7 +180,7 @@ describe('ApprovalModeChip', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /^Approval mode: Default — Ask first/,
+        name: /^Approval mode: Ask — Ask first/,
       }),
     ).toBeTruthy();
   });
@@ -187,9 +225,9 @@ describe('ApprovalModeChip', () => {
         onChange={vi.fn()}
       />,
     );
-    expect(chipValue()).toBe('Default');
+    expect(chipValue()).toBe('Ask');
     expect(trigger().getAttribute('aria-label')).toMatch(
-      /^Approval mode: Default — Ask first\./,
+      /^Approval mode: Ask — Ask first\./,
     );
   });
 
@@ -235,7 +273,7 @@ describe('ApprovalModeChip', () => {
     );
 
     expect(
-      screen.getByRole('button', { name: /^Approval mode: Default — Auto\./ }),
+      screen.getByRole('button', { name: /^Approval mode: Auto — Auto\./ }),
     ).toBeTruthy();
     await openSheet();
     expect(option(/^Auto/).getAttribute('aria-checked')).toBe('true');
@@ -255,7 +293,7 @@ describe('ApprovalModeChip', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /^Approval mode: Default — Connection default\./,
+        name: /^Approval mode: Engine default — Connection default\./,
       }),
     ).toBeTruthy();
     await openSheet();
@@ -397,7 +435,7 @@ describe('ApprovalModeChip', () => {
     // No override: the engine's receipt labels the chip (station#1950).
     expect(
       screen.getByRole('button', {
-        name: /^Approval mode: Default — Ask first\./,
+        name: /^Approval mode: Ask — Ask first\./,
       }),
     ).toBeTruthy();
 
@@ -598,7 +636,7 @@ describe('ApprovalModeChip', () => {
     // The description is visible text in the sheet now, not an <option> title —
     // it was previously reachable only by hovering a native select option.
     const autoDescription =
-      'Agent asks at its own discretion; file writes sandboxed to the workspace.';
+      "Agent requests approval at its own discretion; Codex's configured reviewer may approve sandbox escalations automatically. File writes stay sandboxed to the workspace.";
     expect(screen.getByText(autoDescription)).toBeTruthy();
     // `option` now resolves the native `<input type="radio">` itself (real
     // radio semantics, archive#996) — a leaf element with no text-node
@@ -689,11 +727,11 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Default — Connection default. Engine approval control.',
+      'Approval mode: Engine default — Connection default. Engine approval control.',
     );
     expect(
       chip.querySelector('.chat-input__approval-chip-label')?.textContent,
-    ).toBe('Default');
+    ).toBe('Engine default');
   });
 
   // WCAG 2.5.3 Label in Name: a speech-input user says what they see, so the

@@ -5,7 +5,7 @@ import {
 } from '@kontourai/station-sdk';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import {
   activeChatsStore,
@@ -27,6 +27,9 @@ import {
   selectionContainsCredential,
 } from './terminalSelectionHandoff';
 
+/** Server events that belong to one terminal session (`TerminalEvent`). */
+const SESSION_EVENT_TYPES = new Set(['data', 'started', 'exited', 'activity']);
+
 export function TerminalPanel({
   projectSlug,
   workingDir,
@@ -44,12 +47,28 @@ export function TerminalPanel({
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
 }) {
-  const { apiBase, connectionId, credentialProvider } = useApiBase();
+  const {
+    apiBase,
+    connectionId,
+    credentialProvider: liveCredentials,
+  } = useApiBase();
+  const credential = liveCredentials.getCredential();
+  const protocolVersion = liveCredentials.getProtocolVersion();
+  const credentialProvider = useMemo(
+    () => ({
+      getCredential: () => credential,
+      getProtocolVersion: () => protocolVersion,
+    }),
+    [credential, protocolVersion],
+  );
   const activeChat = useNavigation((state) => state.activeChat);
   const { getDraft, setDraft, updateChat } = useActiveChatActions();
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  const [wsError, setWsError] = useState(false);
+  const [wsError, setWsError] = useState<string | null>(null);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const [connected, setConnected] = useState(false);
+  const isMobile = useIsMobile();
   // #1244: the server's specific degraded-terminal reason (node-pty failed
   // to load). Distinct from wsError so a dead PTY backend reads as "here is
   // why, and what still works", never as a silent pane or a transport blip.
@@ -62,10 +81,12 @@ export function TerminalPanel({
   const sendTextRef = useRef<((text: string) => boolean) | null>(null);
   const getLiveCwdRef = useRef<(() => Promise<string | null>) | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit reconnect restarts this socket with the same terminal identity.
   useEffect(() => {
     if (!containerRef.current) return;
     setUnavailableReason(null);
-    setWsError(false);
+    setWsError(null);
+    setConnected(false);
 
     // Bump the glyph size on phone-width viewports — xterm renders to a canvas,
     // so the readable-text fix has to live in JS, not CSS. Mirrors the 768px
@@ -140,9 +161,10 @@ export function TerminalPanel({
       try {
         port = await fetchTerminalPort(apiBase);
       } catch {
-        if (!disposed) setWsError(true);
+        if (!disposed) setWsError('Terminal unavailable.');
         return;
       }
+      if (disposed) return;
       // Port discovery may await a routed application request. Recheck the
       // selected binding directly before opening the raw WebSocket.
       if (!ensureTerminalSocketAllowed()) return;
@@ -179,8 +201,8 @@ export function TerminalPanel({
         isRemoteEndpoint(apiBase, window.location.href),
         credentialProvider,
         sendOpen,
-        () => {
-          if (!disposed) setWsError(true);
+        (message) => {
+          if (!disposed) setWsError(message);
           ws?.close();
         },
       );
@@ -191,12 +213,21 @@ export function TerminalPanel({
       };
 
       ws.onmessage = (event) => {
+        if (disposed) return;
         if (!ensureTerminalSocketAllowed()) return;
         if (authGate.consume(event.data as string)) return;
         try {
           const msg = JSON.parse(event.data as string);
+          // Defense in depth: session events for any other session (or before
+          // this panel's snapshot names its own) never reach this terminal.
+          if (
+            SESSION_EVENT_TYPES.has(msg.type) &&
+            (!sessionId || msg.sessionId !== sessionId)
+          )
+            return;
           if (msg.type === 'snapshot') {
             sessionId = msg.sessionId;
+            setConnected(true);
             if (msg.history) terminal.write(msg.history);
           } else if (msg.type === 'data') {
             terminal.write(msg.data);
@@ -208,6 +239,8 @@ export function TerminalPanel({
             }
           } else if (msg.type === 'exited') {
             exited = true;
+            setConnected(false);
+            setWsError('The shell has exited.');
             terminal.write('\r\n[terminal exited]\r\n');
           } else if (
             msg.type === 'error' &&
@@ -225,12 +258,16 @@ export function TerminalPanel({
       };
 
       ws.onerror = () => {
-        if (!disposed) setWsError(true);
+        if (!disposed) {
+          setConnected(false);
+          setWsError('Terminal disconnected.');
+        }
       };
       ws.onclose = (event) => {
-        if (!disposed && event.code !== 1000) {
+        if (!disposed && !exited) {
           console.warn(`[Terminal] ${websocketCloseError(event.code)}`);
-          setWsError(true);
+          setConnected(false);
+          setWsError(websocketCloseError(event.code));
         }
       };
     };
@@ -335,7 +372,15 @@ export function TerminalPanel({
     terminalId,
     shell,
     shellArgs,
+    connectionAttempt,
   ]);
+
+  useEffect(() => {
+    if (!wsError) return;
+    const reconnect = () => setConnectionAttempt((attempt) => attempt + 1);
+    window.addEventListener('online', reconnect);
+    return () => window.removeEventListener('online', reconnect);
+  }, [wsError]);
 
   const sendSelectionToChat = async () => {
     // Read from xterm at the hand-off, rather than from selection state: this
@@ -410,14 +455,21 @@ export function TerminalPanel({
     );
   }
 
-  if (wsError) {
-    return (
-      <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
-    );
-  }
-
   return (
     <div className="coding-terminal-shell">
+      {wsError ? (
+        <div className="coding-terminal-connection" role="alert">
+          <span>{wsError}</span>
+          <button
+            type="button"
+            onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
+          >
+            Reconnect terminal
+          </button>
+        </div>
+      ) : !connected ? (
+        <p role="status">Connecting to the terminal…</p>
+      ) : null}
       {selection && (
         <fieldset className="coding-terminal-selection-actions">
           <legend>Terminal selection actions</legend>
@@ -442,6 +494,34 @@ export function TerminalPanel({
         }}
         onPointerDown={() => terminalRef.current?.focus()}
       />
+      {isMobile && (
+        <div
+          className="coding-terminal-keys"
+          role="toolbar"
+          aria-label="Terminal keys"
+        >
+          {[
+            ['Interrupt (Ctrl+C)', 'Ctrl+C', '\u0003'],
+            ['Tab', 'Tab', '\t'],
+            ['Previous command', '↑', '\u001b[A'],
+            ['Next command', '↓', '\u001b[B'],
+          ].map(([label, text, input]) => (
+            <button
+              key={label}
+              type="button"
+              aria-label={label}
+              disabled={!connected}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => {
+                sendTextRef.current?.(input);
+                terminalRef.current?.focus();
+              }}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

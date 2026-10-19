@@ -648,6 +648,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       'a-caller': A,
       'g-caller': A,
       'u-caller': A,
+      'a-host': A,
+      'p-old': A,
+      'u-old': A,
       'carol-p1': CAROL,
     };
     /** A station-control tool call, as the engine's MCP client makes it. */
@@ -720,6 +723,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       rawRequest,
       routeRequests,
       appendTurn: writeTurn,
+      startSession,
+      at,
+      p1,
     };
   }
 
@@ -772,6 +778,77 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
           ]);
         // A claim is Part B: the field is not there, not even empty.
         expect(text).not.toMatch(/claim/i);
+      }
+    });
+
+    test('a caller whose own Session runs host still lists itself as self, and its Project', async () => {
+      const { tool } = await setup();
+      for (const caller of [
+        bound('a-host'),
+        delegated('a-host'),
+        bearer('a-host'),
+      ]) {
+        const listed = await tool(caller, 'list_project_activity', {});
+        // The `host` refusal keeps a scoped caller out of OTHER unconfined
+        // Sessions; its own is not another, as its digest already reads.
+        expect([caller.channel, ids(listed.body)]).toEqual([
+          caller.channel,
+          [...PROJECT_1_SESSIONS, 'a-host'].sort(),
+        ]);
+        const own = listed.body.data.sessions.filter(
+          (row: any) => row.self === true,
+        );
+        expect([caller.channel, own.map((row: any) => row.sessionId)]).toEqual([
+          caller.channel,
+          ['a-host'],
+        ]);
+      }
+    });
+
+    test('a caller its conversation has moved past lists the conversation’s current Session as self, even when it runs host', async () => {
+      const { tool, store, startSession, at, p1 } = await setup();
+      // `p-old` is in Project 1; `u-old`'s scope cannot be read. Each
+      // conversation continued in a successor that runs unconfined.
+      for (const [root, project, metadata] of [
+        ['p-old', p1, undefined],
+        ['u-old', undefined, { projectSlug: 'project-1' }],
+      ] as const) {
+        startSession(root, A, project, metadata ? { metadata } : {});
+        store.reserveConversationHandoff({
+          conversationId: root,
+          predecessorSessionId: root,
+          sessionId: `${root}-next`,
+          idempotencyKey: `${root}-switch`,
+          messageDigest: `${root}-digest`,
+          targetAgentId: 'codex-agent',
+          targetEnvironmentId: 'this-station',
+          createdAt: at(),
+        });
+        startSession(`${root}-next`, A, project, {
+          metadata: { ...metadata, stationConfinement: 'host' },
+        });
+      }
+      for (const caller of [bearer('p-old'), delegated('p-old')]) {
+        const listed = await tool(caller, 'list_project_activity', {});
+        const own = listed.body.data.sessions.filter(
+          (row: any) => row.self === true,
+        );
+        expect([caller.channel, own.map((row: any) => row.sessionId)]).toEqual([
+          caller.channel,
+          ['p-old-next'],
+        ]);
+        // Another unconfined Session of the Project is still not its to see.
+        expect([caller.channel, ids(listed.body).includes('a-host')]).toEqual([
+          caller.channel,
+          false,
+        ]);
+      }
+      for (const caller of [bearer('u-old'), delegated('u-old')]) {
+        const listed = await tool(caller, 'list_project_activity', {});
+        expect([caller.channel, ids(listed.body)]).toEqual([
+          caller.channel,
+          ['u-old-next'],
+        ]);
       }
     });
 
@@ -1196,7 +1273,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       });
     });
 
-    test('a caller whose own scope cannot be read still reads its OWN digest, and nothing else', async () => {
+    test('a caller whose own scope cannot be read still reads and lists its OWN conversation, and nothing else', async () => {
       const { tool } = await setup();
       for (const caller of [bearer('u-caller'), delegated('u-caller')]) {
         const own = await tool(caller, 'get_session_digest', {
@@ -1207,7 +1284,8 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
           own.isError,
           own.body.data?.session?.sessionId,
         ]).toEqual([caller.channel, false, 'u-caller']);
-        // The rule refuses every other Session to it: absent, and an empty list.
+        // The rule refuses every other Session to it: absent, and a list of
+        // its own conversation only.
         for (const target of ['a-peer', 'a-global', 'g-caller']) {
           const other = await tool(caller, 'get_session_digest', {
             sessionId: target,
@@ -1221,8 +1299,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         const listed = await tool(caller, 'list_project_activity', {});
         expect([caller.channel, ids(listed.body)]).toEqual([
           caller.channel,
-          [],
+          ['u-caller'],
         ]);
+        expect(listed.body.data.sessions[0].self).toBe(true);
       }
     });
 

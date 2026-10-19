@@ -1,0 +1,7 @@
+{
+  "revision": "8d585313ab25b83c5dd54494e036d8c450896dff",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed new attestation HEAD against GOVERNANCE.md and installed Veritas policy-change mechanism. Only four owner-approved advisory records renew; protected hashes, required documentation truth evidence, readiness and review lifecycle semantics remain unchanged. Existing explanation needs no prose change; attestation alone does not establish policy, runtime or hosted qualification.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD"]}
+  ]
+}

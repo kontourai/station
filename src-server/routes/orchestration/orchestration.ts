@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import {
   parseStationAnswerNarrativePublishInput,
   parseStationAnswerNarrativeRemoveInput,
@@ -25,6 +28,7 @@ import type {
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   type EnvironmentRef,
+  EXECUTION_ENGINE_CHANGED_CODE,
   type ExecutionModelRequest,
   type ExecutionTarget,
   environmentId,
@@ -33,8 +37,10 @@ import {
 import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
+  TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  type ConversationInboxQueuedReceipt,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type OrchestrationQuoteSource,
   QUOTE_SOURCE_MAX_BYTES,
@@ -47,7 +53,10 @@ import {
   APPROVAL_MODES,
   type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  CLIENT_TURN_IN_FLIGHT_CODE,
   type DelegationProvenance,
+  PROVIDER_SESSION_STARTING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
@@ -76,7 +85,10 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
-import type { RequestDelegationResolver } from '../../runtime/agents/request-delegation.js';
+import type {
+  RequestDelegationResolver,
+  ResolvedRequestDelegation,
+} from '../../runtime/agents/request-delegation.js';
 import {
   getTenantRequestContext,
   tenantExecutionContextForRequest,
@@ -84,6 +96,7 @@ import {
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -117,6 +130,10 @@ import {
   DelegationAttemptPendingError,
   type DelegationAttemptProjection,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import type {
+  DelegationResultCanceller,
+  DelegationResultDelivery,
+} from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -135,7 +152,12 @@ import {
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from '../../services/orchestration/session-owner-attribution.js';
 import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
+import {
+  ConversationTurnQueuedError,
+  type ThreadInboxDelivery,
+} from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
+import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
   RECEIVER_EXECUTION_REFUSAL_COPY,
@@ -157,7 +179,11 @@ import {
   orchestrationStreamResumeGap,
   sseOps,
 } from '../../telemetry/metrics.js';
-import { PeerDelegationAttemptDuplicateError } from '../../tools/station-control-delegation.js';
+import {
+  type DelegatedTaskInterruptResult,
+  followUpTargetMatchesBinding,
+  PeerDelegationAttemptDuplicateError,
+} from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
@@ -174,14 +200,21 @@ import {
 import {
   dispatchCwdRefusalFor,
   foregroundDispatchTarget,
+  foregroundStartsSession,
   namesAnotherStation,
   newSessionFacts,
   refuseCarriedPosture,
   refuseOutOfScopeDispatch,
   refuseRemoteForStationControlCaller,
   scopeDispatch,
+  withCallerProjectWorkspace,
   withCanonicalCwd,
 } from './dispatch-scope.js';
+import {
+  FOREGROUND_DELIVERY_CAPACITY_MESSAGE,
+  ForegroundDeliveryReceiptCapacityError,
+  ForegroundDeliveryReceipts,
+} from './foreground-delivery-receipts.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -617,6 +650,19 @@ const executionTargetSchema = z.object({
     })
     .optional(),
   workspace: workspaceTargetSchema.optional(),
+  // A precondition the resolver can only refuse on (never a selector). The
+  // inner objects are strict so a field that would read as one is rejected.
+  expectedEngine: z
+    .discriminatedUnion('kind', [
+      z.object({ kind: z.literal('station') }).strict(),
+      z
+        .object({
+          kind: z.literal('connection'),
+          connectionId: z.string().min(1).max(256),
+        })
+        .strict(),
+    ])
+    .optional(),
 });
 
 function normalizeExecutionTarget(
@@ -624,8 +670,20 @@ function normalizeExecutionTarget(
   defaultEnvironment: EnvironmentRef = { kind: 'current' },
 ): ExecutionTarget {
   const selectedEnvironment = target.environment ?? defaultEnvironment;
+  const { expectedEngine, ...rest } = target;
   return {
-    ...target,
+    ...rest,
+    ...(expectedEngine
+      ? {
+          expectedEngine:
+            expectedEngine.kind === 'station'
+              ? { kind: 'station' as const }
+              : {
+                  kind: 'connection' as const,
+                  connectionId: engineConnectionId(expectedEngine.connectionId),
+                },
+        }
+      : {}),
     environment:
       selectedEnvironment.kind === 'saved'
         ? { kind: 'saved', id: environmentId(selectedEnvironment.id) }
@@ -799,6 +857,62 @@ export const foregroundMessageObjectSchema = z.object({
   setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
 });
 
+/**
+ * #3568: the follow-up a `/chat` send hands to its conversation's inbox when
+ * the conversation is busy, or undefined when this send cannot be held there.
+ * Only a plain continuation can: the inbox replays it through the
+ * conversation's persisted binding later, without this request. Attachments,
+ * a visual skill start, an input reply, an approval pick, a delegated or
+ * background send and another Station's target all need this request's own
+ * authority or bytes, so they are refused when busy, as before.
+ */
+function inboxFollowUpOf(
+  body: z.infer<typeof foregroundMessageObjectSchema> & {
+    whenBusy?: 'queue';
+    automaticBackground?: true;
+  },
+  options: { delegated: boolean; remote: boolean },
+):
+  | {
+      conversationId: string;
+      clientTurnId: string;
+      message: string;
+      ambientContext?: string;
+      model?: ExecutionModelRequest;
+    }
+  | undefined {
+  if (
+    body.whenBusy !== 'queue' ||
+    !body.conversationId ||
+    !body.clientTurnId ||
+    options.delegated ||
+    options.remote ||
+    body.automaticBackground ||
+    body.attachments?.length ||
+    body.attachmentRefs?.length ||
+    body.skillExperience ||
+    body.expectedInputRequest ||
+    body.setApprovalMode !== undefined ||
+    requestedApprovalMode(body.target.model?.options) !== undefined
+  )
+    return undefined;
+  return {
+    conversationId: body.conversationId,
+    clientTurnId: body.clientTurnId,
+    message: body.message,
+    ...(body.ambientContext ? { ambientContext: body.ambientContext } : {}),
+    ...(body.target.model
+      ? { model: body.target.model as ExecutionModelRequest }
+      : {}),
+  };
+}
+
+/** A refusal that only says the conversation is busy: the inbox can hold it. */
+const INBOX_BUSY_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+]);
+
 function requireMessageOrAttachment(
   value: {
     message: string;
@@ -861,9 +975,12 @@ function requireForegroundBody(
   requireMessageOrAttachment(value, ctx);
 }
 
-const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
-  requireForegroundBody,
-);
+// #3568: only POST /chat (and its /background sibling, which never queues)
+// takes `whenBusy`. An older Station strips the unknown key and refuses a busy
+// send as it always did, so the client keeps holding the message.
+const foregroundMessageSchema = foregroundMessageObjectSchema
+  .extend({ whenBusy: z.literal('queue').optional() })
+  .superRefine(requireForegroundBody);
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
   .extend({
     delegation: agentDelegationContextSchema,
@@ -1068,6 +1185,8 @@ interface ForegroundMessageRequest {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /** #3568: stops only a same-key retry's join wait (`ForegroundMessageInput.joinWaitSignal`). */
+  joinWaitSignal?: AbortSignal;
   /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
   setApprovalMode?: ApprovalMode;
   setApprovalModeBasedOn?: number | null;
@@ -1097,6 +1216,8 @@ interface ForegroundMessageRequest {
 
 interface ContinueForegroundMessageRequest {
   conversationId: string;
+  /** #3568: stops only a same-key retry's join wait (`ForegroundMessageInput.joinWaitSignal`). */
+  joinWaitSignal?: AbortSignal;
   environment?: EnvironmentRef;
   model?: ExecutionModelRequest;
   /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
@@ -1195,9 +1316,11 @@ type RespondToDelegatedTaskRequest = z.infer<
   clientOrigin?: ClientOrigin;
 };
 
-type InterruptDelegatedTaskRequest = z.infer<
+type InterruptDelegatedTaskBody = z.infer<
   typeof interruptDelegatedTaskBodySchema
-> & {
+>;
+
+type InterruptDelegatedTaskRequest = InterruptDelegatedTaskBody & {
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
@@ -1486,6 +1609,151 @@ export function resolveDispatchActor(
   };
 }
 
+/**
+ * #3158: record that the calling agent's conversation receives this child's
+ * results. Only a context Station DERIVED from the station-control caller
+ * (`caller-derived`) arms delivery, and only for a child this Station runs:
+ * the parent is the caller's own conversation, never an id the body or the
+ * model named. Delivery acts exactly as this dispatch did: its user, its
+ * owner attribution (`verified-bound` for a bound caller only, otherwise
+ * `unattributed-agent`) and its principal. A request with no owner
+ * attribution (not an agent dispatch) arms nothing.
+ */
+function armDelegationResult(
+  c: Context,
+  delivery: Pick<DelegationResultDelivery, 'arm'> | undefined,
+  resolved: ResolvedRequestDelegation | undefined,
+  dispatched: {
+    handle: unknown;
+    actor: {
+      userId: string;
+      principal: PrincipalRef | undefined;
+      ownerAttribution: StartOwnerAttribution | undefined;
+    };
+  },
+): void {
+  if (!delivery || resolved?.provenance !== 'caller-derived') return;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return;
+  const callerConversationId =
+    authority.caller.conversationId ?? authority.caller.sessionId;
+  if (resolved.context.parentConversationId !== callerConversationId) return;
+  const { actor } = dispatched;
+  const child = localDelegatedChild(dispatched.handle);
+  if (!child || !actor.ownerAttribution) return;
+  delivery.arm({
+    ...child,
+    parentConversationId: callerConversationId,
+    actor: {
+      userId: actor.userId,
+      attribution: actor.ownerAttribution,
+      ...(actor.principal ? { principal: actor.principal } : {}),
+    },
+  });
+}
+
+/**
+ * The child a dispatch started on THIS Station, read from the route's
+ * dispatch result. `delegateTask` is typed `unknown` at this seam because its
+ * Task-room callers return only `{ sessionId }`; anything that is not a
+ * current-environment handle with string identities is not armed.
+ */
+function localDelegatedChild(
+  handle: unknown,
+):
+  | { childConversationId: string; taskId: string; childAgent?: string }
+  | undefined {
+  if (!handle || typeof handle !== 'object') return undefined;
+  const { conversationId, taskId, environment, target } = handle as Record<
+    string,
+    unknown
+  >;
+  const environmentKind =
+    environment && typeof environment === 'object'
+      ? (environment as { kind?: unknown }).kind
+      : undefined;
+  if (
+    environmentKind !== 'current' ||
+    typeof conversationId !== 'string' ||
+    typeof taskId !== 'string'
+  )
+    return undefined;
+  const agent =
+    target && typeof target === 'object'
+      ? (target as { id?: unknown }).id
+      : undefined;
+  return {
+    childConversationId: conversationId,
+    taskId,
+    ...(typeof agent === 'string' ? { childAgent: agent } : {}),
+  };
+}
+
+/**
+ * #3158: delivery bookkeeping never fails the request it rides on. The child
+ * is already started, the read already answered, the interrupt still owed:
+ * an error here is logged, and at worst a result is delivered that a read
+ * already showed, or not delivered automatically at all.
+ */
+function bestEffortDelegationResult<T>(
+  logger: { warn?(message: string, meta?: Record<string, unknown>): void },
+  step: 'arm' | 'read' | 'cancel' | 'settle' | 'reopen',
+  run: () => T,
+): T | undefined {
+  try {
+    return run();
+  } catch (error) {
+    logger.warn?.('delegation result bookkeeping failed', {
+      step,
+      error: errorMessage(error),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * #3158: who an `interrupt_task` request cancels a pending result for: an
+ * agent caller only as its own conversation (the recorded parent is checked
+ * by `beginCancel`), a person or device credential as its user. Station's
+ * own server code and caller-less internal requests cancel nothing.
+ */
+function delegationResultCanceller(
+  c: Context,
+  userId: string,
+): DelegationResultCanceller | undefined {
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind === 'caller')
+    return {
+      kind: 'conversation',
+      conversationId:
+        authority.caller.conversationId ?? authority.caller.sessionId,
+    };
+  return authority === undefined ? { kind: 'person', userId } : undefined;
+}
+
+/** #3158: a verified caller's `get_task` read of a child; see `recordRead`. */
+function recordDelegationResultRead(
+  c: Context,
+  delivery: Pick<DelegationResultDelivery, 'recordRead'> | undefined,
+  snapshot: unknown,
+): void {
+  if (!delivery) return;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return;
+  const read = snapshot as { conversationId?: unknown; status?: unknown };
+  if (
+    typeof read?.conversationId !== 'string' ||
+    typeof read.status !== 'string'
+  )
+    return;
+  delivery.recordRead({
+    taskReference: read.conversationId,
+    readerConversationId:
+      authority.caller.conversationId ?? authority.caller.sessionId,
+    status: read.status,
+  });
+}
+
 export function createOrchestrationRoutes(
   orchestrationService: OrchestrationService,
   deps: {
@@ -1611,6 +1879,7 @@ export function createOrchestrationRoutes(
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
+      options?: { inspectOnly?: true },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
       owner: PrincipalRef,
@@ -1691,7 +1960,37 @@ export function createOrchestrationRoutes(
     ) => Promise<unknown>;
     interruptDelegatedTask?: (
       input: InterruptDelegatedTaskRequest,
-    ) => Promise<unknown>;
+    ) => Promise<DelegatedTaskInterruptResult>;
+    /**
+     * #3158: automatic delivery of a delegated child's results to its parent
+     * conversation (`delegation-result-delivery.ts`). The routes only report
+     * what they verified: a dispatch's caller-derived ownership, a parent's
+     * read of its own child at rest, an interrupt.
+     */
+    /**
+     * #3568: the durable inbox of follow-ups a busy conversation holds
+     * (`thread-inbox.ts`). Absent on a hosted Station: `/chat` then refuses a
+     * busy send as before.
+     */
+    threadInbox?: Pick<
+      ThreadInboxDelivery,
+      | 'mustQueue'
+      | 'submit'
+      | 'list'
+      | 'entry'
+      | 'cancel'
+      | 'deliveryOutcome'
+      | 'heldByOther'
+      | 'inFlight'
+    >;
+    delegationResults?: Pick<
+      DelegationResultDelivery,
+      | 'arm'
+      | 'recordRead'
+      | 'beginCancel'
+      | 'settleCancellation'
+      | 'reopenCancellation'
+    >;
     /**
      * archive#4075 stage 2: DEPRECATED legacy test-only escape hatch. Never
      * wired by production runtime composition (production sets
@@ -1773,6 +2072,9 @@ export function createOrchestrationRoutes(
 ): Hono {
   const app = new Hono();
   const presence = deps.presence ?? new OrchestrationStreamPresence();
+  // The keyed /chat requests this route is handling now: the `received`
+  // answer of the delivery lookup below.
+  const deliveryReceipts = new ForegroundDeliveryReceipts();
   const readAuthorityFor = (c: PrincipalResolutionContext) =>
     sessionReadAuthorityFromRequest(
       resolveActorPrincipal(deps, c).userId,
@@ -1999,6 +2301,115 @@ export function createOrchestrationRoutes(
     }
   });
 
+  /**
+   * #3568: a key the conversation's inbox holds for someone else, in a state
+   * it may still send, is theirs. A send under it would take the turn claim
+   * their message waits for, so `/chat` and `/chat/:id/continue` refuse it,
+   * whether or not the send asks to be queued, and however the key was
+   * learned. Only a caller who may read the conversation is told; anyone else
+   * goes on to the dispatch, which refuses a conversation they may not read.
+   */
+  const inboxKeyHeldRefusal = async (
+    c: Context,
+    conversationId: string | undefined,
+    clientTurnId: string | undefined,
+    userId: string,
+  ): Promise<Response | undefined> => {
+    if (
+      !conversationId ||
+      !clientTurnId ||
+      !deps.threadInbox?.heldByOther(conversationId, clientTurnId, userId) ||
+      !(await orchestrationService.readSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return undefined;
+    return c.json(
+      {
+        success: false,
+        error:
+          "This message key belongs to someone else's queued message. Send under a new key.",
+        code: 'inbox_key_held',
+      },
+      409,
+    );
+  };
+
+  /**
+   * #3568: a key the inbox is starting in this process now, from before its
+   * start begins until it answers, including past its deadline (`inFlight`).
+   * No Session's ledger may hold the key yet (a cold start claims it once its
+   * Session exists, and a live send may continue in a new Session), so a live
+   * send under it would be a second send. It is refused with the retryable
+   * `client_turn_in_flight`. Another sender meets `inboxKeyHeldRefusal` first
+   * while the entry may still be sent, so this reaches the entry's own
+   * sender, or anyone once the entry is dismissed (a dismissal does not end
+   * the start). Once the start answers, a retry under the key is answered
+   * from the conversation-wide ledger. The same read gate applies.
+   */
+  const inboxKeyInFlightRefusal = async (
+    c: Context,
+    conversationId: string | undefined,
+    clientTurnId: string | undefined,
+  ): Promise<Response | undefined> => {
+    if (
+      !conversationId ||
+      !clientTurnId ||
+      !deps.threadInbox?.inFlight(conversationId, clientTurnId) ||
+      !(await orchestrationService.readSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return undefined;
+    return c.json(
+      {
+        success: false,
+        error:
+          'Station is still sending this queued message. Nothing new was sent; try again in a moment.',
+        code: CLIENT_TURN_IN_FLIGHT_CODE,
+        retryable: true,
+      },
+      409,
+    );
+  };
+
+  /** #3568: what `/chat` answers for a follow-up it handed to the inbox. */
+  const queuedFollowUpResponse = (
+    c: Context,
+    submitted: ReturnType<ThreadInboxDelivery['submit']>,
+    followUp: { conversationId: string; clientTurnId: string },
+  ): Response | undefined => {
+    if (submitted.outcome === 'not-permitted') return undefined;
+    if (submitted.outcome === 'conflict')
+      return c.json(
+        {
+          success: false,
+          error:
+            'This message key was already used for a different queued message.',
+          code: 'inbox_key_conflict',
+        },
+        409,
+      );
+    if (submitted.outcome === 'capacity')
+      return c.json(
+        {
+          success: false,
+          error: `This conversation already holds ${submitted.limit} queued messages. Nothing was queued; send it after some of them go.`,
+          code: 'conversation_inbox_full',
+        },
+        409,
+      );
+    const data: ConversationInboxQueuedReceipt = {
+      outcome: 'queued',
+      conversationId: submitted.entry.conversationId,
+      clientTurnId: followUp.clientTurnId,
+      entry: submitted.entry,
+    };
+    return c.json({ success: true, data }, 202);
+  };
+
   const handleForegroundMessage = async (c: Context) => {
     if (!deps.executeForegroundMessage) {
       return c.json(
@@ -2015,6 +2426,10 @@ export function createOrchestrationRoutes(
       | { threadId: string; clientTurnId: string }
       | undefined;
     let releasePrincipal: PrincipalRef | undefined;
+    let releaseDeliveryReceipt: (() => void) | undefined;
+    // #3568: set once this send may wait in its conversation's inbox; a
+    // busy refusal from the dispatch below then queues it instead.
+    let queueOnBusyRefusal: (() => Response | undefined) | undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -2024,6 +2439,7 @@ export function createOrchestrationRoutes(
         delegation?: z.infer<typeof agentDelegationContextSchema>;
         delegationAttestation?: string;
         automaticBackground?: true;
+        whenBusy?: 'queue';
       };
       // #2377 slice C3b: an agent sends without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
@@ -2059,34 +2475,54 @@ export function createOrchestrationRoutes(
           },
           400,
         );
+      const conversation = {
+        ...(body.conversationId ? { conversationId: body.conversationId } : {}),
+        ...(body.expectedInputRequest
+          ? { inputReplyThreadId: body.expectedInputRequest.threadId }
+          : {}),
+      };
+      // A station-control caller's new session with no workspace starts in
+      // its own Project (owner decision 2026-10-13).
+      const target = withCallerProjectWorkspace(
+        c,
+        deps.stationControlDispatchScope,
+        body.target,
+        foregroundStartsSession(deps.stationControlDispatchScope, conversation),
+      );
       const projectSlug =
-        body.target.workspace?.kind === 'project'
-          ? body.target.workspace.projectSlug
+        target.workspace?.kind === 'project'
+          ? target.workspace.projectSlug
           : undefined;
       // #2377 slice C2a: a station-control caller stays in its scope. An
       // input reply names its thread, a known conversation is a follow-up,
       // anything else starts a session in the Project the body names.
+      const facts = newSessionFacts(target, deps.projectDefaultEnvironment);
       const scoped = scopeDispatch(
         c,
         deps.stationControlDispatchScope,
         (ownerId) =>
           foregroundDispatchTarget(deps.stationControlDispatchScope, {
             ownerId,
-            ...newSessionFacts(body.target, deps.projectDefaultEnvironment),
-            ...(body.conversationId
-              ? { conversationId: body.conversationId }
-              : {}),
-            ...(body.expectedInputRequest
-              ? { inputReplyThreadId: body.expectedInputRequest.threadId }
-              : {}),
+            ...facts,
+            ...conversation,
           }),
       );
       if ('refused' in scoped) return scoped.refused;
-      const resolvedTarget = normalizeExecutionTarget(
-        withCanonicalCwd(body.target, scoped.canonicalCwd),
-        !body.target.environment && projectSlug
+      const projectDefault =
+        !target.environment && projectSlug
           ? deps.projectDefaultEnvironment?.(projectSlug)
-          : undefined,
+          : undefined;
+      // The scope decision read this default without failing on a missing
+      // Project (`newSessionFacts`). A default it could not read then that
+      // names another Station now was never decided: refuse it as the rule
+      // refuses another Station.
+      if (!facts.remote && namesAnotherStation(projectDefault)) {
+        const remoteRefused = refuseRemoteForStationControlCaller(c, true);
+        if (remoteRefused) return remoteRefused;
+      }
+      const resolvedTarget = normalizeExecutionTarget(
+        withCanonicalCwd(target, scoped.canonicalCwd),
+        projectDefault,
       );
       if (body.skillExperience && resolvedTarget.environment.kind !== 'current')
         return c.json(
@@ -2100,6 +2536,13 @@ export function createOrchestrationRoutes(
 
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
+      const keyHeld = await inboxKeyHeldRefusal(
+        c,
+        body.conversationId,
+        body.clientTurnId,
+        userId,
+      );
+      if (keyHeld) return keyHeld;
       if (body.expectedInputRequest) {
         const context = orchestrationService.inspectInputReplyContext(
           body.expectedInputRequest,
@@ -2184,8 +2627,18 @@ export function createOrchestrationRoutes(
         delegationProvenance: resolvedDelegation?.provenance,
         ...(stagedAttachments?.length
           ? {
-              resolveAttachments: (binding) =>
+              resolveAttachments: (
+                binding: { threadId: string; clientTurnId: string },
+                options?: { inspectOnly?: true },
+              ) =>
                 (() => {
+                  if (options?.inspectOnly)
+                    return deps.hydrateStagedAttachments!(
+                      principal!,
+                      stagedAttachments,
+                      binding,
+                      options,
+                    );
                   stagedBinding = binding;
                   stagedBindingForRelease = binding;
                   stagedAttachmentsForRelease = stagedAttachments;
@@ -2212,7 +2665,92 @@ export function createOrchestrationRoutes(
         // #2873: the scope decision above, run again where the engine spawns.
         ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        // Only the join wait a same-key retry may spend; never the send.
+        joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
+      // #3568: a follow-up to a busy conversation waits in its inbox rather
+      // than being refused. Only for a caller that may read the conversation,
+      // whose body names exactly the binding the inbox will continue through,
+      // and whom placement would accept (`submit` refuses anyone else); any
+      // other send goes on to the dispatch, which answers it as before.
+      const followUp = deps.threadInbox
+        ? inboxFollowUpOf(body, {
+            delegated: Boolean(claimedDelegation || delegation),
+            remote: resolvedTarget.environment.kind !== 'current',
+          })
+        : undefined;
+      if (
+        followUp &&
+        (await orchestrationService.readSession(
+          followUp.conversationId,
+          readAuthorityFor(c),
+        )) &&
+        (await followUpTargetMatchesBinding(
+          orchestrationService,
+          followUp.conversationId,
+          body.target as ExecutionTarget,
+          readAuthorityFor(c),
+        ))
+      ) {
+        const inbox = deps.threadInbox!;
+        const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
+        if (
+          orchestrationService.inspectTurnDelivery(
+            followUp.conversationId,
+            followUp.clientTurnId,
+            readAuthorityFor(c),
+            inputDigest,
+          ) === null
+        )
+          throw new Error('The requested conversation is unavailable.');
+        queueOnBusyRefusal = () =>
+          queuedFollowUpResponse(
+            c,
+            inbox.submit({
+              conversationId: followUp.conversationId,
+              clientTurnId: followUp.clientTurnId,
+              payload: {
+                message: followUp.message,
+                inputDigest,
+                ...(followUp.ambientContext
+                  ? { ambientContext: followUp.ambientContext }
+                  : {}),
+                ...(followUp.model ? { model: followUp.model } : {}),
+                actor: {
+                  userId,
+                  ...(principal ? { principal } : {}),
+                  ...(ownerAttribution ? { ownerAttribution } : {}),
+                },
+                clientOrigin: foregroundRequest.clientOrigin,
+              },
+            }),
+            followUp,
+          );
+        if (inbox.mustQueue(followUp.conversationId)) {
+          const held = queueOnBusyRefusal();
+          if (held) return held;
+          // Placement would refuse this sender: the live send answers it.
+          queueOnBusyRefusal = undefined;
+        }
+      }
+      // Not held, so this send takes the live path: never under a key the
+      // inbox is still sending.
+      const keyInFlight = await inboxKeyInFlightRefusal(
+        c,
+        body.conversationId,
+        body.clientTurnId,
+      );
+      if (keyInFlight) return keyInFlight;
+      // Admitted: from here until the route answers, the delivery lookup says
+      // Station has this send (a cold session start can take a long time
+      // before the turn ledger holds anything).
+      if (body.conversationId && body.clientTurnId)
+        releaseDeliveryReceipt = deliveryReceipts.begin({
+          callerKey: mutationIdentity(c).ownerKey,
+          conversationId: body.conversationId,
+          clientTurnId: body.clientTurnId,
+          forwarded: resolvedTarget.environment.kind !== 'current',
+        });
       const data = await deps.executeForegroundMessage(foregroundRequest);
       if (!isForegroundDispatchHandle(data)) {
         // The foreground Interface cannot honestly call this accepted without
@@ -2255,11 +2793,35 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      if (error instanceof ConversationTurnQueuedError)
+        return queuedFollowUpResponse(
+          c,
+          { outcome: 'queued', entry: error.entry },
+          error.entry,
+        );
+      const busyCode = errorCode(error);
+      if (
+        queueOnBusyRefusal &&
+        busyCode &&
+        INBOX_BUSY_REFUSAL_CODES.has(busyCode)
+      ) {
+        const held = queueOnBusyRefusal();
+        if (held) return held;
+      }
       const refused =
         delegationRefusal(c, error) ??
         fullAccessRefusalFor(c, error) ??
         dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
+      if (error instanceof ForegroundDeliveryReceiptCapacityError)
+        return c.json(
+          {
+            success: false,
+            error: FOREGROUND_DELIVERY_CAPACITY_MESSAGE,
+            code: 'foreground_delivery_capacity',
+          },
+          503,
+        );
       if (error instanceof ForegroundMessageIndeterminateError) {
         return c.json(
           {
@@ -2334,8 +2896,21 @@ export function createOrchestrationRoutes(
           error: errorMessage(error),
           ...(errorCode(error) ? { code: errorCode(error) } : {}),
         },
-        unreachableWorkspace ? 503 : 400,
+        unreachableWorkspace
+          ? 503
+          : // The caller's view of the Agent is stale: a conflict with the
+            // current binding, not malformed input.
+            errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
+              // Another attempt still holds the key: a conflict to retry,
+              // as the inbox's own in-flight refusal answers it.
+              errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+              errorCode(error) === 'client_turn_input_conflict' ||
+              errorCode(error) === 'inbox_key_held'
+            ? 409
+            : 400,
       );
+    } finally {
+      releaseDeliveryReceipt?.();
     }
   };
   app.post('/chat', validate(foregroundMessageSchema), handleForegroundMessage);
@@ -2460,6 +3035,181 @@ export function createOrchestrationRoutes(
           409,
         );
       }
+    },
+  );
+
+  /**
+   * Foreground delivery lookup (`TurnDeliveryInspection`): what this Station
+   * knows about the send that carried `clientTurnId` into the conversation.
+   * Read-only. A conversation the caller may not read answers `not-received`
+   * like a key nothing holds, never 404, so the lookup reveals nothing about
+   * other callers' conversations. Not on any Station Control tool's route
+   * table: it is a device's recovery read, not an agent capability.
+   */
+  app.get(
+    '/conversations/:conversationId/turn-deliveries/:clientTurnId',
+    (c) => {
+      const conversationId = param(c, 'conversationId');
+      const clientTurnId = param(c, 'clientTurnId');
+      // The same bounds the send schemas put on these ids.
+      if (
+        conversationId.length === 0 ||
+        conversationId.length > 512 ||
+        clientTurnId.length === 0 ||
+        clientTurnId.length > 200
+      )
+        return c.json(
+          { success: false, error: 'Invalid conversation or turn key' },
+          400,
+        );
+      const answer = (data: TurnDeliveryInspection) =>
+        c.json({ success: true, data });
+      const durable = orchestrationService.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        readAuthorityFor(c),
+      );
+      // A turn the ledger settled outranks the request still being answered.
+      // Only the public fields: the ledger also names the Session a live
+      // claim is on (for a resend to join), which this answer never shows.
+      if (durable && durable.outcome !== 'not-received')
+        return answer(
+          durable.outcome === 'started'
+            ? {
+                outcome: 'started',
+                sessionId: durable.sessionId,
+                turnId: durable.turnId,
+                conversationId,
+                clientTurnId,
+              }
+            : { outcome: durable.outcome, conversationId, clientTurnId },
+        );
+      // #3568: a follow-up the conversation's inbox holds for this caller.
+      const held = deps.threadInbox?.deliveryOutcome(
+        conversationId,
+        clientTurnId,
+        resolveDispatchActor(deps, c).userId,
+      );
+      if (held) return answer({ outcome: held, conversationId, clientTurnId });
+      const inFlight = deliveryReceipts.has({
+        callerKey: mutationIdentity(c).ownerKey,
+        conversationId,
+        clientTurnId,
+      });
+      if (inFlight)
+        return answer({ outcome: 'received', conversationId, clientTurnId });
+      // Nothing here holds the key. That proves the send never reached the
+      // engine only when the conversation runs on THIS Station: one this
+      // Station forwards elsewhere (its Project's default Environment is
+      // another one, or a send was forwarded while this process ran) keeps
+      // its turn ledger there, out of sight.
+      const projectSlug = c.req.query('projectSlug');
+      // Reached with no ledger record here (`durable` null or not-received):
+      // a conversation that started on this Station can still have its later
+      // sends forwarded elsewhere.
+      const projectEnvironment =
+        projectSlug && projectSlug.length <= 512
+          ? deps.projectDefaultEnvironment?.(projectSlug)
+          : undefined;
+      const forwarded =
+        (projectEnvironment !== undefined &&
+          projectEnvironment.kind !== 'current') ||
+        deliveryReceipts.forwarded({
+          callerKey: mutationIdentity(c).ownerKey,
+          conversationId,
+        });
+      return answer({
+        outcome: forwarded ? 'unknown' : 'not-received',
+        conversationId,
+        clientTurnId,
+      });
+    },
+  );
+
+  /**
+   * #3568: a conversation's inbox, the follow-ups Station holds for it and
+   * sends when its turn ends. Every client of the conversation reads the
+   * same list. A conversation the caller may not read answers 404, like one
+   * that does not exist.
+   */
+  app.get('/conversations/:conversationId/inbox', async (c) => {
+    const conversationId = param(c, 'conversationId');
+    if (!deps.threadInbox)
+      return c.json(
+        { success: false, error: 'This Station keeps no conversation inbox.' },
+        404,
+      );
+    if (
+      conversationId.length > 512 ||
+      !(await orchestrationService.readSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    return c.json({
+      success: true,
+      data: {
+        entries: deps.threadInbox.list(
+          conversationId,
+          resolveDispatchActor(deps, c).userId,
+        ),
+      },
+    });
+  });
+
+  /**
+   * #3568: withdraw a held follow-up (its sender only), or dismiss one that
+   * is unconfirmed or refused (anyone who may send to the conversation, so
+   * one person's possibly-sent message cannot hold everyone's). Anyone else,
+   * like a key the inbox does not hold, gets 404. One being sent right now
+   * cannot be withdrawn.
+   */
+  app.delete(
+    '/conversations/:conversationId/inbox/:clientTurnId',
+    async (c) => {
+      const conversationId = param(c, 'conversationId');
+      const clientTurnId = param(c, 'clientTurnId');
+      const notFound = () =>
+        c.json({ success: false, error: 'Queued message not found' }, 404);
+      if (
+        !deps.threadInbox ||
+        conversationId.length > 512 ||
+        clientTurnId.length > 200 ||
+        !(await orchestrationService.readSession(
+          conversationId,
+          readAuthorityFor(c),
+        ))
+      )
+        return notFound();
+      const result = deps.threadInbox.cancel(
+        conversationId,
+        clientTurnId,
+        resolveDispatchActor(deps, c).userId,
+      );
+      if (result.kind === 'missing' || result.kind === 'forbidden')
+        return notFound();
+      if (result.kind === 'in-flight')
+        return c.json(
+          {
+            success: false,
+            error:
+              'Station is sending this message now; it cannot be withdrawn.',
+            code: 'inbox_entry_sending',
+          },
+          409,
+        );
+      if (result.kind === 'placed')
+        return c.json(
+          {
+            success: false,
+            error: 'This message was already sent.',
+            code: 'inbox_entry_sent',
+          },
+          409,
+        );
+      const entry = deps.threadInbox.entry(conversationId, clientTurnId);
+      return entry ? c.json({ success: true, data: { entry } }) : notFound();
     },
   );
 
@@ -2604,6 +3354,19 @@ export function createOrchestrationRoutes(
         if (scopeRefused) return scopeRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
+        const keyHeld = await inboxKeyHeldRefusal(
+          c,
+          param(c, 'conversationId'),
+          body.clientTurnId,
+          userId,
+        );
+        if (keyHeld) return keyHeld;
+        const keyInFlight = await inboxKeyInFlightRefusal(
+          c,
+          param(c, 'conversationId'),
+          body.clientTurnId,
+        );
+        if (keyInFlight) return keyInFlight;
         const data = await deps.continueForegroundMessage({
           ...body,
           ...(body.environment
@@ -2632,6 +3395,8 @@ export function createOrchestrationRoutes(
           ownerAttribution,
           fullAccessGrant,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          // Only the join wait a same-key retry may spend; never the send.
+          joinWaitSignal: c.req.raw.signal,
         });
         if (!isForegroundDispatchHandle(data)) {
           return c.json(
@@ -2647,6 +3412,12 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        if (error instanceof ConversationTurnQueuedError)
+          return queuedFollowUpResponse(
+            c,
+            { outcome: 'queued', entry: error.entry },
+            error.entry,
+          );
         const fullAccessRefused = fullAccessRefusalFor(c, error);
         if (fullAccessRefused) return fullAccessRefused;
         if (error instanceof ForegroundMessageIndeterminateError) {
@@ -2691,7 +3462,13 @@ export function createOrchestrationRoutes(
             error: errorMessage(error),
             ...(errorCode(error) ? { code: errorCode(error) } : {}),
           },
-          400,
+          // Another attempt still holds the key: a conflict to retry, as
+          // the inbox's own in-flight refusal answers it.
+          errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+            errorCode(error) === 'client_turn_input_conflict' ||
+            errorCode(error) === 'inbox_key_held'
+            ? 409
+            : 400,
         );
       }
     },
@@ -2705,7 +3482,19 @@ export function createOrchestrationRoutes(
       );
     }
     try {
-      const body = getBody(c);
+      const sent = getBody(c);
+      // A station-control caller's new task with no workspace starts in its
+      // own Project (owner decision 2026-10-13): decided before every check
+      // below, so each one reads the target that is dispatched.
+      const body = {
+        ...sent,
+        target: withCallerProjectWorkspace(
+          c,
+          deps.stationControlDispatchScope,
+          sent.target,
+          true,
+        ),
+      };
       // #2377 slice C3b: an agent delegates without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         {
@@ -2979,6 +3768,12 @@ export function createOrchestrationRoutes(
         );
       }
       const data = await dispatch();
+      bestEffortDelegationResult(deps.logger, 'arm', () =>
+        armDelegationResult(c, deps.delegationResults, resolvedDelegation, {
+          handle: data,
+          actor: { userId, principal, ownerAttribution },
+        }),
+      );
       return c.json({ success: true, data });
     } catch (error) {
       const refused =
@@ -3072,6 +3867,14 @@ export function createOrchestrationRoutes(
             code: wrappedCode,
           },
           403,
+        );
+      // The caller's stated engine no longer holds: a conflict with the
+      // current binding, carrying its code so a delegating caller can tell it
+      // from malformed input. Nothing was started.
+      if (wrappedCode === EXECUTION_ENGINE_CHANGED_CODE)
+        return c.json(
+          { success: false, error: errorMessage(error), code: wrappedCode },
+          409,
         );
       return c.json(
         {
@@ -3241,6 +4044,12 @@ export function createOrchestrationRoutes(
         taskId: param(c, 'taskId'),
         userId: resolveActorPrincipal(deps, c).userId,
       });
+      // #3158: the parent read its own child at rest; that result is not
+      // delivered to it again. Only for a task this Station serves.
+      if (parsed.data.environmentId === undefined)
+        bestEffortDelegationResult(deps.logger, 'read', () =>
+          recordDelegationResultRead(c, deps.delegationResults, data),
+        );
       // Only for a task this Station serves: a forwarded read carries the
       // serving Station's own answer about this Station's credential.
       return c.json({
@@ -3542,14 +4351,50 @@ export function createOrchestrationRoutes(
           deps,
           c,
         );
-        const data = await deps.interruptDelegatedTask({
-          ...getBody(c),
-          taskId: param(c, 'taskId'),
-          userId,
-          principal,
-          ownerAttribution,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-        });
+        // #3158: the recorded parent's interrupt fences the turn it stops and
+        // cancels results not yet delivered. Fenced before the effect (the
+        // stopped turn's settlement is delivered synchronously from the
+        // event), and undone below if the interrupt is refused or the
+        // service reports it stopped nothing. A named turn is the only turn
+        // the service will stop, so it is the only one fenced.
+        const body = getBody(c) as InterruptDelegatedTaskBody;
+        const canceller =
+          body.environmentId === undefined
+            ? delegationResultCanceller(c, userId)
+            : undefined;
+        const cancellation = canceller
+          ? bestEffortDelegationResult(deps.logger, 'cancel', () =>
+              deps.delegationResults?.beginCancel(
+                param(c, 'taskId'),
+                canceller,
+                body.turnId,
+              ),
+            )
+          : undefined;
+        let data: DelegatedTaskInterruptResult;
+        try {
+          data = await deps.interruptDelegatedTask({
+            ...getBody(c),
+            taskId: param(c, 'taskId'),
+            userId,
+            principal,
+            ownerAttribution,
+            clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          });
+        } catch (error) {
+          if (cancellation)
+            bestEffortDelegationResult(deps.logger, 'reopen', () =>
+              deps.delegationResults?.reopenCancellation(cancellation),
+            );
+          throw error;
+        }
+        if (cancellation)
+          bestEffortDelegationResult(deps.logger, 'settle', () =>
+            deps.delegationResults?.settleCancellation(
+              cancellation,
+              data.interruptOutcome,
+            ),
+          );
         return c.json({ success: true, data });
       } catch (error) {
         return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -5392,8 +6237,10 @@ export function createOrchestrationRoutes(
             authority,
           );
           if (!replayBudget.fitsBudget) {
-            const sessions =
-              await orchestrationService.listSessionReadModel(authority);
+            const sessions = await orchestrationService.listSessionReadModel(
+              authority,
+              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            );
             // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
               event: 'orchestration:snapshot',
@@ -5431,12 +6278,16 @@ export function createOrchestrationRoutes(
             // The replay carries historical events only. A binding computed
             // now would attach today's child and activity to an old frame.
             // Reconcile present-tense side effects once, after the replay.
-            replaySessions =
-              await orchestrationService.listSessionReadModel(authority);
+            replaySessions = await orchestrationService.listSessionReadModel(
+              authority,
+              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            );
           }
         } else {
-          const sessions =
-            await orchestrationService.listSessionReadModel(authority);
+          const sessions = await orchestrationService.listSessionReadModel(
+            authority,
+            threadId !== undefined ? { threadIds: [threadId] } : undefined,
+          );
           // #2456 D1: the head is NOT re-read here. An earlier review
           // ("LOW") re-read it to make the cursor "exact", but an exact
           // cursor is unsafe: events appended during the `await` above can

@@ -1,0 +1,7 @@
+{
+  "revision": "60c6b25e021ecb360430a1c43bf6eb2447fbccfe",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed source changes after independent critique: restored baseline positive control before independent pixel change; existing outside primary/aux files now assert containment-specific errors; auxiliary bytes/hash mismatch exercised in source tests. Report snapshots manifest/image/reference digests and refuses changed inputs during comparison. Renderer/contract provenance remains explicitly caller-established. All tests still pending host admission; no executed behavior or race-proof claim.","inputs":["docs/guides/testing.md","scripts/gallery-review-evidence.mjs","scripts/__tests__/gallery-review-evidence.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "3843b2f367569eb0c183374252017037e8e638e6",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed ChatMessageList approval lookup/inspection changes: accepted tool approvals remain inspectable from canonical requests; UIBlock vocabulary/rendering, form follow-up sender and action authority are unchanged. Historical proposal still accurate for this delta; no prose change required.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

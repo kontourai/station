@@ -2064,6 +2064,7 @@ describe('CodexAdapter', () => {
     const adapter = new CodexAdapter({
       processFactory: () => processHandle!,
     });
+    expect(adapter.metadata.durability.steerPlacement.state).toBe('native');
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
     const startSessionPromise = adapter.startSession({

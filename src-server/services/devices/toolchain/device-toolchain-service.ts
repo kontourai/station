@@ -160,6 +160,11 @@ export class DeviceToolchainService {
       : 'none';
   }
 
+  /** Current operator opt-in for both managed agent tooling and live device tools. */
+  agentAccessEnabled(): boolean {
+    return this.#readSetup().agentAccess;
+  }
+
   async status(): Promise<DeviceToolchainStatus> {
     const setup = this.#readSetup();
     return {

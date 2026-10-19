@@ -1,0 +1,7 @@
+{
+  "revision": "2f5584fc5d9a9ca0bc72e38d4e2c923277671b96",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the three-file fixture cleanup delta: raw temp creation now uses the maintained trackTempDirs after-hook, registered before loader shutdown hooks; ConfigLoader disposal/watcher closure and materialization owned-child finally remain. Production, fixtures, assertions, destination/key precedence, startup fencing and disclosed vocabulary are unchanged. The telemetry guide needs no prose change. The two unmapped route/materialization test changes affect cleanup only and do not introduce public behavior. Ratchet and scoped lint passed; current-head focused/CI/runtime/deployment qualification remains pending.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts"]}
+  ]
+}

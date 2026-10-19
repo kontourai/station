@@ -1,0 +1,33 @@
+{
+  "path": "docs/reviews/personal-boards-20261016/README.md",
+
+  "kind": "historical",
+
+  "state": "source-reviewed",
+
+  "summary": "Source-pinned setup/dashboard/phone visual packet plus controlled browser, ownership, CAS, promotion recovery and publication verification.",
+
+  "limits": "Development-runtime captures and controlled route/browser tests. Not external-model, physical-device, cross-process, Gallery baseline, hosted or release qualification.",
+
+  "sources": [
+    "tests/personal-board-authoring.spec.ts",
+
+    "src-server/routes/me/personal-layouts.ts",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "docs/reviews/personal-boards-20261016/setup.jpg",
+
+    "docs/reviews/personal-boards-20261016/dashboard.jpg",
+
+    "docs/reviews/personal-boards-20261016/mobile.jpg",
+
+    "docs/reviews/personal-boards-20261016/dashboard-light.jpg",
+
+    "docs/reviews/personal-boards-20261016/mobile-light.jpg"
+  ],
+
+  "checks": [
+    "Read complete packet against capture provenance, inspected all three images, and retained exact revision and reconnecting/setup observations. Parent stale-save and independent publication-guard mutations failed the intended409/403 assertions; exact restoration passed42tests. Product browser journeys passed3cases. Cold screenshot-only startup timeout was not counted as product evidence."
+  ]
+}

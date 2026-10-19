@@ -57,6 +57,7 @@
 import type { PairingScope } from '@kontourai/station-contracts';
 import {
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_CONTROL,
@@ -131,6 +132,24 @@ export function isPairingApprovalLeaf(request: {
   const path = request.path.split('?')[0] ?? request.path;
   return PAIRING_APPROVAL_LEAVES.some(
     (leaf) => leaf.method === method && leaf.pattern.test(path),
+  );
+}
+
+/** Exact existing-device administration leaves; new pairing routes stay closed. */
+export function isDeviceAccessManagementLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  const method = request.method.toUpperCase();
+  const path = request.path.split('?')[0] ?? request.path;
+  return (
+    (method === 'GET' && path === '/api/pairing/devices') ||
+    (method === 'POST' &&
+      /^\/api\/pairing\/devices\/[A-Za-z0-9._~-]{1,128}\/scope$/u.test(path)) ||
+    (method === 'DELETE' &&
+      /^\/api\/pairing\/devices\/[A-Za-z0-9._~-]{1,128}(?:\/record)?$/u.test(
+        path,
+      ))
   );
 }
 
@@ -212,7 +231,10 @@ export function pairingScopeSatisfiesHttpRoute(
       isEngineLoginLeaf(request)) ||
     (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
       isPairingApprovalLeaf(request) &&
-      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE))
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE)) ||
+    (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
+      isDeviceAccessManagementLeaf(request) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_DEVICES))
   );
 }
 
@@ -240,6 +262,12 @@ export interface PairingScopeRouteRule {
    * {@link PAIRING_SCOPE_FAMILY_INHERITED_LEAVES}.
    */
   readonly origin: 'family' | 'explicit';
+  /**
+   * #3557: `'refused'` when a personal access token may never use this
+   * route whatever its scope: a leaked script credential must not, say,
+   * hand a Project to someone. The person uses a device instead.
+   */
+  readonly personalTokens?: 'refused';
 }
 
 /**
@@ -269,6 +297,7 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // updates and removes nothing: the change is taken later on the
   // `/api/plugins` routes, which refuse Station's internal agent caller.
   '/api/plugin-proposals',
+  '/api/tool-library',
   // #2323 S4: local plugin source status. A read the handler answers only
   // for the operator; it installs nothing.
   '/api/plugin-sources',
@@ -433,6 +462,33 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // #3557: a person's own personal access tokens. The handler also requires
+  // a device tied to a person and caps the minted scope by what it may use.
+  {
+    id: '/api/access/tokens:read',
+    method: 'GET',
+    prefix: '/api/access/tokens',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/access/tokens:mint',
+    method: 'POST',
+    prefix: '/api/access/tokens',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/access/tokens/:tokenId:revoke',
+    method: 'DELETE',
+    prefix: '/api/access/tokens/:tokenId',
+    exact: true,
+    // Revoking only ever reduces access: Read suffices.
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   {
     id: '/api/operator/accounts:operator-read',
     method: 'GET',
@@ -456,6 +512,9 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
+    // #3586: who holds a Project, and its open invitations, are not a
+    // script's to read; the person uses a device.
+    personalTokens: 'refused',
   },
   ...[
     '/api/projects/:slug/access/enable',
@@ -471,6 +530,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       exact: true,
       scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
       origin: 'explicit',
+      personalTokens: 'refused',
     }),
   ),
   ...[
@@ -613,6 +673,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/usage-telemetry/disclosure/acknowledgements:manage',
     method: 'POST',
     prefix: '/api/usage-telemetry/disclosure/acknowledgements',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/usage-telemetry/connection-checks:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/connection-checks',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
@@ -832,6 +899,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Device tools' REST side: only internal requests with bound, opted-in
+  // callers are admitted. Paired credentials need terminal authority even
+  // to reach the route, which then refuses them as non-internal.
+  {
+    id: '/api/device-agent:terminal-operate',
+    method: '*',
+    prefix: '/api/device-agent',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
   // #90 browser tools' REST side: Station's own station-control tool code
   // is its only caller (the routes answer 404 to anything that is not the
   // internal principal). Declared so no credential reaches it by default;
@@ -1050,6 +1127,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Local canonical facts only; runtime also enforces verified person and owner/tenant scope.
+  {
+    id: '/api/analytics/usage-export:person-read',
+    method: 'GET',
+    prefix: '/api/analytics/usage-export',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // The usage rollup normally reads this Station's own receipts, but its
   // default path also queries configured peer Stations with their stored
   // bearer credentials and returns their environment identities, models, and
@@ -1632,6 +1718,35 @@ export interface PairingScopeCredentialResolver {
   resolveGrantedScope(
     credential: string,
   ): string | undefined | Promise<string | undefined>;
+  /** The paired device (or personal token) a credential identifies, if any. */
+  identifyDevice(credential: string):
+    | {
+        principalBinding?: { readonly kind?: string } | object;
+        credentialKind?: string;
+      }
+    | null
+    | undefined;
+}
+
+/**
+ * #3586: who may never open a terminal or voice WebSocket, whatever its
+ * scope. An account-bound device (or an account-tied token) is confined to
+ * the account-bound HTTP allowlist, which has no terminal or voice; and a
+ * personal access token is not a device, so it opens neither. A WebSocket
+ * session runs outside the HTTP gates (no account check, Project membership
+ * or Agent audience), so admitting either would bypass them.
+ */
+function refusedOnWebSocket(
+  device: ReturnType<PairingScopeCredentialResolver['identifyDevice']>,
+): boolean {
+  if (!device) return false;
+  if (device.credentialKind === 'personal-token') return true;
+  const binding = device.principalBinding;
+  return (
+    binding !== undefined &&
+    'kind' in binding &&
+    (binding as { kind?: string }).kind === 'account'
+  );
 }
 
 /**
@@ -1639,7 +1754,9 @@ export interface PairingScopeCredentialResolver {
  * (`runtime-service-bootstrap.ts`, `runtime-initialize.ts`): a credential
  * must both be valid AND carry `requiredScope` — an invalid credential is
  * rejected before `resolveGrantedScope` is even called (fail fast, and
- * never lets an unresolvable credential probe scope side channels).
+ * never lets an unresolvable credential probe scope side channels). An
+ * account-bound device, an account-tied token and any personal access token
+ * are refused whatever their scope (#3586, see `refusedOnWebSocket`).
  */
 export async function credentialAuthorizedForScope(
   resolver: PairingScopeCredentialResolver,
@@ -1647,6 +1764,7 @@ export async function credentialAuthorizedForScope(
   credential: string,
 ): Promise<boolean> {
   if (!(await resolver.verifyCredential(credential))) return false;
+  if (refusedOnWebSocket(resolver.identifyDevice(credential))) return false;
   const scope = await resolver.resolveGrantedScope(credential);
   return scope !== undefined && pairingScopeIncludes(scope, requiredScope);
 }
@@ -1662,6 +1780,8 @@ export interface ConsentDecisionCredentialResolver {
   identifyDevice(
     candidate: string,
   ): { scope?: string; id?: string; name?: string; createdAt?: number } | null;
+  /** #3557: the scope the credential may actually use (Station group cap). */
+  resolveGrantedScope(candidate: string): string | undefined;
 }
 
 export type ConsentCredentialAuthority =
@@ -1694,7 +1814,7 @@ export function consentDecisionAuthority(
   if (resolver.verifyOperatorCredential(credential)) {
     return 'operator-credential';
   }
-  const scope = resolver.identifyDevice(credential)?.scope;
+  const scope = resolver.resolveGrantedScope(credential);
   if (
     scope !== undefined &&
     pairingScopeIncludes(scope, PAIRING_SCOPE_CONSENT_DECIDE)
@@ -2494,6 +2614,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
+    { method: 'GET', path: '/api/me/preferences' },
+    { method: 'PATCH', path: '/api/me/preferences' },
+    { method: 'GET', path: '/api/me/boards/:layoutSlug' },
+    { method: 'POST', path: '/api/me/boards/:layoutSlug/proposal' },
+    { method: 'PUT', path: '/api/me/boards/:layoutSlug' },
+    { method: 'DELETE', path: '/api/me/boards/:layoutSlug/proposal' },
     { method: 'GET', path: '/api/me/layouts' },
     { method: 'POST', path: '/api/me/layouts' },
     { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
@@ -2631,6 +2757,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/acp/registry' },
     { method: 'POST', path: '/acp/registry/:id/install' },
     { method: 'GET', path: '/acp/status' },
+    { method: 'GET', path: '/api/tool-library/accounts/:id' },
+    { method: 'POST', path: '/api/tool-library/accounts/:id/:action' },
+    { method: 'GET', path: '/api/tool-library/access' },
+    { method: 'GET', path: '/api/tool-library/catalog' },
+    { method: 'GET', path: '/api/tool-library/requests' },
+    { method: 'POST', path: '/api/tool-library/add' },
+    { method: 'POST', path: '/api/tool-library/sources/:id/discover' },
+    { method: 'POST', path: '/api/tool-library/requests' },
+    { method: 'POST', path: '/api/tool-library/requests/:id/:action' },
+    { method: 'PUT', path: '/api/tool-library/projects/:slug/policy' },
+    { method: 'PUT', path: '/api/tool-library/sources/:id/sharing' },
+    { method: 'GET', path: '/api/tool-library/projects/:slug/agents' },
+    { method: 'POST', path: '/api/tool-library/projects/:slug/agents' },
+    { method: 'PUT', path: '/api/tool-library/projects/:slug/agents/:agent' },
     { method: 'GET', path: '/agents' },
     { method: 'POST', path: '/agents' },
     // Find-or-create the ONE Agent definition bound to a locally-detected
@@ -2983,6 +3123,28 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/event-window',
+    },
+    // The foreground delivery lookup: what this Station knows about one keyed
+    // send. Read-only (it never sends, claims or releases), answers only from
+    // this Station's own turn ledger and in-flight sends of the same caller,
+    // and an unreadable conversation answers like an unknown key. A paired
+    // device is its main caller (recovering a send after losing its
+    // connection), so it keeps the family's orchestration:read tier.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/turn-deliveries/:clientTurnId',
+    },
+    // #3568: a conversation's inbox of held follow-ups. Reading it re-checks
+    // the conversation read ACL, so it keeps the family's read tier. Removing
+    // a held message is its sender's own mutation of a send it already made
+    // at the operate tier, which DELETE inherits from the family.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/inbox',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/conversations/:conversationId/inbox/:clientTurnId',
     },
     // A conversation's usage tree: read-only, re-checks the Session read ACL
     // for the conversation and for every session in it, and returns only
@@ -3498,6 +3660,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sends session titles and project names off the machine to this phone.
     { method: 'POST', path: '/api/system/native-push/register' },
     { method: 'DELETE', path: '/api/system/native-push' },
+    // Whether the caller's own device is still registered (its registration
+    // id, never a token or key): the family read tier, like the reads below.
+    { method: 'GET', path: '/api/system/native-push' },
     // A diagnostic read of this Station's currently observed CPU utilization.
     // No other Environment's or Station's
     // data, no mutation — no more sensitive than the surrounding `/api/system`

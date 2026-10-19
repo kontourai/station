@@ -4,11 +4,13 @@ import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-li
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
+import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
 import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
+import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -22,6 +24,7 @@ import {
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
+import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   classifyOperatorCredentialPosition,
@@ -67,6 +70,7 @@ import {
   deviceAccessFromShares,
   failClosedDeviceAccess,
 } from '../../services/devices/device-access.js';
+import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import {
   createDeviceHostResolver,
   LOCAL_DEVICE_HOST_ID,
@@ -92,11 +96,11 @@ import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-ho
 import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
 import { createSshDeviceHostActions } from '../../services/devices/hosts/ssh-device-tools.js';
 import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
+import { AccountPreferencesStore } from '../../services/identity/account-preferences.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
   type DeploymentAuthenticationService,
-  deploymentAccountPrincipal,
   isDeploymentAccountPrincipalId,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
@@ -124,6 +128,7 @@ import {
   runWithoutRequestReadAuthority,
   runWithRequestReadAuthority,
 } from '../request-read-authority-context.js';
+import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
   type BoundedBodyResult,
@@ -139,6 +144,10 @@ import {
 } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import {
+  type SessionStartResult,
+  startUnlessDelivered,
+} from '@kontourai/monument';
+import {
   type DevicePairingRequest,
   parseTaskTurnReference,
 } from '@kontourai/station-contracts';
@@ -148,15 +157,18 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
-import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import {
+  type ClientOrigin,
+  UNKNOWN_CLIENT_ORIGIN,
+} from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
-  type DevicePrincipalBinding,
   deviceRequestedExtraScopes,
   type FullAccessRevocationReport,
   isDeviceRequestableScope,
   PAIRING_SCOPE_PRESETS,
+  type PairedDevice,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
@@ -171,13 +183,24 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   PUBLIC_STATION_PROOF_PATH,
   pairingScopeIncludes,
+  parsePairingScope,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
-import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
+import type {
+  EnvironmentRef,
+  ExecutionModelRequest,
+} from '@kontourai/station-contracts/execution-target';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
+import {
+  isStationGroup,
+  type StationGroup,
+  type StationGroupAssignment,
+  type StationPerson,
+} from '@kontourai/station-contracts/station-groups';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -186,28 +209,6 @@ import {
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 import { operatorCliCommand } from '@kontourai/station-shared/ports';
-
-function isAccountDeviceBinding(
-  binding: DevicePrincipalBinding,
-): binding is Extract<DevicePrincipalBinding, { kind: 'account' }> {
-  return 'kind' in binding && binding.kind === 'account';
-}
-
-function principalForDeviceBinding(binding: DevicePrincipalBinding) {
-  return isAccountDeviceBinding(binding)
-    ? deploymentAccountPrincipal(
-        binding.issuer,
-        binding.subject,
-        binding.displayName,
-      )
-    : deploymentHumanPrincipal(
-        binding.provider,
-        binding.subject,
-        binding.subject,
-      );
-}
-
-import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import type { Agent } from '@voltagent/core';
 import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
@@ -232,6 +233,10 @@ import {
   listProviders,
   registerPullRequestProvider,
 } from '../../providers/registries/registry.js';
+import {
+  createPersonalTokenRoutes,
+  parseTokenExpiry,
+} from '../../routes/access/personal-token-routes.js';
 import { createAgentToolRoutes } from '../../routes/agents/agent-tools.js';
 import { createAgentRoutes } from '../../routes/agents/agents.js';
 import {
@@ -323,7 +328,11 @@ import { createDeclarePullRequestRoutes } from '../../routes/orchestration/decla
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
 import { createOperatingStateRoutes } from '../../routes/orchestration/operating-state.js';
-import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
+import {
+  createOrchestrationRoutes,
+  isForegroundDispatchHandle,
+  isForegroundIndeterminateShape,
+} from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
@@ -423,6 +432,12 @@ import {
 } from '../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
+import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
+import {
+  isPersonalTokenSecret,
+  PersonalTokenUnavailableError,
+} from '../../services/access/personal-token-store.js';
+import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
@@ -527,6 +542,11 @@ import {
   delegationAttemptClaimKey,
   projectDelegationAttemptClaim,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import {
+  createDelegationResultSteerPort,
+  DELEGATION_RESULT_CLIENT_ORIGIN,
+  DelegationResultDelivery,
+} from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -536,8 +556,13 @@ import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-tas
 import { RunService } from '../../services/orchestration/run-service.js';
 import { createSessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import { createSessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
-import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
+import {
+  ACTIVE_TURN_FOLD_METHODS,
+  projectSessionLifecycle,
+} from '../../services/orchestration/session-lifecycle-service.js';
+import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
+import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
@@ -601,8 +626,10 @@ import { createSpatialBoardOwnerResolver } from '../../services/spatial-board/sp
 import { SpatialBoardStore } from '../../services/spatial-board/spatial-board-store.js';
 import { ClientConnectionPresence } from '../../services/ssh/client-connection-presence.js';
 import {
+  type DeviceAccessApproval,
   DevicePairingError,
   type DevicePairingService,
+  isProtectedPairingPromotionScope,
   type PairingApproval,
   type PairingRequesterPosition,
 } from '../../services/ssh/device-pairing-service.js';
@@ -638,6 +665,7 @@ import {
   reviewEvidenceDuration,
   reviewEvidenceOperations,
 } from '../../telemetry/metrics.js';
+import { reconfigureOtelTelemetryDelivery } from '../../telemetry-delivery-state.js';
 import {
   buildStationBasisProjectionToolResult,
   buildStationBasisUnavailableToolResult,
@@ -676,6 +704,11 @@ import {
 } from '../agents/request-delegation.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
 import {
+  accountMemberCaller,
+  agentAudienceForMemberCaller,
+  agentOwnerMemberCaller,
+} from '../bootstrap/account-member-caller.js';
+import {
   type AgentAudienceGateDeps,
   agentCatalogForCaller,
   installAgentAudienceGate,
@@ -688,10 +721,9 @@ import {
 } from '../bootstrap/personal-home-authority-database.js';
 import {
   configureRuntimeHttp,
+  deviceSessionCookieName,
   installStationEnvelopeMarker,
-  LOOPBACK_DEVICE_SESSION_COOKIE,
   parseDeviceSessionCookie,
-  SECURE_DEVICE_SESSION_COOKIE,
 } from '../bootstrap/runtime-http.js';
 import {
   createHostedTenantMiddleware,
@@ -725,6 +757,7 @@ import {
 } from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import { createClientStreamPresence } from './client-stream-presence.js';
+import { createFullAccessRefusalIdentity } from './full-access-refusal-identity.js';
 import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
@@ -1772,6 +1805,36 @@ export function configureRuntimeRoutes(
       ? (agent.caller.principal?.id ?? null)
       : null;
   };
+  // #3586: whether a request is held to Project membership (see the module).
+  const memberCallerForRequest = (request: Request) =>
+    accountMemberCaller(request, {
+      ...(context.deploymentAuthentication
+        ? {
+            authenticate: (candidate: Request) =>
+              context.deploymentAuthentication!.service.authenticate(candidate),
+          }
+        : {}),
+      accountToken: (candidate: Request) => {
+        const runtime = getRuntimeAuthenticatedRequestPrincipal(candidate);
+        if (
+          runtime?.authority !== 'device-credential' ||
+          !isPersonalTokenSecret(runtime.credential)
+        )
+          return undefined;
+        // A token that stopped resolving mid-request (revoked, expired, or
+        // its account no longer current) acts for no one; it never falls
+        // back to operator rules.
+        const token = context.environmentSecurityService.identifyDevice(
+          runtime.credential,
+        );
+        if (token?.credentialKind !== 'personal-token') return null;
+        const binding = token.principalBinding;
+        return binding && 'kind' in binding && binding.kind === 'account'
+          ? principalForDeviceBinding(binding).id
+          : undefined;
+      },
+      agentOwnerId: agentOwnerIdForRequest,
+    });
   // station#4075 stage 3 slice 1: `ProjectTaskRoomRequestAuthority.resolve`
   // (below, at the Task-room `requestAuthority` deps literal) receives only a
   // bare `Request` — never the Hono `Context` — because every one of its
@@ -1789,6 +1852,22 @@ export function configureRuntimeRoutes(
   // indistinguishable to the reader below, and both fail closed to
   // `{ kind: 'revoked' }`, never a default identity.
   const roomRequestPrincipals = new WeakMap<Request, PrincipalRef>();
+  const primeRoomRequestPrincipal = async (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+    next: () => Promise<void>,
+  ) => {
+    try {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+    } catch {
+      // Unresolved: no cache entry, so `requestAuthority.resolve` above
+      // revokes rather than reading a stale or default principal.
+    }
+    await next();
+  };
+
   // The registry is process-wide, but each decision remains bound to either a
   // tenant-validated session or the authority minted in its current ingress
   // context. Install this before any route or agent registration can create a
@@ -1923,15 +2002,10 @@ export function configureRuntimeRoutes(
   // #1796: a refused full-access request names this Station and the paired
   // device that asked, read from the pairing service's own records (a
   // display name, never a credential), whichever route refuses it.
-  const fullAccessRefusalIdentity = {
-    environmentId: () =>
-      context.environmentSecurityService.devicePairing.environmentId(),
-    deviceName: (deviceId: string) =>
-      context.environmentSecurityService.devicePairing
-        .listDevices()
-        .find((device) => device.id === deviceId)?.name,
-    hostCli: () => operatorCliCommand(context.buildProvenanceSnapshot?.channel),
-  };
+  const fullAccessRefusalIdentity = createFullAccessRefusalIdentity(
+    context.environmentSecurityService,
+    () => context.buildProvenanceSnapshot?.channel,
+  );
   context.app.use('*', async (c, next) => {
     bindFullAccessRefusalIdentity(c.req.raw, fullAccessRefusalIdentity);
     await next();
@@ -1977,9 +2051,10 @@ export function configureRuntimeRoutes(
   // sees and uses only the Agents whose audience admits it. Installed after
   // the station-control guard, which records whom a tool call acts for, and
   // ahead of every Agent and orchestration mount (Hono runs middleware in
-  // registration order). The caller rule is `authenticatedProjectMember`'s:
-  // an authenticated account, or a station-control call whose session an
-  // account owns, is a member; every other request keeps its own rules.
+  // registration order). The caller rule is `accountMemberCaller`'s, shared
+  // with the Project guards: an authenticated account, or a station-control
+  // call whose session an account owns, is a member; every other request
+  // keeps its own rules.
   const agentAudienceAdmissions = (principalId: string) => () =>
     context.projectMembership
       ? context.projectMembership
@@ -1994,34 +2069,29 @@ export function configureRuntimeRoutes(
   const agentAudience: AgentAudienceGateDeps = {
     caller: async (c) => {
       const request = c.req.raw;
-      try {
-        const account =
-          await context.deploymentAuthentication?.service.authenticate(request);
-        if (account?.kind === 'authenticated') {
-          roomRequestPrincipals.set(
-            request,
-            resolveOrchestrationRequestPrincipal(c),
-          );
-          const actor = await projectMembershipAuthority(request).current();
-          return {
-            kind: 'member',
-            admissions: agentAudienceAdmissions(actor.principal.id),
-          };
-        }
-        if (account && account.kind !== 'absent') return { kind: 'none' };
-      } catch {
-        return { kind: 'none', unresolved: true };
-      }
-      const ownerId = agentOwnerIdForRequest(request);
       // A station-control call that acts for no resolved principal (caller-
       // less, or a session with no recorded owner) fails closed: it is
       // admitted to no Agent, as Task-room authority refuses an unresolved
       // principal. The audience is always composed with the membership of
       // the resolved `PrincipalRef.id`, never granted by the id alone.
-      if (ownerId === null) return { kind: 'none' };
-      if (ownerId !== undefined && isDeploymentAccountPrincipalId(ownerId))
-        return { kind: 'member', admissions: agentAudienceAdmissions(ownerId) };
-      return { kind: 'operator' };
+      try {
+        return await agentAudienceForMemberCaller(
+          await memberCallerForRequest(request),
+          {
+            currentPrincipalId: async () => {
+              roomRequestPrincipals.set(
+                request,
+                resolveOrchestrationRequestPrincipal(c),
+              );
+              return (await projectMembershipAuthority(request).current())
+                .principal.id;
+            },
+            admissions: agentAudienceAdmissions,
+          },
+        );
+      } catch {
+        return { kind: 'none', unresolved: true };
+      }
     },
     listAgents: () => context.agentService.listAgents(),
   };
@@ -2075,7 +2145,7 @@ export function configureRuntimeRoutes(
   );
   context.app.on(
     'GET',
-    '/api/analytics/usage-rollup',
+    ['/api/analytics/usage-rollup', '/api/analytics/usage-export'],
     bindConversationReadAuthority,
   );
   context.app.on(
@@ -2626,10 +2696,20 @@ export function configureRuntimeRoutes(
     {
       operatorCli: () =>
         operatorCliCommand(context.buildProvenanceSnapshot?.channel),
+      groups: {
+        groupOf: (principalId) =>
+          context.environmentSecurityService.groupOf(principalId),
+        assignments: () =>
+          context.environmentSecurityService.groupAssignments(),
+        assign: (principalId, group) =>
+          context.environmentSecurityService.assignGroup(principalId, group),
+      },
       // An approval by a caller that presented no credential is the disclosed
       // residue being exercised — warn volume, same as a denied remote
       // authentication, so it is readable in the same place.
       audit: pairingApprovalAudit,
+      auditDeviceAccess: (record) =>
+        context.logger.warn('Device access changed', { ...record }),
       verifyOperatorCredential: (credential) =>
         context.environmentSecurityService.verifyOperatorCredential(credential),
       isApprovalCurrent: (request) =>
@@ -2703,6 +2783,48 @@ export function configureRuntimeRoutes(
         !hostedTenantRegistry &&
         !isHostedTenantExecutionRequired() &&
         isBoundRuntimeLocalOperator(request),
+      async (requestContext, request) => {
+        const { captureAuthorityObservation, revalidateAuthorityObservation } =
+          await import('../../services/identity/authority-observation.js');
+        const captured = await captureAuthorityObservation({
+          context: requestContext,
+          request: requestContext.req.raw,
+          runtimePrincipal: getRuntimeAuthenticatedRequestPrincipal(
+            requestContext.req.raw,
+          ),
+          security: context.environmentSecurityService,
+          deploymentAuthentication: context.deploymentAuthentication,
+          resolveRequestPrincipal: resolveOrchestrationRequestPrincipal,
+        });
+        if (
+          connectedAccountOwnerId(
+            resolveOrchestrationRequestPrincipal(requestContext),
+          ) === undefined ||
+          captured.envelope.principal.id === LOCAL_OPERATOR_PRINCIPAL_ID
+        ) {
+          const { UsageExportRejected } = await import(
+            '../../analytics/usage-export-reader.js'
+          );
+          throw new UsageExportRejected('usage_export_authority_changed', 403);
+        }
+        const selected = context.orchestrationService.readUsageReceiptExport(
+          conversationReadAuthorityForRequest(requestContext.req.raw),
+          captured.envelope.environmentId,
+          request,
+        );
+        return {
+          page: selected.page,
+          async assertCurrent() {
+            await revalidateAuthorityObservation({
+              request: requestContext.req.raw,
+              captured,
+              security: context.environmentSecurityService,
+              deploymentAuthentication: context.deploymentAuthentication,
+            });
+            selected.assertCurrent();
+          },
+        };
+      },
     ),
   );
   context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));
@@ -2921,6 +3043,19 @@ export function configureRuntimeRoutes(
       {
         // #2067: the registry's plugin catalog faces are operator-only; this
         // is the resolution they refuse with.
+        authorizeOperator: async (c) => {
+          roomRequestPrincipals.set(
+            c.req.raw,
+            resolveOrchestrationRequestPrincipal(c),
+          );
+          const authority = projectMembershipAuthority(c.req.raw);
+          await authority.operator();
+          if (
+            (await authority.current()).principal.id !==
+            LOCAL_OPERATOR_PRINCIPAL_ID
+          )
+            throw new ProjectMembershipRefusal('forbidden');
+        },
         visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
         // #2067: the layout catalog faces are PROJECTED rather than refused.
         canSeePlugin: (c, pluginId) => canSeePluginForRequest(c, pluginId),
@@ -3471,6 +3606,42 @@ export function configureRuntimeRoutes(
                   : JSON.stringify(error),
           }),
       });
+    const agentDeviceSessions = deviceSessions;
+    const agentDeviceSurfaces = liveSurfaceRegistry;
+    if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
+      context.app.route(
+        '/api/device-agent',
+        createDeviceAgentRoutes({
+          agentAccessEnabled: () => devices.agentAccessEnabled(),
+          isInternalRequest: isStationInternalRequest,
+          resolveCaller: (request) =>
+            resolveStationControlCallerForRequest(
+              request,
+              resolveStationControlCallerRecord,
+            ),
+          authorizePrincipal: createBrowserPrincipalAuthorizer({
+            isOperatorPrincipal: (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
+            ...(context.projectMembership
+              ? { membership: context.projectMembership }
+              : {}),
+          }),
+          shares: deviceShareAccess.shares,
+          ...(deviceShareAccess.resolveAndroidAvd
+            ? { resolveAndroidAvd: deviceShareAccess.resolveAndroidAvd }
+            : {}),
+          automation: new DeviceAutomation({
+            host: deviceHost,
+            sessions: agentDeviceSessions,
+            surfaces: agentDeviceSurfaces,
+            tools: new DeviceToolsService({
+              hostId: LOCAL_DEVICE_HOST_ID,
+              runner: createDeviceToolRunner(),
+              hub: deviceHubEndpoint,
+            }),
+          }),
+        }),
+      );
+    }
     // Device access reads the request principal (operator and Project
     // membership); prime it for every device route before any of them runs.
     context.app.use('/api/mobile-devices/*', async (c, next) => {
@@ -3659,6 +3830,19 @@ export function configureRuntimeRoutes(
     // full `initialize()` — re-running init re-binds the HTTP + voice-WS ports
     // (EADDRINUSE → uncaughtException → the server shuts itself down).
     createToolRoutes(context.mcpService, context.reloadAgents, {
+      authorizeOperator: async (c) => {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+        const authority = projectMembershipAuthority(c.req.raw);
+        await authority.operator();
+        if (
+          (await authority.current()).principal.id !==
+          LOCAL_OPERATOR_PRINCIPAL_ID
+        )
+          throw new ProjectMembershipRefusal('forbidden');
+      },
       integrationIconAssets: new IntegrationIconAssets(
         context.configLoader.getProjectHomeDir(),
       ),
@@ -3735,6 +3919,10 @@ export function configureRuntimeRoutes(
       navigationAudience: agentOwnerIdForRequest,
     }),
   );
+  // Proposal acceptance writes the Task document before returning from POST /api/tasks.
+  // Prime the same room principal before that route can consume the request.
+  if (!isHostedTenantExecutionRequired() && context.orchestrationEventStore)
+    context.app.use('/api/tasks', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
     createTaskOutputRoutes(taskOutputs, {
@@ -3751,6 +3939,10 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
+      proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
+      seedProposalBrief: (input) =>
+        projectTaskRoomRuntime?.seedProposalBrief(input) ??
+        Promise.resolve(false),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       dispatchOwnerForRequest: (request) =>
         sessionOwnerForRequest(
@@ -4049,49 +4241,9 @@ export function configureRuntimeRoutes(
         ]),
       )
       .then(() => undefined);
-    // station#4075 stage 3 slice 1: resolve the calling principal once, here,
-    // where the real Hono `c` (env + headers) is available, and cache it on
-    // `c.req.raw` for `requestAuthority.resolve` above — see the
-    // `roomRequestPrincipals` docs above `resolveOrchestrationRequestPrincipal`
-    // for why the room runtime cannot do this resolution itself. A resolution
-    // failure is deliberately left uncached (fail closed), matching
-    // `resolveActorPrincipal`'s documented contract in
-    // `routes/orchestration/orchestration.ts` that an unresolvable caller
-    // throws rather than falling back to a default identity.
-    //
-    // Fix round (station#4075 stage 3 slice 1 review): every public
-    // `ProjectTaskRoomRuntime` method that reaches `requestAuthority.resolve`
-    // (via the private `#principal`) is invoked from exactly one of two
-    // mounts — `discover`/`document`/`subscribe`/`subscriptionAlive`/
-    // `subscriptionCadence`/`message`/`live`/`editPlan`/`submitBatch`/
-    // `history` all come from `createProjectTaskRoomRoutes` under
-    // `/api/tasks/*` (`routes/orchestration/project-task-rooms.ts`), and
-    // `liveActivity` comes from `createLiveActivityRoutes` under
-    // `/api/live-activity` (`routes/orchestration/live-activity.ts:23-25`,
-    // mounted below at the unconditional `context.app.route('/api/live-
-    // activity', ...)` call). `recovery` is never called from a live HTTP
-    // route (system-only). The prime-principal middleware below MUST cover
-    // both mounts — priming `/api/tasks/*` alone left every
-    // `/api/live-activity` request with no cached principal, so `#principal`
-    // always resolved `undefined`, `#authorizedDocument` always returned
-    // undefined, and `liveActivity()` silently returned an empty
-    // participants projection for every caller instead of revoking or
-    // granting honestly.
-    const primeRoomRequestPrincipal = async (
-      c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
-      next: () => Promise<void>,
-    ) => {
-      try {
-        roomRequestPrincipals.set(
-          c.req.raw,
-          resolveOrchestrationRequestPrincipal(c),
-        );
-      } catch {
-        // Unresolved: no cache entry, so `requestAuthority.resolve` above
-        // revokes rather than reading a stale or default principal.
-      }
-      await next();
-    };
+    // Room and live-activity reads/writes share the principal owner used by
+    // proposal acceptance at the earlier POST /api/tasks mount. Keep every
+    // Request-only consumer behind this Hono-context resolution boundary.
     context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
@@ -4289,10 +4441,266 @@ export function configureRuntimeRoutes(
       config: context.configLoader,
     }));
 
+  /**
+   * Continue a conversation as an actor a durable record kept (#3158's
+   * delegating dispatch, #3568's queued sender), never as the operator and
+   * never with a full-access grant: a grant is one request's authority and is
+   * not stored. A throw is a clean refusal; an uncertain outcome is
+   * `indeterminate`.
+   */
+  async function continueAsRecordedActor(
+    input: {
+      conversationId: string;
+      message: string;
+      clientTurnId: string;
+      userId: string;
+      principal?: PrincipalRef;
+      ownerAttribution: StartOwnerAttribution | undefined;
+      clientOrigin: ClientOrigin;
+      ambientContext?: string;
+      model?: ExecutionModelRequest;
+      inputDigest?: string;
+      inboxPlacement?: true;
+    },
+    threadId: string,
+  ): Promise<SessionStartResult> {
+    try {
+      const handle = await continueExecutionTargetMessage(
+        {
+          ...input,
+          fullAccessGrant: null,
+          readAuthority: readAuthorityForExecution(input.userId),
+        },
+        context.orchestrationService,
+        remoteStations,
+        {
+          submissionDigest: input.inputDigest,
+          ...(input.inboxPlacement ? { inboxPlacement: true } : {}),
+        },
+      );
+      if (!isForegroundDispatchHandle(handle))
+        return { outcome: 'indeterminate' };
+      const started = handle as { sessionId?: unknown };
+      return {
+        outcome: 'started',
+        conversationId: handle.conversationId,
+        sessionId:
+          typeof started.sessionId === 'string' ? started.sessionId : threadId,
+        turnId: handle.providerTurnId,
+      };
+    } catch (error) {
+      if (isForegroundIndeterminateShape(error))
+        return { outcome: 'indeterminate' };
+      throw error;
+    }
+  }
+
+  /** The fold, ownership and bus ports both durable deliveries read. */
+  function conversationDeliveryPorts(eventStore: EventStore) {
+    return {
+      foldEvents: (threadId: string) =>
+        eventStore
+          .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
+          .map((stored) => ({
+            sequence: stored.sequence,
+            event: stored.payload,
+          })),
+      headSequence: (threadId: string) =>
+        eventStore.readSessionInventoryHighWater(threadId),
+      conversationOf: (threadId: string) =>
+        eventStore.conversationForSession(threadId)?.conversationId ?? threadId,
+      currentSessionId: (conversationId: string) =>
+        context.orchestrationService.currentConversationSessionId(
+          conversationId,
+        ),
+      coordinatorBusy: (threadId: string) =>
+        context.orchestrationService.hasActiveTurn(threadId),
+      sessionOwnerId: (threadId: string) =>
+        context.orchestrationService.sessionRecordedOwnerId(threadId),
+      subscribe: (
+        listener: (event: { threadId: string; method: string }) => void,
+      ) =>
+        context.eventBus.subscribe((frame) => {
+          if (frame.event !== 'orchestration:event') return;
+          const inner = (
+            frame.data as
+              | { event?: { threadId?: unknown; method?: unknown } }
+              | undefined
+          )?.event;
+          if (
+            typeof inner?.threadId === 'string' &&
+            typeof inner.method === 'string'
+          )
+            listener({ threadId: inner.threadId, method: inner.method });
+        }),
+      logger: context.logger,
+    };
+  }
+
+  /** #3568: follow-ups a busy conversation holds until its turn ends. */
+  function createThreadInboxDelivery(
+    eventStore: EventStore,
+  ): ThreadInboxDelivery {
+    const service = context.orchestrationService;
+    return new ThreadInboxDelivery({
+      ...conversationDeliveryPorts(eventStore),
+      store: eventStore.threadInboxStore(),
+      // The live continuation's own rule (`canContinueConversation`): the
+      // conversation's recorded owner, or a reader a personal Station lets
+      // continue it.
+      mayContinue: (conversationId, userId) => {
+        if (
+          service.sessionRecordedOwnerId(
+            service.currentConversationSessionId(conversationId),
+          ) === userId
+        )
+          return true;
+        const authority = readAuthorityForExecution(userId);
+        return (
+          authority.mode === 'personal' &&
+          service.canUserReadSession(conversationId, authority)
+        );
+      },
+      deviceMaySend: (deviceId, since) =>
+        context.environmentSecurityService.deviceMaySendChat(deviceId, since),
+      inspectDelivery: (conversationId, clientTurnId, inputDigest, userId) => {
+        if (!userId)
+          throw new Error('The requested conversation is unavailable.');
+        return service.inspectTurnDelivery(
+          conversationId,
+          clientTurnId,
+          readAuthorityForExecution(userId),
+          inputDigest,
+        );
+      },
+      start: stationServerEntry(
+        ({ conversationId, threadId, payload, clientTurnId }) =>
+          continueAsRecordedActor(
+            {
+              conversationId,
+              message: payload.message,
+              inputDigest: payload.inputDigest,
+              inboxPlacement: true,
+              clientTurnId,
+              userId: payload.actor.userId,
+              principal: payload.actor.principal,
+              ownerAttribution: payload.actor.ownerAttribution,
+              clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
+              ...(payload.ambientContext
+                ? { ambientContext: payload.ambientContext }
+                : {}),
+              ...(payload.model ? { model: payload.model } : {}),
+            },
+            threadId,
+          ),
+      ),
+    });
+  }
+
+  function createDelegationResultDelivery(
+    eventStore: EventStore,
+  ): DelegationResultDelivery {
+    const origin = DELEGATION_RESULT_CLIENT_ORIGIN;
+    return new DelegationResultDelivery({
+      ...conversationDeliveryPorts(eventStore),
+      store: eventStore.delegationResultStore(),
+      turnEvents: (threadId, turnId, methods, limit) =>
+        eventStore
+          .listTurnEventsByMethods(threadId, turnId, methods, limit)
+          .map((stored) => ({
+            ...(stored.turnId ? { turnId: stored.turnId } : {}),
+            method: stored.method,
+            payload: stored.payload,
+          })),
+      // Delivery acts exactly as the delegating dispatch did (its user,
+      // owner attribution and principal, recorded when it armed), never as
+      // the operator and never with a stronger attribution.
+      // #3568 fix round (D1): a re-driven start answers from the whole
+      // conversation's ledger first, so it can never land a second time in a
+      // successor Session the continuation reserves.
+      start: stationServerEntry(
+        ({ parentConversationId, threadId, actor, text, clientTurnId }) =>
+          startUnlessDelivered({
+            conversationId: parentConversationId,
+            inspect: () =>
+              context.orchestrationService.inspectTurnDelivery(
+                parentConversationId,
+                clientTurnId,
+                INTERNAL_SESSION_READ_SCOPE,
+              ),
+            start: () =>
+              continueAsRecordedActor(
+                {
+                  conversationId: parentConversationId,
+                  message: text,
+                  clientTurnId,
+                  userId: actor.userId,
+                  principal: actor.principal,
+                  ownerAttribution: actor.attribution,
+                  clientOrigin: origin,
+                },
+                threadId,
+              ),
+          }),
+      ),
+      steer: stationServerEntry(
+        createDelegationResultSteerPort((command, dispatchContext) =>
+          context.orchestrationService.dispatchWithReceipt(
+            command,
+            dispatchContext,
+          ),
+        ),
+      ),
+    });
+  }
+
+  // #3158: a delegated child's result goes back to the conversation that
+  // delegated it. Personal Stations only: a hosted delivery would run outside
+  // any request's tenant context.
+  // Optional: if it cannot start, no route arms it and agents poll as before.
+  const delegationResults = (() => {
+    if (!context.orchestrationEventStore || hostedTenantRegistry !== undefined)
+      return undefined;
+    try {
+      const delivery = createDelegationResultDelivery(
+        context.orchestrationEventStore,
+      );
+      delivery.start();
+      return delivery;
+    } catch (error) {
+      context.logger.warn('delegation result delivery is unavailable', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  })();
+
+  // #3568: the same constraint, for the same reason: placement runs outside
+  // any request. Optional: without it `/chat` refuses a busy send as before
+  // and the client keeps holding it.
+  const threadInbox = (() => {
+    if (!context.orchestrationEventStore || hostedTenantRegistry !== undefined)
+      return undefined;
+    try {
+      const delivery = createThreadInboxDelivery(
+        context.orchestrationEventStore,
+      );
+      delivery.start();
+      return delivery;
+    } catch (error) {
+      context.logger.warn('thread inbox delivery is unavailable', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  })();
+
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
+      ...(delegationResults ? { delegationResults } : {}),
+      ...(threadInbox ? { threadInbox } : {}),
       logger: context.logger,
       actionOperations,
       terminalService: context.terminalService,
@@ -4410,7 +4818,7 @@ export function configureRuntimeRoutes(
       resolveRequestDelegation: createRequestDelegationResolver(
         requestDelegationSources,
       ),
-      hydrateStagedAttachments: (principal, references, binding) =>
+      hydrateStagedAttachments: (principal, references, binding, options) =>
         attachmentStaging.bindAndHydrate(
           {
             principalId: principal.id,
@@ -4420,6 +4828,7 @@ export function configureRuntimeRoutes(
           },
           references,
           binding,
+          options,
         ),
       releaseStagedAttachments: (principal, references, binding) =>
         attachmentStaging.releaseBinding(
@@ -4796,6 +5205,19 @@ export function configureRuntimeRoutes(
         throw new ProjectMembershipRefusal('forbidden');
     },
   });
+  context.app.use('/api/tool-library/*', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
+  context.app.route(
+    '/api/tool-library',
+    createToolLibraryRoutes(
+      runtimeToolLibraryDependencies(context, projectMembershipAuthority),
+    ),
+  );
   context.app.use('/api/projects/:slug/access', async (c, next) => {
     roomRequestPrincipals.set(
       c.req.raw,
@@ -4803,6 +5225,11 @@ export function configureRuntimeRoutes(
     );
     await next();
   });
+  // #3557: a person's own personal access tokens (see the module).
+  context.app.route(
+    '/api/access/tokens',
+    createPersonalTokenRoutes(context.environmentSecurityService.devicePairing),
+  );
   context.app.route(
     '/api/operator/accounts',
     createLocalAccountAdministrationRoutes(
@@ -5082,35 +5509,15 @@ export function configureRuntimeRoutes(
       }),
     );
   }
+  // #3586: a member caller reads Projects through its membership; a request
+  // that is no caller at all is refused; anyone else keeps operator rules
+  // (`undefined`). The rule is `accountMemberCaller`'s.
   const authenticatedProjectMember = async (request: Request) => {
-    const account =
-      await context.deploymentAuthentication?.service.authenticate(request);
-    if (account?.kind === 'authenticated') {
-      if (!context.projectMembership)
-        throw new ProjectMembershipRefusal('forbidden');
-      return projectMembershipAuthority(request);
-    }
-    if (account && account.kind !== 'absent')
+    const member = await memberCallerForRequest(request);
+    if (!member) return undefined;
+    if (member.kind === 'none' || !context.projectMembership)
       throw new ProjectMembershipRefusal('forbidden');
-    // #2377 slice B (decision 2): a station-control tool call sees the
-    // Projects its session's owner would see. An account principal's own
-    // requests are admitted by membership (above), so work acting for one is
-    // too, through the same authority: `current()` reads the principal the
-    // Project guards record from the orchestration resolver, which answers
-    // with the session's recorded owner. The operator and a device principal
-    // are unrestricted in their own requests and stay so. A caller-less or
-    // owner-less agent request never reaches a Project read (the guard
-    // refuses it); if one did, it fails closed here.
-    const ownerId = agentOwnerIdForRequest(request);
-    if (ownerId !== undefined) {
-      if (ownerId === null) throw new ProjectMembershipRefusal('forbidden');
-      if (isDeploymentAccountPrincipalId(ownerId)) {
-        if (!context.projectMembership)
-          throw new ProjectMembershipRefusal('forbidden');
-        return projectMembershipAuthority(request);
-      }
-    }
-    return undefined;
+    return projectMembershipAuthority(request);
   };
   /**
    * #2377 slice B: whether a station-control agent request may take
@@ -5125,14 +5532,13 @@ export function configureRuntimeRoutes(
     projectRef: string,
     action: 'view' | 'edit',
   ): boolean => {
-    const ownerId = agentOwnerIdForRequest(request);
-    if (ownerId === undefined) return true;
-    if (ownerId === null) return false;
-    if (!isDeploymentAccountPrincipalId(ownerId)) return true;
+    const member = agentOwnerMemberCaller(agentOwnerIdForRequest(request));
+    if (!member) return true;
+    if (member.kind === 'none') return false;
     if (!context.projectMembership) return false;
     try {
       return context.projectMembership
-        .admissionsForResolvedPrincipal(ownerId)
+        .admissionsForResolvedPrincipal(member.principalId)
         .some(
           ({ scope, member }) =>
             (scope.localProjectId === projectRef ||
@@ -5262,6 +5668,18 @@ export function configureRuntimeRoutes(
   // Built once at wiring time, not per request: `buildProjectResolutionRouteDeps`
   // constructs a manifest store, a bindings store and a resolver, and the
   // projects routes below take theirs the same way.
+  context.app.route(
+    '/api/me',
+    createAccountPreferencesRoutes({
+      store: new AccountPreferencesStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      tenantId: (request) =>
+        tenantExecutionContextForRequest(request)?.tenantId,
+      isInternal: (request) => !!stationControlRequestAuthority(request),
+    }),
+  );
   const personalLayoutResolver =
     buildProjectResolutionRouteDeps(context).resolver;
   context.app.route(
@@ -6234,6 +6652,10 @@ export function configureRuntimeRoutes(
       (request) =>
         isBoundRuntimeLocalOperator(request) &&
         isRequestPrincipalCurrent(request),
+      (config) => {
+        context.getUsageTelemetry?.()?.reconfigure(config);
+        reconfigureOtelTelemetryDelivery(config);
+      },
     ),
   );
   context.app.route(
@@ -6809,6 +7231,10 @@ export function configureRuntimeRoutes(
           deviceId,
         );
       },
+      nativePushRegistrationId: (deviceId) =>
+        context.environmentSecurityService.devicePairing.nativePushRegistrationId(
+          deviceId,
+        ),
       onRegistered: () => agentActivityPublisher.requestFlush(),
     }),
   );
@@ -6946,6 +7372,26 @@ export function configureRuntimeRoutes(
     // exact-once room/history/outbox startup replay.
     projectTaskRoomLifecycleReady,
   ]).then(() => undefined);
+  // #3158: results a restart left undelivered. Never part of readiness: a
+  // delivery that cannot run now is retried, not allowed to block startup.
+  if (delegationResults)
+    void kitLifecycleReady
+      .then(() => delegationResults.reconcile())
+      .catch((error: unknown) =>
+        context.logger.warn('delegation result reconcile failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+  // #3568: follow-ups a restart left queued or mid-send. Never part of
+  // readiness, like the delegated results above.
+  if (threadInbox)
+    void kitLifecycleReady
+      .then(() => threadInbox.reconcile())
+      .catch((error: unknown) =>
+        context.logger.warn('thread inbox reconcile failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
 
   return {
     schedulerService,
@@ -7226,6 +7672,8 @@ const PAIRING_OFFER_BODY_KEYSETS = new Set([
   'endpoint,kind',
   'endpoint,kind,scope',
   'endpoint,scope',
+  'approval,endpoint',
+  'approval,endpoint,scope',
 ]);
 
 async function readPairingOfferJson(
@@ -7386,7 +7834,7 @@ function isDirectLoopbackCaller(c: {
  * as this user, satisfies all three. That is unchanged from the direct-socket
  * path this widens and is why the credential it mints keeps mint kind
  * `ui-bootstrap`, which the native consent broker refuses (station#3677 PR 3)
- * — this buys presentation and log-read locality, never approval authority.
+ * — browser Device administration never becomes native consent authority.
  */
 function isSameMachineBrowserCaller(c: {
   env: unknown;
@@ -7889,11 +8337,22 @@ export function configureDevicePairingPublicRoutes(
     // in a browser, and the holder loses nothing they still needed. Leaving it
     // live was the common outcome of the tray's docs launch (#1259), since the
     // default browser usually already holds a session.
-    const existingCredential = parseDeviceSessionCookie(c.req.header('cookie'));
+    const existingCredential = parseDeviceSessionCookie(
+      c.req.header('cookie'),
+      (candidate) => pairing.identifyDevice(candidate) !== null,
+    );
     const existingDevice = existingCredential
       ? pairing.identifyDevice(existingCredential)
       : null;
-    if (existingDevice) {
+    // A fresh launcher can upgrade an ordinary session only on the host.
+    // Off-host redemption cannot add that authority, so preserve its identity.
+    if (
+      existingDevice &&
+      (!matchedPurpose ||
+        !isSameMachineBrowserCaller(c) ||
+        pairing.credentialMayManagePairing(existingCredential!) ||
+        pairing.isLocalGrantMintedCredential(existingCredential!))
+    ) {
       if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);
       return c.json({
         environmentId: pairing.environmentId(),
@@ -7960,9 +8419,10 @@ export function configureDevicePairingPublicRoutes(
       const origin = new URL(c.req.header('origin')!);
       setCookie(
         c,
-        origin.protocol === 'https:'
-          ? SECURE_DEVICE_SESSION_COOKIE
-          : LOOPBACK_DEVICE_SESSION_COOKIE,
+        deviceSessionCookieName(
+          origin.protocol === 'https:',
+          pairing.environmentId(),
+        ),
         result.credential,
         {
           httpOnly: true,
@@ -8420,9 +8880,10 @@ export function configureDevicePairingPublicRoutes(
       const origin = new URL(c.req.header('origin')!);
       setCookie(
         c,
-        origin.protocol === 'https:'
-          ? SECURE_DEVICE_SESSION_COOKIE
-          : LOOPBACK_DEVICE_SESSION_COOKIE,
+        deviceSessionCookieName(
+          origin.protocol === 'https:',
+          pairing.environmentId(),
+        ),
         result.credential,
         {
           httpOnly: true,
@@ -8569,6 +9030,16 @@ function isPairingAuthenticationFailure(error: unknown): boolean {
   );
 }
 
+export interface DeviceAccessAuditRecord {
+  readonly event: 'station.device_access.changed';
+  readonly action: 'scope' | 'revoke' | 'remove';
+  readonly actor: 'operator-credential' | 'device-access';
+  readonly actorDeviceId?: string;
+  readonly deviceId: string;
+  readonly timestamp: number;
+  readonly scope?: string;
+}
+
 export function configureDevicePairingHostRoutes(
   app: HonoApp,
   pairing: DevicePairingService,
@@ -8579,6 +9050,15 @@ export function configureDevicePairingHostRoutes(
      * that tells a person what to run there. `station` when omitted.
      */
     operatorCli?: () => string;
+    /**
+     * #3557: Station groups for people. Omitted, the people routes answer
+     * 404 (a harness that does not exercise them).
+     */
+    groups?: {
+      groupOf(principalId: string): StationGroup;
+      assignments(): StationGroupAssignment[];
+      assign(principalId: string, group: StationGroup): Promise<void>;
+    };
     audit?: (record: PairingApprovalAuditRecord) => void;
     verifyOperatorCredential?: (credential: string) => boolean;
     isApprovalCurrent?: (request: Request) => boolean;
@@ -8608,6 +9088,7 @@ export function configureDevicePairingHostRoutes(
       cause: FullAccessRevocationReport['cause'];
       clientOrigin: ClientOrigin;
     }) => Promise<FullAccessRevocationReport>;
+    auditDeviceAccess?: (record: DeviceAccessAuditRecord) => void;
     /** #2894 S1: every raw operator-credential use on a device-admin route. */
     observeOperatorCredentialUse?: (
       record: OperatorCredentialUseRecord,
@@ -8678,6 +9159,13 @@ export function configureDevicePairingHostRoutes(
     }
   };
   const isRequestPrincipalCurrent = options.isRequestPrincipalCurrent;
+  const isHostBrowser = (request: Request): boolean => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    return (
+      principal?.authority === 'device-credential' &&
+      pairing.credentialMayManagePairing(principal.credential)
+    );
+  };
   const currentOperator = (context: unknown, request: Request): boolean => {
     const authority = (context as { get: (key: string) => unknown }).get(
       RUNTIME_CREDENTIAL_AUTHORITY_VAR,
@@ -8704,6 +9192,59 @@ export function configureDevicePairingHostRoutes(
       return false;
     }
   };
+  const currentDeviceAccessApproval = (
+    context: Context,
+    request: Request,
+  ): DeviceAccessApproval | null => {
+    if (currentOperator(context, request))
+      return { kind: 'presented-credential' };
+    if (isAgentOriginatedRequest(request)) return null;
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    if (
+      principal?.kind !== 'credential' ||
+      principal.authority !== 'device-credential'
+    )
+      return null;
+    try {
+      if (
+        isRequestPrincipalCurrent(request) !== true ||
+        !pairing.deviceAccessAdministrator(principal.credential)
+      )
+        return null;
+      return { kind: 'device-access', credential: principal.credential };
+    } catch {
+      return null;
+    }
+  };
+  const auditDeviceAccess = (
+    request: Request,
+    approval: DeviceAccessApproval,
+    action: DeviceAccessAuditRecord['action'],
+    device: PairedDevice,
+  ): void => {
+    try {
+      options.auditDeviceAccess?.({
+        event: 'station.device_access.changed',
+        action,
+        actor:
+          approval.kind === 'device-access'
+            ? 'device-access'
+            : 'operator-credential',
+        ...(approval.kind === 'device-access'
+          ? {
+              actorDeviceId:
+                getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId,
+            }
+          : {}),
+        deviceId: device.id,
+        timestamp: Date.now(),
+        ...(action === 'scope' ? { scope: device.scope } : {}),
+      });
+    } catch {
+      // A dropped observation cannot undo a committed access decision.
+    }
+  };
+
   if (options.operatorPasskeys) {
     app.route(
       '/api/pairing/operator-passkeys',
@@ -8728,10 +9269,30 @@ export function configureDevicePairingHostRoutes(
     ) {
       return c.json({ error: 'invalid_request' }, 400);
     }
+    if (
+      body.approval !== undefined &&
+      body.approval !== 'on-create' &&
+      body.approval !== 'on-request'
+    ) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    if (options.isApprovalCurrent?.(c.req.raw) !== true) {
+      return approvalRequiresOperator(c);
+    }
+    if (
+      isHostBrowser(c.req.raw) &&
+      (body.kind === 'delegation' ||
+        (
+          parsePairingScope((body.scope as string | undefined) ?? '') ?? []
+        ).some(isProtectedPairingPromotionScope))
+    ) {
+      return approvalRequiresOperator(c);
+    }
     try {
       return c.json(
         pairing.createOffer({
           endpoint: body.endpoint,
+          approval: body.approval as 'on-create' | 'on-request' | undefined,
           scope: body.scope as string | undefined,
           kind: body.kind as 'device' | 'delegation' | undefined,
         }),
@@ -8746,7 +9307,10 @@ export function configureDevicePairingHostRoutes(
   });
   app.delete('/api/pairing/offers/:offerId', (c) => {
     try {
-      pairing.cancelOffer(c.req.param('offerId'));
+      pairing.cancelOffer(
+        c.req.param('offerId'),
+        isHostBrowser(c.req.raw) ? 'device' : undefined,
+      );
       return c.body(null, 204);
     } catch (error) {
       return c.json(
@@ -8944,21 +9508,30 @@ export function configureDevicePairingHostRoutes(
         const requested = pairing
           .listRequests()
           .find((candidate) => candidate.requestId === requestId);
+        if (requested?.kind === 'delegation' && isHostBrowser(c.req.raw)) {
+          throw new DevicePairingError('approval_requires_operator');
+        }
         const kept = grantedScope ?? requested?.scope ?? '';
+        if (
+          isHostBrowser(c.req.raw) &&
+          (parsePairingScope(kept) ?? []).some(isProtectedPairingPromotionScope)
+        ) {
+          throw new DevicePairingError('approval_requires_operator');
+        }
         if (deviceRequestedExtraScopes(kept).length > 0) {
           const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
           const operatorCredential =
             actor?.authority === 'operator-credential' &&
             options.verifyOperatorCredential?.(actor.credential) === true;
-          // The same operator test person binding uses: the operator
-          // credential, or the desktop's own home-possession local grant.
+          // Device-use grants may also be approved by the host-issued
+          // browser session; verified-person binding remains separate.
           const localGrant =
             actor?.authority === 'device-credential' &&
             actor.locality === 'home-possession' &&
-            actor.mintKind === 'local-grant' &&
             pairing.credentialLocality(actor.credential) ===
               'home-possession' &&
-            pairing.credentialMintKind(actor.credential) === 'local-grant';
+            (pairing.credentialMintKind(actor.credential) === 'local-grant' ||
+              pairing.credentialMayManagePairing(actor.credential));
           // Thrown, not returned, so it is counted and audited as the
           // refusal it is, with the service's own refusals below.
           if (!operatorCredential && !localGrant)
@@ -9050,7 +9623,10 @@ export function configureDevicePairingHostRoutes(
           throw new DevicePairingError('request_not_found');
         request = { ...pending, status: 'denied' };
       } else {
-        request = pairing.denyRequest(requestId);
+        request = pairing.denyRequest(
+          requestId,
+          isHostBrowser(c.req.raw) ? 'device' : undefined,
+        );
       }
       devicePairingRequests.add(1, {
         source: request.source,
@@ -9075,6 +9651,10 @@ export function configureDevicePairingHostRoutes(
     return c.json({
       devices: devices.map((device) => ({
         ...device,
+        // #3557: what it may use now (its person's Station group cap).
+        ...(device.revokedAt === null
+          ? { effectiveScope: pairing.effectiveScopeOfDevice(device.id) }
+          : {}),
         connectedClients: connected?.get(device.id) ?? null,
       })),
     });
@@ -9101,12 +9681,17 @@ export function configureDevicePairingHostRoutes(
   app.delete('/api/pairing/devices/:deviceId', async (c) => {
     try {
       const request = c.req.raw;
-      if (!currentOperator(c, request)) {
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       observeOperatorCredentialUse(c, 'DELETE /api/pairing/devices/:deviceId');
       const deviceId = c.req.param('deviceId');
-      const device = pairing.revokeDevice(deviceId, 'operator-credential');
+      const device = pairing.revokeDevice(
+        deviceId,
+        approval.kind === 'device-access' ? approval : 'operator-credential',
+      );
+      auditDeviceAccess(request, approval, 'revoke', device);
       options.connectedClientPresence?.disconnectDevice(deviceId);
       // #1796: revoking the device revokes its full access too.
       return c.json({
@@ -9123,17 +9708,238 @@ export function configureDevicePairingHostRoutes(
   /**
    * Change a paired device's access (station#3816).
    *
-   * Operator-only, exactly like revoking — the same authority check, because
+   * Operator or explicitly granted device administrator, like revoking, because
    * this is the same class of decision: what a device may do on this
    * Station. Until now the only available answer was "nothing", so narrowing
    * a device meant unpairing and re-pairing it, losing its identity and
    * history; and `operator-promotion`, the grant path the contracts declare
    * for `access:approve` and `consent:decide`, had no mechanism at all.
    */
+  // #3557: everyone tied to a device or placed in a group, with what each
+  // tied device may actually use. Operator only, like device access.
+  const peopleView = (): StationPerson[] => {
+    const groups = options.groups!;
+    const people = new Map<string, StationPerson>();
+    const personFor = (principalId: string, displayName: string) => {
+      let person = people.get(principalId);
+      if (!person) {
+        const assigned = groups
+          .assignments()
+          .some((entry) => entry.principalId === principalId);
+        person = {
+          principalId,
+          displayName,
+          group: groups.groupOf(principalId),
+          assigned,
+          devices: [],
+          tokens: pairing.listPersonalTokens(principalId),
+          canHoldTokens: false,
+        };
+        people.set(principalId, person);
+      }
+      return person;
+    };
+    for (const device of pairing.listDevices()) {
+      if (
+        device.revokedAt !== null ||
+        !device.principalBinding ||
+        device.kind === 'delegation'
+      )
+        continue;
+      const principal = principalForDeviceBinding(device.principalBinding);
+      const person = personFor(principal.id, principal.display);
+      if (pairing.canHoldPersonalToken(device.principalBinding))
+        person.canHoldTokens = true;
+      person.devices.push({
+        id: device.id,
+        name: device.name,
+        scope: device.scope,
+        effectiveScope: pairing.effectiveScopeOfDevice(device.id) ?? '',
+      });
+    }
+    for (const entry of groups.assignments())
+      personFor(entry.principalId, entry.principalId);
+    // A token outlives its person's devices; its owner stays listed so the
+    // operator can still see and revoke it.
+    for (const token of pairing.listPersonalTokens())
+      personFor(token.ownerPrincipalId, token.ownerPrincipalId);
+    return [...people.values()].sort((left, right) =>
+      left.displayName.localeCompare(right.displayName),
+    );
+  };
+  // Read like the device list: the pairing family's boundary admits the
+  // operator and the desktop's own local grant. Changing a group is a device
+  // access change, so it needs the operator credential itself.
+  app.get('/api/pairing/people', (c) => {
+    if (!options.groups) return c.json({ error: 'not_found' }, 404);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ people: peopleView() });
+  });
+  app.put('/api/pairing/people/:principalId/group', async (c) => {
+    if (!options.groups) return c.json({ error: 'not_found' }, 404);
+    const request = c.req.raw;
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    const body = (await request.json().catch(() => null)) as {
+      group?: unknown;
+    } | null;
+    if (!isStationGroup(body?.group))
+      return c.json({ error: 'invalid_group' }, 400);
+    const principalId = c.req.param('principalId');
+    // Reading the body yielded: the decision stays the operator's.
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    const tied = pairing
+      .listDevices()
+      .filter(
+        (device) =>
+          device.revokedAt === null &&
+          device.kind !== 'delegation' &&
+          device.principalBinding !== undefined &&
+          principalForDeviceBinding(device.principalBinding).id === principalId,
+      );
+    const heldFullAccess = new Set(
+      tied
+        .filter((device) =>
+          pairingScopeIncludes(
+            pairing.effectiveScopeOfDevice(device.id) ?? '',
+            'approval:full-access',
+          ),
+        )
+        .map((device) => device.id),
+    );
+    try {
+      await options.groups.assign(principalId, body.group);
+    } catch (error) {
+      return error instanceof StationGroupsError
+        ? c.json({ error: 'invalid_principal' }, 400)
+        : c.json({ error: 'groups_unavailable' }, 503);
+    }
+    observeOperatorCredentialUse(
+      c,
+      'PUT /api/pairing/people/:principalId/group',
+    );
+    // As a device scope change: live terminal and voice connections
+    // re-authenticate under the new cap, and a full access the group no
+    // longer allows resets what it had granted.
+    const revocations: Record<string, unknown> = {};
+    for (const device of tied) {
+      options.connectedClientPresence?.disconnectDevice(device.id);
+      if (
+        heldFullAccess.has(device.id) &&
+        !pairingScopeIncludes(
+          pairing.effectiveScopeOfDevice(device.id) ?? '',
+          'approval:full-access',
+        )
+      )
+        revocations[device.id] = await revokeFullAccess(
+          request,
+          device.id,
+          'scope-removed',
+        );
+    }
+    const person = peopleView().find(
+      (entry) => entry.principalId === principalId,
+    ) ?? {
+      principalId,
+      displayName: principalId,
+      group: body.group,
+      assigned: body.group !== 'member',
+      devices: [],
+      tokens: [],
+      canHoldTokens: false,
+    };
+    return c.json({ person, revocations });
+  });
+  // #3557: the operator makes or revokes a token for a person. The person
+  // must be known by a device tied to them (their binding is the token's);
+  // the token stays capped by their group, so it never exceeds their access.
+  app.post('/api/pairing/people/:principalId/tokens', async (c) => {
+    const request = c.req.raw;
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    const principalId = c.req.param('principalId');
+    const body = (await request.json().catch(() => null)) as {
+      name?: unknown;
+      scope?: unknown;
+      expiresInDays?: unknown;
+    } | null;
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    observeOperatorCredentialUse(
+      c,
+      'POST /api/pairing/people/:principalId/tokens',
+    );
+    const expiresAt = parseTokenExpiry(body?.expiresInDays, Date.now());
+    if (
+      typeof body?.name !== 'string' ||
+      typeof body.scope !== 'string' ||
+      expiresAt === 'invalid'
+    )
+      return c.json({ error: 'invalid_request' }, 400);
+    const binding = pairing
+      .listDevices()
+      .find(
+        (device) =>
+          device.revokedAt === null &&
+          device.kind !== 'delegation' &&
+          device.principalBinding !== undefined &&
+          principalForDeviceBinding(device.principalBinding).id === principalId,
+      )?.principalBinding;
+    if (!binding) return c.json({ error: 'person_not_found' }, 404);
+    try {
+      return c.json(
+        await pairing.mintPersonalToken({
+          name: body.name,
+          binding,
+          ownerPrincipalId: principalId,
+          scope: body.scope,
+          expiresAt,
+        }),
+        201,
+      );
+    } catch (error) {
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'identity_credential_quota_reached'
+      )
+        return c.json({ error: 'token_limit_reached' }, 409);
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'account_bound_person'
+      )
+        return c.json({ error: 'account_bound_person' }, 400);
+      if (error instanceof PersonalTokenUnavailableError)
+        return c.json({ error: 'tokens_unavailable' }, 503);
+      if (error instanceof DevicePairingError)
+        return c.json({ error: 'invalid_request' }, 400);
+      throw error;
+    }
+  });
+  app.delete('/api/pairing/people/:principalId/tokens/:tokenId', async (c) => {
+    if (!currentOperator(c, c.req.raw))
+      return c.json({ error: 'authentication_required' }, 401);
+    observeOperatorCredentialUse(
+      c,
+      'DELETE /api/pairing/people/:principalId/tokens/:tokenId',
+    );
+    try {
+      return (await pairing.revokePersonalToken(
+        c.req.param('tokenId'),
+        c.req.param('principalId'),
+      ))
+        ? c.json({ revoked: true })
+        : c.json({ error: 'not_found' }, 404);
+    } catch (error) {
+      if (error instanceof PersonalTokenUnavailableError)
+        return c.json({ error: 'tokens_unavailable' }, 503);
+      throw error;
+    }
+  });
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {
       const request = c.req.raw;
-      if (!currentOperator(c, request)) {
+      if (!currentDeviceAccessApproval(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       observeOperatorCredentialUse(
@@ -9156,7 +9962,8 @@ export function configureDevicePairingHostRoutes(
         typeof body?.expectedScope === 'string'
           ? body.expectedScope
           : undefined;
-      if (!currentOperator(c, request)) {
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       const deviceId = c.req.param('deviceId');
@@ -9168,11 +9975,10 @@ export function configureDevicePairingHostRoutes(
       const device = pairing.setDeviceScope(
         deviceId,
         scope as PairingScope[],
-        // The operator credential IS the approval here; the service still
-        // checks the approval shape so no caller can reach it another way.
-        { kind: 'presented-credential' },
+        approval,
         expectedScope,
       );
+      auditDeviceAccess(request, approval, 'scope', device);
       // station#3816 (review HIGH): HTTP re-reads scope per request, but
       // terminal and voice authenticate ONCE at the handshake and never
       // again — so a device demoted to Read-only kept writing on a terminal
@@ -9222,19 +10028,20 @@ export function configureDevicePairingHostRoutes(
   app.delete('/api/pairing/devices/:deviceId/record', (c) => {
     try {
       const request = c.req.raw;
-      if (!currentOperator(c, request)) {
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       observeOperatorCredentialUse(
         c,
         'DELETE /api/pairing/devices/:deviceId/record',
       );
-      return c.json(
-        pairing.removeRevokedDevice(
-          c.req.param('deviceId'),
-          'operator-credential',
-        ),
+      const device = pairing.removeRevokedDevice(
+        c.req.param('deviceId'),
+        approval.kind === 'device-access' ? approval : 'operator-credential',
       );
+      auditDeviceAccess(request, approval, 'remove', device);
+      return c.json(device);
     } catch (error) {
       return c.json(
         { error: pairingErrorCode(error) },

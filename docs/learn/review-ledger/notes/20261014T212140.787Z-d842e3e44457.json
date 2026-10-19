@@ -1,0 +1,7 @@
+{
+  "revision": "43b2cad5f090866bdd5afcfd6b51034f3bcb41ab",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts was regenerated from the reviewed knowledge guide and module-map changes; this reference describes how the shipped topics are compiled and served, which is unchanged. The topic count (112) and catalog IDs are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

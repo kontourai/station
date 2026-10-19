@@ -1,6 +1,13 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { TerminalEvent } from '../../../domain/terminal-types.js';
+
+const probes = vi.hoisted(() => ({ execFile: vi.fn(), execSync: vi.fn() }));
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  ...probes,
+}));
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   terminalOps: { add: vi.fn() },
@@ -10,10 +17,19 @@ const { TerminalService } = await import('../terminal-service.js');
 const { PtyUnavailableError } = await import('../../../domain/pty-adapter.js');
 
 function createMockPty() {
+  const dataListeners = new Set<(data: string) => void>();
   return {
+    emitData: (data: string) => {
+      for (const cb of dataListeners) cb(data);
+    },
     spawn: vi.fn().mockResolvedValue({
       pid: 12345,
-      onData: vi.fn().mockReturnValue(vi.fn()),
+      onData: vi.fn((cb: (data: string) => void) => {
+        dataListeners.add(cb);
+        return () => {
+          dataListeners.delete(cb);
+        };
+      }),
       onExit: vi.fn().mockReturnValue(vi.fn()),
       write: vi.fn(),
       resize: vi.fn(),
@@ -28,6 +44,9 @@ function createMockHistoryStore() {
     load: vi.fn(async (id: string) => store.get(id) || ''),
     save: vi.fn(async (id: string, data: string) => {
       store.set(id, data);
+    }),
+    delete: vi.fn(async (id: string) => {
+      store.delete(id);
     }),
   };
 }
@@ -47,6 +66,8 @@ describe('TerminalService', () => {
   let pty: ReturnType<typeof createMockPty>;
 
   beforeEach(() => {
+    probes.execFile.mockReset();
+    probes.execSync.mockReset();
     pty = createMockPty();
     svc = new TerminalService(pty as any, createMockHistoryStore() as any);
   });
@@ -165,6 +186,194 @@ describe('TerminalService', () => {
     expect(snap2.status).toBe('running');
     expect(pty.spawn).toHaveBeenCalledTimes(1); // not spawned again
   });
+
+  test('bounds newline-free PTY history by UTF-8 bytes while retaining the exact output tail on reattach and restore', async () => {
+    vi.useFakeTimers();
+    const history = createMockHistoryStore();
+    await svc.dispose();
+    svc = new TerminalService(pty, history);
+    const input = {
+      projectSlug: 'test',
+      terminalId: 'bounded',
+      cwd: '/tmp',
+      cols: 80,
+      rows: 24,
+    };
+    await svc.open(input);
+    const chunk = '進捗🙂\r'.repeat(1024);
+    for (let i = 0; i < 2048; i++) pty.emitData(chunk);
+    pty.emitData('final-tail');
+    const replay = (await svc.open(input)).history;
+    expect(Buffer.byteLength(replay)).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect(replay.length).toBeGreaterThan(100_000);
+    expect(`${chunk.repeat(512)}final-tail`.endsWith(replay)).toBe(true);
+    expect(/^[\uDC00-\uDFFF]/.test(replay)).toBe(false);
+    expect(svc.readProcess('test:bounded')?.history).toBe(replay);
+    await vi.advanceTimersByTimeAsync(40);
+    expect(history.save).toHaveBeenLastCalledWith('test:bounded', replay);
+    await svc.close('test:bounded');
+    expect((await svc.open(input)).history).toBe(replay);
+  });
+
+  test('bounds legacy plain-text history on restore and retains the latest live lines', async () => {
+    const history = createMockHistoryStore();
+    await svc.dispose();
+    svc = new TerminalService(pty, history);
+    const input = {
+      projectSlug: 'test',
+      terminalId: 'legacy',
+      cwd: '/tmp',
+      cols: 80,
+      rows: 24,
+    };
+    history.load.mockResolvedValueOnce(
+      `${'old'.repeat(800_000)}\n\x1b[32mlatest🙂\x1b[0m`,
+    );
+    const restored = (await svc.open(input)).history;
+    expect(Buffer.byteLength(restored)).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect(restored.endsWith('\x1b[32mlatest🙂\x1b[0m')).toBe(true);
+    for (let i = 0; i < 6000; i++) pty.emitData(`\nline-${i}`);
+    const replay = (await svc.open(input)).history;
+    expect(replay.split('\n')).toHaveLength(5000);
+    expect(replay).toBe(
+      Array.from({ length: 5000 }, (_, i) => `line-${i + 1000}`).join('\n'),
+    );
+  });
+
+  test.each([
+    ['CSI', '\x1b[', '31m'],
+    ['OSC', '\x1b]title;', '\x1b\\'],
+    ['DCS', '\x1bP', '\x1b\\'],
+  ])(
+    'does not start truncated replay inside a split %s sequence',
+    async (_name, prefix, suffix) => {
+      const input = {
+        projectSlug: 'test',
+        terminalId: 'ansi',
+        cwd: '/tmp',
+        cols: 80,
+        rows: 24,
+      };
+      await svc.open(input);
+      pty.emitData(prefix);
+      pty.emitData('1'.repeat(32));
+      pty.emitData(suffix);
+      const visible = 'v'.repeat(2 * 1024 * 1024 - 16);
+      pty.emitData(visible);
+      expect((await svc.open(input)).history === visible).toBe(true);
+    },
+  );
+
+  test('retains normal output after an unterminated OSC followed by 30,000 lines', async () => {
+    const input = {
+      projectSlug: 'test',
+      terminalId: 'binary',
+      cwd: '/tmp',
+      cols: 80,
+      rows: 24,
+    };
+    await svc.open(input);
+    pty.emitData('\x1b]garbage');
+    const line = `${'normal output '.padEnd(86, 'x')}\n`;
+    for (let i = 0; i < 30_000; i++) pty.emitData(line);
+    const replay = (await svc.open(input)).history;
+    expect(replay.length).toBeGreaterThan(400_000);
+    expect(replay.endsWith(line.repeat(100))).toBe(true);
+    expect(replay.split('\n').length).toBeLessThanOrEqual(5000);
+  });
+
+  test.each(['\x18', '\x1a', '\x1b[32m'])(
+    'recovers a truncated OSC after cancellation or a new escape (%j)',
+    async (abort) => {
+      const input = {
+        projectSlug: 'test',
+        terminalId: 'abort',
+        cwd: '/tmp',
+        cols: 80,
+        rows: 24,
+      };
+      await svc.open(input);
+      pty.emitData(`\x1b]${'g'.repeat(100)}${abort}`);
+      const visible = 'v'.repeat(2 * 1024 * 1024 - 64);
+      pty.emitData(visible);
+      expect((await svc.open(input)).history === visible).toBe(true);
+    },
+  );
+
+  test('keeps surrogate pairs intact when PTY callbacks divide them at the history limit', async () => {
+    const input = {
+      projectSlug: 'test',
+      terminalId: 'unicode',
+      cwd: '/tmp',
+      cols: 80,
+      rows: 24,
+    };
+    await svc.open(input);
+    pty.emitData(`${'🙂'.repeat(524_288)}\uD83D`);
+    pty.emitData('\uDE42');
+    const replay = (await svc.open(input)).history;
+    expect(Buffer.byteLength(replay)).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect(replay.length).toBe(524_288 * 2);
+    expect(replay.replaceAll('🙂', '')).toBe('');
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'starts terminal activity probes concurrently and ignores results for closed sessions',
+    async () => {
+      vi.useFakeTimers();
+      await svc.dispose();
+      svc = new TerminalService(pty, createMockHistoryStore());
+      const callbacks: Array<(error: Error | null) => void> = [];
+      probes.execFile.mockImplementation((_file, _args, _options, callback) => {
+        callbacks.push(callback);
+      });
+      const events: TerminalEvent[] = [];
+      svc.subscribe((event) => events.push(event));
+      for (const terminalId of ['one', 'two']) {
+        await svc.open({
+          projectSlug: 'test',
+          terminalId,
+          cwd: '/tmp',
+          cols: 80,
+          rows: 24,
+        });
+      }
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(callbacks).toHaveLength(2);
+      expect(probes.execSync).not.toHaveBeenCalled();
+      expect(probes.execFile).toHaveBeenCalledWith(
+        'pgrep',
+        ['-P', '12345'],
+        expect.objectContaining({ timeout: 2000, windowsHide: true }),
+        expect.any(Function),
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(callbacks).toHaveLength(2);
+      await svc.close('test:one');
+      callbacks[0]!(null);
+      callbacks[1]!(null);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(events.filter((event) => event.type === 'activity')).toEqual([
+        { type: 'activity', sessionId: 'test:two', hasRunningSubprocess: true },
+      ]);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(callbacks).toHaveLength(3);
+      callbacks[2]!(
+        Object.assign(new Error('pgrep timed out'), { killed: true }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(svc.readProcess('test:two')?.process.hasRunningSubprocess).toBe(
+        true,
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      await svc.dispose();
+      callbacks[3]!(null);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(events.filter((event) => event.type === 'activity')).toHaveLength(
+        1,
+      );
+    },
+  );
 
   test('write delegates to process', async () => {
     await svc.open({

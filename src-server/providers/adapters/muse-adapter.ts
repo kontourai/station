@@ -9,6 +9,7 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import { EXTERNAL_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ApprovalMode,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -817,6 +818,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   readonly metadata: ProviderAdapterMetadata;
   private static readonly baseMetadata = {
     displayName: 'Muse Code',
+    durability: EXTERNAL_ENGINE_DURABILITY,
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('muse'),

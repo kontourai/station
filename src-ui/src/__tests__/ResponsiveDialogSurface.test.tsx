@@ -10,6 +10,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { act, StrictMode, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DialogHistoryHostBoundary } from '../components/DialogHistoryHost';
 import {
@@ -184,6 +185,145 @@ describe('ResponsiveDialogSurface', () => {
     );
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  test.each([
+    { mobile: false, shiftKey: true },
+    { mobile: false, shiftKey: false },
+    { mobile: true, shiftKey: true },
+    { mobile: true, shiftKey: false },
+  ])(
+    'contains Tab from initial panel focus and wraps boundaries (mobile=$mobile, shift=$shiftKey)',
+    ({ mobile, shiftKey }) => {
+      setMobileViewport(mobile);
+      render(
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="Panel-focused dialog"
+          onClose={vi.fn()}
+        >
+          <h2 tabIndex={-1}>Details</h2>
+          <button type="button">First action</button>
+          <button type="button">Last action</button>
+        </ResponsiveDialogSurface>,
+      );
+
+      const dialog = screen.getByRole('dialog', {
+        name: 'Panel-focused dialog',
+      });
+      const first = screen.getByRole('button', { name: 'First action' });
+      const last = screen.getByRole('button', { name: 'Last action' });
+      expect(document.activeElement).toBe(dialog);
+      expect(fireEvent.keyDown(dialog, { key: 'Tab', shiftKey })).toBe(false);
+      expect(document.activeElement).toBe(shiftKey ? last : first);
+
+      const heading = screen.getByRole('heading', { name: 'Details' });
+      heading.focus();
+      expect(fireEvent.keyDown(heading, { key: 'Tab', shiftKey })).toBe(true);
+      expect(document.activeElement).toBe(heading);
+
+      (shiftKey ? first : last).focus();
+      fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey });
+      expect(document.activeElement).toBe(shiftKey ? last : first);
+    },
+  );
+
+  test.each([true, false])(
+    'leaves portaled intermediate Tab to its owner (nested surface=%s)',
+    (nested) => {
+      setMobileViewport(false);
+      const inputs = (
+        <>
+          <input aria-label="Inner first" />
+          <input aria-label="Inner second" />
+          <input aria-label="Inner third" />
+        </>
+      );
+      render(
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="Outer"
+          onClose={vi.fn()}
+        >
+          <button type="button">Outer first</button>
+          {nested ? (
+            <ResponsiveDialogSurface
+              layer="dialog"
+              ariaLabel="Inner"
+              onClose={vi.fn()}
+            >
+              {inputs}
+            </ResponsiveDialogSurface>
+          ) : (
+            createPortal(inputs, document.body)
+          )}
+          <button type="button">Outer last</button>
+        </ResponsiveDialogSurface>,
+      );
+      const first = screen.getByRole('textbox', { name: 'Inner first' });
+      first.focus();
+      expect(fireEvent.keyDown(first, { key: 'Tab' })).toBe(true);
+      expect(document.activeElement).toBe(first);
+    },
+  );
+
+  test('still dismisses on Escape from a portaled child that leaves it unhandled', () => {
+    setMobileViewport(false);
+    const onClose = vi.fn();
+    render(
+      <ResponsiveDialogSurface
+        layer="dialog"
+        ariaLabel="Outer"
+        onClose={onClose}
+      >
+        <button type="button">Outer first</button>
+        {createPortal(<input aria-label="Portaled field" />, document.body)}
+      </ResponsiveDialogSurface>,
+    );
+    const field = screen.getByRole('textbox', { name: 'Portaled field' });
+    field.focus();
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  test.each(['summary', 'contenteditable', 'shadow input'])(
+    'leaves native Tab alone from an internal %s',
+    (kind) => {
+      setMobileViewport(false);
+      render(
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="Native focus"
+          onClose={vi.fn()}
+        >
+          <button type="button">First</button>
+          <details open>
+            <summary>Advanced</summary>
+          </details>
+          <div contentEditable data-testid="editable" />
+          <div data-testid="shadow-host" />
+          <button type="button">Last</button>
+        </ResponsiveDialogSurface>,
+      );
+      let target =
+        kind === 'summary'
+          ? screen.getByText('Advanced')
+          : screen.getByTestId('editable');
+      if (kind === 'shadow input') {
+        const shadow = screen
+          .getByTestId('shadow-host')
+          .attachShadow({ mode: 'open' });
+        target = document.createElement('input');
+        shadow.append(target);
+      }
+      target.focus();
+      expect(fireEvent.keyDown(target, { key: 'Tab', composed: true })).toBe(
+        true,
+      );
+      expect(document.activeElement).toBe(
+        kind === 'shadow input' ? screen.getByTestId('shadow-host') : target,
+      );
+    },
+  );
 
   test('renders an alert dialog with the same modal keyboard and close contract', () => {
     setMobileViewport(false);

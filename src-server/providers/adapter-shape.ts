@@ -12,6 +12,7 @@ import type {
   EngineId,
   ModelLaunchCapabilities,
   ProviderContinuityCapabilities,
+  ProviderDurabilityProfile,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
@@ -22,6 +23,10 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  CLIENT_TURN_IN_FLIGHT_CODE,
+  CLIENT_TURN_INPUT_CONFLICT_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 
@@ -125,6 +130,60 @@ export class ProviderTurnInProgressError extends SendTurnRefusedError {
   }
 }
 
+/**
+ * A send that waited for its session's engine start and gave up before the
+ * start finished. Nothing reached the engine. Retryable: orchestration
+ * forwards the code and clients keep the message queued.
+ */
+export class ProviderSessionStartingError extends SendTurnRefusedError {
+  readonly code = PROVIDER_SESSION_STARTING_CODE;
+
+  constructor() {
+    super(
+      'The session is still starting. Nothing was sent; try again in a moment.',
+    );
+    this.name = 'ProviderSessionStartingError';
+  }
+}
+
+/**
+ * A send whose session's engine start failed while it waited. Nothing was
+ * sent; `reason` is short and user-facing (engine detail belongs in logs).
+ * Kept by clients with a Retry rather than dropped.
+ */
+export class ProviderSessionStartFailedError extends SendTurnRefusedError {
+  readonly code = PROVIDER_SESSION_START_FAILED_CODE;
+
+  constructor(reason: string) {
+    super(`The agent's session couldn't start: ${reason}`);
+    this.name = 'ProviderSessionStartFailedError';
+  }
+}
+
+export class ClientTurnInputConflictError extends SendTurnRefusedError {
+  readonly code = CLIENT_TURN_INPUT_CONFLICT_CODE;
+  readonly retryable = false;
+  constructor() {
+    super('This client turn key already names a different submitted input.');
+    this.name = 'ClientTurnInputConflictError';
+  }
+}
+
+/**
+ * A send whose `clientTurnId` another attempt still holds, or released
+ * without sending. Nothing new was sent; the same key may be sent again.
+ */
+export class ClientTurnInFlightError extends SendTurnRefusedError {
+  readonly code = CLIENT_TURN_IN_FLIGHT_CODE;
+
+  constructor() {
+    super(
+      'An earlier attempt of this message has not finished. Nothing new was sent; try again in a moment.',
+    );
+    this.name = 'ClientTurnInFlightError';
+  }
+}
+
 import type {
   ApprovalAcknowledgement,
   CanonicalRuntimeEvent,
@@ -169,6 +228,8 @@ export interface ProviderAdapterMetadata {
    * are read as `none` until they opt in with a version they actually support.
    */
   continuity?: ProviderContinuityCapabilities;
+  /** Absent on legacy plugins means unreported, never an inferred guarantee. */
+  durability?: ProviderDurabilityProfile;
   /** Native process sandbox can enforce Station's independent-review policy. */
   reviewIsolation?: 'read-only';
   /**
@@ -317,6 +378,19 @@ export interface ProviderAdapterShape {
   discardSession?(
     threadId: string,
     recovery?: ProviderDiscardSessionRecovery,
+  ): Promise<void>;
+  /**
+   * Wait until the thread's session can take a turn, for an adapter whose
+   * session becomes visible before its engine start finishes. Orchestration
+   * awaits this BEFORE taking the thread's turn-start claim, so a long start
+   * never holds the lock Stop/End/park need. Resolves at once when nothing
+   * is pending; rejects with a `SendTurnRefusedError` (start failed, or
+   * {@link ProviderSessionStartingError} when still starting after the
+   * adapter's bound) or the signal's abort error. Nothing reaches the engine.
+   */
+  whenSessionReady?(
+    threadId: string,
+    options?: { signal?: AbortSignal },
   ): Promise<void>;
   sendTurn(input: ProviderSendTurnInput): Promise<ProviderTurnStartResult>;
   interruptTurn(

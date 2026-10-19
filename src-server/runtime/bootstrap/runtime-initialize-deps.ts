@@ -54,6 +54,7 @@ type ToolNameMapping = Map<
 >;
 
 interface RuntimeInitializationContext {
+  validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
@@ -65,6 +66,8 @@ interface RuntimeInitializationContext {
     EnvironmentSecurityService,
     | 'verifyCredential'
     | 'resolveGrantedScope'
+    // #3586: the voice WebSocket refuses account-bound devices and tokens.
+    | 'identifyDevice'
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
     | 'deviceHoldsFullAccess'
@@ -183,6 +186,7 @@ export function createRuntimeInitializationDeps(
     timers: context.timers,
     configLoader: context.configLoader,
     storageAdapter: context.storageAdapter,
+    validateProjectTools: context.validateProjectTools,
     resolveProjectToolServers: context.resolveProjectToolServers,
     skillService: context.skillService,
     feedbackService: context.feedbackService,

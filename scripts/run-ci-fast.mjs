@@ -2,6 +2,10 @@
 
 import { spawnSync } from 'node:child_process';
 import { ciFastStepMarker } from './lib/ci-fast-step-marker.mjs';
+import {
+  assertVerificationHost,
+  LiveServiceVerificationError,
+} from './lib/live-service-verification.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
@@ -198,6 +202,12 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     'npm',
     Object.freeze(['run', 'docs:public:contract-examples']),
   ]),
+  // Numbered ADRs in docs/adr are frozen; decisions are records in
+  // docs/decisions, checked by Corpus. This is the required lane for both:
+  // the shared Docs kit gate also runs them but is advisory. The check reads
+  // the same base as this lane, so a new ADR file fails here, and an invalid
+  // record or stale index fails with or without a base.
+  Object.freeze(['npm', Object.freeze(['run', 'check:decisions'])]),
   // PRECONDITION for the typecheck aggregate below, same shape as
   // `build:connect`: the Basis MCP app bundles are git-ignored build output
   // that `typecheck:basis-pane`, `typecheck:server-tests`, and `typecheck:ui`
@@ -460,7 +470,10 @@ export function runCiFastCli({
     return status;
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
-    if (caught instanceof CiFastInfrastructureError) {
+    if (
+      caught instanceof CiFastInfrastructureError ||
+      caught instanceof LiveServiceVerificationError
+    ) {
       error(`\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${message}\n`);
       return CI_FAST_INFRASTRUCTURE_EXIT_CODE;
     }
@@ -469,4 +482,10 @@ export function runCiFastCli({
   }
 }
 
-if (invokedDirectly(import.meta.url)) process.exitCode = runCiFastCli();
+if (invokedDirectly(import.meta.url))
+  process.exitCode = runCiFastCli({
+    run: () => {
+      assertVerificationHost('ci:fast');
+      return runCiFast();
+    },
+  });

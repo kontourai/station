@@ -99,7 +99,8 @@ Remove narration and stale claims only after reading the surrounding caller
 and tests. Keep short explanations of non-obvious invariants, security or
 concurrency boundaries, compatibility constraints, and past defects that a
 maintainer could otherwise reintroduce. Put long rationale in the owning guide
-or ADR and link it at the hazardous decision when useful.
+or a decision record (`docs/decisions/`; numbered ADRs are frozen) and link it
+at the hazardous decision when useful.
 
 Preserve public API documentation, licenses, tool directives, generated markers,
 and TODOs with unresolved obligations. Test fixtures may contain deliberate

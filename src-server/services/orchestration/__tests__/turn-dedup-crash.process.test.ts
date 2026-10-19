@@ -58,7 +58,7 @@ const OWNER_PROGRAM = `
   const [dbPath, mode, threadId, clientTurnId] = process.argv.slice(1);
   const report = (step, extra = {}) =>
     process.stdout.write(JSON.stringify({ step, ...extra }) + '\\n');
-  class HangingAdapter extends GateTestAdapter {
+  class CrashPointAdapter extends GateTestAdapter {
     started = new Set();
     async startSession(input) {
       this.started.add(input.threadId);
@@ -69,12 +69,13 @@ const OWNER_PROGRAM = `
     }
     sendTurn(input) {
       report('adapter-invoked', { clientTurnId: input.clientTurnId ?? null });
+      if (mode === 'accepted') return Promise.resolve({ threadId: input.threadId, turnId: 'accepted-before-crash' });
       return new Promise(() => {});
     }
   }
   const eventStore = new EventStore(dbPath);
   const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(new HangingAdapter()),
+    adapterRegistry: createGateTestRegistry(new CrashPointAdapter()),
     eventBus: new EventBus(),
     eventStore,
     logger: { debug() {}, warn() {} },
@@ -87,6 +88,7 @@ const OWNER_PROGRAM = `
   const send = (input) =>
     void service
       .dispatch({ type: 'sendTurn', input: { threadId, ...input } })
+      .then(result => { if (mode === 'accepted') report('accepted', { turnId: result.turnId }); })
       .catch((error) => report('send-failed', { message: String(error?.message ?? error) }));
   const reader = new DatabaseSync(dbPath, { readOnly: true });
   const claimRow = () =>
@@ -100,7 +102,7 @@ const OWNER_PROGRAM = `
       await new Promise((r) => setTimeout(r, 10));
     }
   };
-  if (mode === 'invoked') {
+  if (mode === 'invoked' || mode === 'accepted') {
     send({ input: 'keyed', clientTurnId });
   } else {
     send({ input: 'unkeyed lock holder' });
@@ -168,7 +170,7 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
   /** Starts the owner, waits for `until`, SIGKILLs it, and returns every step it reported. */
   async function killOwnerAt(
     dbPath: string,
-    mode: 'invoked' | 'pre-invoke',
+    mode: 'invoked' | 'pre-invoke' | 'accepted',
     until: string,
   ): Promise<OwnerStep[]> {
     const child = spawn(
@@ -261,12 +263,12 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
     return { adapter, service };
   }
 
-  function retry(service: OrchestrationService) {
+  function retry(service: OrchestrationService, text = 'keyed') {
     return service.dispatch({
       type: 'sendTurn',
       input: {
         threadId: THREAD_ID,
-        input: 'keyed',
+        input: text,
         clientTurnId: CLIENT_TURN_ID,
       },
     });
@@ -297,6 +299,27 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
       // one-shot verdict that a second attempt could slip past.
       await expect(retry(service)).rejects.toMatchObject({
         outcome: 'indeterminate',
+      });
+      expect(adapter.sent).toHaveLength(0);
+    },
+    CHILD_TIMEOUT_MS * 2,
+  );
+
+  test(
+    '#3567: an accepted keyed input retains its digest after SIGKILL; changed input conflicts and identical input replays without invoking',
+    async () => {
+      const dbPath = newStorePath();
+      const steps = await killOwnerAt(dbPath, 'accepted', 'accepted');
+      expect(steps.filter((step) => step.step === 'adapter-invoked')).toEqual([
+        { step: 'adapter-invoked', clientTurnId: CLIENT_TURN_ID },
+      ]);
+      const { adapter, service } = await restart(dbPath);
+      await expect(retry(service, 'different input')).rejects.toMatchObject({
+        code: 'client_turn_input_conflict',
+      });
+      expect(adapter.sent).toHaveLength(0);
+      await expect(retry(service)).resolves.toMatchObject({
+        turnId: 'accepted-before-crash',
       });
       expect(adapter.sent).toHaveLength(0);
     },
@@ -356,6 +379,10 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
       expect(steps.some((step) => step.step === 'send-failed')).toBe(false);
 
       const { adapter, service } = await restart(dbPath);
+      await expect(retry(service, 'different input')).rejects.toMatchObject({
+        code: 'client_turn_input_conflict',
+      });
+      expect(adapter.sent).toHaveLength(0);
       const first = await retry(service);
       expect(first).toMatchObject({
         threadId: THREAD_ID,

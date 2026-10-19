@@ -561,6 +561,38 @@ export function useChatInput({
         addToInputHistory(sessionId, text.trim());
         setHistoryIndex((prev) => new Map(prev).set(sessionId, -1));
       }
+      // The composer's text is saved before the send clears it: a debounced
+      // keystroke still pending would otherwise exist only in memory until
+      // the outbox row is written.
+      if (overrideText === undefined && input) {
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+        setDraft(sessionId, input);
+      }
+      // The saved draft is let go the moment the outbox holds the message
+      // durably — before its request — so the text is never in both places
+      // after a crash (a relaunch would otherwise offer it for a second send
+      // under a new key) and never in neither.
+      let draftHandedOff = false;
+      const handOffDraft = () => {
+        draftHandedOff = true;
+        const now = activeChatsStore.getSnapshot()[sessionId];
+        if (
+          (now?.input && now.input !== input) ||
+          chatDraftsStore
+            .getQuotes(sessionId)
+            .some((quote) => !submittedQuotes.includes(quote))
+        ) {
+          // The user is already writing the next message: keep that.
+          chatDraftsStore.consumeQuotes(sessionId, submittedQuotes);
+          return;
+        }
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+        clearDraft(sessionId);
+      };
       const sent = await sendMessageAction(
         sessionId,
         agentSlug,
@@ -569,16 +601,22 @@ export function useChatInput({
         selectedAttachments,
         options?.ambientContext,
         undefined,
-        submittedExperienceDraft
-          ? {
-              skillExperienceDraft: submittedExperienceDraft,
-              experienceRequestScope: mentionRequestScope,
-              ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
-            }
-          : options?.queueOnBusy
-            ? { queueOnBusy: true }
-            : undefined,
+        {
+          ...(submittedExperienceDraft
+            ? {
+                skillExperienceDraft: submittedExperienceDraft,
+                experienceRequestScope: mentionRequestScope,
+              }
+            : {}),
+          ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+          onDurable: handOffDraft,
+        },
       );
+      // Refused after the handoff: the composer has the text back, so its
+      // saved draft does too.
+      const restored = activeChatsStore.getSnapshot()[sessionId]?.input;
+      if (sent === false && draftHandedOff && restored)
+        setDraft(sessionId, restored);
       // A durable offline row owns queued text. Clearing its draft prevents
       // the composer from rendering a second editable copy after a resume.
       //
@@ -621,6 +659,7 @@ export function useChatInput({
       activeChatState?.skillExperienceDraft,
       addToInputHistory,
       clearDraft,
+      setDraft,
       showToast,
       workingDirectory,
       mentionRequestScope,

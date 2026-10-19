@@ -167,6 +167,8 @@ describe('same-device relay credential aliases (station#2386)', () => {
         service.verifyCredential(credential),
       resolveGrantedScope: (credential: string) =>
         service.identifyDevice(credential)?.scope,
+      identifyDevice: (credential: string) =>
+        service.identifyDevice(credential),
     };
     expect(
       await credentialAuthorizedForScope(

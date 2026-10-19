@@ -949,6 +949,88 @@ export class ConversationLineage {
   }
 
   /**
+   * The durable half of the foreground delivery lookup
+   * (`TurnDeliveryInspection`): what the turn ledger holds for `clientTurnId`
+   * in every Session of the conversation, oldest first. Read-only — it peeks
+   * at claims, never takes, reclaims or settles one.
+   *
+   * `null` when the caller may not read every materialized Session of the
+   * conversation, or none exists here: the route answers both exactly as it
+   * answers a key nothing holds, so a lookup cannot probe for conversations.
+   * Precedence across Sessions: a resolved turn, then any possible effect
+   * (indeterminate, expired), then a live claim.
+   */
+  inspectTurnDelivery(
+    conversationId: string,
+    clientTurnId: string,
+    authority: SessionReadScope,
+    inputDigest?: string,
+  ):
+    | { outcome: 'not-received' | 'expired'; sessionId?: string }
+    | {
+        outcome: 'received' | 'indeterminate';
+        /** The Session whose claim it is, when one live claim holds it. */
+        sessionId?: string;
+        /** See `TurnClaimInspection`: only too old to prove in flight. */
+        ageOnly?: true;
+      }
+    | { outcome: 'started'; sessionId: string; turnId: string }
+    | null {
+    const store = this.deps.eventStore;
+    const ledger = this.deps.turnDeduplicator;
+    if (!store || !ledger) return null;
+    const sessionIds = this.conversationSessionIds(conversationId).filter(
+      (sessionId) => store.readSessionByThread(sessionId),
+    );
+    if (sessionIds.length === 0) return null;
+    if (
+      !sessionIds.every((sessionId) =>
+        this.deps.canReadSession(sessionId, authority),
+      )
+    )
+      return null;
+    const found = sessionIds.map((sessionId) => ({
+      sessionId,
+      claim: ledger.inspect({ threadId: sessionId, clientTurnId, inputDigest }),
+    }));
+    const started = found.find(({ claim }) => claim.state === 'resolved');
+    if (started?.claim.state === 'resolved')
+      return {
+        outcome: 'started',
+        sessionId: started.sessionId,
+        turnId: started.claim.value,
+      };
+    const has = (state: string) =>
+      found.some(({ claim }) => claim.state === state);
+    // A possible effect anywhere outranks a claim that may still resolve.
+    const indeterminate = found.find(
+      ({ claim }) => claim.state === 'indeterminate' && !claim.ageOnly,
+    );
+    if (indeterminate)
+      return { outcome: 'indeterminate', sessionId: indeterminate.sessionId };
+    if (has('expired')) return { outcome: 'expired' };
+    // #3660: a live owner's claim, however old, may still deliver. It reads
+    // indeterminate to the lookup, but names its Session so a resend can
+    // join it.
+    const aged = found.find(({ claim }) => claim.state === 'indeterminate');
+    if (aged)
+      return {
+        outcome: 'indeterminate',
+        sessionId: aged.sessionId,
+        ageOnly: true,
+      };
+    const held = found.find(({ claim }) => claim.state === 'in-flight');
+    if (held) return { outcome: 'received', sessionId: held.sessionId };
+    const reclaimable = found.find(
+      ({ claim }) => claim.state === 'reclaimable',
+    );
+    return {
+      outcome: 'not-received',
+      ...(reclaimable ? { sessionId: reclaimable.sessionId } : {}),
+    };
+  }
+
+  /**
    * Observe one durable handoff without resolving its mutable Agent catalog.
    * Authorization covers every materialized Session in the conversation;
    * the reserved child is authorized by its already-authorized predecessor

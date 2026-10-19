@@ -14,8 +14,6 @@
 
     "packages/cli/src/commands/environment.ts",
 
-    "packages/connect/package.json",
-
     "packages/connect/src/__tests__/ConnectionStore.broker-route.test.ts",
 
     "packages/connect/src/__tests__/ConnectionStore.test.ts",
@@ -160,7 +158,27 @@
 
     "src-server/services/peers/__tests__/peer-enrollment-routes.test.ts",
 
-    "src-ui/src/__tests__/ConnectStationDialog.test.tsx"
+    "src-ui/src/__tests__/ConnectStationDialog.test.tsx",
+
+    "packages/connect/package.json#/name",
+
+    "packages/connect/package.json#/private",
+
+    "packages/connect/package.json#/exports",
+
+    "packages/connect/package.json#/main",
+
+    "packages/connect/package.json#/types",
+
+    "packages/connect/package.json#/scripts",
+
+    "packages/connect/package.json#/sideEffects",
+
+    "packages/connect/src/core/pairingDeepLink.ts",
+
+    "src-ui/src/components/GuidedConnect.tsx",
+
+    "src-ui/src/hooks/usePairingDeepLink.ts"
   ],
 
   "checks": [

@@ -231,12 +231,15 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-shared` | `packages/shared/` | Published (npm, Apache-2.0) | Shared runtime helpers and compatibility re-exports |
 | `@kontourai/station-connect` | `packages/connect/` | Private in this checkout (`private: true`) | Standalone bidirectional pairing library |
 | `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
-| `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), shaped for publication but `private: true` until its first, owner-gated publish (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, conformance suite |
+| `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), `private: true` until a qualified functional release (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, message delivery decisions and sequencing, conformance suite. Station uses its public entry points, binds storage commands to its existing tables and supplies host admission, terminal facts, owner liveness and start/steer invocation |
+| `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations; not yet run by any launch mode. Other packages import its protocol from `@kontourai/station-supervisor/protocol` |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
-The contracts, SDK, shared, and Monument packages ship raw TypeScript source, so their
+The contracts, SDK, and shared packages ship raw TypeScript source, so their
 consumers need a bundler or a TS-aware loader; each README documents that
-constraint. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
+constraint. Monument publishes compiled `dist/` (build it with
+`npm run build:monument`, smoke the packed tarball with `npm run monument-pack:smoke`),
+and its README says why only pnpm packs it correctly. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
 never published historically. The repo-root `./station` launcher
 remains the checkout entry point for host and contributor commands.
 
@@ -341,6 +344,11 @@ That example is not a root-checkout install command or a way to replace
 Station's pinned workspace dependencies.
 
 ## Commit Messages
+
+The required `PR title policy` commit status applies the same grammar to live
+squash titles using trusted workflow code. It validates all open main-target
+PRs sharing a head, so correcting one cannot hide another invalid title. Title/body edits rerun that small check,
+not source CI. A title correction cannot clear an actual source-check failure.
 
 Commit subjects follow the Conventional Commits grammar enforced by the
 repository hooks:
@@ -488,36 +496,39 @@ receipt does not certify completion. Do not repeatedly launch `npm test`,
 `test:full`, `verify:static`, `verify:local`, or full E2E while editing; those
 host-coordinated lanes consume shared CPU and mutable-output leases.
 
-Use `npm run ci:fast` for bounded per-push feedback: it runs affected tests
+`npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
 verification-policy, lint, governance and typecheck invariants. It is not
 the full static/build chain or full Vitest corpus.
-Hosted CI splits that work: `fast-checks-plan` selects once, one to four planned
+Hosted CI splits that work: `fast-checks-plan` selects once, zero to four planned
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
 the fixed invariants plus browser/performance smoke and the UI bundle budget.
 The required `fast-checks` result combines job outcomes with exact-plan shard
 receipts. A failing shard also annotates each failed test and uploads its
 redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
-Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
+Follow the [local feedback rule](testing.md#what-counts-as-tested).
 GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
-Nightly and tagged preview and stable promotions pass one exact source SHA
-to the hosted qualification authority.
-
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
-one exact source through every canonical phase and the Android viewport suite.
-`Main: Qualification` runs after main source changes with an hourly fallback.
-It finishes the active source and coalesces pending candidates. Eligible Nightly
-delivery uses a separate lease and a configurable interval (six hours by default). Nightly has no independent schedule; its
-manual dispatch remains available for recovery. The hourly qualification-health
-watchdog reports missed starts, stale success and failed delivery. Nightly
-and tagged Preview/Stable require that qualification, with bounded reuse of
-exact-source evidence. See [the release process](releasing.md) for receipt
-admission, failure repair and promotion.
+one exact source SHA through every canonical phase and the Android viewport suite.
+`Main: Qualification` runs every six hours or manually, then runs all five
+packaging/platform validation families after successful qualification. Optional
+PR delivery families run in sequence after core fast checks, selected by a
+trusted base-owned diff planner; required integration contexts stay unchanged.
+Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse.
+
+Nightly runs independently: an hourly eligibility decision enforces a six-hour
+default publication minimum before source tests or builds. Eligible sources
+must pass exact-SHA lint, all typecheck lanes, native boundary checks and real
+browser smoke, followed by signed artifact and provider gates. That usability
+gate does not emit a full qualification receipt. Manual Nightly recovery retains
+the same gates. The hourly health watchdog reports stale qualification and
+failed publication separately. See [the release process](releasing.md).
 A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 Escalate to public native or full E2E lanes only when selector/policy output
 names them or the final risk surface requires them.
@@ -564,6 +575,83 @@ Choose bounded, privacy-reviewed attributes such as provider, operation or
 outcome; do not emit credentials, arbitrary paths or unbounded identifiers.
 Instrumentation is observation, not a durable product receipt or proof of
 collector delivery. [Monitoring](monitoring.md) owns the current export limits.
+
+### Transcript layout tracing
+
+When a conversation's transcript gains space below or above its rows while it
+loads, or a reader loses their place, the opt-in transcript layout tracer
+records what moved and why. It is off by default. While it is off, each
+loading phase mark returns after two flag checks, and no observer attaches.
+The observers ship in the lazily loaded transcript chunk, not the entry
+bundle. The [entry module](../../src-ui/src/components/chat/transcriptLayoutTrace.ts)
+decides whether tracing is on, and the [tracer](../../src-ui/src/components/chat/transcriptLayoutTracer.ts)
+attaches to the transcript scroller when the list mounts.
+
+Turn it on for one browser profile, then reload:
+
+```js
+localStorage.debug = 'app:transcript-layout'; // also prints each record
+location.reload();
+```
+
+Only that explicit namespace turns it on. The implicit `app:*` logging of a
+development build ([logger](../../src-ui/src/utils/logger.ts)) and the
+Developer tools setting do not.
+
+In the page console:
+
+```js
+__stationTranscriptTrace.dump();     // { capacity, total, dropped, records }
+__stationTranscriptTrace.clear();
+__stationTranscriptTrace.overlay(true); // live numbers in a corner; persists
+                                        // (removed when the tracer detaches)
+copy(JSON.stringify(__stationTranscriptTrace.dump())); // DevTools only
+```
+
+Every record carries the scroller's `scrollTop`, `scrollHeight`,
+`clientHeight`, `distanceFromBottom` and whether the reader is scrolled up.
+Its `kind` says what happened:
+
+| Kind | Meaning |
+| --- | --- |
+| `resize` | A row (`row:<role>#<hash>`), the virtualizer spacer (`#virtualized-transcript-spacer`), the history controls, the scroller, or a sibling such as a loading skeleton changed height (`from` and `to`). |
+| `scroll` | A scroll event, labelled `programmatic` when it lands on the transcript list's own last write, otherwise `reader`. The virtualizer's own scroll writes are not noted, so they read as `reader`. |
+| `layout-shift` | A Chromium layout-shift entry and the rows or elements it names as sources. A chat switch does not record the browser's buffered entries twice. |
+| `rows`, `sibling` | Rows mounted or removed in the transcript, and elements added beside it in the chat body. |
+| `phase` | A named step: `pin-layout`, `pin-raf`, `content-repin`, `content-reanchor`, `clamp-repin`, `older-request`, `older-commit`, `scroll-to-bottom-*`, `virtualizer-*`, `dock-loading`, `lazy-chunk-resolved`, `markdown-renderer-resolved`, and `highlight-applied`. |
+
+Records name elements without user content. A row appears as its role and a
+one-way hash of its key, because a row key can embed message text. Other
+elements appear by test id, or by tag, classes and ARIA role; accessible
+labels, which can carry file names, are never read.
+
+The buffer keeps the newest 2,000 records; `dropped` counts every record it
+let go. Phase marks raised before the tracer attached (the dock's loading
+phases) are replayed when it attaches, at most 200 of them; a
+`pending-marks-dropped` phase counts any beyond that. A replayed mark has
+`replayed: true`: its `t` is when it was raised, but its geometry was read at
+attach. A production build minifies the loader name that `lazy-chunk-resolved`
+reports. Layout-shift entries exist only in Chromium-based browsers.
+
+To look at a phone layout against a running Station:
+
+- **Desktop Chrome:** open the web UI of the Station under test, turn on
+  device emulation (for example 390 x 844), and set CPU throttling to 4x or
+  6x and a slow network profile in the Performance panel. The automated
+  journey below uses the same 4x CPU throttle.
+- **Android:** connect over USB with USB debugging on, open `chrome://inspect`
+  on the desktop, and inspect the page in Chrome on the phone (or the app's
+  WebView, in a build with WebView debugging enabled). Set `localStorage.debug`
+  in that console, reload, and use the commands above.
+- **iOS:** turn on Web Inspector on the device (Settings > Safari > Advanced),
+  then use Safari's Develop menu on a Mac to inspect Safari (or the app's
+  WebView, in a build that marks it inspectable).
+
+`tests/transcript-load-stability.spec.ts` is the automated version: a
+throttled 390 x 844 journey that holds the conversation-open read and the
+late row chunks behind gates, samples transcript geometry every frame, and
+attaches both that timeline and this tracer's dump to each test's results.
+Run it with `npm run test:e2e:product -- --spec=tests/transcript-load-stability.spec.ts`.
 
 ## Docs And Pages
 

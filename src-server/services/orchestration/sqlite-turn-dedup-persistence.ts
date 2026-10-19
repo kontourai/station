@@ -1,9 +1,14 @@
-import type {
-  TurnClaimInvocation,
-  TurnClaimOwner,
-  TurnIdempotencyPersistence,
-  TurnIdempotencyRecord,
-} from '../turn-idempotency.js';
+import {
+  type KernelCommand,
+  type KernelResult,
+  type OwnerLiveness,
+  resolveKernelLimits,
+} from '@kontourai/monument';
+import {
+  openSqliteKernelStorage,
+  type SqliteKernelTables,
+} from '@kontourai/monument/sqlite';
+import type { TurnIdempotencyPersistence } from '../turn-idempotency.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 /**
@@ -12,6 +17,20 @@ import type { SqliteDatabase } from './sqlite-database.js';
  * two files, which is a drift waiting to happen.
  */
 export const TURN_DEDUP_MAX_ENTRIES = 2000;
+
+/**
+ * #3559 / #3606 review: how long an evicted `chat:` key's tombstone answers
+ * `expired`. Far past every client retry window Station has (the longest,
+ * the UI outbound queue, is seven days); after it the key is new again. The
+ * bound exists because a relayed station-agent turn writes a thread key AND a
+ * `chat:` key, and `chat:` tombstones have no thread whose deletion would
+ * remove them. They go on the first dedup write after the bound, not at it.
+ *
+ * Thread tombstones are NOT time-bounded: a session-control start re-drives
+ * its unresolved request key forever with the same clientTurnId, so its
+ * thread tombstone must last as long. Both leave with `deleteThread`.
+ */
+const TURN_DEDUP_TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * archive#1224 (offline): folds `(threadId, clientTurnId)` into the
@@ -36,23 +55,63 @@ export function turnDedupKey(threadId: string, clientTurnId: string): string {
 
 /**
  * The length-prefixed, unambiguous prefix identifying every dedup key for
- * `threadId` — see `turnDedupKey`'s doc comment. Exported for
- * `EventStore.deleteThread`'s exact-prefix cleanup query.
+ * `threadId` — see `turnDedupKey`'s doc comment. `forgetThread`'s exact-prefix
+ * cleanup uses it.
  */
-export function turnDedupThreadPrefix(threadId: string): string {
+function turnDedupThreadPrefix(threadId: string): string {
   return `${threadId.length}:${threadId}::`;
 }
+const CHAT_KEY_PREFIX = 'chat:';
 export function chatTurnDedupKey(clientTurnId: string): string {
-  return `chat:${clientTurnId.length}:${clientTurnId}`;
-}
-/** Thread keys start with the thread id's length, so they never start with `chat:`. */
-function isChatTurnDedupKey(key: string): boolean {
-  return key.startsWith('chat:');
+  return `${CHAT_KEY_PREFIX}${clientTurnId.length}:${clientTurnId}`;
 }
 
 /**
- * SQLite-backed `TurnIdempotencyPersistence` adapter over
- * `orchestration_turn_dedup` — the storage half of the shared algorithm.
+ * Station's turn-dedup tables, bound in place of the kernel's own: they stay
+ * the source of truth, and an older binary that writes them directly keeps
+ * working, but cannot enforce digest conflicts. A nullable input_digest
+ * column is trusted only with its matching current-owner JSON marker.
+ * Two encodings here predate the kernel:
+ *
+ * - `owner_json` names the owner `token`, and a thread row written before
+ *   #3559 carries no invocation record. Thread keys start with the thread
+ *   id's length, so they never start with `chat:`.
+ * - #3559: a `chat:` row with NO invocation record was written before #3581
+ *   by the /chat facade, which then recorded none, so it keeps the untracked
+ *   reclaim rule. A record this build does not recognise is unknown on every
+ *   key and fails closed.
+ */
+export const STATION_TURN_DEDUP_KERNEL_TABLES: SqliteKernelTables = {
+  turnDedup: {
+    table: 'orchestration_turn_dedup',
+    tombstoneTable: 'orchestration_turn_dedup_expired',
+    ownerIdField: 'token',
+    inputDigestColumn: 'input_digest',
+    ownerErrorMessage: 'Invalid orchestration turn claim owner_json',
+    legacyUntrackedKeyPrefixes: [CHAT_KEY_PREFIX],
+  },
+  requestKeys: 'unused',
+  turnBoundary: 'unused',
+  inbox: 'unused',
+};
+
+const LONE_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/** Liveness is consulted only by a claim; the other commands never ask. */
+const NO_LIVENESS: OwnerLiveness = () => 'unknown';
+
+export interface SqliteTurnDedupPersistence extends TurnIdempotencyPersistence {
+  /**
+   * Forget every claim and tombstone of `threadId`, as part of the transaction
+   * the caller already holds: they commit or roll back together.
+   */
+  forgetThread(threadId: string): void;
+}
+
+/**
+ * The storage half of the turn-dedup algorithm: Monument's `node:sqlite`
+ * adapter over `orchestration_turn_dedup` on `EventStore`'s own connection.
  * `EventStore` composes this into the behavioral TurnDeduplicator while
  * retaining SQLite and transaction ownership privately.
  */
@@ -62,154 +121,48 @@ export function createSqliteTurnDedupPersistence({
 }: {
   db: SqliteDatabase;
   maxEntries?: number;
-}): TurnIdempotencyPersistence {
-  function read(key: string): TurnIdempotencyRecord | undefined {
-    const row = db
-      .prepare(
-        `SELECT value, created_at AS createdAt, owner_json AS ownerJson
-         FROM orchestration_turn_dedup
-         WHERE dedup_key = ?`,
-      )
-      .get(key) as
-      | { value: string | null; createdAt: number; ownerJson: string | null }
-      | undefined;
-    if (!row) return undefined;
-    const claimant =
-      row.ownerJson === null ? undefined : parseTurnClaimOwner(row.ownerJson);
-    // #3559: an unmarked `chat:` row can only come from the /chat facade,
-    // which records no invocation, so it keeps the untracked reclaim rule.
-    const invocation =
-      claimant?.invocation ??
-      (isChatTurnDedupKey(key) ? 'untracked' : undefined);
-    return {
-      value: row.value,
-      createdAt: row.createdAt,
-      ...(claimant ? { owner: claimant.owner } : {}),
-      ...(invocation ? { invocation } : {}),
-    };
-  }
-
-  function prune(): void {
-    // This is intentionally a soft cap. Resolved rows are safe to evict;
-    // unresolved claims are never evicted, regardless of owner liveness, so a
-    // turn in flight can never become claimable again because of retention.
-    // The single statement deletes at most the overflow, oldest first, without
-    // materializing rows or probing processes while the write lock is held.
-    db.prepare(`DELETE FROM orchestration_turn_dedup
-        WHERE dedup_key IN (
-          SELECT dedup_key FROM orchestration_turn_dedup
-          WHERE value IS NOT NULL
-          ORDER BY created_at ASC, dedup_key ASC
-          LIMIT MAX(0, (SELECT count(*) FROM orchestration_turn_dedup) - ?)
-        )`).run(maxEntries);
-  }
-
-  return {
-    read,
-
-    update<T>(
-      key: string,
-      updater: (current: TurnIdempotencyRecord | undefined) => {
-        record?: TurnIdempotencyRecord;
-        result: T;
+}): SqliteTurnDedupPersistence {
+  const kernel = openSqliteKernelStorage({
+    database: db,
+    tables: STATION_TURN_DEDUP_KERNEL_TABLES,
+  });
+  // Resolved rows are the only eviction candidates: an unresolved claim is
+  // never evicted, regardless of owner liveness, so a turn in flight can never
+  // become claimable again because of retention (#3559).
+  const limits = {
+    turnDedupMaxEntries: maxEntries,
+    turnDedupTombstoneRetention: [
+      {
+        keyPrefix: CHAT_KEY_PREFIX,
+        maxAgeMs: TURN_DEDUP_TOMBSTONE_RETENTION_MS,
       },
-    ): T {
-      db.exec('BEGIN IMMEDIATE');
-      try {
-        const decision = updater(read(key));
-        if (decision.record)
-          db.prepare(
-            `INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json) VALUES (?, ?, ?, ?) ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value, created_at = excluded.created_at, owner_json = excluded.owner_json`,
-          ).run(
-            key,
-            decision.record.value,
-            decision.record.createdAt,
-            serializeTurnClaimOwner(decision.record),
-          );
-        else
-          db.prepare(
-            'DELETE FROM orchestration_turn_dedup WHERE dedup_key = ?',
-          ).run(key);
-        prune();
-        db.exec('COMMIT');
-        return decision.result;
-      } catch (error) {
-        try {
-          db.exec('ROLLBACK');
-        } catch {}
-        throw error;
-      }
+    ],
+  };
+  // Refuse a bad limit now, not at the first claim.
+  resolveKernelLimits(limits);
+  return {
+    execute<C extends KernelCommand>(
+      command: C,
+      liveness: OwnerLiveness,
+    ): KernelResult<C> {
+      return kernel.executeSync(command, { liveness, limits });
+    },
+    forgetThread(threadId) {
+      // archive#1224 HIGH fix (independent review): an exact prefix, never a
+      // `LIKE`, so `%` and `_` inside a thread id cannot over-match another
+      // thread's keys. SQLite keeps a lone surrogate as U+FFFD, so that is
+      // what the stored keys hold and what the prefix must name.
+      kernel.executeSync(
+        {
+          type: 'turnDedup.forgetPrefix',
+          prefix: turnDedupThreadPrefix(threadId).replace(
+            LONE_SURROGATE,
+            '\uFFFD',
+          ),
+        },
+        { liveness: NO_LIVENESS },
+        { withinHostTransaction: true },
+      );
     },
   };
-}
-
-/**
- * #3559: the invocation record lives inside `owner_json`, beside the owner it
- * describes. A writer that replaces the owner without recording invocation
- * (an older peer or a downgraded runtime reclaiming the row) therefore drops
- * it, and the row reads as unknown rather than as a stale `pending` that a
- * later claimant would reclaim after that writer invoked and died. A record
- * with no owner cannot carry it and reads as unknown too.
- */
-function serializeTurnClaimOwner(record: TurnIdempotencyRecord): string | null {
-  if (!record.owner) return null;
-  return JSON.stringify(
-    record.invocation
-      ? { ...record.owner, invocation: record.invocation }
-      : record.owner,
-  );
-}
-
-/**
- * Unknown invocation values read as absent. On a thread key that means a dead
- * owner's claim is never reclaimed; a `chat:` key falls back to `untracked`
- * in `read` and keeps the dead-owner reclaim rule.
- */
-function parseTurnClaimInvocation(
-  raw: unknown,
-): TurnClaimInvocation | undefined {
-  return raw === 'pending' || raw === 'begun' || raw === 'untracked'
-    ? raw
-    : undefined;
-}
-
-function parseTurnClaimOwner(raw: string): {
-  owner: TurnClaimOwner;
-  invocation?: TurnClaimInvocation;
-} {
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    throw new Error('Invalid orchestration turn claim owner_json');
-  }
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    !Number.isInteger((value as any).pid) ||
-    (value as any).pid < 1 ||
-    typeof (value as any).token !== 'string' ||
-    !(value as any).token ||
-    !(
-      (value as any).identityKind === 'unverified' ||
-      ((value as any).identityKind === 'exact' &&
-        typeof (value as any).birth === 'string' &&
-        (value as any).birth)
-    )
-  )
-    throw new Error('Invalid orchestration turn claim owner_json');
-  const parsed = value as TurnClaimOwner & { invocation?: unknown };
-  // Rebuilt field by field so the invocation record never rides along as an
-  // owner property.
-  const owner: TurnClaimOwner =
-    parsed.identityKind === 'exact'
-      ? {
-          pid: parsed.pid,
-          birth: parsed.birth,
-          token: parsed.token,
-          identityKind: 'exact',
-        }
-      : { pid: parsed.pid, token: parsed.token, identityKind: 'unverified' };
-  const invocation = parseTurnClaimInvocation(parsed.invocation);
-  return { owner, ...(invocation ? { invocation } : {}) };
 }

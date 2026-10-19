@@ -84,6 +84,7 @@ const PROJECTS = [
 function renderHeader(
   overrides: {
     onClear?: ReturnType<typeof vi.fn<() => void>>;
+    onTurnIntoTask?: () => void;
     onNewChat?: ReturnType<typeof vi.fn<() => void>>;
     onOpenTaskSwitcher?: ReturnType<typeof vi.fn<() => void>>;
     projectSwitcher?: ChatDockMobileProjectSwitcher | null;
@@ -149,6 +150,7 @@ function renderHeader(
       onDragClickCapture={vi.fn()}
       onNewChat={overrides.onNewChat ?? vi.fn()}
       overflow={{
+        onTurnIntoTask: overrides.onTurnIntoTask,
         onOpenConversation: vi.fn(),
         onToggleHistory: vi.fn(),
         onOpenChatSettings: vi.fn(),
@@ -505,4 +507,15 @@ describe('the ⋯ sheet’s copy rows (mobile parity)', () => {
       screen.queryByRole('menuitem', { name: 'Copy session ID' }),
     ).toBeNull();
   });
+});
+
+test('the phone chat actions offer Turn into Task and dismiss the sheet before shaping', async () => {
+  const turnIntoTask = vi.fn();
+  renderHeader({ onTurnIntoTask: turnIntoTask });
+  await openActions();
+  fireEvent.click(
+    await screen.findByRole('menuitem', { name: 'Turn into Task' }),
+  );
+  expect(turnIntoTask).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('menuitem', { name: 'Turn into Task' })).toBeNull();
 });

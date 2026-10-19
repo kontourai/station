@@ -1,0 +1,7 @@
+{
+  "revision": "757b510858ea116c0e722d5eda68c5d30b95739a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#561: runShellCommand now writes an owned-process registry record for its detached command group (registerDetachedOwnedChild), released after the group exits; the record carries a label, not the command line. Checked the module map for Flow command execution, process-group and owned-process claims: the only process-group passages are native diagnostics and transport leaves, unaffected. No prose change.","inputs":["docs/architecture/module-map.md","src-server/services/flow/flow-run-service.ts"]}
+  ]
+}

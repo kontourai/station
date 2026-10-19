@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { ChatUIState } from '../../contexts/active-chats-state';
+import type { workObservation } from '../../contexts/work-observation';
 import { newerConversationActivity } from '../../utils/conversation-activity';
 
 export type ConversationOpenRecovery = {
@@ -17,6 +18,7 @@ export type ConversationOpenCommit =
 
 interface ConversationOpenDockEffects {
   apiBase: string;
+  observation?: ReturnType<typeof workObservation>;
   open: Parameters<typeof commitConversationOpen>[0]['open'];
   projectName: Parameters<typeof commitConversationOpen>[0]['projectName'];
   findTab: Parameters<typeof commitConversationOpen>[0]['findTab'];
@@ -30,11 +32,25 @@ interface ConversationOpenDockEffects {
 export async function resolveConversationOpenAuthoritatively(
   conversationId: string,
   apiBase: string,
+  observation?: ReturnType<typeof workObservation>,
+  isCurrent?: () => boolean,
 ): Promise<ConversationOpenResolution> {
+  const read = observation?.read(conversationId, 'open', isCurrent);
   const { resolveConversationOpen } = await import(
     '@kontourai/station-sdk/conversation-open'
   );
-  return resolveConversationOpen(conversationId, apiBase);
+  try {
+    const resolution = await resolveConversationOpen(conversationId, apiBase);
+    if (resolution.status === 'unavailable') read?.failed();
+    else if (resolution.status === 'resolved')
+      read?.observed(
+        (resolution.activity ?? resolution.conversation.activity)?.asOfSequence,
+      );
+    return resolution;
+  } catch (error) {
+    read?.failed();
+    throw error;
+  }
 }
 
 /** Provider is a model-provider field for native chats; keep the engine domain separate. */
@@ -288,30 +304,38 @@ export async function openConversationForDock(
   conversation: ConversationListItem | string,
   effects: ConversationOpenDockEffects,
 ): Promise<boolean> {
+  const generation = effects.observation?.streamEpochGeneration();
+  const isCurrent = () =>
+    effects.observation?.streamEpochGeneration() === generation &&
+    effects.isCurrent?.() !== false;
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
       typeof conversation === 'string' ? conversation : conversation.id,
       effects.apiBase,
+      effects.observation,
+      isCurrent,
     );
+    if (!isCurrent()) return false;
     const outcome = await commitConversationOpen({
       resolution,
       open: effects.open,
       projectName: effects.projectName,
       findTab: effects.findTab,
-      isCurrent: effects.isCurrent,
+      isCurrent,
       readChat: effects.readChat,
       agentName: effects.agentName,
     });
+    if (!isCurrent()) return false;
     if (outcome.kind === 'recovery') {
       if (typeof conversation === 'string') return false;
       effects.setRecovery(outcome.recovery);
       return true;
     }
-    if (effects.isCurrent?.() === false) return false;
     effects.updateChat(outcome.tabId, outcome.patch);
     effects.setRecovery(null);
     return true;
   } catch {
+    if (!isCurrent()) return false;
     if (typeof conversation === 'string') return false;
     effects.setRecovery({ conversation, status: 'error' });
     return true;
@@ -325,17 +349,24 @@ export async function retryActiveConversationForDock(
   updateChat: ConversationOpenDockEffects['updateChat'],
   onUnavailable: () => void,
   readChat?: (tabId: string) => Partial<ChatUIState> | undefined,
+  observation?: ReturnType<typeof workObservation>,
 ): Promise<void> {
+  const generation = observation?.streamEpochGeneration();
+  const isCurrent = () => observation?.streamEpochGeneration() === generation;
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
       conversationId,
       apiBase,
+      observation,
+      isCurrent,
     );
+    if (!isCurrent()) return;
     updateChat(
       sessionId,
       conversationOpenPatch(resolution, readChat?.(sessionId)),
     );
   } catch {
+    if (!isCurrent()) return;
     onUnavailable();
   }
 }
@@ -358,7 +389,11 @@ export async function commitConversationOpen({
     model?: string,
     updatedAt?: string,
     acceptedModel?: string,
-    execution?: { hydrateMessages: true; beforeFocus?: () => boolean },
+    execution?: {
+      hydrateMessages: true;
+      beforeFocus?: () => boolean;
+      isCurrent?: () => boolean;
+    },
   ) => boolean | Promise<boolean>;
   projectName: (projectSlug: string | undefined) => string | undefined;
   findTab: (conversationId: string) => string | undefined;
@@ -392,7 +427,10 @@ export async function commitConversationOpen({
     conversation.model,
     conversation.updatedAt,
     conversation.acceptedModel,
-    { hydrateMessages: true, ...(isCurrent ? { beforeFocus: isCurrent } : {}) },
+    {
+      hydrateMessages: true,
+      ...(isCurrent ? { beforeFocus: isCurrent, isCurrent } : {}),
+    },
   );
   if (!opened) {
     return {

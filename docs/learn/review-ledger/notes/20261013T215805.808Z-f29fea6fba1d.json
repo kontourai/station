@@ -1,0 +1,7 @@
+{
+  "revision": "88e7e85797bf1406951f3422e8bab8689af843d9",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed formatting-only wrapping of the morph animation declaration. Backwards fill and all motion/resting behavior are unchanged; the rendered before/after controls and proof limits remain as recorded. Read-only lint passes.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

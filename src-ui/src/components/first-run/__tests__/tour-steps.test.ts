@@ -88,7 +88,7 @@ describe('first-run tour anchors resolve to canonical routes', () => {
     expect(FIRST_RUN_TOUR_STEPS.length).toBeLessThanOrEqual(4);
   });
 
-  test('every anchor exists in shipped UI source', () => {
+  test('every page anchor exists in shipped UI source', () => {
     // An anchor naming an element nobody renders is a coachmark that always
     // falls back to unanchored — it looks fine and teaches nothing about the
     // surface it claims to point at.
@@ -98,11 +98,7 @@ describe('first-run tour anchors resolve to canonical routes', () => {
     // group a step names is still in the list. So a `nav-` anchor is checked
     // against the actual nav registry, which is what decides whether that
     // element renders at all.
-    const sources = [
-      'views/ScheduleView.tsx',
-      'views/SessionsView.tsx',
-      'components/project-sidebar/ProjectSidebarFooter.tsx',
-    ]
+    const sources = ['views/ScheduleView.tsx', 'views/SessionsView.tsx']
       .map((relative) =>
         readFileSync(join(__dirname, '../../..', relative), 'utf8'),
       )
@@ -113,7 +109,12 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       ),
     );
 
-    for (const step of FIRST_RUN_TOUR_STEPS) {
+    // The shell's Customize anchor is asserted on its rendered button in
+    // ProjectSidebarFooter.test.tsx; JSX spelling is not its contract.
+    const pageSteps = FIRST_RUN_TOUR_STEPS.filter(
+      (step) => step.anchor !== 'customize',
+    );
+    for (const step of pageSteps) {
       if (step.anchor.startsWith('nav-')) {
         // The group this step names must still be registered. The sidebar's
         // rendered anchor is covered by ProjectSidebarNav's DOM contract.

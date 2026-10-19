@@ -693,7 +693,7 @@ test.describe('Project Navigation', () => {
     const identityIcon = page.getByRole('button', {
       name: 'Choose project icon',
     });
-    const identityName = page.getByLabel('Project identity');
+    const identityName = page.getByLabel('Project name');
     await expect(identityIcon).toBeVisible();
     await expect(identityName).toBeVisible();
     await expect

@@ -124,6 +124,24 @@ export function attentionWord(kind: WorkAttentionKind): string {
 }
 
 function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
+  if (item.kind === 'task') {
+    const word = item.kindLabel;
+    switch (item.lifecycleLabel) {
+      case 'Needs attention':
+        // Only a blocked Task wears the lock; review waits on a person.
+        return word === 'Task · Blocked'
+          ? { rung: 'blocked', lane: 'needsYou', tone: 'attention', word }
+          : { rung: 'waiting', lane: 'needsYou', tone: 'attention', word };
+      case 'Running':
+        return { rung: 'running', lane: 'running', tone: 'active', word };
+      case 'Completed':
+        return { rung: 'done', lane: 'finished', tone: 'neutral', word };
+      case 'Stopped':
+        return { rung: 'stopped', lane: 'finished', tone: 'neutral', word };
+      default:
+        return { rung: 'idle', lane: 'idle', tone: 'neutral', word };
+    }
+  }
   if (item.controlMode === 'read-only-attached') {
     // The row's meta line already names the app; the word says only that
     // this Station cannot answer in it.
@@ -137,7 +155,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
   }
   switch (item.lifecycleLabel) {
     case 'Needs attention': {
-      // With no recorded kind (no facts, a durable Task, an older server)
+      // With no recorded kind (no facts, an older server)
       // something is still owed; it reads as the generic rung.
       const kind = facts?.attention ?? 'waiting';
       return {
@@ -256,8 +274,17 @@ export function workStatus(
   item: HomeWorkItem,
   now: number,
   facts?: WorkFacts,
+  observationUnavailable = false,
 ): WorkStatus {
-  const rung = rungFor(item, facts);
+  const known = rungFor(item, facts);
+  const rung = observationUnavailable
+    ? {
+        ...known,
+        word: `Last known: ${known.word}`,
+        tone: 'neutral' as const,
+        since: undefined,
+      }
+    : known;
   const line = [
     rung.word,
     rung.detail,

@@ -781,6 +781,35 @@ unknown; it cannot borrow another namespace's login. These checks establish
 credential presence, rather than token validity. Readiness does not apply the
 app-home opt-in or a selected credential profile.
 
+On macOS, a Claude session that a Project member, a shared Agent or delegated
+work starts at full access runs inside Station's Seatbelt profile. Such a
+session cannot use your Keychain login, and Station never copies it there.
+Give it a credential of its own: set `ANTHROPIC_API_KEY`, or a
+`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, in the Claude
+connection's `env`. Without one, such a session runs at Auto, and says so. The
+optional **Confined Claude credential** readiness entry reports whether one is
+present. A confined session uses a Station-owned Claude configuration
+directory, so your own `CLAUDE.md`, settings, hooks, plugins and MCP
+configuration do not apply to it. A selected credential profile gets a
+confined copy of its own that starts empty, so a login held only in that
+profile does not reach it: the session runs at Auto until it has an
+environment credential. The readiness entry checks only the default confined
+home.
+
+A confined session also gets only an allowlisted environment. Variables you
+set in the connection's `env` pass, as do paths, locale, proxy and TLS
+settings, `CLAUDE_*` and `ANTHROPIC_*`, the git author and committer
+identity, and `EDITOR`/`VISUAL`. Everything else in Station's environment is
+dropped: `GH_TOKEN`, `NPM_TOKEN`, cloud keys, and toolchain variables such as
+`NVM_DIR`, `JAVA_HOME`, `GOPATH` or `PYENV_ROOT` (set them in the
+connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
+push with your SSH agent. In a linked worktree it can commit to its own
+branch, but `git stash`, `fetch` and `pull` are refused: they write shared
+refs (`refs/stash`, remote-tracking refs, `packed-refs`) that it may not
+change. On Linux and Windows such a session is
+refused, because no confinement exists for it there. See
+[confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
+
 Two boundaries to know: credential-profile login/enrolment children do not
 receive the connection's `env`; they use the selected profile's config home
 over the process environment. Changing `configHome` does not migrate existing
@@ -986,9 +1015,19 @@ asks for the full default grant; it says so on screen.) A Device paired by an ol
 `access:manage` from the historical default grant; its first access change, in
 either place, removes it for good and says so.
 
+An operator can separately grant **Manage device access** (`access:devices`)
+to an already-paired Device. Its CLI and Paired devices panel can then list,
+change scopes, revoke and remove revoked records remotely, using that Device's
+own credential. Only the operator may grant or remove `access:devices`; it
+never comes from pairing defaults, legacy `access:manage` or permission to use
+full access. A person-bound Device also needs the Admin group ceiling. Account
+sign-in and transport admission remain independent requirements. See the
+[CLI setup](../reference/cli.md#environment).
+
 An operator can separately grant **Approve pairing requests** (`access:approve`).
 This allows that Device to list, approve, or deny pending requests, without
-Device-management access. A pairing notification opens the exact request in
+Device-management access. A Device tied to a person keeps it only while that
+person's Station group is Admin (#3557). A pairing notification opens the exact request in
 **Notifications**; opening it does not approve it. Devices without approval
 authority see the trusted-Station remedy instead of decision controls.
 

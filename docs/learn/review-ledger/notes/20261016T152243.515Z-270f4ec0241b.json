@@ -1,0 +1,7 @@
+{
+  "revision": "afe9b771fdb1a610c8dfbc011245afc0a6811c97",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed afe9b771fdb hook ownership against .githooks/pre-push, run-ci-fast FAST_STATIC_COMMANDS, ci.yml statics job and fail-closed required fast-checks aggregate. Live main rules require fast-checks. Six retained push checks and pure-merge behavior match executable hook tests; readiness and full typecheck now execute under the existing hosted owner. Baseline regression red, restored green, lint and scoped static gates executed. Hosted candidate execution remains parent integration evidence.","inputs":["docs/guides/code-quality.md",".githooks/pre-push","AGENTS.md","docs/guides/testing.md","scripts/__tests__/prepush-typecheck.test.ts"]}
+  ]
+}

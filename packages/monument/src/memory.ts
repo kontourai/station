@@ -8,6 +8,7 @@ import {
   type KernelTransaction,
 } from './port.js';
 import type {
+  InboxEntryRecord,
   RequestKeyId,
   RequestKeyRecord,
   TurnBoundaryRecord,
@@ -17,18 +18,23 @@ import { isParticipantRefusal, runKernelTransactionStep } from './step.js';
 
 interface MemoryImage {
   readonly turnDedup: Map<string, TurnDedupRecord>;
+  /** Evicted keys and when they were evicted. */
+  readonly turnDedupExpired: Map<string, number>;
   readonly turnBoundaries: Map<string, TurnBoundaryRecord>;
   readonly turnTerminals: Map<string, Set<string>>;
   /** Map insertion order is the request keys' insertion order. */
   readonly requestKeys: Map<string, RequestKeyRecord>;
+  readonly inbox: Map<string, InboxEntryRecord>;
 }
 
 function emptyImage(): MemoryImage {
   return {
     turnDedup: new Map(),
+    turnDedupExpired: new Map(),
     turnBoundaries: new Map(),
     turnTerminals: new Map(),
     requestKeys: new Map(),
+    inbox: new Map(),
   };
 }
 
@@ -73,6 +79,20 @@ function stateOf(volume: MemoryKernelVolume): VolumeState {
 const requestKeyId = (id: RequestKeyId): string =>
   JSON.stringify([id.callerSessionId, id.tool, id.key]);
 
+const inboxEntryId = (inboxId: string, key: string): string =>
+  JSON.stringify([inboxId, key]);
+
+const OPEN_INBOX_STATES: ReadonlySet<InboxEntryRecord['state']> = new Set([
+  'queued',
+  'placing',
+  'unconfirmed',
+]);
+const SETTLED_INBOX_STATES: ReadonlySet<InboxEntryRecord['state']> = new Set([
+  'placed',
+  'refused',
+  'cancelled',
+]);
+
 const copy = <T>(value: T): T => structuredClone(value);
 
 function transactionOver(image: MemoryImage): KernelTransaction {
@@ -94,14 +114,15 @@ function transactionOver(image: MemoryImage): KernelTransaction {
       },
       deletePrefix: (prefix) => {
         let removed = 0;
-        for (const key of [...image.turnDedup.keys()])
-          if (key.startsWith(prefix)) {
-            image.turnDedup.delete(key);
-            removed += 1;
-          }
+        for (const table of [image.turnDedup, image.turnDedupExpired])
+          for (const key of [...table.keys()])
+            if (key.startsWith(prefix)) {
+              table.delete(key);
+              removed += 1;
+            }
         return removed;
       },
-      pruneResolved: (maxEntries) => {
+      pruneResolved: (maxEntries, now) => {
         const excess = image.turnDedup.size - maxEntries;
         if (excess <= 0) return;
         const victims = [...image.turnDedup.values()]
@@ -111,7 +132,18 @@ function transactionOver(image: MemoryImage): KernelTransaction {
               a.createdAt - b.createdAt || compareCodePoints(a.key, b.key),
           )
           .slice(0, excess);
-        for (const victim of victims) image.turnDedup.delete(victim.key);
+        for (const victim of victims) {
+          image.turnDedup.delete(victim.key);
+          // An existing tombstone keeps its original time.
+          if (!image.turnDedupExpired.has(victim.key))
+            image.turnDedupExpired.set(victim.key, now);
+        }
+      },
+      expiredAt: (key) => image.turnDedupExpired.get(key),
+      deleteTombstonesBefore: (keyPrefix, cutoff) => {
+        for (const [key, expiredAt] of [...image.turnDedupExpired])
+          if (key.startsWith(keyPrefix) && expiredAt < cutoff)
+            image.turnDedupExpired.delete(key);
       },
     },
     turnBoundary: {
@@ -155,20 +187,27 @@ function transactionOver(image: MemoryImage): KernelTransaction {
       delete: (id) => {
         image.requestKeys.delete(requestKeyId(id));
       },
-      deleteCreatedBefore: (cutoff) => {
+      deleteCompletedCreatedBefore: (cutoff) => {
         for (const [key, record] of [...image.requestKeys])
-          if (record.createdAt < cutoff) image.requestKeys.delete(key);
+          if (record.result !== null && record.createdAt < cutoff)
+            image.requestKeys.delete(key);
       },
-      countCaller: (caller) =>
+      countCaller: (caller, countedSince) =>
         [...image.requestKeys.values()].filter(
-          (record) => record.id.callerSessionId === caller,
+          (record) =>
+            record.id.callerSessionId === caller &&
+            (record.result !== null || record.createdAt >= countedSince),
         ).length,
       countCallerCompleted: (caller) =>
         [...image.requestKeys.values()].filter(
           (record) =>
             record.id.callerSessionId === caller && record.result !== null,
         ).length,
-      countAll: () => image.requestKeys.size,
+      countAll: (countedSince) =>
+        [...image.requestKeys.values()].filter(
+          (record) =>
+            record.result !== null || record.createdAt >= countedSince,
+        ).length,
       evictOldestCompleted: (caller, count) => {
         // A stable sort keeps insertion order among equal timestamps.
         const victims = [...image.requestKeys.entries()]
@@ -179,6 +218,47 @@ function transactionOver(image: MemoryImage): KernelTransaction {
           .sort(([, a], [, b]) => a.createdAt - b.createdAt)
           .slice(0, count);
         for (const [key] of victims) image.requestKeys.delete(key);
+      },
+    },
+    inbox: {
+      get: (inboxId, key) => {
+        const record = image.inbox.get(inboxEntryId(inboxId, key));
+        return record && copy(record);
+      },
+      listInbox: (inboxId) =>
+        [...image.inbox.values()]
+          .filter((record) => record.inboxId === inboxId)
+          .sort((a, b) => a.sequence - b.sequence)
+          .map(copy),
+      listOpen: () =>
+        [...image.inbox.values()]
+          .filter((record) => OPEN_INBOX_STATES.has(record.state))
+          .sort(
+            (a, b) =>
+              compareCodePoints(a.inboxId, b.inboxId) ||
+              a.sequence - b.sequence,
+          )
+          .map(copy),
+      put: (record) => {
+        image.inbox.set(inboxEntryId(record.inboxId, record.key), copy(record));
+      },
+      deleteSettledBefore: (inboxId, cutoff) => {
+        for (const [id, record] of [...image.inbox])
+          if (
+            record.inboxId === inboxId &&
+            SETTLED_INBOX_STATES.has(record.state) &&
+            record.updatedAt < cutoff
+          )
+            image.inbox.delete(id);
+      },
+      deleteInbox: (inboxId) => {
+        let removed = 0;
+        for (const [id, record] of [...image.inbox])
+          if (record.inboxId === inboxId) {
+            image.inbox.delete(id);
+            removed += 1;
+          }
+        return removed;
       },
     },
   };

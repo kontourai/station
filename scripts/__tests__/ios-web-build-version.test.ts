@@ -76,6 +76,7 @@ describe('iOS web bundle build identity', () => {
           cwd: dir,
           env: { ...process.env, GITHUB_OUTPUT: output },
           encoding: 'utf8',
+          windowsHide: true,
         });
         return {
           status: result.status,

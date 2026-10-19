@@ -211,6 +211,14 @@ export interface AttachedSessionAdoptionDeps {
   modelLaunchRequestedOverrideFromInput: (
     input: ProviderSessionStartInput,
   ) => boolean;
+  /**
+   * #2494: the adopted child's resolved confinement (a plan for its adapter,
+   * or the `no-mechanism` record), as every other start gets it. Absent, the
+   * child records none.
+   */
+  applyConfinement?: (
+    input: ProviderSessionAdoptInput,
+  ) => ProviderSessionAdoptInput;
   forgetAbandonedAdoptionMemory: (reservation: AdoptionReservation) => void;
   logCleanupFailure: (
     resource: string,
@@ -730,7 +738,7 @@ export class AttachedSessionAdoption {
     // adapters receive it only when their declared omission semantics retain
     // an accepted session model; external engines deliberately choose their
     // own continuation default.
-    const baseAdoptionInput: ProviderSessionAdoptInput = {
+    const unconfinedAdoptionInput: ProviderSessionAdoptInput = {
       provider: source.provider,
       threadId: reservation.targetThreadId,
       sourceSessionId: context.sourceSessionId,
@@ -790,6 +798,9 @@ export class AttachedSessionAdoption {
         ? { tenantExecutionContext: context.tenantExecutionContext }
         : {}),
     };
+    const baseAdoptionInput =
+      this.deps.applyConfinement?.(unconfinedAdoptionInput) ??
+      unconfinedAdoptionInput;
     const launchInput = this.deps.withAcceptedModelLaunchPlan(
       adapter,
       baseAdoptionInput,

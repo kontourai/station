@@ -1,0 +1,7 @@
+{
+  "revision": "ff3a80f86d3f96b2759e802e1438b2df46ddc754",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the two sequence regression test deltas: raw mkdtemp plus manual root arrays were replaced with the existing trackTempDirs helper, registered before store-close hooks so SQLite closes before cleanup. All 43 migration/boundary tests passed again; the raw-temp ratchet passes. Production ordering code and every reused-ID test remain unchanged from the executed fault-injection candidate, so the documented session-only fence, NULL fallback and remaining turn-generation limitation are still accurate.","inputs":["docs/architecture/module-map.md","src-server/domain/__tests__/turn-boundary-sequence-migration.test.ts","src-server/services/orchestration/__tests__/session-turn-boundary-sequence.test.ts"]}
+  ]
+}

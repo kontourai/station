@@ -24,6 +24,7 @@
  * separately) — not a general-purpose HTTP client for every Station route.
  */
 
+export * from './account-preferences';
 export * from './agents';
 export * from './analytics';
 export * from './answer-basis';
@@ -80,6 +81,8 @@ export * from './knowledge';
 export * from './learning-source';
 export * from './orchestration';
 export * from './peer-enrollments';
+export * from './personal-boards';
+export { listPersonalLayouts } from './personal-layouts';
 export { getPluginHeaders } from './plugin-headers';
 export * from './plugins';
 export * from './project-task-rooms';
@@ -105,6 +108,7 @@ export {
 export * from './task-tool-results';
 export * from './task-user-input-references';
 export * from './unified-search';
+export * from './usage-export';
 export {
   executeWorkspacePaneHostAction,
   getWorkspacePaneHostActions,

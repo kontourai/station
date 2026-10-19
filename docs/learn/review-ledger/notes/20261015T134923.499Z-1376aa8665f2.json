@@ -1,0 +1,7 @@
+{
+  "revision": "e4fb04d302dd8905b5b6e18a2771e9b58a0490b5",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed SDK package export-map additions against instruction contract: public contract types stay in contracts, request/query helpers use owned SDK entries, and documentation remains in canonical SDK reference. New usage-export-query is additive; no application-internal import or instruction change. Focused current-source SDK suites passed; full delivery remains pending.","inputs":["packages/sdk/AGENTS.md","packages/sdk/package.json#/exports"]}
+  ]
+}

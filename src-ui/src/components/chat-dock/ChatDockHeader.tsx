@@ -9,6 +9,7 @@ import {
 import type { DockMode } from '../../types';
 import { isSessionWorkActive } from '../../utils/execution';
 import { useRegionChromeSlots } from '../../workspace-panes/RegionChromeSlots';
+import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { LazyBoundary } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
 import {
@@ -125,6 +126,8 @@ interface ChatDockHeaderProps {
   projectContext?: React.ReactNode;
   /** Active conversation title + engine/Flow identity, sharing this row. */
   chatIdentity?: React.ReactNode;
+  /** Imported chats keep their origin visible when no composer owns that context. */
+  retainIdentityInNamedPane?: boolean;
   /** Full-screen layout placement: no region bar, so this renders its own. */
   fullscreen?: boolean;
   /** #3309: tab-strip controls folded into this bar. Absent while collapsed. */
@@ -147,6 +150,7 @@ interface ChatDockHeaderProps {
 
 export function ChatDockHeader({
   chatIdentity,
+  retainIdentityInNamedPane = false,
   projectContext,
   chatControls,
   fullscreen = false,
@@ -284,13 +288,17 @@ export function ChatDockHeader({
           componentProps={{ sessionInventory: inventory }}
         />
       ) : null}
-      {chatIdentity && !slots?.namesPane ? (
-        <div className="chat-dock__header-identity">{chatIdentity}</div>
+      {chatIdentity && (!slots?.namesPane || retainIdentityInNamedPane) ? (
+        <div
+          className={`chat-dock__header-identity${slots?.namesPane ? ' chat-dock__header-identity--pane' : ''}`}
+        >
+          {chatIdentity}
+        </div>
       ) : null}
       {contextMeter ? (
         <div className="chat-dock__header-meter">{contextMeter}</div>
       ) : null}
-      {projectContext ? (
+      {projectContext && !slots?.namesPane ? (
         <div className="chat-dock__header-context">{projectContext}</div>
       ) : null}
     </>
@@ -350,47 +358,27 @@ export function ChatDockHeader({
       ) : null}
       {activeSessions.length > 0 && (
         <div className="chat-dock__activity">
-          <button type="button" className="chat-dock__activity-btn">
-            <span className="loading-dots">
-              <span>●</span>
-              <span>●</span>
-              <span>●</span>
-            </span>
-            {activeSessions.length}
-          </button>
-          <div className="chat-dock__activity-dropdown">
-            {activeSessions.map((session) => {
-              const idx = (chatControls?.sessions ?? []).findIndex(
-                (s) => s.id === session.id,
+          <ActionOverflowMenu
+            label={`${activeSessions.length} ${activeSessions.length === 1 ? 'chat' : 'chats'} working`}
+            triggerText={`${activeSessions.length} ${activeSessions.length === 1 ? 'chat' : 'chats'} working`}
+            actions={activeSessions.map((session) => {
+              const index = (chatControls?.sessions ?? []).findIndex(
+                (item) => item.id === session.id,
               );
-              return (
-                <button
-                  type="button"
-                  key={session.id}
-                  className="chat-dock__activity-item"
-                  onClick={() => chatControls?.focusSession(session.id)}
-                >
-                  <span className="chat-dock__activity-label">
-                    {session.title}
-                  </span>
-                  {/*
-                      `dock.session1`…`dock.session9` are Cmd-N on macOS and
-                      Ctrl-N everywhere else; the literal `⌘{n}` that used to
-                      sit here named a chord no Windows or Linux user could
-                      press (#1649). `getDisplay` returns '' for a session
-                      index nothing has registered, and
-                      `.chat-dock__subtitle:empty` hides the badge rather than
-                      drawing an empty keycap.
-                    */}
-                  {idx < 9 && (
-                    <span className="chat-dock__subtitle">
-                      {shortcutDisplay(`dock.session${idx + 1}`)}
-                    </span>
-                  )}
-                </button>
-              );
+              return {
+                key: session.id,
+                label: session.title,
+                shortcut:
+                  index < 9
+                    ? shortcutDisplay(`dock.session${index + 1}`)
+                    : undefined,
+                onSelect: (trigger) => {
+                  trigger.focus();
+                  chatControls?.focusSession(session.id);
+                },
+              };
             })}
-          </div>
+          />
         </div>
       )}
       {/* #800: the COLLAPSED bar's one affordance, a real action: the same

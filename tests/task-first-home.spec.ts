@@ -545,6 +545,10 @@ async function mockTaskFirstHome(
       );
       return;
     }
+    if (path === '/api/knowledge/roots' && route.request().method() === 'GET') {
+      await route.fulfill(json([]));
+      return;
+    }
     if (
       path === '/api/knowledge/status' &&
       route.request().method() === 'GET'
@@ -1096,15 +1100,15 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.getByRole('button', { name: 'Dismiss engine picker' }),
     ).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+    await page.getByRole('button', { name: 'Collapse workspace map' }).click();
     await expect(page.locator('.sidebar')).toHaveClass(/sidebar--collapsed/);
     await expect(
-      page.getByRole('button', { name: 'Expand sidebar' }),
+      page.getByRole('button', { name: 'Expand workspace map' }),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Open chats' }),
+      page.getByRole('button', { name: 'Sidebar utilities' }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Expand sidebar' }).click();
+    await page.getByRole('button', { name: 'Expand workspace map' }).click();
 
     // archive#1629 removed the sidebar's "Project chats" pill (and its
     // `station:open-project-chats` dispatch) — ChatDock's listener for that

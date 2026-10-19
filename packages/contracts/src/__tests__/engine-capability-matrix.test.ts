@@ -238,9 +238,6 @@ describe('engine capability matrix', () => {
 
   test('agentEngineValidationFindings names the engine and capability verbatim and returns [] when nothing authored or everything deliverable', () => {
     const codex = ENGINE_CAPABILITY_MATRICES.codex;
-    // station#1195: codex's toolServers cell flipped from unsupported to
-    // session/wire, so authoring `tools: true` is no longer a validation
-    // finding for codex — only prompt/skills/commands remain unsupported.
     expect(
       agentEngineValidationFindings(
         codex,
@@ -248,11 +245,6 @@ describe('engine capability matrix', () => {
         'Codex',
       ),
     ).toEqual([
-      {
-        capability: 'prompt',
-        engineId: 'codex',
-        message: "Codex can't receive a system prompt from Station",
-      },
       {
         capability: 'skills',
         engineId: 'codex',

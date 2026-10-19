@@ -42,12 +42,23 @@ list does not take focus) and reopens when focus returns with the caret in an
 `@` query. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
+The [working-chat focus owner](../../src-ui/src/hooks/useWorkingChatFocus.ts)
+requests composer focus once after selection, when the conversation
+and its textarea become writable. The request expires 60 seconds after selection,
+allowing a slow remote open without retaining focus intent indefinitely. Moving
+focus elsewhere, opening a dialog, or selecting another chat cancels it. A
+read-only, missing-session, failed-open, or replay selection cancels it and moves
+focus to the selected transcript when focus is still in the working-chat control
+or on the page body.
+
 ## Starting and resuming work
 
 The phone-width captures compare the baseline and redesigned controls in the
 same isolated sample home and light theme. They show appearance, not task
 execution or native-shell qualification. Capture revisions and limits are in
 [the media manifest](../learn/media.json).
+These historical comparisons predate the paperclip and mic added to the start
+composer; they are not current references for its attachment controls.
 
 | Surface | Before | After |
 | --- | --- | --- |
@@ -65,7 +76,8 @@ live in Settings.
 
 New chat opens the shared start composer. Home renders it inline, and an
 operator's Project page renders a compact version above its activity with
-the Project fixed. Project and Station controls sit above the text box;
+the Project fixed. The duplicate project chat callout has been removed; the
+composer is the Project’s entry to a new chat. Project and Station controls sit above the text box;
 separate Agent and Engine & model controls sit inside it beside Start and the overflow
 for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
@@ -111,9 +123,7 @@ of these routes require separate evidence from the source and controlled tests.
 Home keeps a screen-reader page title while the shared composer owns the
 visible start heading. An empty Home does not add a second welcome question.
 
-The **on <host>** control names the answering Station's host projection, or
-**on Project default** when the Project has a saved execution environment. It
-opens the existing task launcher with the current message, Project, Agent and
+The **Run a task…** control opens the existing task launcher with the current message, Project, Agent and
 explicit Station/engine/model/options selection, and with its Station/worker/model routing controls expanded. The launcher
 loads the selected environment's own worker inventory and retains portable
 Project/resource admission and the explicit no-fallback refusals. **Run task**
@@ -132,6 +142,13 @@ The local working-directory path and editor live in Project Settings, alongside
 resource bindings. A branch badge does not claim a GitHub integration or whole
 Project synchronization: portable Project identity and per-Station resource
 bindings remain separate from Git content synchronization.
+
+**Build with chat** on a Personal Board offers a removable composer draft in
+a new, explicitly projectless chat. Only one ambient pane on the captured
+Station may claim it; a Project-bound pane cannot reinterpret its scope.
+Choosing an Agent stages the text without sending it. The Agent uses the
+Personal Board proposal tools, and the person previews and applies the result
+in the Board. See [Personal Boards](../user/personal-boards.md).
 
 A Project page start hands the dock its fixed Project without changing the
 ambient dock binding. An unavailable fixed Project blocks starting and keeps
@@ -193,11 +210,78 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
-working clock; the remote turn may still be running. History Retry refreshes
-the capability observation before reloading.
+working clock; the remote turn may still be running. Already loaded transcript
+content stays visible through a failed refresh. A successful empty history read
+replaces that retained content, and switching conversations clears it. Its Resync action
+reconnects the Station's orchestration stream and re-runs the failed history or
+conversation-open read. Resync is disabled and announces “Resyncing conversation”
+until those reads settle. History reads abort after 120 seconds and show a
+retryable error; the JSON reader exposes no progress signal. This bound allows
+slow remote reads beyond 30 seconds. Successful recovery announces “Conversation
+resynced” once, including after reconnecting or catching up. It moves focus to
+the composer (textarea when writable, otherwise its labelled composer group)
+only while this conversation is active, no dialog is open, and focus is still
+on Resync or was orphaned on the document body. Focus moved elsewhere stays there.
+Connection recovery and failed-read recovery outrank retained approvals, whose
+current state has not been verified. Check connection, Reconnecting, and Catching up take
+priority while the transport needs recovery; explicit stream resync respects
+the 30-second auth-refusal retry floor. Background work the session record last reported
+reads as "Last known: …" without animated dots while its observation is
+unverified. The inbox, Home, and mobile picker share this freshness:
+a failed conversation read marks only that conversation; a failed inbox read
+marks the retained list. Rows prefix the computed status with "Last known:"
+and suppress pulsing and elapsed clocks. Each observation source clears only its own failed read. A newer stream
+activity within the same stream epoch supersedes each failed source whose watermark it exceeds, even when
+another source has a higher watermark. Each read captures its watermark when it
+starts. The highest stream sequence also supersedes older pending failures that
+settle later, so completion order cannot change current status. Reader generation
+tokens stop released or replaced readers from publishing. A stream epoch change
+resets the authority client’s sequence fences and invalidates old-epoch read
+tokens while retaining unresolved failures until a new-epoch observation.
+History and binding-revalidation response publishers use the read token's
+`current()` check before applying activity or chat patches (option B).
+Picker opens and active retries capture the stream epoch generation separately:
+an epoch change before resolution settles discards the result, without opening,
+patching the chat, or publishing activity. Within the same epoch, inventory
+pruning may retire the observation token but cannot discard an imperative open
+or its chat update. Only a current observation token publishes read success or
+failure; mounting the opened chat re-establishes observation. Picker validity
+also gates focus and the final patch after awaited hydration. Hydration checks
+command currency before publishing to the message cache or tab. Focusing or
+reopening a hydrating tab adopts its cleanup ownership without cancelling a
+healthy same-epoch response; a superseded command cannot remove that adopted
+tab. These commands add no deadline or abort signal to resolution or transcript
+hydration.
+Mounted revalidators and history readers retain it through their subscription. The same
+boundary resets and cancels cached inventory and sessions queries; their
+activity feed accepts only rows still held by the current query cache. Stream
+and snapshot activity remain synchronous publishers in the current epoch.
+Cache clear invalidates
+outstanding publishers too. This proves current status, not history
+reader recovery; the history pane retains its own error UI. Unmounting a row
+preserves failures and sequence fences. Pruning requires absence from the loaded
+inventory and no subscribed rows or mounted readers; authority cache clear also
+releases them. Other conversations and Station authorities remain independent. History
+Retry refreshes the capability observation before reloading. The desktop
+inbox footer offers Refresh, which reconnects the same stream and re-reads the
+session list and conversation inventory; when the last read failed, the footer
+says the rows are the last known list.
 
-The pill uses compact state labels such as Working, Thinking, and Reconnecting;
-it does not expand to display tool names. State changes animate its width with
+The pill uses compact state labels such as Sending, Working, Thinking, and
+Reconnecting; it does not expand to display tool names. **Sending** covers the
+chat's own send until the agent has its turn (no turn open on the server yet);
+once Station's delivery lookup says it has the message, its detail says Station
+has it and is starting the agent, and that the app may be closed only when
+that Station keeps running without the app (not the desktop's own Station when
+it stops with the app, nor while the desktop has not reported it). The user's
+own bubble carries the same state until the agent has the message
+(`MessageDeliveryNote`): outlined rather than filled (dashed while on its way,
+solid when not sent or when it may have reached the agent; only a send under
+way keeps the accent colour, and a send with no answer reads as a caution), with a short label that says whether it goes if the app
+closes (including waiting behind an unsent message, waiting for its own
+Station, and "Not confirmed" for this window's send with no answer), plus Retry
+and Edit when not sent (Discard is in the bubble's ⋯ menu) and Check and
+Discard… when it may have reached the agent. State changes animate its width with
 the shared motion token, while the clock reserves a stable text column. Running
 tool rows and batches show a subtle reflection sweeping left to right; settled
 calls and approval requests stay still. Reduced motion disables the reflection
@@ -213,8 +297,8 @@ follows the last call. While the turn is live it keeps the shape it streamed
 with. In the summary, a failure is counted as **retried** rather than
 **failed** when a later call in the same summary ran the same tool with
 identical, recorded arguments and succeeded. A steer inside a turn does not
-start a new exchange. Under each settled answer, a muted time beside the ⋯
-button gives the turn's completion time from its provenance envelope. An
+start a new exchange. Under each settled answer, a muted time beside the copy
+and ⋯ buttons gives the turn's completion time from its provenance envelope. An
 answer without a readable envelope time shows no time. Exchanges are divided
 by a thin rule.
 
@@ -302,7 +386,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 - Agent and Model selectors show their selected values without repeating the field labels.
   Their accessible names and tooltips retain the field name, exact Provider/model identity,
-  selection source, and any unavailable reason. The picker distinguishes duplicate model
+  selection source, and any unavailable reason. A long value ends in an ellipsis inside
+  its chip. When the Agent is reached through a model route ("via model-proxy
+  (home-server)"), a narrow composer drops that route before the Agent's name (#3050); the
+  chip's accessible name and tooltip keep it. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
 - Choosing or resetting a Model closes the picker, in a chat, in the start
@@ -315,11 +402,16 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Unavailable Providers explain their status and are disabled. They can never
   create a new invalid chat selection.
 - Favorites, recents, hidden models, and explicit order use one versioned
-  device-settings record. Provider details own favorite/hide/reorder controls;
-  the picker consumes the same record.
+  account preference on this Station when signed in, with a device-local fallback.
+  Pending actions compose locally; a stale composite replacement is refused
+  rather than dropping another device’s favorites. Provider details and the
+  picker use the same preference owner.
 - Compact value pickers use the shared `.choice-trigger` / `.choice-caret` styles
   and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
   Standard actions continue to use `Button`.
+- Startup permissions show the requested mode and source before Start. The running
+  chip shows engine-confirmed values or a pending/restart state. Personal defaults
+  apply to new interactive chats; saving a future default is explicit.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
   naturally and truncate when needed; Model does not stretch into unused space.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
@@ -350,7 +442,9 @@ sits at the row's trailing edge. On mobile, Send is an arrow and its mode
 picker a chevron. They appear once the
 composer holds text, an attachment or quoted context; their geometry stays
 reserved while hidden, so editing does not move Stop or the other toolbar
-controls. Names and the selected mode remain accessible, and the opened picker
+controls. On mobile, Stop therefore follows them, at the row's trailing edge;
+before them it sat beside an empty reserved gap. At 390px a running turn's full
+row (Clear, Send, mode picker and Stop) still wraps to a second line. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
 picker defaults to **Queue**, which starts a new turn after the entire current
 turn finishes. **Steer** uses native mid-turn input only where the selected
@@ -384,7 +478,12 @@ a turn. Pending rows retain their selected mode. **Send now** is an explicit imm
 stop override: Station waits for a settled interruption receipt before sending
 the selected row, keeps other rows in order, and retains the message if stopping
 cannot be confirmed. Queued follow-ups currently accept text and quoted context;
-attachments remain in the composer until the turn finishes.
+attachments remain in the composer until the turn finishes. Steering carries
+text only (`steerTurn` takes an input string), and the mid-turn queue holds
+text only. The paperclip and mic stay usable during a turn, so the next
+message can be prepared: a file added then waits in the draft, and the line
+above the draft says that Steer and Queue carry text only, with **Remove
+attachments**. Send stays disabled until the turn ends or the files go.
 
 Activity is engine-reported. Claude Code SDK API retries supply attempt and delay
 with a bounded reason category; Codex's `willRetry` reports retry intent without
@@ -410,6 +509,22 @@ simple per-device preference rather than claiming to detect an attached keyboard
 
 ### 3.2 Attachments
 
+- A new chat's start composer attaches through its paperclip and paste, and
+  dictates through its mic, like a reply. It cannot know what the new chat's
+  engine accepts, so Start hands the files to the chat it opens, which runs
+  them through its own intake and staging before its first send. If that
+  engine refuses a file or a file does not stage, the message waits in the
+  chat's composer with the reason instead of going out without it. A task
+  started on another Station takes text only, so Start with files attached
+  refuses that and says why. Each composer owns its own dictation: a transcript goes only to
+  the composer whose mic started it, and a composer that closes stops its
+  dictation and takes the transcript with it. An unavailable mic stays focusable;
+  tapping or activating it opens its reason, including when the composer cannot
+  accept dictation.
+  Paste requires the browser to deliver clipboard files. Android keyboard
+  image insertion into the native WebView is not qualified by the browser
+  clipboard tests; use the paperclip's file picker when the keyboard refuses
+  image paste.
 - The composer decides image support before Send from the engine's declared
   and observed answers (`resolveComposerImageSupport`). When images cannot be
   sent, image chips say so and Send is disabled with the reason until the
@@ -457,8 +572,13 @@ simple per-device preference rather than claiming to detect an attached keyboard
   still queued and the dock gives the composer priority, the controls row
   repeats a labelled **Discard**: a 44px touch target that adds no height (the
   row is already a touch row), described by the notice's words, doing what the
-  transcript's Discard does. Both controls leave the same state: the turn is
-  discarded and, when none remains, the stale notice is dropped. The
+  transcript's Discard does. When the message may already have reached
+  Station, that control reads **Discard…** and asks first, with the shared
+  risk statement. The composer clips what overflows it in such a dock, so the
+  question opens as the composer's own popover (a sheet on a phone) rather
+  than inside it: focus moves to **Keep it**, and Keep it, Escape or a tap
+  outside returns focus to Discard…. Both controls leave the same state: the
+  turn is discarded and, when none remains, the stale notice is dropped. The
   transcript's Discard, like every transcript notice action, is also 44px on a
   phone or touch screen. The queued turn and its Retry stay in
   the dock body), the chip strip drops to one scrolling row, and only then does
@@ -502,10 +622,12 @@ screenshots.
 
 ## Mobile conversation focus (2026-09-05)
 
-Owner-directed revision (clarified 2026-09-05): project switching and
-conversation switching are primary phone-header actions. Both stay directly
-reachable with readable current context and 44px touch targets at 320px,
-390px, and 412px widths. Neither requires opening Chat actions first.
+Project and conversation switching remain direct phone-header actions with
+readable current context and 44px targets at 320px, 390px and 412px. The
+October audit proposed moving the future-project choice into Chat actions;
+that remains a proposal because the product contract requires direct access.
+The current implementation keeps the project control and simplifies title
+wrapping and assistant context without removing either primary action.
 The **Chats and tasks** picker keeps the shared **New chat** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
 **New chat**; the mobile header uses its icon-only chat-bubble-plus form.
@@ -513,14 +635,16 @@ It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
 title, Project with its icon (or its sidebar colour dot), and a right-aligned status/time. Unresolved Agents retain their
 name. The status line is the ladder's own words (`Needs answer`, `Needs
-approval`, …, the same words the dock row prints). Running time uses the
+approval`, …, the same words the dock row prints), prefixed with "Last known:"
+when its latest observation failed. Verified running time uses the
 recorded open-turn start; without one, the row's compact time trails the status
 line (`· 2m`). One ellipsis opens the
 existing details/actions sheet, including Git and PR reads on demand.
 
 The **Projects** picker uses the same **+** component, named **New project**,
 and opens the canonical `/projects/new` flow. Its empty state explains the
-next action. Project icons and accent fallback match the sidebar; a checkmark
+next action. Chosen Project icons and the accent palette match the sidebar;
+the workspace map uses initials tiles while picker fallbacks use accent marks. A checkmark
 identifies the selected project. Other rows show stacked switch arrows; the
 separate home icon opens the Project workspace. Hover, keyboard focus or a hold
 explains each action; the hold does not also perform it. Selecting an existing row changes the dock's
@@ -536,15 +660,28 @@ when it differs. On a phone, when a long chat title leaves the control too
 narrow for words, it shows only a folder glyph; its accessible name still
 names the project. This revises the earlier independent-sidebar/default behavior.
 
+**New Task** opens the shared start composer inside the chat dock, focused, with a compact, removable **Shaping a Task** chip and **Describe the idea…** placeholder. The existing Project and Agent chips retain their normal defaults; the global entry uses the same Project chip. The chat retains shaping mode across clarification turns and reloads, sending the instructions as model context on each turn until acceptance or mode removal. The dock is titled **New Task** with a **Shape a Task** heading; on phones it covers the page composer.
+
+Chat actions offers **Turn into Task** for a writable Station conversation,
+sending shaping instructions immediately in the same conversation. Further focus can be typed as the next message. The
+agent shapes a proposal; only **Create Task** on its card accepts the brief
+and links the source Session without assigning an Agent or execution Session. The Goal sentence is the description; the complete accepted markdown seeds the shared Task document through its authorized human edit path. Acceptance also clears shaping mode when the conversation has moved to another Session. A mismatched proposal asks for a fresh proposal; an oversized brief asks for a shorter one. A seed failure retains the Task and shows a recoverable acceptance error; retry reuses the source identity and never overwrites a populated document. Shaping instructions use model context, leaving
+the person's idea as the visible message. The answer/input **Add to Task**
+picker offers **New Task from this…** even with an empty Task catalog.
+
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**
 or **Exit full screen**. Collapse stays on the header control. No resize or
 navigation action requires a gesture.
 
 Mobile message rows prioritize the authored text and essential live approval or
-error state. A separate 44px actions button opens attribution, model facts,
-provenance, copy, ratings, and Task references on demand. These details retain
-their original event-backed identities. Desktop attribution stays inline.
+error state. Each row with text has a 44px copy button beside a separate 44px
+actions button; the actions button opens attribution, model facts, provenance,
+ratings, and Task references on demand, and omits itself from a user message
+that has none of them. These details retain their original event-backed
+identities. Desktop attribution stays inline. On every screen size a message's
+copy control is one icon button, named "Copy your message" or "Copy answer";
+no menu repeats it as text.
 
 The executable contracts are `ChatDockMobileHeader.test.tsx` and the mobile
 project-switcher journey in `tests/cross-runtime-chat-switching.spec.ts`.
@@ -555,3 +692,22 @@ pre-merge browser smoke must exercise the journey rather than wait for Nightly.
 An indeterminate wait may show elapsed observation time, clearly identified as time waiting in this view. It must not invent a completion estimate. Access requests with a persisted expiry show a countdown from that expiry; the clock itself is not a live-region announcement.
 
 Discovered Codex rollouts continue through app-server `thread/fork`, returning a distinct native child ID. Cleanup archives the confirmed child. This is separate from resuming an existing Station-owned Codex session, which uses `thread/resume`.
+
+## Header simplification, October 2026
+
+The desktop chat title leads, with assistant and reported engine/model context
+on a second line. Coding keeps the title in its own breadcrumb. Its bar omits the assistant,
+engine/model, future-chat Project and Git strip; Agent and engine/model controls
+stay beside the composer, while Project and file context remain in their owning
+surfaces. Imported conversations retain their origin. Phone Coding leaves the conversation
+title in the chat header and uses its breadcrumb for Inbox and pane navigation.
+Working chats open a keyboard-operable
+menu. On mobile, the title is one line with assistant context beneath it. The direct
+Project control retains its New chats caption: it sets future chat context,
+not the current conversation’s binding. Moving that control into Chat actions
+remains an unimplemented proposal requiring a product-contract decision.
+
+Earlier Project before/after illustrations on this page are historical
+comparisons. Their duplicate callout and older dock chrome are not current
+acceptance evidence. See the [current improvement round](../plans/onboarding-improvement-rounds.md)
+for actual captures and remaining Terminal and pairing work.

@@ -163,6 +163,8 @@ export interface ChatMessage {
    * `addEphemeralMessage`/`createEphemeralMessageState`, which always sets
    * this; there is no writer that sets it on any other message. */
   ephemeral?: boolean;
+  /** Child identity on a local completion notice, for inline-card deduplication. */
+  childWorkKey?: string;
   showContinue?: boolean;
   timestamp?: number;
   traceId?: string;
@@ -306,6 +308,7 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  taskShaping?: boolean;
   skillExperienceDraft?: import('./lib/skill-experience-draft').SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
   skillExperienceActive?: boolean;
@@ -347,6 +350,15 @@ export interface ChatSession {
     createdAt: number;
     status: 'pending' | 'invoking' | 'accepted' | 'failed' | 'may-have-started';
     lastError?: string;
+    /** See ChatUIState.outboundQueuedTurns (active-chats-state.ts). */
+    deliveryCheck?: {
+      outcome: import('@kontourai/station-contracts/orchestration').TurnDeliveryOutcome;
+      checkedAt: number;
+    };
+    /** Written for another Station (its API base); waits for it. */
+    waitingForStation?: string;
+    /** Held by another window or a closed one; sent only by the user. */
+    heldElsewhere?: true;
   }>;
   status: ChatSessionStatus;
   isThinking?: boolean;
@@ -362,6 +374,7 @@ export interface ChatSession {
   approvalEscalationRejected?: boolean;
   /** See ChatUIState.queuedApprovalMode (active-chats-state.ts, #2436). */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /** See ChatUIState.approvalPosture (active-chats-state.ts, #2436). */
   approvalPosture?: ApprovalMode;
   approvalPostureSequence?: number;
@@ -392,6 +405,11 @@ export interface ChatSession {
   conversationActivity?: import('@kontourai/station-contracts/orchestration').ConversationTurnActivity;
   /** #2309: see ChatUIState.sendAwaitingTurnStart (active-chats-state.ts). */
   sendAwaitingTurnStart?: boolean;
+  /**
+   * The send awaiting its turn start is one Station's delivery lookup said it
+   * has (`received`): the session may still be starting.
+   */
+  pendingSendStationHasIt?: boolean;
   /** #2309: see ChatUIState.queueDrainSettling (active-chats-state.ts). */
   queueDrainSettling?: boolean;
   /** #2309: see ChatUIState.stopSettledTurnId (active-chats-state.ts). */
@@ -445,6 +463,9 @@ export interface Tool {
   id: string;
   name: string;
   displayName?: string;
+  source?: string;
+  origin?: import('@kontourai/station-contracts/tool').ToolOrigin;
+  builtin?: boolean;
   description?: string;
   kind?: 'mcp' | 'builtin' | 'custom';
   transport?: string;
@@ -456,11 +477,15 @@ export interface Tool {
   toolName?: string;
   group?: string;
   title?: string;
+  readOnly?: boolean;
+  classificationSource?: 'station' | 'publisher';
+  probe?: import('@kontourai/station-contracts/tool').ToolServerProbeResult;
   tools?: {
     name: string;
     toolName?: string;
     description?: string;
     readOnly?: boolean;
+    classificationSource?: 'station' | 'publisher';
     group?: string;
     title?: string;
     disabled?: boolean;

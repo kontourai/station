@@ -131,6 +131,8 @@ export interface UsageStats {
       conversations: number;
       messages: number;
       cost: number;
+      reportedCostUsd?: number;
+      estimatedCostUsd?: number;
     }
   >;
   byDate: Record<string, DailyStats>;

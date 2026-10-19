@@ -26,7 +26,11 @@ afterEach(() => {
 
 function mountPane(
   label: string,
-  pane: { hasImmutableProjectScope: boolean; projectSlug?: string },
+  pane: {
+    hasImmutableProjectScope: boolean;
+    projectSlug?: string;
+    authorityKey?: string;
+  },
   opened: string[],
 ) {
   const listener = (event: Event) => {
@@ -84,4 +88,35 @@ test('a plain project-chat request is not claimed here', () => {
   mountPane('ambient', { hasImmutableProjectScope: false }, opened);
   expect(requestProjectChat({ projectSlug: 'y' })).toBe(false);
   expect(opened).toEqual([]);
+});
+
+test('a Personal Board draft is claimed only by an unbound pane on its captured Station', () => {
+  const opened: string[] = [];
+  mountPane(
+    'other-station',
+    { hasImmutableProjectScope: false, authorityKey: 'station-b' },
+    opened,
+  );
+  mountPane(
+    'bound-project',
+    {
+      hasImmutableProjectScope: true,
+      projectSlug: 'x',
+      authorityKey: 'station-a',
+    },
+    opened,
+  );
+  mountPane(
+    'ambient',
+    { hasImmutableProjectScope: false, authorityKey: 'station-a' },
+    opened,
+  );
+  expect(
+    requestProjectChat({
+      projectSlug: null,
+      authorityKey: 'station-a',
+      composerDraft: draft,
+    }),
+  ).toBe(true);
+  expect(opened).toEqual(['ambient:null']);
 });

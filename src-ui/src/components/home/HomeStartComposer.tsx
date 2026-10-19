@@ -36,6 +36,10 @@ import {
 import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
+  appendDictation,
+  useStartDictation,
+} from '../chat-start/useStartDictation';
+import {
   GLOBAL_CONTEXT,
   NO_PROJECT_LABEL,
   resolveNewChatAgentEnable,
@@ -267,6 +271,14 @@ export function HomeStartComposer({
       return value;
     });
   };
+  // Files go to the dock with the prompt and leave this field only once a
+  // chat started with them; a dismissed start keeps them here.
+  const [startFiles, setStartFiles] = useState<File[]>([]);
+  const clearSentFiles = (sent: readonly File[]) =>
+    setStartFiles((current) => current.filter((file) => !sent.includes(file)));
+  const startVoice = useStartDictation((text) =>
+    setPrompt((current) => appendDictation(current, text)),
+  );
   const held = useSyncExternalStore(
     draftStore.subscribe,
     draftStore.snapshot,
@@ -375,14 +387,17 @@ export function HomeStartComposer({
     setMenu(null);
     if (projectSlug) setDockState(true);
     const text = prompt;
+    const files = startFiles;
     const accepted = dispatchNewChatIntent({
       initialPrompt: text,
+      ...(files.length ? { initialFiles: files } : {}),
       selection: start.startSelection(target ?? agent),
       handoff,
       // Dismissed: the dock's draft as it last read (edits included) comes
       // back; started: it lives in its chat now.
       onClosed: (outcome, dockDraft) => {
         if (outcome === 'dismissed') draftStore.hold(dockDraft ?? text);
+        else clearSentFiles(files);
       },
     });
     if (!accepted) {
@@ -423,6 +438,12 @@ export function HomeStartComposer({
         status: 'ready',
         agent,
         modelLabel,
+        executionAgentId: agent
+          ? start.modelChoiceFor(agent)?.executionAgentId
+          : undefined,
+        environmentId: agent
+          ? start.modelChoiceFor(agent)?.environmentId
+          : undefined,
         needsSetup: agent ? !agentRunnability(agent).runnable : false,
       };
   // The sidebar's colours, from the one project list it shows.
@@ -528,13 +549,24 @@ export function HomeStartComposer({
         ]}
         canStart={canStart}
         pending={pending}
+        files={{
+          list: startFiles,
+          onAdd: (files) => setStartFiles((current) => [...current, ...files]),
+          onRemove: (index) =>
+            setStartFiles((current) =>
+              current.filter((_, position) => position !== index),
+            ),
+        }}
+        voice={startVoice}
         onStart={() => {
           if (inFlight.current) return;
           if (projectSlug) setDockState(true);
           const sentText = prompt;
+          const sentFiles = startFiles;
           const accepted = dispatchNewChatIntent({
             startWithDefault: true,
             initialPrompt: prompt,
+            ...(sentFiles.length ? { initialFiles: sentFiles } : {}),
             // No Agent to offer: the dock prepares one (first run).
             selection: agent
               ? start.startSelection()
@@ -555,7 +587,10 @@ export function HomeStartComposer({
               setPending(false);
               // Started: the message is in its chat now, so the text that was
               // sent leaves the field (anything else there stays).
-              if (outcome === 'started') clearSent(sentText);
+              if (outcome === 'started') {
+                clearSent(sentText);
+                clearSentFiles(sentFiles);
+              }
             },
           });
           if (!accepted) {

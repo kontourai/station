@@ -149,22 +149,28 @@ test('a home-transfer scope survives an unrelated orchestration edit', () => {
   );
 });
 
-test('an operator-promoted home-control scope survives an unrelated edit', () => {
-  const onApply = openEditor('orchestration:read home:control');
-  expect(
-    (
-      screen.getByRole('checkbox', {
-        name: /Home control/,
-      }) as HTMLInputElement
-    ).checked,
-  ).toBe(true);
-  fireEvent.click(screen.getByRole('radio', { name: /^Delegation/ }));
-  apply();
-  expect(onApply).toHaveBeenCalledWith(
-    ['orchestration:read', 'orchestration:operate', 'home:control'],
-    'orchestration:read home:control',
-  );
-});
+test.each([
+  ['home:control', /Home control/],
+  ['access:devices', /Manage device access/],
+] as const)(
+  'an operator-promoted %s scope survives an unrelated edit',
+  (token, label) => {
+    const onApply = openEditor(`orchestration:read ${token}`);
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: label,
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: /^Delegation/ }));
+    apply();
+    expect(onApply).toHaveBeenCalledWith(
+      ['orchestration:read', 'orchestration:operate', token],
+      `orchestration:read ${token}`,
+    );
+  },
+);
 
 test('a pure fleet-inference device holds no orchestration access, and keeps it that way', () => {
   const onApply = openEditor('inference:invoke');

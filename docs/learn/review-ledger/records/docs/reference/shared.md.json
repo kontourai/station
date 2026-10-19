@@ -48,8 +48,6 @@
 
     "packages/sdk/src/api-agent-runtime.ts",
 
-    "packages/shared/package.json",
-
     "packages/shared/package.json#/exports/.~1native-relay-link",
 
     "packages/shared/src/__tests__/build.test.ts",
@@ -86,8 +84,6 @@
 
     "packages/shared/src/types.ts",
 
-    "pnpm-lock.yaml",
-
     "src-server/routes/agents/invoke-agent.ts",
 
     "src-server/routes/plugins/plugin-bundles.ts",
@@ -122,7 +118,19 @@
 
     "packages/shared/src/mcp-elicitation-form.ts",
 
-    "packages/shared/src/product-telemetry.ts"
+    "packages/shared/src/product-telemetry.ts",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/files",
+
+    "packages/shared/package.json#/engines",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

@@ -323,7 +323,6 @@ export function ACPChatPanel({
         attachments={chatInput.attachments}
         textareaRef={chatInput.textareaRef}
         disabled={false}
-        isSending={activeSession.status === 'sending'}
         turnInFlight={isTurnInFlight(activeSession)}
         workingDirectory={sessionProject?.workingDirectory}
         mentionProjectSlug={sessionProject?.slug}

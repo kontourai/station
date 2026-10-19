@@ -34,6 +34,79 @@ function response(body: unknown, status = 200) {
   });
 }
 
+test('a polling authentication refusal is visible, pauses automatic retries, and can be checked explicitly', async () => {
+  vi.useFakeTimers();
+  let recovered = false;
+  let unavailable = false;
+  const request = vi.fn(async (input: RequestInfo | URL) =>
+    new URL(String(input)).pathname.endsWith('/offers')
+      ? response({ error: { code: 'insufficient_scope' } }, 403)
+      : unavailable
+        ? response({ error: 'unavailable' }, 503)
+        : recovered
+          ? response(
+              new URL(String(input)).pathname.endsWith('/requests')
+                ? { requests: [] }
+                : { devices: [] },
+            )
+          : response({ error: { code: 'authentication_required' } }, 401),
+  );
+  try {
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => undefined}
+        request={request}
+        onCancel={vi.fn()}
+      />,
+    );
+    await act(async () => undefined);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /access.*needs review/i,
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(request).toHaveBeenCalledTimes(2);
+    unavailable = true;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check connection again' }),
+    );
+    await act(async () => undefined);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /access.*needs review/i,
+    );
+    unavailable = false;
+    recovered = true;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check connection again' }),
+    );
+    await act(async () => undefined);
+    expect(request).toHaveBeenCalledTimes(6);
+    expect(screen.queryByRole('alert')).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(request).toHaveBeenCalledTimes(8);
+    recovered = false;
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+    await act(async () => undefined);
+    recovered = true;
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(
+      screen.getByRole('region', {
+        name: 'Create an invitation on your computer',
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'This device cannot create pairing codes.',
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((next) => {
@@ -2483,6 +2556,7 @@ describe('device pairing panels', () => {
       endpoint: 'https://station.public.test',
       // Standard is the default preset (station#1098 R3).
       scope: pairingScopePresetString('standard'),
+      approval: 'on-create',
     });
     expect(
       (screen.getByLabelText('Pairing client channel') as HTMLSelectElement)
@@ -2517,6 +2591,15 @@ describe('device pairing panels', () => {
         ),
       ),
     );
+    fireEvent.change(screen.getByLabelText('Browser app address'), {
+      target: { value: 'https://web.station.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Copy browser link' }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        expect.stringMatching(/^https:\/\/web.station.test\/#station-pairing=/),
+      ),
+    );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       new URL('https://station.example.test/api/pairing/offers'),
       expect.objectContaining({
@@ -2527,54 +2610,63 @@ describe('device pairing panels', () => {
     );
   });
 
-  test('selecting the Read-only preset sends exactly the read-only scope (station#1098 AC2)', async () => {
-    const offer = {
-      protocolVersion: 1,
-      environmentId: 'environment-1',
-      offerId: 'offer-1',
-      challenge: 'challenge-1',
-      manualCode: 'PAIRME2345',
-      endpoint: 'https://station.example.test',
-      scope: 'orchestration:read',
-      expiresAt: Date.now() + 60_000,
-    };
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(async (input, init) => {
-        const path = new URL(String(input)).pathname;
-        if (path === '/api/pairing/requests') return response({ requests: [] });
-        if (path === '/api/pairing/devices') return response({ devices: [] });
-        if (path === '/api/pairing/offers' && init?.method === 'POST') {
-          return response(offer, 201);
-        }
-        return response({ error: 'unexpected' }, 500);
+  test.each([
+    ['Read-only', 'orchestration:read'],
+    [
+      'Full device access',
+      'orchestration:read orchestration:operate terminal:operate coding:exec approval:full-access',
+    ],
+  ])(
+    'selecting %s sends exactly its assigned invitation scope',
+    async (label, scope) => {
+      const offer = {
+        protocolVersion: 1,
+        environmentId: 'environment-1',
+        offerId: 'offer-1',
+        challenge: 'challenge-1',
+        manualCode: 'PAIRME2345',
+        endpoint: 'https://station.example.test',
+        scope,
+        expiresAt: Date.now() + 60_000,
+      };
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (input, init) => {
+          const path = new URL(String(input)).pathname;
+          if (path === '/api/pairing/requests')
+            return response({ requests: [] });
+          if (path === '/api/pairing/devices') return response({ devices: [] });
+          if (path === '/api/pairing/offers' && init?.method === 'POST') {
+            return response(offer, 201);
+          }
+          return response({ error: 'unexpected' }, 500);
+        });
+
+      render(
+        <HostDevicePairingPanel
+          apiBase="https://station.example.test"
+          publicEndpoint="https://station.public.test"
+          getCredential={() => 'operator-credential'}
+          onCancel={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('radio', { name: new RegExp(label) }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Create pairing code' }),
+      );
+
+      expect(await screen.findByText('PAIRME2345')).toBeTruthy();
+      const offerCall = fetchSpy.mock.calls.find(
+        ([input]) => new URL(String(input)).pathname === '/api/pairing/offers',
+      );
+      expect(JSON.parse(String(offerCall?.[1]?.body))).toEqual({
+        endpoint: 'https://station.public.test',
+        scope,
+        approval: 'on-create',
       });
-
-    render(
-      <HostDevicePairingPanel
-        apiBase="https://station.example.test"
-        publicEndpoint="https://station.public.test"
-        getCredential={() => 'operator-credential'}
-        onCancel={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('radio', { name: /Read-only/ }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Create pairing code' }),
-    );
-
-    expect(await screen.findByText('PAIRME2345')).toBeTruthy();
-    const offerCall = fetchSpy.mock.calls.find(
-      ([input]) => new URL(String(input)).pathname === '/api/pairing/offers',
-    );
-    expect(JSON.parse(String(offerCall?.[1]?.body))).toEqual({
-      endpoint: 'https://station.public.test',
-      scope: 'orchestration:read',
-    });
-    // The scope is visible before the operator ever creates the grant.
-    expect(screen.getByText(/Read-only/)).toBeTruthy();
-  });
+    },
+  );
 
   test.each([
     [
@@ -2582,6 +2674,18 @@ describe('device pairing panels', () => {
       { error: { code: 'authentication_required' } },
       {},
       "This device's access to this Station needs review. Reconnect it, then try again.",
+    ],
+    [
+      403,
+      { error: { code: 'insufficient_scope' } },
+      {},
+      'This device cannot create pairing codes.',
+    ],
+    [
+      403,
+      { error: { code: 'policy_denied' } },
+      {},
+      'This Station refused to create a pairing code. Ask its operator to review this device’s access.',
     ],
     [
       403,
@@ -2645,8 +2749,23 @@ describe('device pairing panels', () => {
         screen.getByRole('button', { name: 'Create pairing code' }),
       );
 
-      expect((await screen.findByRole('alert')).textContent).toBe(expected);
-      expect(screen.getByText(/then approve access here/i)).toBeTruthy();
+      expect(
+        (await screen.findByRole('alert')).querySelector('p')?.textContent,
+      ).toBe(expected);
+      if (
+        'error' in body &&
+        typeof body.error === 'object' &&
+        body.error.code === 'insufficient_scope'
+      ) {
+        expect(
+          screen.getByRole('region', {
+            name: 'Create an invitation on your computer',
+          }),
+        ).toBeTruthy();
+      }
+      expect(
+        screen.getByText(/anyone with it can pair until it expires/i),
+      ).toBeTruthy();
     },
   );
 
@@ -2901,7 +3020,7 @@ describe('device pairing panels', () => {
       // QR code: error-styled border and the phone-reach warning, not the
       // neutral hint.
       expect(screen.getByRole('note').textContent).toContain(
-        'A phone cannot reach this address',
+        'Localhost points to the phone.',
       );
       fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
         target: { value: 'https://kontour.python-smelt.ts.net:3773' },

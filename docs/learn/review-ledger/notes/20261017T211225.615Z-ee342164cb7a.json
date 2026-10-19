@@ -1,0 +1,11 @@
+{
+  "revision": "5280fc8dcceac2c2e7e9b7bb9da6a7faf136b1c0",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the final status response: the exact server-side Lite catalog travels with its inventory revision, preventing a notice consumer from acknowledging an older bundled catalog under a newer hash. Existing operator Full admission, monthly ID, legacy-withdrawal tests and inactive sender/outbox/release limits remain as documented.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/operations/usage-telemetry-disclosure.ts","src-server/services/persisted-random-identifier.ts","src-server/services/usage-telemetry-service.ts","packages/contracts/src/product-telemetry.ts","packages/shared/src/product-telemetry.ts","src-server/domain/telemetry-configuration.ts","src-server/routes/system/config.ts","src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts","src-server/domain/config-loader-app.ts","src-server/domain/telemetry-build-constants.ts","packages/cli/src/commands/telemetry.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed status response Lite catalog plus revision against UsageTelemetryService and the Hono route. The real route test checks the catalog bounds, DNT reasons, no-store header and absence of sending. Existing operator/manage config and inherited read scopes are unchanged.","inputs":["docs/reference/api.md","packages/contracts/src/config.ts","src-server/routes/system/config.ts","src-server/routes/operations/usage-telemetry-disclosure.ts","src-server/services/usage-telemetry-service.ts","src-server/domain/telemetry-configuration.ts","packages/cli/src/commands/telemetry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed final registry copy and per-publisher configuration. Replaced implementation-lane wording with the user-visible availability fact that Lite collection is not yet available. Legacy withdrawal, saved choices, DNT, aliases and operator-only sending remain unchanged.","inputs":["docs/reference/config.md","packages/contracts/src/config.ts","packages/contracts/src/settings-registry.ts","src-server/domain/config-loader-app.ts","src-server/routes/system/config.ts","src-server/domain/telemetry-configuration.ts","src-server/services/usage-telemetry-service.ts","src-server/domain/telemetry-build-constants.ts"]}
+  ]
+}

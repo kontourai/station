@@ -192,7 +192,8 @@ export function QueuedMessages({
                 ) : (
                   <>
                     <span className="queued-message__text" title={msg}>
-                      {msg}
+                      {/* Clamped to two lines; Edit opens the full text. */}
+                      <span className="queued-message__body">{msg}</span>
                       <span className="queued-message__status">
                         {metadata?.[idx]?.delivery
                           ? metadata[idx].delivery === 'steering'

@@ -17,9 +17,17 @@ export interface ACPProviderHeaderGrant {
   headerName: string;
 }
 
+/** Exact authority for an instance key at one telemetry destination. */
+export interface TelemetryDestinationGrant {
+  kind: 'instance-telemetry-destination';
+  transport: 'product' | 'otel';
+  destination: string;
+}
+
 export type SecretBindingGrant =
   | McpIntegrationEnvGrant
-  | ACPProviderHeaderGrant;
+  | ACPProviderHeaderGrant
+  | TelemetryDestinationGrant;
 
 /**
  * Who a credential belongs to (#3279). `instance` is the shared Station
@@ -50,6 +58,8 @@ export interface SecretBinding {
   grants: McpIntegrationEnvGrant[];
   /** Exact ACP header authorities; absent on bindings created before #944. */
   acpProviderHeaderGrants?: ACPProviderHeaderGrant[];
+  /** Separate from MCP/ACP grants; absent on earlier binding documents. */
+  telemetryDestinationGrants?: TelemetryDestinationGrant[];
   createdAt: string;
   updatedAt: string;
   /** Terminal: revoked bindings cannot be reactivated or re-used. */

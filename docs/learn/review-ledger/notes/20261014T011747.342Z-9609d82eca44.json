@@ -1,0 +1,7 @@
+{
+  "revision": "e9b1f026820279d2caf9c4161152576dee98650f",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added the ACP session-start wait and the retryable provider_session_starting code beside provider_turn_in_progress; 'two codes' contrast now reads 'retryable codes'. Checked against packages/contracts/src/provider.ts, adapter-shape.ts ProviderSessionStartingError, orchestration-service.ts RETRYABLE_ADAPTER_REFUSAL_CODES and queueDrain.ts/useActiveChatSessionMessaging.ts handling.","inputs":["docs/reference/contracts.md","packages/contracts/src/provider.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

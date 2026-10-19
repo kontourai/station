@@ -239,7 +239,10 @@ export function AppViewContent(props: AppViewContentProps) {
             entrance remount TOGETHER here — `route-enter` already IS the
             item-4 fade for every route this seam covers. Removed; do not
             re-add without re-deriving the actual composed opacity curve. */}
-        <div className="route-transition" key={surfaceKey}>
+        <div
+          className={`route-transition${props.currentView.type === 'layout' ? ' route-transition--fill' : ''}`}
+          key={surfaceKey}
+        >
           <AppViewContentBody {...props} />
         </div>
       </RouteViewBoundary>

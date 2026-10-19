@@ -19,6 +19,8 @@ interface KnowledgeEnvelope<T> {
   data?: T;
   error?: string;
   code?: 'knowledge_migration_failed';
+  /** `POST /api/knowledge/index/search` only. */
+  index?: KnowledgeSearchIndexReport;
 }
 
 /**
@@ -29,6 +31,12 @@ interface KnowledgeEnvelope<T> {
  * no-embedder (400) and unexpected-failure (500) paths.
  */
 async function unwrapKnowledgeResponse<T>(response: Response): Promise<T> {
+  return (await unwrapKnowledgeEnvelope<T>(response)).data as T;
+}
+
+async function unwrapKnowledgeEnvelope<T>(
+  response: Response,
+): Promise<KnowledgeEnvelope<T>> {
   const fallback = `Knowledge API error: ${response.status}`;
   let result: KnowledgeEnvelope<T> | null = null;
   try {
@@ -43,7 +51,7 @@ async function unwrapKnowledgeResponse<T>(response: Response): Promise<T> {
     // `knowledge_migration_failed`) and `details` survive.
     throw envelopeError(response, result, fallback);
   }
-  return result.data as T;
+  return result;
 }
 
 export interface RebuildKnowledgeIndexOptions {
@@ -407,15 +415,49 @@ export interface KnowledgeSearchResult {
   category: string;
 }
 
+/** What `POST /api/knowledge/index/search` could not answer for the current
+ * embedding connection (#2727, #2728). Only roots the caller may read appear. */
+export interface KnowledgeSearchIndexReport {
+  /** Roots indexed by another, or an unknown, embedding generation. Their
+   * chunks are never searched until the root is reindexed. */
+  staleRoots: Array<{
+    rootId: string;
+    reason: 'embedding-changed' | 'unknown-generation';
+  }>;
+  /** Records whose indexed excerpt no longer appears in the record; their
+   * hits were withheld. Reindex to recover them. */
+  staleRecords: number;
+  /** The server stopped reading the ranking before it found `topK` results. */
+  scanLimitReached: boolean;
+}
+
+export interface KnowledgeSearchWithReport {
+  results: KnowledgeSearchResult[];
+  /** `null` from a server that predates the report. */
+  index: KnowledgeSearchIndexReport | null;
+}
+
 /** `POST /api/knowledge/index/search` — embeds `options.query` server-side and
  * searches the K3 index, scoped to `options.rootIds` when supplied. Returns the
  * `NO_EMBEDDER_ERROR` 400 convention (surfaced as a thrown Error, same as every
- * other fetcher in this file) when no embedding provider connection is configured. */
+ * other fetcher in this file) when no embedding provider connection is configured.
+ * Use `searchKnowledgeIndexWithReport` to learn which roots need a reindex. */
 export async function searchKnowledgeIndex(
   apiBase: string,
   options: SearchKnowledgeIndexOptions,
   opts?: ClientRequestOptions,
 ): Promise<KnowledgeSearchResult[]> {
+  return (await searchKnowledgeIndexWithReport(apiBase, options, opts)).results;
+}
+
+/** `searchKnowledgeIndex` plus the server's report of stale roots and
+ * withheld excerpts, so a caller can say a reindex is needed instead of
+ * presenting a short answer as complete. */
+export async function searchKnowledgeIndexWithReport(
+  apiBase: string,
+  options: SearchKnowledgeIndexOptions,
+  opts?: ClientRequestOptions,
+): Promise<KnowledgeSearchWithReport> {
   const response = await mutateJson(
     `${apiBase}/api/knowledge/index/search`,
     'POST',
@@ -427,7 +469,12 @@ export async function searchKnowledgeIndex(
     { ...opts, readOnly: true },
     options,
   );
-  return unwrapKnowledgeResponse<KnowledgeSearchResult[]>(response);
+  const envelope =
+    await unwrapKnowledgeEnvelope<KnowledgeSearchResult[]>(response);
+  return {
+    results: envelope.data as KnowledgeSearchResult[],
+    index: envelope.index ?? null,
+  };
 }
 
 /**

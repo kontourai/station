@@ -1,11 +1,8 @@
 name: "PR: Gallery"
 
-# The exact-pixel gallery gate, run on the pull request that moves a screen
-# rather than on the next nightly (#2428). Until this existed the gate ran only
-# in nightly-gallery.yml, so every merged PR that intentionally changed a
-# gallery screen turned the following nightly red and someone re-baselined
-# after the fact (run 35863080741: `54 compared, 1 changed: plugins`, from
-# #2375's "New plugin" button).
+# Capture integrity is required for a successful run; exact pixel differences
+# are advisory review evidence. Intentional UI changes do not require a
+# baseline-only commit to make this workflow green.
 #
 # Same renderer as the nightly, deliberately: the comparator hashes a decoded
 # RGBA buffer with no threshold, so a baseline means something only against the
@@ -91,7 +88,7 @@ jobs:
     if: always() && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')
     runs-on: ubuntu-22.04
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
       options: --ipc=host --init
     timeout-minutes: 60
     defaults:
@@ -116,13 +113,13 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
       - name: Install the native build toolchain node-pty needs
@@ -180,13 +177,13 @@ jobs:
         run: npm run test:e2e:screenshot
 
       - id: diff
-        name: Enforce exact baseline
-        run: npm run screenshot:diff
+        name: Report exact pixel differences
+        run: npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"
 
       - name: Upload gallery and pixel diffs
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        # Storage trouble is infrastructure; the diff step above is the verdict.
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        # Artifact storage trouble does not replace the comparison verdict.
         continue-on-error: true
         with:
           name: gallery-pr-${{ github.run_id }}-${{ github.run_attempt }}
@@ -194,46 +191,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      # The artifact's root is the gallery directory itself (capture.json plus
-      # one PNG per screen), which is exactly what `screenshot-diff.mjs
-      # baseline --gallery=<dir>` reads. A baseline refreshed this way comes
-      # from this container, never a local renderer. The re-run this check
-      # makes on the pushed commit catches a baseline from any other renderer,
-      # for a PR that does not also change the capture or diff scripts; the
-      # nightly on main, running trusted code, is the authoritative check.
-      - name: Explain how to refresh the baseline
-        if: failure() && steps.diff.outcome == 'failure'
+      - name: Link visual review evidence
+        if: always() && steps.diff.outcome != 'skipped'
         env:
-          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ARTIFACT: gallery-pr-${{ github.run_id }}-${{ github.run_attempt }}
-          REPOSITORY: ${{ github.repository }}
         run: |
-          set -euo pipefail
-          message="$(cat <<EOF
-          ### Gallery baseline differs from this PR's render
-
-          The table in the **Enforce exact baseline** step names each screen that
-          changed, and the \`${ARTIFACT}\` artifact holds the new captures plus a
-          red-pixel diff for each one under \`diffs/\`. Review those images first.
-
-          **If the change is intentional**, refresh the baseline from THIS run's
-          artifact (never from a local renderer) and commit it on its own:
-
-          \`\`\`bash
-          gh run download ${RUN_ID} --repo ${REPOSITORY} --name ${ARTIFACT} --dir /tmp/station-gallery-${RUN_ID}
-          npm run screenshot:baseline -- --gallery=/tmp/station-gallery-${RUN_ID}
-          git add tests/screenshots.baseline.json tests/screenshots.baseline/
-          git commit -m "test(gallery): re-baseline <screens> from gallery run ${RUN_ID}"
-          rm -rf /tmp/station-gallery-${RUN_ID}
-          \`\`\`
-
-          **If it is not intentional**, the diff is a regression: fix the code,
-          not the baseline.
-          EOF
-          )"
-          echo "::error title=Gallery baseline differs::Screens changed. Download artifact ${ARTIFACT} and run 'npm run screenshot:baseline -- --gallery=<dir>' if the change is intentional; see the job summary."
-          printf '%s\n' "$message" >> "$GITHUB_STEP_SUMMARY"
-          printf '%s\n' "$message"
+          printf '\nReview [%s](%s#artifacts) for captures and red-pixel diffs. Pixel changes do not require a baseline refresh.\n' "$ARTIFACT" "$RUN_URL" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Explain a capture that did not complete
         if: failure() && steps.capture.outcome == 'failure'

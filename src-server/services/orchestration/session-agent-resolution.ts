@@ -22,7 +22,7 @@
  * three injected callbacks. Ordinary resolution is defensive enrichment; an
  * explicit execution override refuses unresolved or undeliverable capabilities. Its OUTPUT is load-bearing,
  * though (archive#3027): whether a definition was attached feeds
- * `sessionAgentStartUnavailableReason` below, which
+ * `sessionAgentStartUnavailableReason`, which
  * `resolveSessionAgentForStart` (orchestration-service.ts) enforces as a
  * fail-closed authored-spec gate at session start for every
  * delivery-capable provider.
@@ -63,9 +63,17 @@ import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { agentDefinitionFingerprint } from '../agents/agent-definition-fingerprint.js';
+import { ToolLibraryRefusal } from '../plugins/tool-library-service.js';
 import { withProjectToolDefaults } from '../projects/project-tools.js';
 
+export { sessionAgentStartUnavailableReason } from './session-agent-start-policy.js';
+
 interface SessionAgentResolverOptions {
+  validateProjectTools?: (
+    slug: string,
+    spec: AgentSpec,
+    input: ProviderSessionStartInput,
+  ) => Promise<void>;
   resolveProjectToolServers?: (
     input: ProviderSessionStartInput,
   ) => Promise<readonly string[]>;
@@ -82,44 +90,6 @@ type ResolveSessionAgent = (
   input: ProviderSessionStartInput,
   captured?: { agentId: string; spec: AgentSpec },
 ) => Promise<ProviderSessionStartInput>;
-
-/**
- * The narrow authored-spec policy boundary enforced before a session reaches
- * an adapter. Catalog callers supply whether their server-side spec
- * resolution found the same Agent definition the session resolver would
- * attach.
- *
- * archive#3027: provider-INDEPENDENT by design. The original claude-only
- * check left every other engine default (codex, kiro, opencode, muse)
- * starting spec-less, and any provider name-list here would silently miss
- * kiro/opencode — they dispatch at runtime with provider 'acp'. So this
- * function never consults the provider at all: a session agent slug that
- * did not resolve to an authored Agent definition refuses, whoever the
- * engine is. Callers whose provider has no session-delivery concept
- * (Station's own engine, managed model runtimes) own that exemption by
- * answering `hasResolvedAgent` truthfully for their layer — see
- * `resolveSessionAgentForStart` in orchestration-service.ts.
- */
-export function sessionAgentStartUnavailableReason(input: {
-  agentSlug: unknown;
-  hasResolvedAgent: boolean;
-  unresolvedReason?: string;
-}): string | null {
-  if (
-    typeof input.agentSlug !== 'string' ||
-    input.agentSlug.length === 0 ||
-    input.hasResolvedAgent
-  ) {
-    return null;
-  }
-  return (
-    input.unresolvedReason ??
-    // "could not be resolved", not "does not have": the session resolver
-    // also reports unresolved after a transient spec-load failure, where an
-    // authored definition may well exist on disk (see the resolver's catch).
-    `Agent '${input.agentSlug}' could not be resolved to an authored Agent definition, so this session cannot start. Enable this engine by creating an Agent for it — new chats will run as that Agent.`
-  );
-}
 
 /**
  * The public Station identity is runtime-owned, rather than an authored
@@ -273,6 +243,8 @@ async function resolveCapability<T>(
   return { resolved, undelivered };
 }
 
+class ToolApprovalDeliveryError extends Error {}
+
 export function createSessionAgentResolver(
   options: SessionAgentResolverOptions,
 ): ResolveSessionAgent {
@@ -315,6 +287,14 @@ export function createSessionAgentResolver(
           );
         return input;
       }
+      if (
+        spec.tools?.askBeforeUse?.length &&
+        !['station-agent', 'claude'].includes(input.provider)
+      ) {
+        throw new ToolApprovalDeliveryError(
+          'This engine cannot enforce the Agent’s Ask me tool rules.',
+        );
+      }
 
       if (!channels) {
         if (
@@ -327,13 +307,21 @@ export function createSessionAgentResolver(
         );
       }
 
-      if (options.resolveProjectToolServers) {
-        spec = withProjectToolDefaults(
-          spec,
-          await options.resolveProjectToolServers(input),
+      try {
+        if (options.resolveProjectToolServers) {
+          spec = withProjectToolDefaults(
+            spec,
+            await options.resolveProjectToolServers(input),
+          );
+        }
+        await options.validateProjectTools?.(slug, spec, input);
+      } catch (error) {
+        if (error instanceof ToolLibraryRefusal) throw error;
+        throw new ToolLibraryRefusal(
+          'unavailable',
+          'Project tool permissions could not be verified. Try again after restoring the Project and its policy.',
         );
       }
-
       const definition: ResolvedAgentDefinition = { slug };
       const report: SessionCapabilityDeliveryMetadata = { agentSlug: slug };
 
@@ -421,6 +409,11 @@ export function createSessionAgentResolver(
             async (id) => {
               const toolDef = await resolveToolServer(id);
               if (!toolDef) return { ok: false, reason: 'not-found' };
+              if (
+                toolDef.credentialOwnership &&
+                input.provider !== 'station-agent'
+              )
+                return { ok: false, reason: 'engine-unsupported' };
               if (toolDef.enabled === false) {
                 return { ok: false, reason: 'disabled' };
               }
@@ -535,6 +528,8 @@ export function createSessionAgentResolver(
       if (spec.tools?.autoApprove !== undefined) {
         definition.autoApprove = spec.tools.autoApprove;
       }
+      if (spec.tools?.askBeforeUse !== undefined)
+        definition.askBeforeUse = spec.tools.askBeforeUse;
       // #90 D14: only an explicit `false` withholds the built-in browser
       // tools; anything else leaves the engine's default in place.
       if (spec.tools?.browser === false) definition.browserTools = false;
@@ -655,7 +650,12 @@ export function createSessionAgentResolver(
         },
       };
     } catch (error) {
-      if (input.metadata?.executionAgentId) throw error;
+      if (
+        input.metadata?.executionAgentId ||
+        error instanceof ToolApprovalDeliveryError ||
+        error instanceof ToolLibraryRefusal
+      )
+        throw error;
       logger?.warn?.(
         `Session agent resolution failed for agent '${slug}'; continuing without a resolved agent definition.`,
         error,

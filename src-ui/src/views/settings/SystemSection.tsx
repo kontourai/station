@@ -1,11 +1,14 @@
+import { ACCOUNT_PREFERENCE_KEYS } from '@kontourai/station-contracts/account-preferences';
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { SettingsGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { AppConfig } from '../../types';
 import {
@@ -52,7 +55,17 @@ export function SystemSection({
   const deviceSettings = useDeviceSettings();
   const { resetDeviceSettings } = useDeviceSettingsActions();
   const [showDeviceResetModal, setShowDeviceResetModal] = useState(false);
-  const deviceResetPlan = buildDeviceResetPlan(deviceSettings);
+  const account = useAccountPreferences();
+  const deviceResetPlan = buildDeviceResetPlan(
+    account.status === 'account'
+      ? {
+          ...deviceSettings,
+          featureSettings:
+            deviceSettingsStore.getEnvelope().values.featureSettings,
+        }
+      : deviceSettings,
+    account.status === 'account' ? ACCOUNT_PREFERENCE_KEYS : [],
+  );
 
   return (
     <SettingsSection
@@ -119,7 +132,7 @@ export function SystemSection({
           <option value="trace">Trace</option>
         </select>
         <span className="settings__field-hint">
-          Logging verbosity. Higher levels include more detail.
+          Choose how much detail Station logs.
         </span>
       </div>
 
@@ -154,9 +167,10 @@ export function SystemSection({
           </label>
         </div>
         <span className="settings__field-hint">
-          Export or import settings JSON. This does not include projects,
-          sessions, or credentials. For a full offline backup, stop Station and
-          run <code>station home backup</code>.
+          Export or import Station and device settings JSON. Account preferences
+          stay with your account. This does not include projects, sessions, or
+          credentials. For a full offline backup, stop Station and run{' '}
+          <code>station home backup</code>.
         </span>
       </div>
 

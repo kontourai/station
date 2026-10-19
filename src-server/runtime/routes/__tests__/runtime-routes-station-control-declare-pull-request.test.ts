@@ -264,7 +264,6 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
     return { status: response.status, json };
   }
 
-  const ASSURANCE = 'station_control_assurance_insufficient';
   const ROLE = 'station_control_role_required';
 
   test('hands the verified caller’s own session and the parsed identity to the declaration', async () => {
@@ -346,13 +345,13 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         'bearer-exposed, unconfined',
         'bearer-exposed',
         'host-caller-a',
-        ASSURANCE,
+        'station_control_out_of_scope:host',
       ],
       [
         'delegated-custody, unconfined',
         'delegated-custody',
         'host-caller-a',
-        ASSURANCE,
+        'station_control_out_of_scope:host',
       ],
     ])('%s', async (_label, channel, session, expected) => {
       const { base } = await setup();
@@ -363,7 +362,11 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         expect(support.declared).toHaveLength(1);
       } else {
         expect(response.status).toBe(403);
-        expect(response.json.code).toBe(expected);
+        expect(
+          response.json.reason
+            ? `${response.json.code}:${response.json.reason}`
+            : response.json.code,
+        ).toBe(expected);
         expect(support.declared).toEqual([]);
       }
     });
@@ -377,7 +380,10 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         IDENTITY,
       );
       expect(notBound.status).toBe(403);
-      expect([ASSURANCE, ROLE]).toContain(notBound.json.code);
+      expect([notBound.json.code, notBound.json.reason]).toEqual([
+        'station_control_out_of_scope',
+        'target-unavailable',
+      ]);
       expect(support.declared).toEqual([]);
     });
 

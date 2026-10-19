@@ -3,6 +3,7 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { AgentEditorForm } from '../views/AgentEditorForm';
 import type { AgentFormData } from '../views/agent-editor/types';
@@ -116,6 +117,50 @@ function tabButton(name: string) {
 }
 
 describe('AgentEditorForm', () => {
+  test('Codex instructions stay editable through typing and clearing', () => {
+    agentConnections = [
+      {
+        id: 'codex',
+        kind: 'agent',
+        type: 'codex',
+        name: 'Codex',
+        enabled: true,
+        capabilities: ['agent-runtime'],
+        config: { engineId: 'codex' },
+        status: 'ready',
+      },
+    ];
+    function Editor() {
+      const [form, setForm] = useState(
+        createForm({
+          execution: {
+            agentConnectionId: 'codex',
+            modelConnectionId: '',
+            runtimeOptions: {},
+          },
+        }),
+      );
+      return (
+        <AgentEditorForm {...baseProps({ form, setForm, agentConnections })} />
+      );
+    }
+    render(<Editor />);
+    const instructions = screen.getByRole('textbox', {
+      name: /Instructions/i,
+    }) as HTMLTextAreaElement;
+    fireEvent.change(instructions, { target: { value: 'Y' } });
+    expect(instructions.disabled).toBe(false);
+    fireEvent.change(instructions, {
+      target: { value: 'You are a careful reviewer.' },
+    });
+    expect(instructions.value).toBe('You are a careful reviewer.');
+    expect(screen.queryByText(/can't receive a system prompt/)).toBeNull();
+    expect(screen.getByText(/sent with the first message/i)).toBeTruthy();
+    fireEvent.change(instructions, { target: { value: '' } });
+    expect(instructions.value).toBe('');
+    expect(instructions.disabled).toBe(false);
+  });
+
   test('shows the existing agent ID only when advanced details are opened', () => {
     render(<AgentEditorForm {...baseProps()} />);
 

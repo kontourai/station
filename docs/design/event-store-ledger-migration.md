@@ -24,7 +24,8 @@ rather than creating a second Interface reference.
 
 | Area | Disposition | Why it stays this way |
 | --- | --- | --- |
-| TurnDeduplicator | Completed | One opaque owner capability owns `(threadId, clientTurnId)` settlement across restart and contention. |
+| TurnDeduplicator | Completed | One opaque owner capability owns `(threadId, clientTurnId)` settlement across restart and contention. Its claim, resolve, release and retention rules are `@kontourai/monument`'s turn-dedup commands, run over Station's own dedup tables (#3565). |
+| SessionTurnBoundaryAuthority | Boundary writes, listing and event-authoritative polling use Monument | The host adapter binds the existing table, joins sealed-task admission and nests engine-opened boundaries inside event append. Polling filters event-retired IDs without deleting rows or retrying pending writes. The same host predicate physically retires rows before create/accepted admission and before raw boot recovery. Owner reconciliation stays in Station. |
 | AdoptionLedger | Completed | Reservation, ownership, legal transitions, and atomic commit moved out of EventStore forwarding methods. |
 | RecoveryLedger | Completed | Recovery arm/claim/terminal/compensation and startup reconciliation are one intent-shaped Interface. |
 | CredentialApplicationFactory/Handle | Completed, private | Exact stage/settle/ack evidence is composed with RecoveryLedger; raw attempt identities do not become a caller Interface. |
