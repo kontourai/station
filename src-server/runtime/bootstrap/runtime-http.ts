@@ -39,6 +39,7 @@ import {
   clientProtocolApplies,
   evaluateClientProtocol,
 } from '../../security/client-protocol-admission.js';
+import { classifyOperatorCredentialPosition } from '../../security/host-operator-credential.js';
 import {
   NativeDeviceRequestRefusedError,
   nativeDeviceOnlyObservationRoute,
@@ -46,6 +47,7 @@ import {
 } from '../../security/native-device-request-authority.js';
 import {
   type ExternalSurfaceCapabilityRule,
+  isTelemetryIngestRoute,
   type PairingScopeContextStore,
   pairingScopeSatisfiesHttpRoute,
   requiredExternalSurfaceCapability,
@@ -82,6 +84,10 @@ import { guardAccountResponse } from '../../services/identity/account-response-g
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
 import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
+import {
+  bindAdmittedTelemetryProducer,
+  isTelemetryProducerSecret,
+} from '../../services/telemetry-producers/telemetry-producer-store.js';
 import {
   deviceSessionAuthorizations,
   requestBudgetOutcomes,
@@ -517,6 +523,111 @@ function isInteractiveWorkspacePerformanceDiagnostic(c: {
   );
 }
 
+/**
+ * The producer token on a telemetry ingest request, or `undefined` when this
+ * request is not one: a producer secret on any other route is not recognized
+ * here and fails the ordinary credential check like any unknown bearer.
+ */
+function telemetryProducerBearer(c: Context): string | undefined {
+  if (!isTelemetryIngestRoute(c.req.method, c.req.path)) return undefined;
+  const bearer = parseStrictBearer(c.req.header('authorization'));
+  return bearer !== undefined && isTelemetryProducerSecret(bearer)
+    ? bearer
+    : undefined;
+}
+
+/**
+ * The one telemetry producer admission path. A presented producer token never
+ * falls through to the paired-credential checks: it is admitted here or
+ * refused here. Order: rate limit, store usable, token known (401), not
+ * expired (403), sender position allowed (403).
+ *
+ * "Same machine" is `classifyOperatorCredentialPosition`: a direct loopback
+ * socket with a loopback `Host` and no forwarding or ingress evidence, or
+ * Station's own attested UI proxy relaying a loopback client. Tailscale Serve
+ * dials Station from loopback, so the socket alone would count every tailnet
+ * sender as local; its ingress identity and forwarding headers are what mark
+ * it remote. A plain SSH local forward still reads as same-machine; the
+ * default is a narrowing, not proof of locality.
+ */
+async function admitTelemetryProducerRequest(call: {
+  c: Context;
+  secret: string;
+  security: RuntimeHttpSecurityOptions;
+  limiter: RuntimeAuthFailureLimiter;
+  limiterKey: string;
+  routeClass: 'public' | 'protected';
+  effectivePeerClass: RuntimePeerClass;
+  routeLabeler: RuntimeRouteLabeler;
+  next: () => Promise<void>;
+}): Promise<Response | undefined> {
+  const { c, security, limiter, limiterKey } = call;
+  const refused = (
+    status: 401 | 403 | 429 | 503,
+    code: string,
+    reason: string,
+  ): Response => {
+    emitSecurityAudit(security, c, call.routeLabeler, {
+      event:
+        status === 429 ? 'station.auth.rate_limited' : 'station.auth.failure',
+      outcome: 'denied',
+      reason,
+      routeClass: call.routeClass,
+      peerClass: call.effectivePeerClass,
+      transport: 'http',
+      timestamp: security.now?.() ?? Date.now(),
+    });
+    return c.json({ error: { code } }, status);
+  };
+  const retryAfter = limiter.retryAfterSeconds(limiterKey);
+  if (retryAfter !== undefined) {
+    c.header('Retry-After', String(retryAfter));
+    return refused(429, AUTH_RATE_LIMITED_ERROR_CODE, 'too_many_failures');
+  }
+  const producers = security.telemetryProducers;
+  if (producers && !producers.usable())
+    return refused(
+      503,
+      'telemetry_producers_unavailable',
+      'telemetry_producers_unavailable',
+    );
+  const producer = producers?.find(call.secret);
+  if (!producers || !producer) {
+    limiter.recordFailure(limiterKey);
+    return refused(401, 'authentication_required', 'credential_invalid');
+  }
+  if (producers.isExpired(producer)) {
+    limiter.recordFailure(limiterKey);
+    return refused(
+      403,
+      'telemetry_producer_expired',
+      'telemetry_producer_expired',
+    );
+  }
+  if (
+    !producer.allowRemote &&
+    classifyOperatorCredentialPosition(c) === 'off-host'
+  ) {
+    limiter.recordFailure(limiterKey);
+    return refused(
+      403,
+      'telemetry_producer_remote_not_allowed',
+      'telemetry_producer_remote_not_allowed',
+    );
+  }
+  limiter.clear(limiterKey);
+  bindAdmittedTelemetryProducer(c, producer.name);
+  // The existing mutation budget keys on this principal, so a producer's
+  // event rate is bounded like any other credential's.
+  setBudgetPrincipal(
+    c as unknown as PairingScopeContextStore,
+    deriveBudgetPrincipal('bearer', call.secret),
+  );
+  producers.touch(producer);
+  await call.next();
+  return undefined;
+}
+
 /** #2893 pilot body bound; identical to the verifier's channel bound. */
 const NATIVE_DEVICE_PROOF_BODY_LIMIT_BYTES = 16 * 1024;
 
@@ -803,11 +914,17 @@ function configureRuntimeSecurity(
       });
       return c.json({ error: { code: 'insufficient_scope' } }, 403);
     }
+    // A telemetry producer is a hook script, not a Station client: it has no
+    // client protocol to declare, so the protocol gate does not apply to it.
+    const producerSecret = telemetryProducerBearer(c);
     // ── #2962 client API protocol admission ──
     // Before any credential check, so an outdated client is told to update
     // rather than handed an authentication failure it cannot fix. CORS
     // headers are already set above, so a browser can read the refusal.
-    if (clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')) {
+    if (
+      producerSecret === undefined &&
+      clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')
+    ) {
       const refusal = evaluateClientProtocol(
         c.req.header(CLIENT_PROTOCOL_HEADER),
         clientProtocolPolicy,
@@ -932,6 +1049,21 @@ function configureRuntimeSecurity(
       requiredCapability.capability === 'stage-grant'
     ) {
       return next();
+    }
+    // Ingest leaves stay `pairing-scope` for paired credentials; a producer
+    // token is the additional, narrower credential they also accept.
+    if (producerSecret !== undefined) {
+      return admitTelemetryProducerRequest({
+        c,
+        secret: producerSecret,
+        security,
+        limiter,
+        limiterKey,
+        routeClass,
+        effectivePeerClass,
+        routeLabeler,
+        next,
+      });
     }
     const hasQueryCredential = hasCredentialQuery(c.req.url);
     if (hasQueryCredential) {

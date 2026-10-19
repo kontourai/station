@@ -38,6 +38,8 @@ export const K = {
   AT_SCHEMA_VERSION: 'station.agent_telemetry.schema_version',
   AT_CONTEXT: 'station.agent_telemetry.context',
   AT_ENRICHMENT: 'station.agent_telemetry.enrichment',
+  /** The telemetry producer token name that delivered an ingested row. */
+  TELEMETRY_PRODUCER: 'station.telemetry.producer',
   SYSTEM_TYPE: 'station.system.type',
 } as const;
 

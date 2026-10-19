@@ -898,6 +898,7 @@ Station extensions:
 | `station.output.chars` | Output character count |
 | `station.user.id` | User identifier. Omitted when the session reported none (archive#3082), same discipline as the agent slug. |
 | `station.reasoning.text` | Extended thinking content |
+| `station.telemetry.producer` | The telemetry producer token that delivered an ingested row. Absent on rows Station wrote itself or a paired credential sent. |
 
 ### Emitter Methods
 
@@ -910,6 +911,37 @@ Station extensions:
 | `emitReasoning` | Extended thinking | reasoning text |
 | `emitHealth` | Health check | healthy, checks, integrations |
 | `emitRaw` | Custom events | any MonitoringEvent |
+
+### External telemetry producers
+
+Programs outside Station can add rows to this history through the
+[telemetry ingest routes](../reference/api.md#telemetry-ingest). Flow Agents'
+Codex and Claude Code telemetry hooks are the first such producer. The
+contract a producer implements:
+
+1. **Credential.** The operator creates a token for it:
+   `station telemetry producers create <name> --token-file=<path>`. The file
+   holds one `sti_…` token and has mode `0600`. Station keeps only its hash.
+2. **Configuration.** The producer is given the full URL of the ingest route,
+   for example `http://127.0.0.1:3141/v1/agent-events`, and the token file's
+   path. It does not guess Station's port.
+3. **Request.** One event per `POST`, with `Authorization: Bearer <token>`,
+   `Content-Type: application/json`, and the event JSON as the body
+   (`schema_version` `0.x`; see the reference for required fields).
+4. **Responses.** `2xx`: accepted. `400`: the event does not match the schema;
+   resending it will not help. `401`: no token, or an unknown or revoked one.
+   `403`: the token expired (`telemetry_producer_expired`) or the sender is not
+   on this machine and the token does not allow that
+   (`telemetry_producer_remote_not_allowed`). `413`/`429`: the body or rate
+   budget; `429` carries `Retry-After`. `503`: the token store is unreadable.
+5. **Rotation.** Create a new token, point the producer at it, then revoke the
+   old one with `station telemetry producers revoke <name>`. Revocation and
+   expiry take effect on the next request.
+
+A token accepts senders on this machine only unless it was created with
+`--allow-remote`, which a producer on another tailnet device needs. Every
+row a token writes names it in `station.telemetry.producer`. A token reads
+nothing and is refused on every other route.
 
 ### Consuming Events
 

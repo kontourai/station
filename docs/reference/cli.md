@@ -720,6 +720,26 @@ in Settings; a legacy environment true plus a receipt no longer enables Full.
 Lite sending and `station telemetry outbox` belong to later implementation lanes;
 these commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
 
+`station telemetry producers` manages the tokens external telemetry producers
+(for example Flow Agents' Codex and Claude Code hooks) send to Station's
+ingest routes. It needs the operator's credential:
+
+```sh
+station telemetry producers create flow-agents --token-file=$HOME/.config/flow-agents/station-ingest.token
+station telemetry producers create tailnet-laptop --allow-remote --expires-in-days=90
+station telemetry producers list
+station telemetry producers revoke flow-agents
+```
+
+`create` prints the token once, with the ingest URL (`<api-base>/v1/agent-events`).
+With `--token-file=<path>` it writes the token to a new file with mode `0600`
+instead and does not print it; an existing path is refused before any token is
+made. A token works only from this machine unless created with
+`--allow-remote`, and has no expiry unless `--expires-in-days=<n>` is given.
+Flags take the `--flag=value` form. `--json` prints the result object.
+To rotate a token, create a new one, point the producer at it, then revoke the
+old one. See [Telemetry ingest](api.md#telemetry-ingest).
+
 ### `config`
 
 Read and write Station's own application config

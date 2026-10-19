@@ -438,16 +438,22 @@ const VERBS: Record<string, VerbSpec> = {
     ],
   },
   telemetry: {
-    summary: 'Read or change per-publisher telemetry tiers',
+    summary:
+      'Read or change per-publisher telemetry tiers; manage telemetry producer tokens',
     usage: [
       'station telemetry status',
       'station telemetry set <kontour|operator> <off|lite|full>',
+      'station telemetry producers create <name> [--allow-remote] [--expires-in-days=<n>] [--token-file=<path>]',
+      'station telemetry producers list',
+      'station telemetry producers revoke <name>',
     ],
-    actions: ['status', 'set'],
+    actions: ['status', 'set', 'producers'],
     targets: true,
     group: 'Configuration',
     detail: [
       'DO_NOT_TRACK forces Off. Full requires the current disclosure acknowledgement.',
+      'A producer token is accepted only on POST /v1/agent-events, /v1/traces and /v1/logs.',
+      'It works from this machine only unless created with --allow-remote. The secret is shown once.',
     ],
   },
   config: {

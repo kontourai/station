@@ -91,6 +91,11 @@ export interface MonitoringEvent {
   'station.agent_telemetry.schema_version'?: string;
   'station.agent_telemetry.context'?: AgentTelemetryContext;
   'station.agent_telemetry.enrichment'?: AgentTelemetryEnrichment;
+  /**
+   * The telemetry producer token that delivered this row; absent for rows a
+   * paired credential or Station itself wrote.
+   */
+  'station.telemetry.producer'?: string;
 
   /** Catch-all for forward compatibility */
   [key: string]: unknown;
@@ -135,20 +140,22 @@ interface AgentTelemetryEnrichment {
   };
 }
 
-/** Raw event shape from SAAgent telemetry.sh */
+/**
+ * One `POST /v1/agent-events` body (agent telemetry schema 0.x, as Flow
+ * Agents' telemetry hooks send it). `otlp-receiver.ts` validates it before
+ * any field is read.
+ */
 export interface AgentTelemetryIngestEvent {
   schema_version: string;
   timestamp: string;
   session_id: string;
   event_id: string;
-  event_type:
-    | 'session.start'
-    | 'session.end'
-    | 'turn.user'
-    | 'tool.invoke'
-    | 'tool.result'
-    | 'agent.delegate'
-    | 'unknown';
+  /**
+   * Open vocabulary. `session.start`, `session.end`, `turn.user`,
+   * `tool.invoke`, `tool.result` and `agent.delegate` map to their own
+   * operation; any other type is recorded as an `unknown` event.
+   */
+  event_type: string;
   agent: { name: string; runtime: string; version: string };
   context?: AgentTelemetryContext;
   enrichment?: AgentTelemetryEnrichment;

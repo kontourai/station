@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
+import { z } from 'zod';
 import type {
   AgentTelemetryIngestEvent,
   GenAiOperationName,
@@ -24,6 +25,102 @@ function attrNum(attrs: OtlpKeyValue[], key: string): number | undefined {
   if (v.intValue !== undefined) return Number(v.intValue);
   return v.doubleValue;
 }
+
+/**
+ * The agent telemetry ingest schema, keyed by `schema_version`. Every 0.x
+ * version shares this shape and adds fields only, so unknown fields pass
+ * through (Flow Agents 0.3.0 sends `hook`, `install_identity` and
+ * `run_correlation`). Another major version is refused rather than guessed
+ * at. `event_type` is an open vocabulary: a type this mapping does not name
+ * is recorded as an `unknown` event rather than refused.
+ */
+const AGENT_TELEMETRY_SCHEMA_VERSION = /^0\.\d{1,4}(?:\.\d{1,4})?$/;
+const boundedText = (max: number) => z.string().min(1).max(max);
+const agentTelemetryIngestEventSchema = z.looseObject({
+  schema_version: z.string().max(32),
+  timestamp: z
+    .string()
+    .max(64)
+    .refine(
+      (value) => Number.isFinite(parseIngestTimestamp(value)),
+      'must be epoch milliseconds or an ISO-8601 time',
+    ),
+  session_id: boundedText(256),
+  event_id: boundedText(256),
+  event_type: boundedText(64),
+  agent: z.looseObject({
+    name: boundedText(256),
+    runtime: z.string().max(256),
+    version: z.string().max(256),
+  }),
+  context: z.looseObject({}).optional(),
+  enrichment: z.looseObject({}).optional(),
+  turn: z.looseObject({}).optional(),
+  tool: z
+    .looseObject({
+      name: z.string().max(256).optional(),
+      input: z.unknown().optional(),
+      output: z.unknown().optional(),
+    })
+    .optional(),
+  session: z.looseObject({}).optional(),
+  delegation: z.looseObject({}).optional(),
+});
+
+function parseIngestTimestamp(value: string): number {
+  return /^\d+$/.test(value) ? Number(value) : new Date(value).getTime();
+}
+
+type IngestRefusal = {
+  code: 'invalid_json' | 'unsupported_schema_version' | 'invalid_agent_event';
+  message: string;
+};
+
+async function readJsonBody(
+  c: Context,
+): Promise<{ ok: true; value: unknown } | { ok: false }> {
+  try {
+    return { ok: true, value: await c.req.json() };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function validateAgentEvent(
+  value: unknown,
+): { ok: true; event: AgentTelemetryIngestEvent } | IngestRefusal {
+  const version =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as { schema_version?: unknown }).schema_version
+      : undefined;
+  if (
+    typeof version !== 'string' ||
+    !AGENT_TELEMETRY_SCHEMA_VERSION.test(version)
+  )
+    return {
+      code: 'unsupported_schema_version',
+      message:
+        'schema_version must be a supported agent telemetry version (0.x).',
+    };
+  const parsed = agentTelemetryIngestEventSchema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return {
+      code: 'invalid_agent_event',
+      message: `${issue?.path.join('.') || 'body'}: ${issue?.message ?? 'invalid'}`,
+    };
+  }
+  return { ok: true, event: parsed.data as AgentTelemetryIngestEvent };
+}
+
+type KnownAgentEventType =
+  | 'session.start'
+  | 'session.end'
+  | 'turn.user'
+  | 'tool.invoke'
+  | 'tool.result'
+  | 'agent.delegate'
+  | 'unknown';
 
 function nowMs(): number {
   return Date.now();
@@ -84,8 +181,18 @@ function baseEvent(
 export function createOtlpReceiverRoutes(
   emit: (event: MonitoringEvent) => void,
   resolveUserId: () => string | undefined,
+  /**
+   * The telemetry producer the auth boundary admitted for this request, or
+   * `undefined` for a paired credential. Required for the same reason
+   * `resolveUserId` is: a defaulted resolver silently drops attribution.
+   */
+  resolveProducer: (c: Context) => string | undefined,
 ): Hono {
   const app = new Hono();
+  const attributed = (c: Context, event: MonitoringEvent): MonitoringEvent => {
+    const producer = resolveProducer(c);
+    return producer ? { ...event, [K.TELEMETRY_PRODUCER]: producer } : event;
+  };
 
   app.post('/v1/traces', async (c) => {
     try {
@@ -98,7 +205,10 @@ export function createOtlpReceiverRoutes(
               ? SPAN.END
               : SPAN.START;
             emit(
-              baseEvent(span.traceId, span.attributes, kind, resolveUserId()),
+              attributed(
+                c,
+                baseEvent(span.traceId, span.attributes, kind, resolveUserId()),
+              ),
             );
             accepted++;
           }
@@ -118,7 +228,15 @@ export function createOtlpReceiverRoutes(
         for (const sl of rl.scopeLogs) {
           for (const rec of sl.logRecords) {
             emit(
-              baseEvent(rec.traceId, rec.attributes, SPAN.LOG, resolveUserId()),
+              attributed(
+                c,
+                baseEvent(
+                  rec.traceId,
+                  rec.attributes,
+                  SPAN.LOG,
+                  resolveUserId(),
+                ),
+              ),
             );
             accepted++;
           }
@@ -130,10 +248,7 @@ export function createOtlpReceiverRoutes(
     }
   });
 
-  const EVENT_OP: Record<
-    AgentTelemetryIngestEvent['event_type'],
-    GenAiOperationName
-  > = {
+  const EVENT_OP: Record<KnownAgentEventType, GenAiOperationName> = {
     'session.start': OP.INVOKE_AGENT,
     'session.end': OP.INVOKE_AGENT,
     'turn.user': OP.CHAT,
@@ -143,59 +258,71 @@ export function createOtlpReceiverRoutes(
     unknown: OP.CHAT,
   };
 
-  const EVENT_KIND: Record<
-    AgentTelemetryIngestEvent['event_type'],
-    MonitoringEvent['span.kind']
-  > = {
-    'session.start': SPAN.START,
-    'session.end': SPAN.END,
-    'turn.user': SPAN.EVENT,
-    'tool.invoke': SPAN.START,
-    'tool.result': SPAN.END,
-    'agent.delegate': SPAN.EVENT,
-    unknown: SPAN.EVENT,
-  };
+  const EVENT_KIND: Record<KnownAgentEventType, MonitoringEvent['span.kind']> =
+    {
+      'session.start': SPAN.START,
+      'session.end': SPAN.END,
+      'turn.user': SPAN.EVENT,
+      'tool.invoke': SPAN.START,
+      'tool.result': SPAN.END,
+      'agent.delegate': SPAN.EVENT,
+      unknown: SPAN.EVENT,
+    };
+  const knownType = (type: string): KnownAgentEventType =>
+    Object.hasOwn(EVENT_OP, type) ? (type as KnownAgentEventType) : 'unknown';
 
   app.post('/v1/agent-events', async (c) => {
-    try {
-      const ev = await c.req.json<AgentTelemetryIngestEvent>();
-      const tsMs = /^\d+$/.test(ev.timestamp)
-        ? Number(ev.timestamp)
-        : new Date(ev.timestamp).getTime();
-      // Unlike the OTLP paths above there is no producer-reported user to
-      // prefer: `AgentTelemetryIngestEvent` declares no user field at all.
-      const userId = resolveUserId();
-      const event: MonitoringEvent = {
-        timestamp: new Date(tsMs).toISOString(),
-        [K.TIMESTAMP_MS]: tsMs,
-        [K.TRACE_ID]: ev.session_id,
-        [K.OP_NAME]: EVENT_OP[ev.event_type],
-        [K.SPAN_KIND]: EVENT_KIND[ev.event_type],
-        [K.AGENT_SLUG]: ev.agent.name,
-        ...(userId ? { [K.USER_ID]: userId } : {}),
-        [K.AT_SESSION_ID]: ev.session_id,
-        [K.AT_EVENT_ID]: ev.event_id,
-        [K.AT_SCHEMA_VERSION]: ev.schema_version,
-        [K.AT_CONTEXT]: ev.context,
-        [K.AT_ENRICHMENT]: ev.enrichment,
-        ...(ev.tool?.name && { [K.TOOL_NAME]: ev.tool.name }),
-        // The ingest schema declares tool.input and this mapping dropped it
-        // (archive#3078), so an ingested agent's tool arguments were absent
-        // rather than redacted-but-present — and a reader could not tell
-        // "takes no arguments" from "we threw them away". It rides the same
-        // redaction seam as every locally produced event.
-        ...(ev.tool?.input !== undefined && {
-          [K.TOOL_CALL_ARGS]: ev.tool.input,
-        }),
-        ...(ev.tool?.output !== undefined && {
-          [K.TOOL_CALL_RESULT]: ev.tool.output,
-        }),
-      };
-      emit(event);
-      return c.json({ success: true });
-    } catch {
-      return c.json({ error: 'parse error' }, 400);
-    }
+    const body = await readJsonBody(c);
+    if (!body.ok)
+      return c.json(
+        {
+          error: {
+            code: 'invalid_json',
+            message: 'The body must be one JSON agent event.',
+          },
+        },
+        400,
+      );
+    const validated = validateAgentEvent(body.value);
+    if (!('ok' in validated))
+      return c.json(
+        { error: { code: validated.code, message: validated.message } },
+        400,
+      );
+    const ev = validated.event;
+    const tsMs = parseIngestTimestamp(ev.timestamp);
+    const type = knownType(ev.event_type);
+    // Unlike the OTLP paths above there is no producer-reported user to
+    // prefer: `AgentTelemetryIngestEvent` declares no user field at all.
+    const userId = resolveUserId();
+    const event: MonitoringEvent = {
+      timestamp: new Date(tsMs).toISOString(),
+      [K.TIMESTAMP_MS]: tsMs,
+      [K.TRACE_ID]: ev.session_id,
+      [K.OP_NAME]: EVENT_OP[type],
+      [K.SPAN_KIND]: EVENT_KIND[type],
+      [K.AGENT_SLUG]: ev.agent.name,
+      ...(userId ? { [K.USER_ID]: userId } : {}),
+      [K.AT_SESSION_ID]: ev.session_id,
+      [K.AT_EVENT_ID]: ev.event_id,
+      [K.AT_SCHEMA_VERSION]: ev.schema_version,
+      [K.AT_CONTEXT]: ev.context,
+      [K.AT_ENRICHMENT]: ev.enrichment,
+      ...(ev.tool?.name && { [K.TOOL_NAME]: ev.tool.name }),
+      // The ingest schema declares tool.input and this mapping dropped it
+      // (archive#3078), so an ingested agent's tool arguments were absent
+      // rather than redacted-but-present — and a reader could not tell
+      // "takes no arguments" from "we threw them away". It rides the same
+      // redaction seam as every locally produced event.
+      ...(ev.tool?.input !== undefined && {
+        [K.TOOL_CALL_ARGS]: ev.tool.input,
+      }),
+      ...(ev.tool?.output !== undefined && {
+        [K.TOOL_CALL_RESULT]: ev.tool.output,
+      }),
+    };
+    emit(attributed(c, event));
+    return c.json({ success: true });
   });
 
   return app;

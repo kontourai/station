@@ -565,6 +565,24 @@ anything if it cannot; it revokes them again once done, which catches a
 token minted while it ran (a mint completing after that second pass is not
 caught, though the person's devices are gone by then).
 
+Telemetry producer tokens (`sti_…`) are a separate, write-only credential for
+programs that report activity, such as Flow Agents' telemetry hooks. The auth
+boundary recognizes one only on the exact leaves `POST /v1/agent-events`,
+`/v1/traces` and `/v1/logs`; anywhere else it is an unknown bearer (`401`).
+A presented producer token never falls through to the paired-credential
+checks. It is refused when expired (`403`), and when the sender is not on this
+machine unless the token was created with remote access (`403`). "This
+machine" is the same position test used for raw operator-credential use:
+loopback socket and `Host`, no forwarding, Tailscale or ingress-identity
+evidence, or Station's own attested UI proxy relaying a loopback client. An
+SSH local forward still looks local, so the default narrows exposure rather
+than proving locality. Only the operator can create, list or revoke these
+tokens (`access:manage` plus an operator check). Secrets are shown once and
+stored as a sha256 hash in `<home>/security/telemetry-producers.json` under
+the same owner-only, locked-write and fail-closed rules as personal access
+tokens, with at most 32 stored. Paired credentials with
+`orchestration:operate` keep their existing access to the ingest leaves.
+
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
 orchestration:operate terminal:operate`), the default *radio selection* in

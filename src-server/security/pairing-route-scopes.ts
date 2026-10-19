@@ -241,6 +241,32 @@ export function pairingScopeSatisfiesHttpRoute(
 const READ_METHODS = ['GET', 'HEAD'] as const;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
 
+/**
+ * The telemetry ingest leaves `createOtlpReceiverRoutes` mounts. The only
+ * routes a telemetry producer token is admitted on, and only with POST.
+ */
+const TELEMETRY_INGEST_PATHS = [
+  '/v1/agent-events',
+  '/v1/logs',
+  '/v1/traces',
+] as const;
+
+/**
+ * Whether a request is telemetry ingest, matched exactly: no prefix, no
+ * trailing slash, POST only. A producer token presented anywhere else is not
+ * recognized as a credential at all.
+ */
+export function isTelemetryIngestRoute(method: string, path: string): boolean {
+  return (
+    method.toUpperCase() === 'POST' &&
+    (TELEMETRY_INGEST_PATHS as readonly string[]).includes(path)
+  );
+}
+export const TELEMETRY_INGEST_ROUTES: readonly {
+  method: 'POST';
+  path: string;
+}[] = TELEMETRY_INGEST_PATHS.map((path) => ({ method: 'POST', path }));
+
 export interface PairingScopeRouteRule {
   readonly id: string;
   readonly method: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | '*';
@@ -1299,6 +1325,32 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/shares:manage',
     method: '*',
     prefix: '/api/shares',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // Telemetry ingest. A paired credential with the operate tier keeps the
+  // access it had through the `/v1` family. These leaves ALSO admit a
+  // telemetry producer token, the one credential that works nowhere else:
+  // see {@link TELEMETRY_INGEST_ROUTES} and the producer seam in
+  // `runtime-http.ts`. Exact, so a future `/v1/*` leaf is not ingest.
+  ...TELEMETRY_INGEST_PATHS.map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:POST:telemetry-ingest`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // Telemetry producer management mints and revokes ingest credentials.
+  // Same ceiling as the other credential managers (`/api/shares`,
+  // `/api/secret-bindings`); the handlers additionally refuse every caller
+  // but the Station operator.
+  {
+    id: '/api/telemetry-producers:manage',
+    method: '*',
+    prefix: '/api/telemetry-producers',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
@@ -3825,9 +3877,6 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/scheduler/status' },
     { method: 'POST', path: '/scheduler/webhook' },
     { method: 'POST', path: '/tool-approval/:approvalId' },
-    { method: 'POST', path: '/v1/agent-events' },
-    { method: 'POST', path: '/v1/logs' },
-    { method: 'POST', path: '/v1/traces' },
     // archive#1131 review round 1 (HIGH): `createPluginRoutes`
     // (`plugins.ts`) composes five sibling route files by handing each a
     // shared local `const app = new Hono()` — invisible to the scan until

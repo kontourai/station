@@ -1803,6 +1803,71 @@ not use the old `{type: "message"}` event example. Content is redacted before
 historical or streaming output. See the [monitoring guide](../guides/monitoring.md)
 for event keys and producer limits.
 
+### Telemetry ingest
+
+The [ingest routes](../../src-server/monitoring/otlp-receiver.ts) write rows
+into the same monitoring history the routes above read:
+
+| Route | Body |
+| --- | --- |
+| `POST /v1/agent-events` | One agent telemetry event (schema `0.x`) |
+| `POST /v1/traces` | OTLP/JSON `resourceSpans` |
+| `POST /v1/logs` | OTLP/JSON `resourceLogs` |
+
+Two credentials are accepted, checked in the
+[runtime auth boundary](../../src-server/runtime/bootstrap/runtime-http.ts):
+
+- a **telemetry producer token** (`sti_…`), sent as
+  `Authorization: Bearer <token>`. It is admitted only on these three exact
+  `POST` leaves; on any other route it authenticates nothing (`401`);
+- a paired credential with the `orchestration:operate` tier, as before.
+
+Responses for a producer token:
+
+| Status | `error.code` | Meaning |
+| --- | --- | --- |
+| `200` | | Accepted. Each row carries `station.telemetry.producer: <token name>` |
+| `400` | `invalid_json`, `unsupported_schema_version`, `invalid_agent_event` | Body refused (agent events); nothing was written |
+| `401` | `authentication_required` | No credential, or an unknown or revoked token |
+| `403` | `telemetry_producer_expired` | The token passed its expiry |
+| `403` | `telemetry_producer_remote_not_allowed` | The sender is not on this machine and the token was not created with remote access |
+| `413`, `429` | | The ordinary per-credential body and rate budgets |
+| `503` | `telemetry_producers_unavailable` | The token file is unsafe or unreadable; no token is admitted |
+
+`POST /v1/agent-events` validates the body before reading it: `schema_version`
+must be `0.<minor>[.<patch>]`; `timestamp` (epoch milliseconds or ISO 8601),
+`session_id`, `event_id`, `event_type` and `agent.name` are required; extra
+fields are ignored. An `event_type` outside `session.start`, `session.end`,
+`turn.user`, `tool.invoke`, `tool.result` and `agent.delegate` is recorded as
+an `unknown` event. `/v1/traces` and `/v1/logs` answer `400` for a body they
+cannot read.
+
+A request counts as from this machine when it arrives on a loopback socket
+with a loopback `Host`, carries no forwarding or Tailscale headers and has no
+verified ingress identity, or when Station's own UI proxy relays a loopback
+client. Tailscale Serve connects from loopback, so its requests are remote. A
+plain SSH local forward is indistinguishable from a local sender.
+
+### Telemetry producer management
+
+[These routes](../../src-server/routes/telemetry-producers.ts) require
+`access:manage` and refuse every caller but the Station operator
+(`403 operator_required`). Responses use `{success, data}`.
+
+| Route | Effect |
+| --- | --- |
+| `GET /api/telemetry-producers` | `{producers: [{name, createdAt, expiresAt, expired, allowRemote, lastUsedAt}]}` |
+| `POST /api/telemetry-producers` | Body `{name, allowRemote?, expiresInDays?}`; `201` with `{producer, token}`. The token is returned only here |
+| `DELETE /api/telemetry-producers/:name` | Revokes the token at once; `404 not_found` for an unknown name |
+
+Names are 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a
+letter or digit. `expiresInDays` is a whole number from 1 to 3650, or absent
+for no expiry. At most 32 producers exist at once; creating another, or reusing
+a name, answers `409` (`producer_limit_reached`, `producer_exists`). Station
+stores only a SHA-256 hash of each token in
+`<home>/security/telemetry-producers.json` (mode `0600`). An expired token stays
+listed, as `expired`, until it is revoked.
+
 ---
 
 ## Agent Invocation
