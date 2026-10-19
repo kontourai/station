@@ -1873,8 +1873,9 @@ conversation it names:
 - `/api/insights` never counts it toward Station's figures (agent, model and
   tool usage, error totals and rates, chat and tool-call totals, hourly
   activity). Each producer's activity is reported apart in
-  `producerActivity: {<token name>: {events, chats, toolCalls}}`, with chats
-  counted once per distinct trace as Station's are. An `agent`, `tool` or
+  `producerActivity: {<token name>: {events, chats, toolCalls}}`. Chats are
+  counted by Station's rule: once per distinct trace, each END on the
+  `no-session` trace as one chat, and none for a row with no trace. An `agent`, `tool` or
   `engine` filter matches no producer row, so a filtered response's
   `producerActivity` is empty. With
   `producer=<token name>`, every figure in the response is that producer's

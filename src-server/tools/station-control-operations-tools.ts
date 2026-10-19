@@ -597,7 +597,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .string()
         .optional()
         .describe(
-          'Only rows this external telemetry producer reported. Without it, agent/tool/engine/conversation filters never match producer rows.',
+          'Only rows this external telemetry producer reported. Without it, the agent, tool, engine, conversation and tools filters never match producer rows.',
         ),
       tools: z
         .boolean()

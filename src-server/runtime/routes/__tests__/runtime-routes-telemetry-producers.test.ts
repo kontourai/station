@@ -761,14 +761,20 @@ describe('telemetry producer management over the production composition', () => 
     );
     const { token } = ((await created.json()) as { data: { token: string } })
       .data;
-    for (const event_type of ['session.start', 'session.end'])
+    // Where counting STARTs and counting distinct traces disagree: two
+    // STARTs on one trace (1 chat, not 2), an END-only trace (1, not 0), two
+    // ENDs on the no-session sentinel (2, as Station counts its own).
+    const sent: [string, string, string][] = [
+      ['one-session', 'session.start', 'a'],
+      ['one-session', 'session.start', 'b'],
+      ['one-session', 'session.end', 'c'],
+      ['end-only', 'session.end', 'd'],
+      ['no-session', 'session.end', 'e'],
+      ['no-session', 'session.end', 'f'],
+    ];
+    for (const [session, event_type, event_id] of sent)
       expect(
-        (
-          await h.ingest(token, 'one-session', {
-            event_type,
-            event_id: event_type,
-          })
-        ).status,
+        (await h.ingest(token, session, { event_type, event_id })).status,
       ).toBe(200);
     await h.flush();
     const insights = async (query: string) => {
@@ -784,7 +790,7 @@ describe('telemetry producer management over the production composition', () => 
       };
     };
     expect((await insights('')).body.data?.producerActivity?.chats?.chats).toBe(
-      1,
+      4,
     );
     // A Station filter matches no producer row, so nothing is reported.
     expect(

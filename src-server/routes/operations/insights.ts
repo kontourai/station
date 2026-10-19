@@ -425,15 +425,24 @@ export function createInsightsRoutes(
                   filters.engine !== undefined
                 )
                   continue;
-                const tally = (producerActivity[producer] ??= {
+                const tally = producerActivity[producer] ?? {
                   events: 0,
                   chats: 0,
                   toolCalls: 0,
-                });
+                };
+                producerActivity[producer] = tally;
                 tally.events++;
-                // Chats counted as Station's are: once per distinct trace.
+                // Chats counted as Station's are: once per distinct trace,
+                // except that each END on the shared `no-session` sentinel
+                // (namespaced to this producer at ingest) is one chat, and a
+                // row with no trace counts none.
                 const traceId = event[K.TRACE_ID];
                 if (
+                  operation === OP.INVOKE_AGENT &&
+                  traceId === `producer:${producer}:no-session`
+                ) {
+                  if (spanKind === SPAN.END) tally.chats++;
+                } else if (
                   operation === OP.INVOKE_AGENT &&
                   (spanKind === SPAN.START || spanKind === SPAN.END) &&
                   typeof traceId === 'string' &&

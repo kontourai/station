@@ -1134,6 +1134,14 @@ async function runInsightsCommand(args: string[]) {
   if (action !== 'get' && action !== 'events') {
     throw new Error("Unknown insights action. Use 'get' or 'events'.");
   }
+  // buildQuery drops an empty value, which would turn `--producer=` into the
+  // unfiltered rollup instead of a refusal.
+  if (
+    parsed.flags.producer !== undefined &&
+    (typeof parsed.flags.producer !== 'string' || !parsed.flags.producer)
+  ) {
+    throw new Error('--producer=<name> requires a telemetry producer name.');
+  }
   if (action === 'events') {
     // The rows behind the rollup (station#3076): the same filters, so a
     // number and the events under it are reachable with one vocabulary.
