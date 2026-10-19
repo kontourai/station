@@ -3159,7 +3159,11 @@ The server's own update routes (#3851):
 - `GET /api/system/core-update/state` returns its update state
   (`ServerUpdateState`, with `supported: false` when no launcher supervises
   the server). The same state is pushed to every client as the broadcast
-  `server-update:changed` event.
+  `server-update:changed` event. `autoDownloadPausedReason`
+  (`download-failed` or `update-failed`) says why the download policy is not
+  downloading, and `applyWhenIdle.waitingForTurns` says how many running
+  turns Update when idle last waited for. A `{"action":"stage"}` POST while
+  Update when idle waits answers 409.
 - `GET /api/system/core-update/running-turns` lists the agent turns a restart
   would interrupt. Only sessions the caller may read are listed;
   `hiddenCount` counts the rest, so a caller learns how many running
