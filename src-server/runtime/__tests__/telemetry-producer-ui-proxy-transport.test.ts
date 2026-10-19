@@ -253,6 +253,20 @@ describe('telemetry producers through the UI proxy (real sockets)', () => {
     expect(h.emitted).toHaveLength(0);
   });
 
+  test('a stripped tailscale-* header still marks a proxied request remote', async () => {
+    // `x-forwarded-for` is relayed as is, but the proxy deletes every
+    // `tailscale-*` header: only its client-forwarded marker carries the fact.
+    const h = await setup();
+    const local = await h.create('local-only');
+    const response = await h.viaProxy('/v1/agent-events', {
+      token: local,
+      host: `127.0.0.1:${h.uiPort}`,
+      headers: { 'tailscale-user-login': 'casey@example.test' },
+    });
+    expect(response.status, response.body).toBe(403);
+    expect(h.emitted).toHaveLength(0);
+  });
+
   test('a GET to an ingest path is not forwarded to the API', async () => {
     const h = await setup();
     const token = await h.create('local-only');
