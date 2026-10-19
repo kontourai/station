@@ -1443,6 +1443,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // geometry, a squatted locator global, a covered button, 300,000
   // elements, a page spinning forever). Explicit skip without a browser.
   'src-server/services/browser/__tests__/browser-agent-hostile.real.test.ts',
+  // The built supervisor bundle runs the built core server: a parked
+  // generation's untouched home, then a handoff under HTTP load across all
+  // four listeners. Builds its own dist-server-* directory; no wall-clock
+  // assertion beyond liveness-scaled waits.
+  'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
   // Process supervisor: real supervisor children fork fixture core
   // generations, hand a held listening socket between them, and hammer it
   // with keep-alive HTTP and SSE clients on an ephemeral port.
