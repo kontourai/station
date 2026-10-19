@@ -3142,7 +3142,8 @@ are also exported from `@kontourai/station-sdk/client`.
   that projection and must not issue a second `useAnswerBasisQuery`. An
   `answer.assessment.updated` event tombstones only the matching scoped
   current-answer inventory cache before active observers refetch. Every
-  mount, and every key a mounted hook switches to, makes its own read
+  mount, every key a mounted hook switches to, and every time a disabled
+  hook becomes enabled, makes its own read
   (`refetchOnMount` is always `'always'` here, whatever the caller passes),
   and no cached projection is shown until a read made during that mount
   succeeds; after that, a
