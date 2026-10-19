@@ -282,6 +282,8 @@ export interface ProviderAdapterModelCatalog {
     id: string;
     name: string;
     originalId: string;
+    /** Concrete catalog identity for an alias; not per-turn served-model proof. */
+    resolvedModel?: string;
   }>;
   /** True when a bounded entry limit omitted additional adapter results. */
   truncated?: boolean;
