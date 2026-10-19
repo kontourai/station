@@ -44,7 +44,9 @@
 
     "src-server/services/layouts/personal-board-authoring.ts",
 
-    "docs/user/personal-boards.md"
+    "docs/user/personal-boards.md",
+
+    "src-ui/src/__tests__/session-follow-reader.browser.test.tsx"
   ],
 
   "checks": [

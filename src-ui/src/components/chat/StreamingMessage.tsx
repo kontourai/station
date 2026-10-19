@@ -263,17 +263,18 @@ export function StreamingMessageView({
           }
           if (part.type === 'text' && part.content) {
             const current = i === contentParts.length;
-            return current ? (
-              <div className="streaming-tip" key={block.key ?? i}>
+            return (
+              <div
+                className={current ? 'streaming-tip' : undefined}
+                key={block.key ?? i}
+              >
                 <StreamingMarkdown content={part.content} />
-                {block === blocks.at(-1) && (
+                {current && block === blocks.at(-1) && (
                   <div className="stream-caret-line" aria-hidden="true">
                     <span className="stream-caret" />
                   </div>
                 )}
               </div>
-            ) : (
-              <StreamingMarkdown key={block.key ?? i} content={part.content} />
             );
           }
           if (part.type === 'ui-block' && part.uiBlock) {

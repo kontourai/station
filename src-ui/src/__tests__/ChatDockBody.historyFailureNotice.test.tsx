@@ -20,7 +20,17 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ToolCallBatchBoundary } from '../components/chat/ToolCallBatchBoundary';
+
+const batchImport = vi.hoisted(() => ({ loaded: false }));
+vi.mock('../components/chat/ToolCallBatch', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../components/chat/ToolCallBatch')>();
+  batchImport.loaded = true;
+  return actual;
+});
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 const resyncStream = vi.hoisted(() => vi.fn());
@@ -279,6 +289,35 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     setClientCredentialResolver(undefined);
     resetSessionEventWindowCapabilityCache();
     setStreamConnectionState('http://localhost:3242', 'caught-up');
+  });
+
+  test('warms the collapsed tool renderer for a known conversation before any tool row mounts', async () => {
+    renderDock(buildSession({ conversationId: 'conversation-alpha' }));
+    // Wait on the dock's import, never by rendering a lazy boundary: a
+    // render of the cold boundary would itself warm the chunk under test.
+    await waitFor(() => expect(batchImport.loaded).toBe(true));
+    const markup = renderToStaticMarkup(
+      <ToolCallBatchBoundary
+        run={{
+          type: 'tool-call-run',
+          key: 'cold-run',
+          calls: ['a', 'b'].map((toolCallId, index) => ({
+            index,
+            part: {
+              type: 'tool-invocation',
+              toolCallId,
+              toolName: 'Read',
+              args: { file_path: `${toolCallId}.ts` },
+              state: 'completed',
+            },
+          })),
+        }}
+        renderCall={(part) => <div>{part.toolCallId}</div>}
+        pending={<p>Pending standalone calls</p>}
+      />,
+    );
+    expect(markup).toContain('tool-call-batch__summary');
+    expect(markup).not.toContain('Pending standalone calls');
   });
 
   test('a stalled real SDK history reload aborts, releases Resync and permits a slow successful retry', async () => {

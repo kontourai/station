@@ -12076,6 +12076,15 @@ describe('OrchestrationService', () => {
           agentSlug: 'delegated-agent',
           delegation,
           stationConfinement: 'workspace',
+          // #2494: re-derived for the new process, not copied forward.
+          // Claude engages no mechanism, so it records none.
+          stationConfinementRecord: {
+            level: 'host',
+            required: false,
+            posture: 'no-mechanism',
+            workspaceAccess: 'mounted',
+            policyBasis: 'workspace-floor',
+          },
         },
       }),
       undefined,
@@ -19070,6 +19079,55 @@ describe('OrchestrationService', () => {
         }),
         expect.anything(),
       );
+    },
+  );
+
+  test.each([
+    { granted: true, basis: 'operator-policy' },
+    { granted: false, basis: 'workspace-floor' },
+  ] as const)(
+    '#2494: an adoption records its child’s own confinement ($basis), resolved like any start',
+    async ({ granted, basis }) => {
+      const sourceThreadId = `external:claude:record-${basis}`;
+      const projectRoot = join(tmp, `record-project-${basis}`);
+      mkdirSync(projectRoot, { recursive: true });
+      configuredProjects.push({
+        slug: `record-project-${basis}`,
+        workingDirectory: projectRoot,
+      });
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: sourceThreadId,
+        status: 'ready',
+        cwd: projectRoot,
+        controlMode: 'read-only-attached',
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: `vendor-record-${basis}`,
+          affinity: { kind: 'test', ref: 'fixture' },
+        },
+        createdAt: '2026-07-22T00:00:00.000Z',
+        updatedAt: '2026-07-22T00:00:00.000Z',
+      });
+      await service.dispatch(
+        { type: 'adoptSession', sourceThreadId },
+        granted ? { fullAccessGrant: fullAccessGrantForTesting() } : {},
+      );
+      const adopted = claude.adoptSession.mock.calls
+        .map(([input]) => input)
+        .find(
+          (input) => input.metadata?.adoptedFromThreadId === sourceThreadId,
+        );
+      // Claude engages no mechanism: the child records that, on the basis of
+      // the adopting request's own grant.
+      expect(adopted?.metadata?.stationConfinementRecord).toEqual({
+        level: 'host',
+        required: false,
+        posture: 'no-mechanism',
+        workspaceAccess: 'mounted',
+        policyBasis: basis,
+      });
+      expect(adopted).not.toHaveProperty('confinementPlan');
     },
   );
 

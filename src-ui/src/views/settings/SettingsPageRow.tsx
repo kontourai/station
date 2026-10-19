@@ -26,7 +26,7 @@ export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
       ? undefined
       : entry?.scope === 'account'
         ? account.status === 'account'
-          ? 'Your account · this Station'
+          ? 'Account · this Station'
           : account.status === 'loading'
             ? 'Account preferences loading'
             : account.status === 'error'
@@ -42,7 +42,7 @@ export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
         label ? (
           <>
             {props.status}
-            <small>{label}</small>
+            <span className="settings__row-scope">{label}</span>
             {account.status === 'account' && canReset && (
               <Button
                 size="sm"

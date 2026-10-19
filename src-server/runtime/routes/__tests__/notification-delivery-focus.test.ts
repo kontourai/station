@@ -191,7 +191,7 @@ function harness() {
     webPushService: { send },
     // The operator and every device can read the session.
     canUserReadSession: () => true,
-    listNotifications: async () => [...store.values()],
+    getNotification: async (id) => store.get(id),
     focus: focusPresence,
     inAppLiveness: clientStreams.inAppLiveness,
   });

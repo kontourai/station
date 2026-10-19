@@ -654,7 +654,11 @@
 
     "src-ui/src/views/project-page/MemberProjectPage.tsx",
 
-    "packages/sdk/src/__tests__/client-execution.test.ts"
+    "packages/sdk/src/__tests__/client-execution.test.ts",
+
+    "packages/sdk/src/query-domains/sessionStructuralSharing.ts",
+
+    "packages/sdk/src/__tests__/session-structural-sharing.test.tsx"
   ],
 
   "checks": [

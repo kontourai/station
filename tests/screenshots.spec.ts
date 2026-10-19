@@ -1733,7 +1733,117 @@ interface Screen {
   expectSkeleton?: boolean;
 }
 
+function telemetryConsentScreens(): Screen[] {
+  return [DESKTOP, MOBILE].flatMap((viewport) =>
+    (['settings-dnt', 'pending-full', 'dialog-dnt'] as const).map((mode) => {
+      const pending = mode === 'pending-full';
+      const dialogVisible = mode !== 'settings-dnt';
+      const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
+      let ownPage: Page;
+      const device = viewport === MOBILE ? 'mobile' : 'desktop';
+      return {
+        name: `telemetry-${mode}-${device}`,
+        title: `Telemetry — ${mode} (${device})`,
+        path: '/settings?view=telemetry',
+        viewport,
+        beforeGoto: async (page) => {
+          ownPage = page;
+          const configPattern = /\/config\/app(?:\?.*)?$/;
+          const disclosurePattern = /\/api\/usage-telemetry\/disclosure$/;
+          const configHandler = async (route: Route) => {
+            const response = await route.fetch();
+            const body = await response.json();
+            body.data.telemetryTier = { kontour: 'off', operator: 'full' };
+            delete body.data.telemetryEnabled;
+            // This fixture represents an upgraded home, outside guided setup.
+            delete body.data.firstRun;
+            await route.fulfill({ response, json: body });
+          };
+          const disclosureHandler = async (route: Route) => {
+            const response = await route.fetch();
+            const body = await response.json();
+            body.data.acknowledged = !dialogVisible;
+            body.data.telemetryEnabled = false;
+            body.data.endpointConfigured = pending;
+            body.data.publishers = {
+              kontour: {
+                tier: 'off',
+                reason: pending ? 'user' : 'DNT',
+                userChoice: 'off',
+                source: 'config',
+              },
+              operator: {
+                tier: pending ? 'lite' : 'off',
+                reason: pending ? 'disclosure' : 'DNT',
+                userChoice: 'full',
+                source: 'config',
+              },
+            };
+            await route.fulfill({ response, json: body });
+          };
+          routes.push(
+            [configPattern, configHandler],
+            [disclosurePattern, disclosureHandler],
+          );
+          for (const [pattern, handler] of routes)
+            await page.route(pattern, handler);
+          await page.addInitScript(() => {
+            localStorage.removeItem(
+              'station.usage-telemetry-disclosure.snoozed',
+            );
+          });
+        },
+        afterGoto: async (page) => {
+          if (dialogVisible) {
+            const dialog = page.getByRole('dialog', {
+              name: 'What Station sends',
+            });
+            await expect(dialog).toBeVisible();
+            await expect(
+              dialog.getByRole('button', {
+                name: pending
+                  ? 'Turn off usage telemetry'
+                  : 'Save operator choice as Full',
+              }),
+            ).toBeVisible();
+            if (!pending) {
+              for (const tier of ['Off', 'Lite', 'Full'])
+                await expect(
+                  dialog.getByRole('radio', { name: tier, exact: true }),
+                ).toBeVisible();
+            }
+            await expect(
+              dialog
+                .getByText(
+                  pending
+                    ? /Your saved operator choice is Full, awaiting acknowledgement/
+                    : /DO_NOT_TRACK is active: nothing is sent/,
+                )
+                .first(),
+            ).toBeVisible();
+          } else {
+            const control = page.getByRole('combobox', {
+              name: 'Operator telemetry',
+            });
+            await control.scrollIntoViewIfNeeded();
+            await expect(control).toHaveValue('full');
+            await expect(
+              page.getByText(/Effective: Off — DO_NOT_TRACK is active/).first(),
+            ).toBeVisible();
+          }
+        },
+        cleanup: async () => {
+          // Each route belongs only to this gallery state.
+          for (const [pattern, handler] of routes)
+            await ownPage.unroute(pattern, handler);
+        },
+      } satisfies Screen;
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...telemetryConsentScreens(),
   {
     name: 'mobile-activity-compact',
     title: 'Mobile — Activity opened over Chat (#2549)',

@@ -170,7 +170,9 @@
 
     "src-ui/src/contexts/active-chats-state.ts",
 
-    "src-ui/src/views/home/home-view-model.ts"
+    "src-ui/src/views/home/home-view-model.ts",
+
+    "src-ui/src/__tests__/composer-sizing.browser.test.tsx"
   ],
 
   "checks": [

@@ -15,8 +15,26 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+
+const listPropsRendered = vi.hoisted(() => vi.fn());
+const chatActions = vi.hoisted(() => ({
+  updateChat: vi.fn(),
+  clearEphemeralMessages: vi.fn(),
+  addEphemeralMessage: vi.fn(),
+}));
+vi.mock('../components/chat/ChatMessageList', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../components/chat/ChatMessageList')>();
+  return {
+    ...actual,
+    ChatMessageList: (props: Parameters<typeof actual.ChatMessageList>[0]) => {
+      listPropsRendered(props);
+      return <actual.ChatMessageList {...props} />;
+    },
+  };
+});
 
 // --- Same mocks ChatMessageList.test.tsx already uses for its own render path ---
 vi.mock('@kontourai/station-connect', () => ({
@@ -75,10 +93,7 @@ vi.mock('../components/icons/UserIcon', () => ({
 
 // --- Additional mocks ChatDockBody itself needs ---
 vi.mock('../contexts/ActiveChatsContext', () => ({
-  useActiveChatActions: () => ({
-    updateChat: vi.fn(),
-    clearEphemeralMessages: vi.fn(),
-  }),
+  useActiveChatActions: () => chatActions,
 }));
 
 vi.mock('../contexts/MessageContextContext', () => ({
@@ -126,15 +141,24 @@ vi.mock('../components/chat/SystemEventMessage', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import type { ChatSession } from '../types';
 
-function buildChatInput() {
+function buildChatInput(): Parameters<typeof ChatDockBody>[0]['chatInput'] {
   return {
     quotes: [],
     quotedDraftText: '',
     removeQuote: vi.fn(),
     input: '',
     attachments: [],
+    attachmentError: null,
+    attachmentStages: [],
+    sendBlockedReason: undefined,
+    attachmentNotice: undefined,
+    attachUnavailableReason: undefined,
+    removalUnblocksSend: false,
+    modelSelectionReason: undefined,
+    modelsStale: false,
     textareaRef: { current: null },
     currentModel: undefined,
     canModelSelect: false,
@@ -146,6 +170,14 @@ function buildChatInput() {
     handleCancel: vi.fn(),
     handleClearInput: vi.fn(),
     handleAddAttachments: vi.fn(),
+    selectAttachmentFiles: vi.fn(async () => {}),
+    replaceAttachmentFile: vi.fn(async () => {}),
+    setAttachmentError: vi.fn(),
+    retryAttachmentStage: vi.fn(async () => {}),
+    cancelAttachmentStage: vi.fn(async () => {}),
+    handleAcpSessionModeChange: vi.fn(async () => {}),
+    openModelForExecution: vi.fn(),
+    handleRestorePortableDraft: vi.fn(),
     handleRemoveAttachment: vi.fn(),
     handleClearAttachments: vi.fn(),
     handleModelSelect: vi.fn(),
@@ -184,6 +216,69 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
 }
 
 describe('ChatDockBody ephemeral render gate (station#1292)', () => {
+  test('composer drafts retain quote and new-chat callbacks and invoke current actions', async () => {
+    const session = buildSession({
+      messages: [
+        {
+          id: 'question',
+          role: 'user',
+          content: 'hello',
+          contentParts: [{ type: 'text', content: 'hello' }],
+        },
+      ],
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const onNewChat = vi.fn();
+    const input = buildChatInput();
+    const setShowStatsPanel = vi.fn();
+    const tree = (draft: string, newChat = onNewChat) => (
+      <QueryClientProvider client={queryClient}>
+        <ChatDockBody
+          activeSession={session}
+          chatFontSize={14}
+          dockHeight={400}
+          showStatsPanel={false}
+          showReasoning={false}
+          showToolDetails={false}
+          modelSupportsAttachments={false}
+          fileAttachmentsSupported={false}
+          availableModels={[]}
+          chatInput={{ ...input, input: draft }}
+          setShowStatsPanel={setShowStatsPanel}
+          onNewChat={newChat}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(tree(''));
+    await waitFor(() => expect(listPropsRendered).toHaveBeenCalled());
+    const first = listPropsRendered.mock.lastCall![0];
+    view.rerender(tree('typed'));
+    const next = listPropsRendered.mock.lastCall![0];
+    expect(next.onQuote).toBe(first.onQuote);
+    expect(next.onNewChatFromMessage).toBe(first.onNewChatFromMessage);
+    const quote = {
+      version: 1 as const,
+      origin: 'http://station.test',
+      sessionId: 'source',
+      turnId: 'turn',
+      messageId: 'answer',
+      revision: 'a'.repeat(64),
+      excerpt: 'quoted answer',
+    };
+    next.onQuote(quote);
+    expect(chatDraftsStore.getQuotes(session.id)).toContainEqual(quote);
+    next.onNewChatFromMessage('quoted question');
+    expect(onNewChat).toHaveBeenCalledWith('quoted question');
+    const replacement = vi.fn();
+    view.rerender(tree('typed again', replacement));
+    listPropsRendered.mock.lastCall![0].onNewChatFromMessage(
+      'current question',
+    );
+    expect(replacement).toHaveBeenCalledWith('current question');
+  });
+
   test('a message carrying `ephemeral: true` renders as a dismissible EphemeralMessage, not a plain bubble', async () => {
     const session = buildSession({
       messages: [
@@ -215,7 +310,7 @@ describe('ChatDockBody ephemeral render gate (station#1292)', () => {
           modelSupportsAttachments={false}
           fileAttachmentsSupported={false}
           availableModels={[]}
-          chatInput={buildChatInput() as any}
+          chatInput={buildChatInput()}
           setShowStatsPanel={vi.fn()}
         />
       </QueryClientProvider>,

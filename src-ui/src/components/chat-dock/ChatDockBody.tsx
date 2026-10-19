@@ -48,6 +48,7 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
@@ -88,6 +89,7 @@ import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
+import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
 import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
 import { ConversationStats } from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
@@ -680,7 +682,9 @@ export function ChatDockBody({
   // the renderer arrived.
   const hasConversation = Boolean(activeSession.conversationId);
   useEffect(() => {
-    if (hasConversation) preloadMarkdownRenderer();
+    if (!hasConversation) return;
+    preloadMarkdownRenderer();
+    void preloadToolCallBatch().catch(() => undefined);
   }, [hasConversation]);
   // Loading-phase boundaries for the opt-in transcript layout tracer.
   useEffect(() => {
@@ -1040,6 +1044,20 @@ export function ChatDockBody({
       });
     },
     [activeSession.id, addEphemeralMessage],
+  );
+
+  const quoteMessage = useCallback(
+    (quote: SavedAnswerQuote) => {
+      chatDraftsStore.addQuote(activeSession.id, quote);
+    },
+    [activeSession.id],
+  );
+  const newChatFromMessage = useCallback(
+    (text: string) => {
+      if (onNewChat)
+        void Promise.resolve(onNewChat(text)).catch(surfaceRecoveryFailure);
+    },
+    [onNewChat, surfaceRecoveryFailure],
   );
 
   /**
@@ -1448,16 +1466,9 @@ export function ChatDockBody({
                 ) ?? observationUnavailable),
             owner,
             accountableHuman,
-            onQuote: (quote) =>
-              chatDraftsStore.addQuote(activeSession.id, quote),
+            onQuote: quoteMessage,
             onForkFromTurn: forkFromTurn,
-            onNewChatFromMessage: onNewChat
-              ? (text: string) => {
-                  void Promise.resolve(onNewChat(text)).catch(
-                    surfaceRecoveryFailure,
-                  );
-                }
-              : undefined,
+            onNewChatFromMessage: onNewChat ? newChatFromMessage : undefined,
             // The dock's header gear opens ChatSettingsPanel, which carries the
             // Summarize entry point (#3310).
             hasSettingsEntryPoint: true,

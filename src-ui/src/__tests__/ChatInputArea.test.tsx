@@ -744,25 +744,6 @@ describe('ChatInputArea', () => {
     );
   });
 
-  test('autosizes the textarea to measured content and clamps overflow', () => {
-    const { rerender } = render(
-      <ChatInputArea {...renderProps({ input: 'one' })} />,
-    );
-    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
-    let scrollHeight = 220;
-    Object.defineProperty(textarea, 'scrollHeight', {
-      configurable: true,
-      get: () => scrollHeight,
-    });
-    rerender(<ChatInputArea {...renderProps({ input: 'one\ntwo' })} />);
-    expect(textarea.style.height).toBe('160px');
-    expect(textarea.style.overflowY).toBe('auto');
-    scrollHeight = 40;
-    rerender(<ChatInputArea {...renderProps({ input: 'one' })} />);
-    expect(textarea.style.height).toBe('40px');
-    expect(textarea.style.overflowY).toBe('hidden');
-  });
-
   test('does not send Enter while an IME composition is active', () => {
     const onSend = vi.fn(async () => {});
     render(<ChatInputArea {...renderProps({ onSend })} />);

@@ -55,13 +55,14 @@ jobs:
     # (verify:static) parses `src-ui/src/fonts.css` and holds the declared
     # inventory in `scripts/ui-glyph-coverage-allowlist.json` (#1649).
     #
-    # Pinned by digest, not by tag: `v1.63.0-noble` is republished, and a
+    # Pinned by digest, not by tag: `v1.64.1-noble` can be republished, and a
     # rebuilt base image is a different renderer wearing the same name.
-    # Bump this in lockstep with `@playwright/test` (currently 1.63.0), and
-    # expect a re-baseline to be part of that change.
+    # Bump this in lockstep with lock-resolved `@playwright/test` (1.64.1).
+    # Review renderer differences separately; baseline changes need their own
+    # reviewed commit.
     runs-on: ubuntu-22.04
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
       # --ipc=host is Playwright's documented remedy for Chromium crashing on
       # the 64MB /dev/shm a container job gets by default.
       #
@@ -98,12 +99,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
       # The Playwright image carries no C++ toolchain (verified against the
@@ -209,7 +210,7 @@ jobs:
 
       - name: Upload gallery and pixel diffs
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         # Pixel differences remain visible in the summary and artifact;
         # broken captures and invalid comparisons still fail the job.
         continue-on-error: true
@@ -234,11 +235,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-gallery-${{ github.run_id }}
           path: test-results/gallery
@@ -260,7 +261,7 @@ jobs:
           fi
       - name: Retain review findings and coverage gaps
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: gallery-review-${{ github.run_id }}
           path: test-results/gallery-review

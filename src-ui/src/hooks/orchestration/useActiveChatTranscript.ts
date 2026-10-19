@@ -1,3 +1,4 @@
+import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -360,9 +361,13 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     serverWindow.error,
     serverWindow.reload,
   ]);
+  const previousStitchedEvents = useRef<readonly OrchestrationSequencedEvent[]>(
+    [],
+  );
   const stitchedEvents = useMemo(() => {
     if (replay) return window.events;
-    return stitchWindowWithLiveEvents({
+    const next = stitchWindowWithLiveEvents({
+      previous: previousStitchedEvents.current,
       windowEvents: window.events,
       watermark: windowWatermark,
       liveEvents,
@@ -372,6 +377,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
       ]),
     });
+    previousStitchedEvents.current = next;
+    return next;
   }, [
     replay,
     window.events,

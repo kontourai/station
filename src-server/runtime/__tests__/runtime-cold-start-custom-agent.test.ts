@@ -58,7 +58,7 @@ import type { RegistryTrustPolicyAuthority } from '../../services/plugins/regist
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../services/usage-telemetry-inventory.js';
+import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
@@ -811,7 +811,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         join(home, 'config', 'usage-telemetry-disclosure.json'),
         JSON.stringify({
           acknowledgedAt: new Date().toISOString(),
-          inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+          inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
         }),
       );
       writeFileSync(

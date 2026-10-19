@@ -13,6 +13,7 @@ import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
 import { registerDeclarePullRequestTools } from './station-control-declare-pull-request-tools.js';
+import { registerDeviceTools } from './station-control-device-tools.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPersonalBoardTools } from './station-control-personal-board-tools.js';
@@ -262,6 +263,7 @@ export function createSelectedStationControlMcpServer(
     registerKnowledgeDataTools(registry);
     return server;
   }
+  registerDeviceTools(registry);
   registerAgentTools(registry);
   registerBoardTools(registry);
   registerPersonalBoardTools(registry);

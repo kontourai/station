@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { act, render, renderHook, screen } from '@testing-library/react';
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const useStreamingContent = vi.fn();
@@ -26,6 +32,49 @@ describe('StreamingMessage', () => {
   beforeEach(() => {
     useStreamingContent.mockReset();
     mobile.current = false;
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('committing the live text part preserves its mounted highlighted code', async () => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const text = '```ts\nconst value = 1;\n```';
+    useStreamingContent.mockReturnValue({
+      streamingText: text,
+      hasContent: true,
+      contentRevision: 1,
+      contentParts: [],
+    });
+    const tree = () => (
+      <StreamingMessage
+        sessionId="commit-text"
+        agentIcon={<div>AI</div>}
+        agentIconStyle={{}}
+        fontSize={14}
+      />
+    );
+    const view = render(tree());
+    await waitFor(() =>
+      expect(view.container.querySelector('pre code')).not.toBeNull(),
+    );
+    const code = view.container.querySelector('pre code');
+    expect(code?.textContent).toContain('const value = 1;');
+    useStreamingContent.mockReturnValue({
+      streamingText: 'Next paragraph',
+      hasContent: true,
+      contentRevision: 2,
+      contentParts: [{ type: 'text', content: text }],
+    });
+    view.rerender(tree());
+    await screen.findByText('Next paragraph');
+    expect(view.container.querySelector('pre code')).toBe(code);
   });
 
   test('mobile streaming uses the same compact message layout and omits elapsed wording', () => {

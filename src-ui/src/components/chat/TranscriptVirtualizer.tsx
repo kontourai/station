@@ -1,4 +1,8 @@
-import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  elementScroll,
+  useVirtualizer,
+  type Virtualizer,
+} from '@tanstack/react-virtual';
 import {
   type ReactNode,
   type RefObject,
@@ -19,6 +23,7 @@ interface TranscriptVirtualizerProps<Row extends VirtualTranscriptRow> {
   readonly rows: readonly Row[];
   readonly scrollElement: RefObject<HTMLElement | null>;
   readonly renderRow: (row: Row) => ReactNode;
+  readonly onProgrammaticScroll?: (element: HTMLElement) => void;
   /** The surface has elected to keep the transcript at its newest row. */
   readonly followTail?: boolean;
   /**
@@ -71,6 +76,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   rows,
   scrollElement,
   renderRow,
+  onProgrammaticScroll,
   followTail = false,
   followTick,
   anchorVersion = 0,
@@ -154,7 +160,20 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
       );
     return element.scrollTop;
   };
+  const scrollTo = useCallback(
+    (
+      offset: number,
+      options: { adjustments?: number; behavior?: ScrollBehavior },
+      instance: Virtualizer<HTMLElement, HTMLElement>,
+    ) => {
+      elementScroll(offset, options, instance);
+      if (instance.scrollElement)
+        onProgrammaticScroll?.(instance.scrollElement);
+    },
+    [onProgrammaticScroll],
+  );
   const virtualizerOptions = {
+    scrollToFn: scrollTo,
     count: rows.length,
     scrollMargin,
     // The element is attached as soon as it exists. On the transcript's first
@@ -337,6 +356,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
       const offset = element.scrollTop + delta;
       virtualizerRef.current.scrollToOffset(offset);
       element.scrollTop = offset;
+      onProgrammaticScroll?.(element);
     };
     const schedule = () => {
       if (correctionFrame !== undefined) cancelAnimationFrame(correctionFrame);
@@ -366,6 +386,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
       mutationObserver?.disconnect();
     };
   }, [
+    onProgrammaticScroll,
     restoreAnchorIndex,
     restoreAnchorKey,
     restoreAnchorOffset,
@@ -427,7 +448,10 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
         if (mountedOffset !== undefined && anchor) {
           const restoreOffset = currentOffset + mountedOffset - anchor.offset;
           virtualizerRef.current.scrollToOffset(restoreOffset);
-          if (element) element.scrollTop = restoreOffset;
+          if (element) {
+            element.scrollTop = restoreOffset;
+            onProgrammaticScroll?.(element);
+          }
         } else {
           // The retained row can be recycled out during the prepend commit.
           // Materialize that exact key first; the persistent correction below
@@ -448,6 +472,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
             const correctedOffset = element.scrollTop + delta;
             virtualizerRef.current.scrollToOffset(correctedOffset);
             element.scrollTop = correctedOffset;
+            onProgrammaticScroll?.(element);
             return false;
           };
           const scheduleReconcile = () => {
@@ -497,7 +522,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [rows, anchorVersion, scrollElement]);
+  }, [rows, anchorVersion, scrollElement, onProgrammaticScroll]);
 
   // Estimates are corrected after rows enter the DOM. Scrolling to the final
   // keyed item on a new follow-tail request keeps that correction from leaving

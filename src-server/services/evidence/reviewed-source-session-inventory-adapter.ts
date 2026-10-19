@@ -10,6 +10,7 @@ const FIELDWORK_REVIEWED_SOURCE_REF =
   /^fieldwork-reviewed-source:v1:[a-f0-9]{64}$/;
 const SAFE_CONTRIBUTION_GAPS = new Set<ReviewedSourceContributionGapCode>([
   'reviewed-source-review-not-accepted',
+  'reviewed-source-review-not-chosen',
   'reviewed-source-review-not-captured',
   'reviewed-source-currentness-unknown',
   'reviewed-source-drifted',

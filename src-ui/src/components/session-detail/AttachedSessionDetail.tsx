@@ -577,11 +577,6 @@ export function AttachedSessionDetail({
         tabIndex={-1}
         aria-label="Conversation messages"
         ref={transcriptScrollRef}
-        onPointerDown={pauseFollowing}
-        onKeyDown={(event) => {
-          if (['ArrowUp', 'PageUp', 'Home'].includes(event.key))
-            pauseFollowing();
-        }}
       >
         {!atLatest && (
           <div className="session-transcript__toolbar responsive-surface-actions">

@@ -1,0 +1,15 @@
+{
+  "revision": "88d771883fab42198e8b10d8280286fd504a28ae",
+
+  "notes": [
+    {"path":"docs/conformance/station-runtime-conformance.md","note":"Reviewed regenerated host-bound JSON and matrix against the canonical generator and current root importer: Strands1.20.0, VoltAgent2.10.0, Conduit0.7.1. Only the Strands host version changes; lifecycle projection fidelities and limitations remain identical. Canonical generation and check executed successfully; no live provider/framework invocation or native run is implied.","inputs":["docs/conformance/station-runtime-conformance.md","docs/conformance/station-runtime-conformance.json"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed selector-first focused evidence, bounded captures, code-health disposition and fixture/mutation requirements against the testing-guide delta. The guide update changes only the illustrative Gallery container tag to match locked Playwright1.64.1; existing selector, mutation, fixture, profiler and evidence-boundary instructions remain accurate. No governed instruction or test lane behavior is changed, and no browser/native completion is claimed.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed route/domain ownership and focused behavior/measurement evidence against the testing-guide delta. The guide update changes only the illustrative Gallery container tag to match locked Playwright1.64.1; existing selector, mutation, fixture, profiler and evidence-boundary instructions remain accurate. No governed instruction or test lane behavior is changed, and no browser/native completion is claimed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed contract-driven UI state, real mounted evidence and narrow/mobile visual checks against the testing-guide delta. The guide update changes only the illustrative Gallery container tag to match locked Playwright1.64.1; existing selector, mutation, fixture, profiler and evidence-boundary instructions remain accurate. No governed instruction or test lane behavior is changed, and no browser/native completion is claimed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed typed hermetic fixtures, observable behavior, failure classification and real user-action boundaries against the testing-guide delta. The guide update changes only the illustrative Gallery container tag to match locked Playwright1.64.1; existing selector, mutation, fixture, profiler and evidence-boundary instructions remain accurate. No governed instruction or test lane behavior is changed, and no browser/native completion is claimed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

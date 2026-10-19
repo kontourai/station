@@ -6241,8 +6241,10 @@ export function createOrchestrationRoutes(
             authority,
           );
           if (!replayBudget.fitsBudget) {
-            const sessions =
-              await orchestrationService.listSessionReadModel(authority);
+            const sessions = await orchestrationService.listSessionReadModel(
+              authority,
+              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            );
             // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
               event: 'orchestration:snapshot',
@@ -6280,12 +6282,16 @@ export function createOrchestrationRoutes(
             // The replay carries historical events only. A binding computed
             // now would attach today's child and activity to an old frame.
             // Reconcile present-tense side effects once, after the replay.
-            replaySessions =
-              await orchestrationService.listSessionReadModel(authority);
+            replaySessions = await orchestrationService.listSessionReadModel(
+              authority,
+              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            );
           }
         } else {
-          const sessions =
-            await orchestrationService.listSessionReadModel(authority);
+          const sessions = await orchestrationService.listSessionReadModel(
+            authority,
+            threadId !== undefined ? { threadIds: [threadId] } : undefined,
+          );
           // #2456 D1: the head is NOT re-read here. An earlier review
           // ("LOW") re-read it to make the cursor "exact", but an exact
           // cursor is unsafe: events appended during the `await` above can

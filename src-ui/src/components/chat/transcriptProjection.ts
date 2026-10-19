@@ -28,24 +28,48 @@ function messageIdentity(sessionId: string, message: ChatMessage): string {
   return `${sessionId}:message:${message.timestamp ?? 'untimed'}:${message.role}:${message.content}`;
 }
 
+// Replay rebuilds JSON records, including provenance slots and form parts.
+// Opaque values still require identity; shared event payloads short-circuit here.
+function sameProjectedData(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((value, index) => sameProjectedData(value, right[index]))
+    );
+  }
+  if (
+    !left ||
+    !right ||
+    typeof left !== 'object' ||
+    typeof right !== 'object' ||
+    Object.getPrototypeOf(left) !== Object.prototype ||
+    Object.getPrototypeOf(right) !== Object.prototype
+  )
+    return false;
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every(
+      (key) =>
+        Object.hasOwn(right, key) &&
+        sameProjectedData(Reflect.get(left, key), Reflect.get(right, key)),
+    )
+  );
+}
+
 function sameMessage(left: ChatMessage, right: ChatMessage): boolean {
   return (
-    left.role === right.role &&
-    left.content === right.content &&
-    left.model === right.model &&
-    left.modelOptions === right.modelOptions &&
-    left.ephemeral === right.ephemeral &&
-    left.showContinue === right.showContinue &&
-    left.timestamp === right.timestamp &&
-    left.traceId === right.traceId &&
-    left.fromPrompt === right.fromPrompt &&
     sameParts(left.contentParts, right.contentParts) &&
-    left.attachments === right.attachments &&
-    left.toolCalls === right.toolCalls &&
-    left.turnId === right.turnId &&
-    left.sessionId === right.sessionId &&
-    left.agentSlug === right.agentSlug &&
-    left.provenance === right.provenance
+    Object.keys(left).length === Object.keys(right).length &&
+    (Object.keys(left) as Array<keyof ChatMessage>).every(
+      (key) =>
+        Object.hasOwn(right, key) &&
+        (key === 'contentParts' ||
+          (key === 'provenance'
+            ? sameProjectedData(left[key], right[key])
+            : Object.is(left[key], right[key]))),
+    )
   );
 }
 
@@ -58,7 +82,7 @@ function sameParts(
     (left !== undefined &&
       right !== undefined &&
       left.length === right.length &&
-      left.every((part, index) => part === right[index]))
+      left.every((part, index) => sameProjectedData(part, right[index])))
   );
 }
 

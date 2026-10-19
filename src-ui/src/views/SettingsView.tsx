@@ -666,6 +666,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           return [key, key === 'region' && value === '' ? null : value];
         }),
     ) as Partial<AppConfig>;
+    // The server merges publishers independently. Do not replay an untouched
+    // publisher from a draft that predates a withdrawal on another device.
+    if (changed.telemetryTier) {
+      changed.telemetryTier = Object.fromEntries(
+        Object.entries(changed.telemetryTier).filter(
+          ([publisher, tier]) =>
+            tier !==
+            savedConfig.telemetryTier?.[publisher as 'kontour' | 'operator'],
+        ),
+      );
+      if (Object.keys(changed.telemetryTier).length === 0)
+        delete changed.telemetryTier;
+    }
     const { logLevel, ...plainChanges } = changed;
     const plainWrite =
       Object.keys(plainChanges).length > 0
@@ -1103,6 +1116,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   <Section icon="◉" title="Telemetry" id="section-telemetry">
                     <StationConfigSection
                       section="telemetry"
+                      telemetryPublishers={telemetryDisclosure.data?.publishers}
                       embedded
                       config={config}
                       provenance={provenance}
@@ -1118,7 +1132,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   exposed (see `usageTelemetryDestinationSummary`). */}
                     <PageRow
                       {...settingsRow('telemetry-destination')}
-                      description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
+                      description="Telemetry requires an operator-configured destination. Its address is hidden."
                       control={(() => {
                         // `null` is the in-flight read: the row keeps its place
                         // (and its catalog identity) while saying nothing, rather
@@ -1149,7 +1163,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('diagnostics-bundle')}
-                      description="Download a redacted snapshot of Station health and configuration. It includes recent server logs when logging is enabled."
+                      description="Redacted health, configuration, and recent logs when logging is enabled."
                       control={
                         <button
                           type="button"
@@ -1255,9 +1269,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 className="settings__scope-group"
               >
                 <p className="settings__scope-caption">
-                  Personal choices follow your account when signed in. Device
-                  capabilities and layout stay here; each setting shows its
-                  scope.
+                  Personal choices follow your account on this Station. Device
+                  settings stay here.
                 </p>
 
                 {sectionVisible('appearance') && (
@@ -1269,7 +1282,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     {isMobile && (
                       <PageRow
                         {...settingsRow('haptic-feedback')}
-                        description="Light pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms."
+                        description="Vibrate while replies stream and when you copy, pair, or confirm a destructive action."
                         control={
                           <Toggle
                             checked={hapticsEnabled}
@@ -1323,7 +1336,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       // `defaultChatFontSize` is not in force anywhere yet, so
                       // moving the slider with it would show a fallback no chat is
                       // using.
-                      description={`Font size for your chat messages (10–24px). Unset follows the Station default of ${savedConfig.defaultChatFontSize ?? 14}px.`}
+                      description={`Message text size (10–24px). Station default: ${savedConfig.defaultChatFontSize ?? 14}px.`}
                       control={
                         <div className="settings__range-row">
                           <input
@@ -1379,7 +1392,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   from the same mapping module. */}
                     <PageRow
                       {...settingsRow('smooth-answer-reveal')}
-                      description="How your interface displays streamed answer text: immediately, at a steady pace, or in larger updates at action boundaries."
+                      description="Show text as it arrives, at a steady pace, or in larger updates between actions."
                       control={
                         <select
                           className="editor-select"
@@ -1407,7 +1420,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-show-reasoning')}
-                      description="Your chat messages include the model’s reasoning steps."
+                      description="Show the model’s reasoning when available."
                       control={
                         <Toggle
                           checked={chatShowReasoning}
@@ -1420,7 +1433,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-show-tool-details')}
-                      description="Tool calls can be expanded to read their arguments and results."
+                      description="Expand tool calls to see arguments and results."
                       control={
                         <Toggle
                           checked={chatShowToolDetails}
@@ -1433,7 +1446,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-dock-auto-hide')}
-                      description="An idle, open chat dock collapses to its bar after five seconds."
+                      description="Collapse the idle chat dock after five seconds."
                       control={
                         <Toggle
                           checked={chatDockAutoHide}
@@ -1447,7 +1460,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     {/* #90 D9: the same key the in-chat gear panel sets. */}
                     <PageRow
                       {...settingsRow('chat-auto-float-browser')}
-                      description="When an agent in a chat opens or drives a browser and no pane shows it, the browser floats over that chat. A session you close stays closed in that chat."
+                      description="Show an agent’s browser over its chat when no pane displays it. Closing it keeps it closed for that chat."
                       control={
                         <Toggle
                           checked={
@@ -1469,7 +1482,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   keys from its own controls. */}
                     <PageRow
                       {...settingsRow('diff-style')}
-                      description="Changed files show as one column, or as two side-by-side columns."
+                      description="Show changes in one column or side by side."
                       control={
                         <select
                           className="editor-select"
@@ -1489,7 +1502,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('diff-wrap')}
-                      description="Long diff lines wrap instead of scrolling sideways."
+                      description="Wrap long lines in file changes."
                       control={
                         <Toggle
                           checked={diffWrap}
@@ -1510,7 +1523,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     <h3 className="settings__group-title">Confirmations</h3>
                     <PageRow
                       {...settingsRow('confirm-conversation-delete')}
-                      description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                      description="Ask before deleting a conversation. Deletion is permanent; clearing all conversations always asks."
                       control={
                         <Toggle
                           checked={confirmConversationDelete}
@@ -1582,8 +1595,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 className="settings__scope-group"
               >
                 <p className="settings__scope-caption">
-                  Saved to this Station — available from every device that
-                  connects to it.
+                  Saved to this Station.
                 </p>
                 <KnowledgeStoreSection />
               </section>

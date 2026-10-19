@@ -528,6 +528,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
+  'packages/supervisor/src/__tests__/control-server.test.ts':
+    'lists the run directory under its temporary Station home to check leftover private socket names',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/android-channel-release-generation.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',

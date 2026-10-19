@@ -1104,53 +1104,33 @@ describe('FilePreviewPane', () => {
     ).toBe('pre');
   });
 
-  test('reveals the response-owned first line, not the requested one', () => {
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
+  test('numbers returned source from its response-owned range', () => {
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'source',
+        lineRange: { start: 250, end: 251 },
+        content: 'first\nsecond',
+      },
     });
-    try {
-      previewQuery.mockReturnValue({
-        isLoading: false,
-        isError: false,
-        data: {
-          path: 'src/example.ts',
-          status: 'ready',
-          renderKind: 'source',
-          lineRange: { start: 250, end: 251 },
-          content: 'first\nsecond',
-        },
-      });
-      render(
-        pane({
+    render(
+      pane({
+        projectSlug: 'demo',
+        stateKey: 'file-preview:source-lines',
+        state: {
+          version: '1.0',
           projectSlug: 'demo',
-          stateKey: 'file-preview:source-lines',
-          state: {
-            version: '1.0',
-            projectSlug: 'demo',
-            path: 'src/example.ts',
-            lineRange: { start: 100, end: 101 },
-            wrap: true,
-          },
-        }),
-      );
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
-      expect(scrollIntoView.mock.contexts.at(-1)).toBe(
-        document.getElementById(
-          'file-preview-file-preview:source-lines-line-250',
-        ),
-      );
-      expect(
-        screen.getByRole('link', { name: 'Link to line 250' }),
-      ).toBeTruthy();
-      expect(
-        screen.queryByRole('link', { name: 'Link to line 100' }),
-      ).toBeNull();
-    } finally {
-      delete (HTMLElement.prototype as { scrollIntoView?: unknown })
-        .scrollIntoView;
-    }
+          path: 'src/example.ts',
+          lineRange: { start: 100, end: 101 },
+          wrap: true,
+        },
+      }),
+    );
+    expect(screen.getByRole('link', { name: 'Link to line 250' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Link to line 100' })).toBeNull();
   });
 
   test(

@@ -78,7 +78,8 @@ export function stitchWindowWithLiveEvents(input: {
   watermark: number | undefined;
   liveEvents: readonly OrchestrationSequencedEvent[];
   threadIds: ReadonlySet<string | undefined>;
-}): OrchestrationSequencedEvent[] {
+  previous?: readonly OrchestrationSequencedEvent[];
+}): readonly OrchestrationSequencedEvent[] {
   const watermark =
     input.watermark ??
     Math.max(0, ...input.windowEvents.map((item) => item.sequence));
@@ -92,5 +93,10 @@ export function stitchWindowWithLiveEvents(input: {
     if (persistedIds.has(item.event.eventId)) continue;
     events.push(item);
   }
-  return events.sort((left, right) => left.sequence - right.sequence);
+  events.sort((left, right) => left.sequence - right.sequence);
+  const previous = input.previous ?? input.windowEvents;
+  return events.length === previous.length &&
+    events.every((item, index) => item === previous[index])
+    ? previous
+    : events;
 }

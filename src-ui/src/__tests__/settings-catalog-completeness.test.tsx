@@ -727,7 +727,7 @@ describe('settings catalog completeness', () => {
     const CONTROL_CAPTION = 'Saved to this Station.';
     const STATION_CAPTION = 'Saved to this Station.';
     const DEVICE_CAPTION =
-      'Personal choices follow your account when signed in. Device capabilities and layout stay here; each setting shows its scope.';
+      'Personal choices follow your account on this Station. Device settings stay here.';
 
     function captions(container: HTMLElement) {
       return [...container.querySelectorAll('.settings__scope-caption')].map(
@@ -2153,6 +2153,58 @@ describe('settings catalog completeness', () => {
    * WOULD send; this row says whether there is anywhere to send to. Both
    * answers are the host's, and the host itself is never named.
    */
+  test('saving a publisher edit excludes a stale untouched Full choice after another device withdraws it', async () => {
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { kontour: 'off', operator: 'full' },
+      },
+      dataUpdatedAt: 1,
+    };
+    await renderSettings();
+    // Another device persists Off while this form still holds the old snapshot.
+    let persisted = { kontour: 'off', operator: 'off' };
+    updateConfig.mockImplementation(async (delta) => {
+      persisted = { ...persisted, ...delta.telemetryTier };
+    });
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Kontour telemetry' }),
+      {
+        target: { value: 'lite' },
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { kontour: 'lite' },
+      }),
+    );
+    expect(persisted).toEqual({ kontour: 'lite', operator: 'off' });
+  });
+
+  test('saving two deliberate publisher edits retains both choices', async () => {
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { kontour: 'off', operator: 'off' },
+      },
+      dataUpdatedAt: 1,
+    };
+    await renderSettings();
+    for (const name of ['Kontour telemetry', 'Operator telemetry'])
+      fireEvent.change(screen.getByRole('combobox', { name }), {
+        target: { value: 'lite' },
+      });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { kontour: 'lite', operator: 'lite' },
+      }),
+    );
+  });
+
   describe('Telemetry destination', () => {
     test('reports a configured destination without naming it', async () => {
       telemetryEndpointConfigured = true;

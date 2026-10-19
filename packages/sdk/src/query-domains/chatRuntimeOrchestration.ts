@@ -61,6 +61,7 @@ import {
   type QueryConfig,
   resolveApiBase,
   useApiQuery,
+  useApiQueryWithSharing,
   useCancelWhenInactive,
 } from '../query-core';
 import { orchestrationQueries } from '../queryFactories';
@@ -76,6 +77,7 @@ import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
 } from './chatRuntimeTypes';
+import { shareSessionReadModel } from './sessionStructuralSharing';
 
 export type {
   DelegatedTaskHandle,
@@ -1277,9 +1279,10 @@ export function useOrchestrationProvidersQuery(
 export function useOrchestrationSessionsQuery(
   config?: QueryConfig<OrchestrationSessionSummary[]>,
 ) {
-  return useApiQuery(
+  return useApiQueryWithSharing(
     orchestrationQueries.sessions().queryKey,
     () => fetchOrchestrationSessions(),
+    shareSessionReadModel,
     {
       staleTime: config?.staleTime ?? orchestrationQueries.sessions().staleTime,
       gcTime: config?.gcTime,

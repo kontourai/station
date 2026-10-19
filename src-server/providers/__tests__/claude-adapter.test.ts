@@ -2485,6 +2485,11 @@ describe('ClaudeAdapter', () => {
       await adapter.startSession({
         provider: 'claude',
         threadId,
+        // #2494: full access unconfined is the operator's (`host`) start;
+        // an absent confinement is `workspace` and runs it as Auto.
+        ...(options.modelOptions?.approvalMode === 'never'
+          ? { confinement: 'host' as const }
+          : {}),
         ...(options.modelOptions ? { modelOptions: options.modelOptions } : {}),
         ...(options.agent ? { agent: options.agent } : {}),
         ...(options.metadata ? { metadata: options.metadata } : {}),
@@ -7870,6 +7875,8 @@ describe('ClaudeAdapter', () => {
     await adapter.startSession({
       provider: 'claude',
       threadId: 'thread-never-start',
+      // #2494: an operator (`host`) start; absent is `workspace`.
+      confinement: 'host',
       modelOptions: { approvalMode: 'never' },
     });
 
@@ -8133,6 +8140,8 @@ describe('ClaudeAdapter', () => {
     await adapter.startSession({
       provider: 'claude',
       threadId: 'thread-escalate-allowed',
+      // #2494: an operator (`host`) start; absent is `workspace`.
+      confinement: 'host',
       modelOptions: { approvalMode: 'never' },
     });
 

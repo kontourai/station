@@ -46,7 +46,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePullRequestContextQuery: () => ({ data: undefined }),
 }));
 vi.mock('../../contexts/ActiveChatsContext', () => ({
-  useAllActiveChats: () => ({}),
+  useActiveChatIds: () => [],
 }));
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigationActions: () => ({ navigate: vi.fn() }),

@@ -1078,7 +1078,15 @@
 
     "src-server/services/orchestration/attachment-staging-service.ts",
 
-    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts",
+
+    "src-server/routes/device-agent.ts",
+
+    "src-server/services/devices/device-agent-authority.ts",
+
+    "src-server/services/devices/device-automation.ts",
+
+    "src-server/tools/station-control-device-tools.ts"
   ],
 
   "checks": [

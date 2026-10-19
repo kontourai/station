@@ -127,6 +127,12 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
+  // Claude handshake; skips loudly where Seatbelt cannot apply (non-macOS).
+  'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+  // The stale-session reaper case spawns one short-lived Node child to obtain
+  // a pid that has exited.
+  'src-server/security/confinement/__tests__/seatbelt.test.ts',
   // Invokes the real pinned actionlint parser against isolated stdin fixtures.
   'scripts/__tests__/actionlint-queue-compat.test.ts',
   // Owns a bounded Datum child and a private fake CLI; asserts exact cancellation cleanup.
@@ -344,6 +350,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // prove the reaper survives, the same resource shape as platform.test.ts.
   'packages/cli/src/__tests__/helpers/longrunning-fixture-child.abnormal-exit.test.ts',
   'packages/cli/src/__tests__/platform.test.ts',
+  // #3567: bounded CLI executable children send to a per-test loopback
+  // fixture to verify lost-response JSON handles in both entry points.
+  'packages/cli/src/__tests__/core-http.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
   // a real child ownership boundary, so it belongs in the two-worker pool.
@@ -1418,6 +1427,35 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // geometry, a squatted locator global, a covered button, 300,000
   // elements, a page spinning forever). Explicit skip without a browser.
   'src-server/services/browser/__tests__/browser-agent-hostile.real.test.ts',
+  // Process supervisor: real supervisor children fork fixture core
+  // generations, hand a held listening socket between them, and hammer it
+  // with keep-alive HTTP and SSE clients on an ephemeral port.
+  'packages/supervisor/src/__tests__/handoff.test.ts',
+  'packages/supervisor/src/__tests__/rollback.test.ts',
+  'packages/supervisor/src/__tests__/crash-restart.test.ts',
+  'packages/supervisor/src/__tests__/build-root.test.ts',
+  'packages/supervisor/src/__tests__/listener-handle.test.ts',
+  // A SIGKILLed supervisor, its orphaned core, and a second supervisor that reaps it.
+  'packages/supervisor/src/__tests__/stale-generation.test.ts',
+  // Spawns a sleeper process to prove a mismatched fingerprint is never killed.
+  'packages/supervisor/src/__tests__/generation-registry.test.ts',
+  // Two and three supervisor processes contending for one instance lock.
+  'packages/supervisor/src/__tests__/instance-lock.test.ts',
+  // In-process lock epochs; fingerprinting runs `ps` as a child process.
+  'packages/supervisor/src/__tests__/instance-lock-module.test.ts',
+  // --break-lock as a child process against live, dead, and unverifiable holders.
+  'packages/supervisor/src/__tests__/break-lock.test.ts',
+  // runSupervisor in-process, forking a fixture core generation.
+  'packages/supervisor/src/__tests__/supervisor-embedding.test.ts',
+  // A supervisor whose run directory turns read-only, and one loaded with a fatal-error injector.
+  'packages/supervisor/src/__tests__/registry-failure.test.ts',
+  // Runs the supervisor entry and its built bundle as child processes.
+  'packages/supervisor/src/__tests__/cli.test.ts',
+  'packages/supervisor/src/__tests__/bundle.test.ts',
+  // Two supervisor processes, raw control-socket clients, and an esbuild bundle run.
+  'packages/supervisor/src/__tests__/protocol.test.ts',
+  // Forks two children that pass a raw listening handle through this worker.
+  'packages/supervisor/src/__tests__/handle-guard.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

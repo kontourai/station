@@ -5,7 +5,7 @@ import type {
   ProductTelemetryObservation,
   ProductTelemetryProbeReceipt,
 } from '@kontourai/station-contracts/product-telemetry';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 export class BrokerError extends Error {
@@ -318,7 +318,7 @@ export class PgProductRepository implements ProductRepository {
       return {
         protocol: 'station-product-probe/v1',
         sourceId: source.id,
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
         checkedAt: rows[0].checked_at.toISOString(),
         storage: 'postgres-schema-v1',
       };

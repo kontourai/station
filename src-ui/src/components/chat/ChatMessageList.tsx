@@ -21,6 +21,7 @@ import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import { isTurnStreamLive } from '../../utils/execution';
+import { isShallowEqual } from '../../utils/isShallowEqual';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import {
   chatWaitsOnUser,
@@ -315,7 +316,7 @@ function ChatMessageListComponent({
     readerRestoreRequest?.sessionId === activeSession.id
       ? readerRestoreRequest
       : null;
-  const [streamingContentRevision, setStreamingContentRevision] = useState(0);
+  const pinFrameRef = useRef<number | undefined>(undefined);
   const formScope = chatFormDraftsStore.scope(
     apiBase,
     activeSession.id,
@@ -359,7 +360,7 @@ function ChatMessageListComponent({
   // Every programmatic scrollTop write goes through these so the scroll
   // handler can tell our own echoes apart from reader movement. The recorded
   // (clamped) position is what the echo carries.
-  const noteProgrammaticScroll = useCallback((el: HTMLDivElement) => {
+  const noteProgrammaticScroll = useCallback((el: HTMLElement) => {
     lastProgrammaticScrollRef.current = {
       top: el.scrollTop,
       at: performance.now(),
@@ -651,27 +652,18 @@ function ChatMessageListComponent({
   // before paint so there is no visible jump; rAF covers late layout (images,
   // markdown reflow) without fighting the browser via a 0ms timeout.
   const lastMessage = messages[messages.length - 1];
-  // Tail-growth triggers for the follow below. The shell's per-flush revision
-  // (`streamingContentRevision`) covers a shell-owned turn, but a turn the
-  // transcript window projects (`suppressStreamingRow`, #2594) renders as an
-  // ordinary row with no shell and no flush: pure-text streaming then grows
-  // one message's content without changing `messages.length` or its part
-  // count, so the tail row's own growth is the follow trigger.
+  // A projected open turn grows without a shell flush or message-count change.
   const tailContentLength = lastMessage?.content?.length ?? 0;
   const tailPartsLength = lastMessage?.contentParts?.length ?? 0;
-  // messages.length / tailContentLength / tailPartsLength / isStreaming are
-  // growth triggers — not read in the body but they must re-pin the scroll
-  // as content streams in.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional triggers
-  useLayoutEffect(() => {
+  const pinToLatest = useCallback(() => {
+    if (pinFrameRef.current !== undefined)
+      cancelAnimationFrame(pinFrameRef.current);
     const el = messagesContainerRef.current;
-    if (!el || isUserScrolledUp) return;
+    if (!el || isUserScrolledUpRef.current) return;
     writeProgrammaticScroll(el, el.scrollHeight);
     markTranscriptPhase('pin-layout');
-    const raf = requestAnimationFrame(() => {
-      // Read the ref, not the state closed over above: the reader may have
-      // scrolled up between the layout write and this frame, and a stale
-      // `false` would yank them back down after they asked to read.
+    pinFrameRef.current = requestAnimationFrame(() => {
+      pinFrameRef.current = undefined;
       if (messagesContainerRef.current && !isUserScrolledUpRef.current) {
         markTranscriptPhase('pin-raf');
         writeProgrammaticScroll(
@@ -680,15 +672,21 @@ function ChatMessageListComponent({
         );
       }
     });
-    return () => cancelAnimationFrame(raf);
+  }, [writeProgrammaticScroll]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: content growth triggers a pin before paint
+  useLayoutEffect(() => {
+    pinToLatest();
+    return () => {
+      if (pinFrameRef.current !== undefined)
+        cancelAnimationFrame(pinFrameRef.current);
+    };
   }, [
     isUserScrolledUp,
     messages.length,
-    streamingContentRevision,
     tailContentLength,
     tailPartsLength,
     isStreaming,
-    writeProgrammaticScroll,
+    pinToLatest,
   ]);
 
   // A reader who requested earlier history keeps the same visible row when
@@ -954,9 +952,9 @@ function ChatMessageListComponent({
       return;
     }
     // A pinned transcript that lands a little short with no reader input was
-    // clamped by layout, not scrolled: a sibling measuring itself (the
-    // composer collapses its draft to one row to size it) briefly hands the
-    // transcript more height, the browser clamps scrollTop to the new end, and
+    // clamped by layout, not scrolled: a sibling measuring itself can briefly
+    // hand the transcript more height (the composer used to collapse its
+    // draft to one row to size it). The browser clamps scrollTop to the new end, and
     // the height comes back within the same frame — no resize is ever
     // observed. Without this the newest message stayed that many pixels short.
     const acting = readerActing();
@@ -1148,10 +1146,6 @@ function ChatMessageListComponent({
     };
   }, [activeSession.id]);
 
-  const handleStreamingContentChange = useCallback(() => {
-    setStreamingContentRevision((revision) => revision + 1);
-  }, []);
-
   // Derived sessions may re-materialize message objects when unrelated chat UI
   // state changes (for example, each composer keystroke). Object identity is
   // therefore not a message identity: using a WeakMap here caused every row to
@@ -1219,7 +1213,50 @@ function ChatMessageListComponent({
     ],
   );
 
-  const renderDefaultMessage = (msg: ChatMessage, idx: number) => (
+  type RowPresentation = {
+    turn: React.ContextType<typeof TranscriptTurnContext>;
+    fork: ForkTurnSource | null | undefined;
+  };
+  const previousPresentation = useRef(new Map<string, RowPresentation>());
+  const rowPresentation = useMemo(() => {
+    const next = new Map<string, RowPresentation>();
+    const seenTurns = new Set<string>();
+    for (const row of transcriptRows) {
+      if (row.kind === 'subagent') continue;
+      const message = row.message;
+      const key = JSON.stringify([message.sessionId, message.turnId]);
+      const turn =
+        message.role === 'assistant'
+          ? {
+              threadId: message.sessionId,
+              turnId: message.turnId,
+              messageId: message.id,
+              firstRow: !seenTurns.has(key),
+            }
+          : undefined;
+      if (turn) seenTurns.add(key);
+      const fork =
+        message.role === 'user'
+          ? precedingForkSource(messages, row.index)
+          : undefined;
+      const previous = previousPresentation.current.get(row.id);
+      next.set(row.id, {
+        turn: isShallowEqual(previous?.turn, turn) ? previous?.turn : turn,
+        fork:
+          previous && isShallowEqual(previous.fork, fork)
+            ? previous.fork
+            : fork,
+      });
+    }
+    previousPresentation.current = next;
+    return next;
+  }, [transcriptRows, messages]);
+
+  const renderDefaultMessage = (
+    msg: ChatMessage,
+    idx: number,
+    rowId: string,
+  ) => (
     <MessageBubble
       key={`${activeSession.id}-msg-${messageAnchorKey(msg)}`}
       msg={msg as any}
@@ -1234,9 +1271,7 @@ function ChatMessageListComponent({
       continuesTurn={
         msg.turnId !== undefined && messages[idx - 1]?.turnId === msg.turnId
       }
-      userForkSource={
-        msg.role === 'user' ? precedingForkSource(messages, idx) : undefined
-      }
+      userForkSource={rowPresentation.get(rowId)?.fork}
       onNewChatFromMessage={
         msg.role === 'user' ? onNewChatFromMessage : undefined
       }
@@ -1247,12 +1282,12 @@ function ChatMessageListComponent({
     />
   );
 
-  const renderMessage = (msg: ChatMessage, idx: number) => {
+  const renderMessage = (msg: ChatMessage, idx: number, rowId: string) => {
     if (renderOverride) {
       const override = renderOverride(msg, idx);
       if (override !== null) return override;
     }
-    return renderDefaultMessage(msg, idx);
+    return renderDefaultMessage(msg, idx, rowId);
   };
 
   const renderTranscriptRow = (row: ChildTranscriptRow) => {
@@ -1279,25 +1314,9 @@ function ChatMessageListComponent({
           : {})}
       >
         <TranscriptTurnContext.Provider
-          value={
-            row.message.role === 'assistant'
-              ? {
-                  threadId: row.message.sessionId,
-                  turnId: row.message.turnId,
-                  messageId: row.message.id,
-                  firstRow: !transcriptRows.some(
-                    (candidate) =>
-                      candidate.kind !== 'subagent' &&
-                      candidate.index < row.index &&
-                      candidate.message.role === 'assistant' &&
-                      candidate.message.sessionId === row.message.sessionId &&
-                      candidate.message.turnId === row.message.turnId,
-                  ),
-                }
-              : undefined
-          }
+          value={rowPresentation.get(row.id)?.turn}
         >
-          {renderMessage(row.message, row.index)}
+          {renderMessage(row.message, row.index, row.id)}
         </TranscriptTurnContext.Provider>
       </div>
     );
@@ -1484,6 +1503,7 @@ function ChatMessageListComponent({
                     <TranscriptVirtualizer
                       rows={transcriptRows}
                       scrollElement={messagesContainerRef}
+                      onProgrammaticScroll={noteProgrammaticScroll}
                       renderRow={renderTranscriptRow}
                       followTail={!isUserScrolledUp && !requestedMessageRowId}
                       followTick={`${tailContentLength}:${tailPartsLength}`}
@@ -1557,7 +1577,7 @@ function ChatMessageListComponent({
                         }
                         attributionAgent={streamingAttributionAgent}
                         owner={owner}
-                        onContentChange={handleStreamingContentChange}
+                        onContentChange={pinToLatest}
                       />
                     </TranscriptTurnContext.Provider>
                   </div>
