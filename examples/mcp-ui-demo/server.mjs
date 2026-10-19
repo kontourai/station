@@ -18,12 +18,29 @@ import {
 } from '@modelcontextprotocol/ext-apps/server';
 import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { build } from 'esbuild';
 import { z } from 'zod';
+
+const appScript = await build({
+  stdin: {
+    contents: `import { App } from '@modelcontextprotocol/ext-apps';
+      const app = new App({ name: 'Station MCP UI demo', version: '1.0.0' }, {}, { autoResize: true });
+      void app.connect();`,
+    resolveDir: import.meta.dirname,
+    sourcefile: 'demo-app.js',
+  },
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  minify: true,
+  write: false,
+  target: ['es2022'],
+  legalComments: 'none',
+});
 
 const RESOURCE_URI = 'ui://mcp-ui-demo/status-panel';
 
-// Static, self-contained HTML — no external assets, so it renders cleanly under
-// Station's hardened sandbox (opaque origin, deny-all CSP). Inline styles only.
+// Self-contained App SDK reports its content height; no external assets or app actions.
 const PANEL_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -58,6 +75,7 @@ const PANEL_HTML = `<!doctype html>
     <p>This panel is a <code>ui://</code> resource served by an MCP server and
        resolved through <code>&lt;serverId&gt;/status_panel</code>.</p>
   </div>
+<script>${appScript.outputFiles[0].text.replaceAll('</script', '<\\/script')}</script>
 </body>
 </html>`;
 

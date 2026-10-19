@@ -3595,6 +3595,12 @@ filtering is not complete CSP source-expression validation or a guarantee of
 effective browser network containment. An ordinary SDK tool call does not
 establish that rendering qualification.
 
+`getJson` is available from `@kontourai/station-sdk/client` as well as the root
+entry. The client entry preserves the same credential, request-authority,
+timeout and response-bound behavior without importing SDK React components.
+Transcript app catalogs use this entry; rendering a local chat row does not
+create a connection or start catalog discovery.
+
 ## Utilities
 
 ### `ListenerManager`
@@ -4642,6 +4648,17 @@ updates that exact cache and invalidates the personal Layout inventory.
 scope and read the existing authorized projections. They do not persist rows in
 the Board. The dashboard uses the scoped Task and Project queries alongside
 them. See [Personal Boards](../user/personal-boards.md) for the user journey.
+
+### Engine failure classification
+
+`StationHttpError` and `ChatHttpError` retain an engine failure's `kind` and
+`failurePhase` (`refused`, `failed` or `indeterminate`). `retryable` is computed from the closed kind rather than a
+server-supplied boolean. For older servers, known diagnostic codes use the
+shared mapping; an unknown code without a recognized kind stays unclassified.
+A retryable failed turn may already have spent resources. Inspect its outcome
+and request another attempt explicitly; this field does not authorize replay.
+See [engine-neutral failures](contracts.md#engine-neutral-failures) for kinds,
+code mappings, phase semantics and legacy `retriable` compatibility.
 
 ### Pull request guide client
 

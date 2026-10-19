@@ -1,3 +1,8 @@
+import {
+  PROVIDER_FAILURE_KINDS,
+  RESOURCE_ENGINE_START_CAPACITY_CODE,
+} from '@kontourai/station-contracts/provider-failure';
+import { ProviderRefusalError } from '../../providers/provider-failure.js';
 /**
  * Server-owned host CPU diagnostics.
  *
@@ -170,11 +175,13 @@ export function deriveRuntimeResourcePosture(
   };
 }
 
-export class ConcurrentEngineStartCapacityError extends Error {
-  readonly code = 'resource_engine_start_capacity';
-  readonly retryable = true;
+export class ConcurrentEngineStartCapacityError extends ProviderRefusalError {
+  readonly code = RESOURCE_ENGINE_START_CAPACITY_CODE;
   constructor() {
-    super('Another engine is already starting. Try again after it settles.');
+    super(
+      'Another engine is already starting. Try again after it settles.',
+      PROVIDER_FAILURE_KINDS[RESOURCE_ENGINE_START_CAPACITY_CODE],
+    );
     this.name = 'ConcurrentEngineStartCapacityError';
   }
 }

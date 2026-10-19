@@ -1,0 +1,7 @@
+{
+  "revision": "8ec56c5ca6216143df2a6ebbcff8daf73d62c842",
+
+  "notes": [
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the merge delta against 99c843d226d for runtime-routes.ts: only HTML reply imports, session-read binding and the separate /api/html-replies mount differ. Pull request guide service composition, bound operator authorization, capacity, generation, persistence and read routes are preserved. The merged focused run passed the guide service, pull-request routes, declare-pull-request composition and station-control refusal/policy tests. No guide prose change is needed for the unrelated HTML route mount; this is a scoped merge review, not a whole-guide requalification.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

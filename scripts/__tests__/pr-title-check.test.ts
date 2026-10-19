@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { JSON_SCHEMA, load } from 'js-yaml';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { publishTitlePolicy } from '../pr-title-check.mjs';
 
 const head = 'a'.repeat(40);
@@ -63,6 +63,13 @@ async function withApi(
     };
     entries.push(entry);
     res.setHeader('Content-Type', 'application/json');
+    if (error.startsWith('once-') && entry.body?.state === 'success') {
+      res.statusCode = Number(error.slice('once-'.length));
+      error = '';
+      res.end('discard this transient response body');
+      return;
+    }
+
     if (
       (error === 'read' && req.method === 'GET') ||
       (error === 'terminal' && entry.body?.state === 'success') ||
@@ -74,6 +81,19 @@ async function withApi(
     ) {
       res.statusCode = 503;
       res.end('{}');
+      return;
+    }
+    if (
+      entry.body?.state === 'success' &&
+      (error === 'forbidden' || error === 'rate-limit' || error === 'malformed')
+    ) {
+      res.statusCode =
+        error === 'forbidden' ? 403 : error === 'rate-limit' ? 429 : 200;
+      res.end(error === 'malformed' ? 'invalid JSON' : '{}');
+      return;
+    }
+    if (entry.body?.state === 'success' && error === 'network') {
+      req.socket.destroy();
       return;
     }
     if (req.method === 'POST') accepted.push(entry);
@@ -302,6 +322,120 @@ describe('mutable title policy HTTP lifecycle', () => {
         [`/repos/${repository}/statuses/${head}`, 'pending'],
         [`/repos/${repository}/statuses/${head}`, 'failure'],
       ]);
+    });
+  });
+
+  test.each([500, 502, 503, 504])(
+    'a transient merge-group status%s retries the same exact acknowledgement',
+    async (status) => {
+      await withApi(async ({ entries, accepted, setError, execute }) => {
+        setError(`once-${status}`);
+        await execute(event, 'merge_group', {
+          head_sha: 'b'.repeat(40),
+          base_ref: 'refs/heads/main',
+        });
+        expect(writes(entries).map((entry) => entry.body?.state)).toEqual([
+          'pending',
+          'success',
+          'success',
+        ]);
+        expect(accepted.at(-1)?.body?.state).toBe('success');
+        expect(
+          entries.every(
+            (entry) =>
+              entry.path === `/repos/${repository}/statuses/${'b'.repeat(40)}`,
+          ),
+        ).toBe(true);
+      });
+    },
+  );
+
+  test('persistent merge-group503 stops after three attempts and invokes the existing failure fallback', async () => {
+    await withApi(async ({ entries, accepted, setError, execute }) => {
+      setError('terminal');
+      await expect(
+        execute(event, 'merge_group', {
+          head_sha: head,
+          base_ref: 'refs/heads/main',
+        }),
+      ).rejects.toThrow('GitHub API 503');
+      expect(writes(entries).map((entry) => entry.body?.state)).toEqual([
+        'pending',
+        'success',
+        'success',
+        'success',
+        'failure',
+      ]);
+      expect(accepted.at(-1)?.body?.state).toBe('failure');
+    });
+  });
+
+  test.each(['forbidden', 'rate-limit', 'malformed', 'network'])(
+    'does not retry merge-group %s responses',
+    async (kind) => {
+      await withApi(async ({ entries, setError, execute }) => {
+        setError(kind);
+        await expect(
+          execute(event, 'merge_group', {
+            head_sha: head,
+            base_ref: 'refs/heads/main',
+          }),
+        ).rejects.toThrow();
+        expect(writes(entries).map((entry) => entry.body?.state)).toEqual([
+          'pending',
+          'success',
+          'failure',
+        ]);
+      });
+    },
+  );
+
+  test('does not retry a PR terminal write after mutable owner validation', async () => {
+    await withApi(async ({ entries, setError, execute }) => {
+      setError('once-500');
+      await expect(execute()).rejects.toThrow('GitHub API 500');
+      expect(writes(entries).map((entry) => entry.body?.state)).toEqual([
+        'pending',
+        'success',
+        'failure',
+      ]);
+    });
+  });
+
+  test('shares one deadline across merge-group attempts and aborts the backoff without another POST', async () => {
+    await withApi(async ({ entries, setError, execute }) => {
+      const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+      const originalFetch = globalThis.fetch.bind(globalThis);
+      const controller = new AbortController();
+      const timeout = vi
+        .spyOn(AbortSignal, 'timeout')
+        .mockImplementation(originalTimeout)
+        .mockImplementationOnce(originalTimeout)
+        .mockImplementationOnce(() => controller.signal);
+      const request = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (url, options) => {
+          const response = await originalFetch(url, options);
+          if (options?.signal === controller.signal && response.status === 503)
+            controller.abort();
+          return response;
+        });
+      try {
+        setError('terminal');
+        await expect(
+          execute(event, 'merge_group', {
+            head_sha: head,
+            base_ref: 'refs/heads/main',
+          }),
+        ).rejects.toThrow();
+        expect(
+          writes(entries).filter((entry) => entry.body?.state === 'success'),
+        ).toHaveLength(1);
+        expect(timeout).toHaveBeenCalledTimes(3);
+      } finally {
+        request.mockRestore();
+        timeout.mockRestore();
+      }
     });
   });
 

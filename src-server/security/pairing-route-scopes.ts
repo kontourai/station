@@ -959,6 +959,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/integrations/:serverId/ui-tools:read',
+    method: 'GET',
+    prefix: '/integrations/:serverId/ui-tools',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
     id: '/integrations/:id/icon:read',
     method: 'GET',
     prefix: '/integrations/:id/icon',
@@ -1167,6 +1174,30 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // event window that hands the caller the reference in the first place, and
   // the route additionally requires the caller to be able to read a session
   // that references the blob.
+  {
+    id: '/api/html-replies/:sessionId/:pageId:GET',
+    method: 'GET',
+    prefix: '/api/html-replies/:sessionId/:pageId',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/html-replies/render:POST',
+    method: 'POST',
+    prefix: '/api/html-replies/render',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/html-replies/preview:POST',
+    method: 'POST',
+    prefix: '/api/html-replies/preview',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   {
     id: '/api/attachments:GET',
     method: 'GET',

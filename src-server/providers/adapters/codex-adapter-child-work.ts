@@ -13,7 +13,7 @@ import {
   childWorkForReporter,
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   extractString,
   extractTokenFigure,

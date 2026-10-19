@@ -110,7 +110,7 @@ describe('the decision over real plans (child process)', () => {
     expect(result.stdout).toContain('plan defers to ci-fast');
   });
 
-  test('a deferred plan that dropped its explicit tests over the 32 cap runs the full regression', async () => {
+  test('a deferred hosted plan retains more than32 explicit tests and still requires full regression', async () => {
     // 33 real suites the manifest already names, changed in one diff.
     const tests = [
       ...new Set(
@@ -131,8 +131,11 @@ describe('the decision over real plans (child process)', () => {
       'packages/shared/src/agent-validation.ts',
       ...tests,
     ]);
-    // The planner ran none of the 33 changed suites.
-    expect(plan.fileCount).toBe(0);
+    expect(plan.fileCount).toBeGreaterThanOrEqual(33);
+    const planned = (plan.groups as Array<{ files: string[] }>).flatMap(
+      (group) => group.files,
+    );
+    expect(planned).toEqual(expect.arrayContaining(tests));
     expect(decide(file).output).toBe(RUNS_FULL);
   });
 

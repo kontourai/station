@@ -6,6 +6,7 @@ import {
   attachmentKindForMimeType,
   type ChatAttachmentInput,
 } from '@kontourai/station-contracts/chat-attachment';
+import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import {
   type AttachmentStageUploadTransport,
@@ -169,7 +170,7 @@ export async function stageComposerAttachments(
         const capacityFull = code === 'stage_capacity';
         // `principal_unresolved` (#545) is not transient either: the Station
         // could not tell who is asking, and asking again does not change that.
-        const callerUnresolved = code === 'principal_unresolved';
+        const callerUnresolved = code === PRINCIPAL_UNRESOLVED_CODE;
         const permanent = capacityFull || callerUnresolved;
         observer?.({
           clientAttachmentId: input.clientAttachmentId,
