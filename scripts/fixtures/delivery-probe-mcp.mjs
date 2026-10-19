@@ -1,7 +1,6 @@
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { invokedDirectly } from '../lib/module-entry.mjs';
 
 function createProbeServer() {
   const server = new McpServer({
@@ -31,8 +30,5 @@ function createProbeServer() {
   return server;
 }
 
-if (
-  process.argv[1] &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url
-)
+if (invokedDirectly(import.meta.url))
   await createProbeServer().connect(new StdioServerTransport());
