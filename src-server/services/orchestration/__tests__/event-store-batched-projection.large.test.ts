@@ -1,17 +1,6 @@
-import { createHash } from 'node:crypto';
-import {
-  lstatSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-  writeSync,
-} from 'node:fs';
-import { Session } from 'node:inspector/promises';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { EventStore, type PersistedRuntimeEvent } from '../event-store.js';
 
@@ -122,172 +111,20 @@ describe('EventStore high-cardinality batched projection', () => {
   // archive#4466 review remediation: id/thread/pair lists are chunked at 500.
   // The complete seed, batched read, and comparisons retain the original 10s
   // product-law bound; isolation moves no setup into a wider hook allowance.
-  test('a population crossing the 500-id chunk boundary is folded completely and correctly', async () => {
-    const startedAt = performance.now();
-    let phase = 'profiler';
-    const trace = (
-      event: string,
-      details: Record<string, string | number> = {},
-    ): void => {
-      writeSync(
-        1,
-        `@@LARGE_PROJECTION_DIAGNOSTIC@@${JSON.stringify({
-          phase,
-          event,
-          elapsedMs: performance.now() - startedAt,
-          ...details,
-        })}@@END_LARGE_PROJECTION_DIAGNOSTIC@@\n`,
-      );
-    };
-    const profiler = new Session();
-    const hostTmp = process.env.STATION_VITEST_HOST_TMPDIR;
-    const declaredRunRoot = process.env.STATION_VITEST_RUN_ROOT;
-    if (
-      !hostTmp ||
-      !declaredRunRoot ||
-      !isAbsolute(hostTmp) ||
-      !isAbsolute(declaredRunRoot) ||
-      !process.getuid
-    ) {
-      throw new Error('Profile retention requires owned host and run roots.');
-    }
-    const ownerUid = process.getuid();
-    const hostRoot = realpathSync(hostTmp);
-    const runRoot = realpathSync(declaredRunRoot);
-    const containsPath = (parent: string, child: string): boolean => {
-      const suffix = relative(parent, child);
-      return (
-        suffix === '' ||
-        (!isAbsolute(suffix) &&
-          suffix !== '..' &&
-          !suffix.startsWith(`..${sep}`))
-      );
-    };
-    const hostIdentity = statSync(hostRoot);
-    const runIdentity = statSync(runRoot);
-    if (
-      !hostIdentity.isDirectory() ||
-      !runIdentity.isDirectory() ||
-      hostIdentity.uid !== ownerUid ||
-      runIdentity.uid !== ownerUid ||
-      containsPath(runRoot, hostRoot) ||
-      !containsPath(hostRoot, runRoot) ||
-      realpathSync(tmpdir()) !== runRoot ||
-      !containsPath(runRoot, realpathSync(dir))
-    ) {
-      throw new Error(
-        'Profile host/run root ownership or containment mismatch.',
-      );
-    }
-    const profileDirectory = mkdtempSync(
-      join(hostRoot, 'station-large-projection-profile-'),
+  test('a population crossing the 500-id chunk boundary is folded completely and correctly', () => {
+    const totalThreads = 1200;
+    const threadIds = Array.from(
+      { length: totalThreads },
+      (_, index) => `batch-equiv-chunk-${index}`,
     );
-    const directoryIdentity = lstatSync(profileDirectory);
-    if (
-      !directoryIdentity.isDirectory() ||
-      directoryIdentity.uid !== ownerUid ||
-      realpathSync(profileDirectory) !== profileDirectory ||
-      !containsPath(hostRoot, profileDirectory) ||
-      containsPath(runRoot, profileDirectory)
-    ) {
-      throw new Error(
-        'Profile directory is not an owned durable host artifact.',
-      );
-    }
-    const profilePath = join(profileDirectory, 'projection.cpuprofile');
-    const retainProfile = (profileBytes: Buffer): void => {
-      const currentDirectory = lstatSync(profileDirectory);
-      if (
-        !currentDirectory.isDirectory() ||
-        currentDirectory.uid !== ownerUid ||
-        currentDirectory.dev !== directoryIdentity.dev ||
-        currentDirectory.ino !== directoryIdentity.ino ||
-        realpathSync(profileDirectory) !== profileDirectory
-      ) {
-        throw new Error('Profile artifact directory identity changed.');
-      }
-      writeFileSync(profilePath, profileBytes, { flag: 'wx', mode: 0o600 });
-      const fileIdentity = lstatSync(profilePath);
-      const retainedBytes = readFileSync(profilePath);
-      if (
-        !fileIdentity.isFile() ||
-        fileIdentity.uid !== ownerUid ||
-        fileIdentity.nlink !== 1 ||
-        fileIdentity.size !== profileBytes.length ||
-        !retainedBytes.equals(profileBytes)
-      ) {
-        throw new Error('Profile artifact file ownership or bytes mismatch.');
-      }
-      trace('exit', {
-        profilePath,
-        profileBytes: retainedBytes.length,
-        profileSHA256: createHash('sha256').update(retainedBytes).digest('hex'),
-        fileDevice: fileIdentity.dev,
-        fileInode: fileIdentity.ino,
-        ownerUid: fileIdentity.uid,
-      });
-    };
-    let profiling = false;
-    try {
-      trace('entry', {
-        hostRoot,
-        runRoot,
-        profilePath,
-        ownerUid,
-        workerPid: process.pid,
-        directoryDevice: directoryIdentity.dev,
-        directoryInode: directoryIdentity.ino,
-      });
-      profiler.connect();
-      await profiler.post('Profiler.enable');
-      await profiler.post('Profiler.start');
-      profiling = true;
-      trace('exit');
-      phase = 'seed';
-      trace('entry');
-      const totalThreads = 1200;
-      const threadIds = Array.from(
-        { length: totalThreads },
-        (_, index) => `batch-equiv-chunk-${index}`,
-      );
-      threadIds.forEach((threadId, index) => {
-        seedProjectionThread(threadId);
-        if ((index + 1) % 200 === 0) {
-          trace('progress', { completedSessions: index + 1 });
-        }
-      });
-      trace('exit', { completedSessions: threadIds.length });
+    threadIds.forEach((threadId) => {
+      seedProjectionThread(threadId);
+    });
 
-      phase = 'batched-read';
-      trace('entry');
-      const batched = store.listSessionProjectionEventsForThreads(threadIds);
-      trace('exit', { resultSize: batched.size });
-      expect(batched.size).toBe(totalThreads);
-      phase = 'comparisons';
-      trace('entry');
-      for (const index of [0, 1, 250, 499, 500, 501, 750, 999, 1199]) {
-        trace('sample-entry', { index });
-        expectBatchedMatchesIndividual(threadIds[index]!);
-        trace('sample-exit', { index });
-      }
-      trace('exit');
-    } catch (error) {
-      trace('error', {
-        error: String(error).slice(0, 2000),
-        stack: error instanceof Error ? (error.stack ?? '').slice(0, 4000) : '',
-      });
-      throw error;
-    } finally {
-      phase = 'profile-retention';
-      trace('entry');
-      try {
-        if (profiling) {
-          const { profile } = await profiler.post('Profiler.stop');
-          retainProfile(Buffer.from(JSON.stringify(profile)));
-        }
-      } finally {
-        profiler.disconnect();
-      }
+    const batched = store.listSessionProjectionEventsForThreads(threadIds);
+    expect(batched.size).toBe(totalThreads);
+    for (const index of [0, 1, 250, 499, 500, 501, 750, 999, 1199]) {
+      expectBatchedMatchesIndividual(threadIds[index]!);
     }
   }, 10_000);
 });

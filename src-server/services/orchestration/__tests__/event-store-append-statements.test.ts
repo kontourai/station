@@ -81,9 +81,10 @@ function committedRows(path: string) {
   }
 }
 
-// Compilation is bounded per connection; values and every execution stay fresh.
+// One explicit prepare call per selected shape and connection; execution stays fresh.
+// SQLite automatic recompilation after DDL is not counted by the spy.
 // Projection equivalence remains owned by the unchanged high-cardinality case.
-test('three append statement shapes compile once per store while real bindings, schema changes, errors and reopen remain live', () => {
+test('three append shapes use one explicit prepare call per connection with fresh bindings, schema changes, errors and reopen', () => {
   const root = makeTempDir('event-store-append-statements-');
   const path = join(root, 'first.sqlite');
   const store = open(path);
@@ -225,7 +226,7 @@ test('three append statement shapes compile once per store while real bindings, 
   expect(reopenedRows).toHaveLength(8);
 });
 
-test('lazy append compilation stays after co-commit refusal and transaction-loss checks', () => {
+test('lazy append preparation stays after co-commit refusal and transaction-loss checks', () => {
   const store = open(
     join(makeTempDir('event-store-append-lazy-'), 'events.sqlite'),
   );
