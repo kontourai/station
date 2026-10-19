@@ -896,7 +896,7 @@ export function createConfigRoutes(
           {
             success: false,
             error:
-              'Only the operator or a device with access:manage can raise telemetry tiers. Internal agent callers cannot change telemetry choices.',
+              'Only the operator or a device with access:manage can raise telemetry tiers. Agents cannot change telemetry choices.',
           },
           403,
         );
