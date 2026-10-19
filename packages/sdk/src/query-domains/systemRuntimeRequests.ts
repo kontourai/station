@@ -683,7 +683,7 @@ export async function requestServerUpdateAction(
           ),
         };
   const response = await authenticatedFetch(url, init);
-  const result = (await response.json().catch(() => ({}))) as {
+  const result = (await response.json().catch(unlessDeadline(() => ({})))) as {
     success?: boolean;
     error?: string;
     serviceUpdate?: { requestId?: unknown };
