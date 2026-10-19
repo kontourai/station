@@ -141,8 +141,12 @@ product decisions.
   by every generation. Draining reports live voice calls, waits for HTTP
   connections as above and for voice calls to end, then runs the ordinary
   graceful shutdown. A supervised generation given SIGTERM drains the same
-  way within the supervisor's kill grace, without waiting for voice calls;
-  a second signal shuts it down at once. It does not arm the older parent
+  way within the supervisor's default kill grace (5 seconds), without
+  waiting for voice calls; a second signal shuts it down at once. A
+  supervisor started with another `--kill-grace-ms` does not tell its
+  generations; a shorter one kills mid-drain. If such a generation drains
+  and exits cleanly outside a handoff, the supervisor restarts it at once
+  without counting a failure; any other exit is a crash. It does not arm the older parent
   watchdog: the closed IPC channel is how it learns its supervisor is gone. Terminal and engine
   processes it starts do not inherit the supervisor's generation variables.
 
@@ -283,7 +287,11 @@ product decisions.
     supervisor (a copy skips the socket). The home's parent is already
     writable wherever Station runs, because the schema gate keeps its
     mutation lock there. A fresh home therefore stays empty until the first
-    generation's schema gate creates it.
+    generation's schema gate creates it. The default home
+    `~/.station/instances/<channel>` puts it at
+    `~/.station/instances/.<channel>.station-supervisor`; a home set to
+    `~/.station` itself puts it at `~/..station.station-supervisor`. A home
+    at a filesystem root is refused.
   - The socket is `<run>/supervisor-<instance>.sock`. When that path
     exceeds the platform's socket path limit (104 bytes on macOS), a hashed
     path in a private temporary directory is used instead. Clients derive the
@@ -548,6 +556,13 @@ verification, and fault injection.
   temp root, and the engine registry untouched, and that the supervisor
   keeps its socket, token, and lock through a home schema migration. These
   are the cases tested, not a guarantee for every request: one still running
-  at the drain bound is cut off. None covers Windows, a drain held open by a
-  live voice call, or an event stream on the real core server (its streams
-  need credentials; ending them is tested against a plain server).
+  at the drain bound is cut off. They also cover an operator's SIGTERM to the
+  serving core. None covers a drain held open by a live voice call or an
+  event stream on the real core server (its streams need credentials;
+  ending them is tested against a plain server). On a Windows host the
+  supervisor package's tests passed and one journey run saw a single reset
+  in a handoff; the working hypothesis is libuv's pre-posted `AcceptEx` on
+  Windows, where a connection completed into the draining generation's
+  pending accept is closed with its listener, while POSIX leaves it in the
+  shared backlog. A failed trial drains for at most the kill grace, so a
+  frozen trial delays the rollback by that long.
