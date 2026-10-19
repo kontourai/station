@@ -1063,6 +1063,9 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       app.route('/', createConfigRoutes(loader, mockLogger));
       try {
         for (const payload of [
+          ...(principal === 'agent'
+            ? [{ telemetryTier: { operator: 'off' } }]
+            : []),
           { telemetryTier: { operator: 'full' } },
           { telemetryEnabled: true },
         ]) {

@@ -46,6 +46,7 @@ import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import {
   LOG_LEVELS,
   type LogLevel,
@@ -747,7 +748,16 @@ export function createConfigRoutes(
         beginMutation();
         const updated = await configLoader.mutateAppConfig((current) => {
           if (writesTelemetryChoice) {
-            if (requestMayBeAnAgent(c.req.raw))
+            const principal = getRuntimeAuthenticatedRequestPrincipal(
+              c.req.raw,
+            );
+            const pairedDevice =
+              principal?.kind === 'credential' &&
+              principal.deviceKind === 'device' &&
+              principal.deviceId !== undefined;
+            // A paired device may withdraw even with an agent-origin marker.
+            // The rank check still refuses every raise from such a request.
+            if (requestMayBeAnAgent(c.req.raw) && !pairedDevice)
               throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             const next = mergeAppConfigUpdate(current, accepted);
             const rank = { off: 0, lite: 1, full: 2 } as const;
@@ -858,7 +868,7 @@ export function createConfigRoutes(
           {
             success: false,
             error:
-              'Only the operator or a device with access:manage can raise telemetry tiers. Agents cannot change telemetry choices.',
+              'Only the operator or a device with access:manage can raise telemetry tiers. Internal agent callers cannot change telemetry choices.',
           },
           403,
         );

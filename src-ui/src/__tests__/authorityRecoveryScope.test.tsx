@@ -437,3 +437,154 @@ describe('recovery request authority (real SDK guards)', () => {
     unmount();
   });
 });
+
+const offPublishers = {
+  kontour: { tier: 'off', reason: 'user', userChoice: 'off' },
+  operator: { tier: 'off', reason: 'user', userChoice: 'off' },
+} as const;
+
+async function renderPairedDisclosure(options: {
+  endpointConfigured: boolean;
+  writeError?: string;
+}) {
+  harness = createHarness();
+  installFetchDouble(harness);
+  const view = renderScopeTree(<UsageTelemetryDisclosure firstRun />);
+  const home = await addHome('paired-consent');
+  harness.plan.set('', async () => {
+    const last = harness.fetchLog.at(-1);
+    if (last?.url.endsWith('/disclosure/acknowledgements')) {
+      return new Response(
+        JSON.stringify({ error: { code: 'insufficient_scope' } }),
+        { status: 403 },
+      );
+    }
+    if (last?.url.endsWith('/config/app')) {
+      if (last.method === 'PUT' && options.writeError)
+        return new Response(
+          JSON.stringify({ success: false, error: options.writeError }),
+          { status: 403 },
+        );
+      return okResponse({
+        success: true,
+        data: { telemetryTier: { kontour: 'off', operator: 'off' } },
+      });
+    }
+    return okResponse(
+      disclosureEnvelope({
+        ...DISCLOSURE_BODY,
+        endpointConfigured: options.endpointConfigured,
+        telemetryEnabled: false,
+        publishers: offPublishers,
+      }),
+    );
+  });
+  await switchTo(home.id);
+  return { view, home };
+}
+
+describe('paired-device disclosure decisions', () => {
+  it('does not nag when both effective publishers are Off and no endpoint exists', async () => {
+    const { view } = await renderPairedDisclosure({
+      endpointConfigured: false,
+    });
+    await waitFor(() =>
+      expect(
+        harness.recoveryClient?.getQueryData(
+          recoveryDisclosureKey(
+            harness.scopes.at(-1)!.apiBase,
+            harness.scopes.at(-1)!.identityKey,
+          ),
+        ),
+      ).toMatchObject({ publishers: offPublishers }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(harness.fetchLog.filter((entry) => entry.method !== 'GET')).toEqual(
+      [],
+    );
+    view.unmount();
+  });
+
+  it('keeps Off and remembers a non-acknowledging decision when a standard device cannot acknowledge', async () => {
+    const { view, home } = await renderPairedDisclosure({
+      endpointConfigured: true,
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
+    );
+    await waitFor(() =>
+      expect(harness.fetchLog.some((entry) => entry.method === 'PUT')).toBe(
+        true,
+      ),
+    );
+    const write = harness.fetchLog.find((entry) => entry.method === 'PUT');
+    expect(JSON.parse(String(write?.body))).toEqual({
+      telemetryTier: { operator: 'off' },
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const scope = harness.scopes.at(-1)!;
+    expect(
+      harness.recoveryClient?.getQueryData(
+        recoveryDisclosureKey(scope.apiBase, scope.identityKey),
+      ),
+    ).toMatchObject({ acknowledged: false });
+    const persisted = localStorage.getItem(
+      'station.usage-telemetry-disclosure.dnt-decisions',
+    );
+    expect(persisted).toContain(home.url);
+    view.unmount();
+    resetUsageTelemetryDisclosureDismissal();
+    localStorage.setItem(
+      'station.usage-telemetry-disclosure.dnt-decisions',
+      persisted!,
+    );
+    const reload = renderScopeTree(
+      <>
+        <UsageTelemetryDisclosure />
+        <UsageTelemetryDisclosure firstRun />
+      </>,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('region', { name: 'Usage telemetry disclosure' }),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(harness.scopes.at(-1)?.apiBase).toBe(home.url));
+    const reloadedScope = harness.scopes.at(-1)!;
+    // A changed inventory must be offered again; a local decision is not a receipt.
+    await act(async () => {
+      harness.recoveryClient?.setQueryData(
+        recoveryDisclosureKey(reloadedScope.apiBase, reloadedScope.identityKey),
+        {
+          ...DISCLOSURE_BODY,
+          inventoryRevision: 'next-revision',
+          publishers: offPublishers,
+          endpointConfigured: true,
+        },
+      );
+    });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    reload.unmount();
+  });
+
+  it('shows the server refusal when the recovery setting cannot be saved', async () => {
+    const reason =
+      'Only the operator or a device with access:manage can raise telemetry tiers.';
+    const { view } = await renderPairedDisclosure({
+      endpointConfigured: true,
+      writeError: reason,
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain(reason);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(
+      harness.fetchLog.filter((entry) =>
+        entry.url.endsWith('/acknowledgements'),
+      ),
+    ).toEqual([]);
+    view.unmount();
+  });
+});
