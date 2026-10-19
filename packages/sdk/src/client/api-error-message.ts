@@ -83,7 +83,10 @@ export class StationHttpError extends Error {
     this.kind =
       options?.kind ??
       (options?.code === undefined ||
-      !Object.hasOwn(PROVIDER_FAILURE_KINDS, options.code)
+      !Object.prototype.hasOwnProperty.call(
+        PROVIDER_FAILURE_KINDS,
+        options.code,
+      )
         ? undefined
         : (
             PROVIDER_FAILURE_KINDS as Readonly<
@@ -282,7 +285,7 @@ export function readEnvelopeFailure(
   const raw = record(body);
   if (
     typeof raw?.kind === 'string' &&
-    Object.hasOwn(PROVIDER_FAILURE_RETRYABLE, raw.kind)
+    Object.prototype.hasOwnProperty.call(PROVIDER_FAILURE_RETRYABLE, raw.kind)
   ) {
     failure.kind = raw.kind as ProviderFailureKind;
   }
