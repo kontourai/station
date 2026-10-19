@@ -143,6 +143,9 @@ struct Persisted {
     /// until the user picks a policy here.
     unknown_policy: Option<serde_json::Value>,
     available: Option<PersistedAvailable>,
+    /// The whole file as read, so fields this build does not own (written
+    /// by a newer build) survive a write.
+    document: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Persisted {
@@ -168,7 +171,12 @@ impl Persisted {
             }
         };
         let mut persisted = Self::default();
-        if let Some(policy) = value.get("policy") {
+        let Some(document) = value.as_object() else {
+            log::warn!("desktop update settings are not an object, using defaults");
+            return persisted;
+        };
+        persisted.document = document.clone();
+        if let Some(policy) = value.get("policy").filter(|value| !value.is_null()) {
             match serde_json::from_value::<DownloadPolicy>(policy.clone()) {
                 Ok(policy) => persisted.policy = policy,
                 Err(_) => {
@@ -189,14 +197,26 @@ impl Persisted {
     }
 
     fn save(&self, dir: &Path) -> Result<(), String> {
-        let body = serde_json::to_vec_pretty(&serde_json::json!({
-            "policy": self
-                .unknown_policy
+        let mut document = self.document.clone();
+        document.insert(
+            "policy".into(),
+            self.unknown_policy
                 .clone()
                 .unwrap_or_else(|| serde_json::to_value(self.policy).unwrap_or_default()),
-            "available": self.available,
-        }))
-        .map_err(|error| format!("encode desktop update settings: {error}"))?;
+        );
+        match &self.available {
+            Some(available) => {
+                document.insert(
+                    "available".into(),
+                    serde_json::to_value(available).unwrap_or_default(),
+                );
+            }
+            None => {
+                document.remove("available");
+            }
+        }
+        let body = serde_json::to_vec_pretty(&document)
+            .map_err(|error| format!("encode desktop update settings: {error}"))?;
         write_atomically(dir, STORE_FILE, &body, "desktop update settings")
     }
 }
@@ -235,6 +255,8 @@ pub struct PackageRecord {
 }
 
 const PACKAGE_FILE: &str = "package.bin";
+/// Far above any Station desktop package (about 150–250 MB today).
+pub const MAX_PACKAGE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const PACKAGE_RECORD: &str = "package.json";
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -288,17 +310,41 @@ impl PackageStore {
                 record.version
             ));
         }
-        let bytes = std::fs::read(self.dir.join(PACKAGE_FILE))
-            .map_err(|error| format!("read the downloaded update: {error}"))?;
+        // Size first, so a damaged record or file cannot make this read an
+        // unbounded amount into memory.
+        let path = self.dir.join(PACKAGE_FILE);
+        let size = std::fs::metadata(&path)
+            .map_err(|error| format!("read the downloaded update: {error}"))?
+            .len();
+        if record.length > MAX_PACKAGE_BYTES || size != record.length {
+            return Err("the downloaded update is damaged; download it again".to_string());
+        }
+        let bytes =
+            std::fs::read(&path).map_err(|error| format!("read the downloaded update: {error}"))?;
         if bytes.len() as u64 != record.length || sha256_hex(&bytes) != record.sha256 {
             return Err("the downloaded update is damaged; download it again".to_string());
         }
         Ok(bytes)
     }
 
+    /// Removes the package, its record and any temporary file a crash left
+    /// mid-write.
     pub fn clear(&self) {
-        for name in [PACKAGE_RECORD, PACKAGE_FILE] {
-            match std::fs::remove_file(self.dir.join(name)) {
+        let debris = std::fs::read_dir(&self.dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|entry| entry.file_name().to_string_lossy().to_string())
+                    .filter(|name| name.ends_with(".tmp"))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for name in [PACKAGE_RECORD, PACKAGE_FILE]
+            .into_iter()
+            .map(str::to_string)
+            .chain(debris)
+        {
+            match std::fs::remove_file(self.dir.join(&name)) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => log::warn!("could not remove a cached desktop update: {error}"),
@@ -593,6 +639,20 @@ impl<H: Clone> Controller<H> {
         true
     }
 
+    /// A restored package the release feed no longer offers (withdrawn, or
+    /// superseded): fold the feed's answer in as an ordinary check result.
+    /// Only from `ready`; a request to install that raced ahead wins.
+    pub fn withdraw_ready(&mut self, offer: Option<(Offer, H)>, now: u64) -> bool {
+        if !matches!(self.phase, UpdatePhase::Ready { .. }) {
+            return false;
+        }
+        self.handle = None;
+        self.resume_phase = Some(UpdatePhase::Idle);
+        self.phase = UpdatePhase::Checking;
+        self.finish_check(Ok(offer), now);
+        true
+    }
+
     /// Starts installing the downloaded update; returns the handle and the
     /// version whose cached package must be installed.
     pub fn begin_install(&mut self) -> Option<(H, String)> {
@@ -802,6 +862,40 @@ impl<H: UpdateHandle> DesktopUpdater<H> {
         installed
     }
 
+    /// After a restore: ask the feed whether the cached version is still the
+    /// one it offers. Ready is otherwise never re-checked, so a withdrawn
+    /// release would wait forever. Without an answer (offline, a failing
+    /// feed) the package is kept. A different offer, newer or older,
+    /// replaces it: the cached package is deleted and the offer becomes an
+    /// ordinary `available` (or `up-to-date` when nothing is offered).
+    pub async fn revalidate_restored<C, CF>(&self, check: C)
+    where
+        C: FnOnce() -> CF,
+        CF: Future<Output = Result<Option<(Offer, H)>, String>>,
+    {
+        let UpdatePhase::Ready { version } = self.snapshot().phase else {
+            return;
+        };
+        match check().await {
+            Err(error) => {
+                log::info!("kept cached desktop update {version}; the feed did not answer: {error}")
+            }
+            Ok(Some((offer, _))) if offer.version == version => {}
+            Ok(offer) => {
+                let now = self.now();
+                let packages = self.packages.clone();
+                self.update(|controller| {
+                    let withdrawn = controller.withdraw_ready(offer, now);
+                    if withdrawn {
+                        packages.clear();
+                    }
+                    withdrawn
+                });
+                log::info!("dropped cached desktop update {version}: the feed no longer offers it");
+            }
+        }
+    }
+
     /// At startup: adopt a package an earlier run downloaded, if `restore`
     /// rebuilds a handle for it (the release is still newer than this app)
     /// and the bytes pass verification. Anything else is deleted. Returns
@@ -889,19 +983,32 @@ where
     updater.snapshot()
 }
 
-/// Startup for a managed updater. An unconfigured build restores nothing and
-/// starts no periodic check.
-pub fn start<H, R, P>(updater: &DesktopUpdater<H>, enabled: bool, restore: R, start_periodic: P)
+/// Startup for a managed updater: an unconfigured build starts no periodic
+/// check (and so restores nothing).
+pub fn start<H, P>(updater: &DesktopUpdater<H>, enabled: bool, start_periodic: P)
+where
+    H: UpdateHandle,
+    P: FnOnce(DesktopUpdater<H>),
+{
+    if enabled {
+        start_periodic(updater.clone());
+    }
+}
+
+/// The first thing the periodic thread does, off the setup thread: restore
+/// a cached package (reading and verifying it can take seconds for a large
+/// package; the state reads `idle` meanwhile), then confirm the feed still
+/// offers it.
+pub async fn restore_on_startup<H, R, C, CF>(updater: &DesktopUpdater<H>, restore: R, check: C)
 where
     H: UpdateHandle,
     R: FnOnce(&serde_json::Value, &[u8]) -> Result<Option<H>, String>,
-    P: FnOnce(DesktopUpdater<H>),
+    C: FnOnce() -> CF,
+    CF: Future<Output = Result<Option<(Offer, H)>, String>>,
 {
-    if !enabled {
-        return;
+    if updater.restore_cached(restore) {
+        updater.revalidate_restored(check).await;
     }
-    updater.restore_cached(restore);
-    start_periodic(updater.clone());
 }
 
 pub use tauri_glue::*;
@@ -978,12 +1085,9 @@ mod tauri_glue {
         );
         app.manage(updater.clone());
         let periodic_app = app.clone();
-        start(
-            &updater,
-            enabled,
-            |manifest, bytes| native_restore(app, manifest, bytes),
-            move |updater| start_periodic_check(periodic_app, updater),
-        );
+        start(&updater, enabled, move |updater| {
+            start_periodic_check(periodic_app, updater)
+        });
     }
 
     /// The in-process re-check (owner preference: no OS job, cron or
@@ -994,6 +1098,11 @@ mod tauri_glue {
             .name("station-desktop-update".into())
             .spawn(move || {
                 let sleep = |step: Duration| std::thread::sleep(step);
+                tauri::async_runtime::block_on(restore_on_startup(
+                    &updater,
+                    |manifest, bytes| native_restore(&app, manifest, bytes),
+                    || native_check(&app, TIMEOUTS),
+                ));
                 let mut due = now_ms() + FIRST_CHECK_DELAY.as_millis() as u64;
                 loop {
                     wait_until(due, &now_ms, &sleep);
@@ -1746,7 +1855,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_install_returns_to_ready_with_the_bytes_for_a_retry() {
+    fn a_failed_install_returns_to_ready_with_the_package_kept_for_a_retry() {
         let harness = Harness::new(true, None);
         harness.check(Ok(offer("0.1.12")));
         harness.download(Ok(vec![7, 7, 7]));
@@ -1756,6 +1865,13 @@ mod tests {
             .install(|_, _| Err("failed to move the new app into place".into())));
         assert_eq!(json(&harness.updater.snapshot()), fixture("installFailed"));
         assert_eq!(json(&harness.emitted()[before]), fixture("installing"));
+        // The package stays on disk for the retry.
+        assert_eq!(
+            PackageStore::new(harness.cache.clone())
+                .load("0.1.12")
+                .unwrap(),
+            vec![7, 7, 7]
+        );
 
         let mut installed = Vec::new();
         assert!(harness.updater.install(|handle, bytes| {
@@ -1944,40 +2060,127 @@ mod tests {
     }
 
     #[test]
-    fn an_unconfigured_start_restores_nothing_and_starts_no_periodic_check() {
+    fn an_unconfigured_start_starts_no_periodic_check() {
         let harness = Harness::new(false, None);
-        let calls = Mutex::new(Vec::new());
-        start(
-            &harness.updater,
-            false,
-            |_, _| {
-                calls.lock().unwrap().push("restore");
-                Ok(None)
-            },
-            |_| calls.lock().unwrap().push("periodic"),
-        );
-        assert!(calls.lock().unwrap().is_empty());
+        let calls = AtomicUsize::new(0);
+        start(&harness.updater, false, |_| {
+            calls.fetch_add(1, Ordering::SeqCst);
+        });
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
 
+        // Configured: the periodic thread starts, and the cached package is
+        // not touched on the caller's (setup) thread.
         let first = Harness::new(true, None);
         ready_with_package(&first, vec![3]);
         let configured = Harness::with_cache(true, None, first.cache.clone());
-        start(
-            &configured.updater,
-            true,
-            |_, _| {
-                calls.lock().unwrap().push("restore");
-                Ok(Some(FakeHandle("0.1.12")))
-            },
-            |updater| {
-                // The periodic check starts after the restore.
-                assert!(matches!(
-                    updater.snapshot().phase,
-                    UpdatePhase::Ready { .. }
-                ));
-                calls.lock().unwrap().push("periodic");
-            },
+        start(&configured.updater, true, |updater| {
+            assert_eq!(updater.snapshot().phase, UpdatePhase::Idle);
+            calls.fetch_add(1, Ordering::SeqCst);
+        });
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(configured.updater.snapshot().phase, UpdatePhase::Idle);
+    }
+
+    fn restored(
+        feed: Result<Option<(Offer, FakeHandle)>, String>,
+    ) -> (Harness, DesktopUpdateState) {
+        let first = Harness::new(true, None);
+        ready_with_package(&first, vec![6, 6]);
+        let next = Harness::with_cache(true, None, first.cache.clone());
+        tauri::async_runtime::block_on(restore_on_startup(
+            &next.updater,
+            |_, _| Ok(Some(FakeHandle("0.1.12"))),
+            || async move { feed },
+        ));
+        let state = next.updater.snapshot();
+        // Keep the first harness's temp root alive with the second.
+        let mut next = next;
+        next._cache_root = first._cache_root;
+        (next, state)
+    }
+
+    #[test]
+    fn a_restored_package_the_feed_still_offers_stays_ready() {
+        let (harness, state) = restored(Ok(offer("0.1.12")));
+        assert_eq!(
+            state.phase,
+            UpdatePhase::Ready {
+                version: "0.1.12".into()
+            }
         );
-        assert_eq!(*calls.lock().unwrap(), vec!["restore", "periodic"]);
+        assert!(PackageStore::new(harness.cache.clone()).record().is_some());
+    }
+
+    #[test]
+    fn a_restored_package_is_kept_when_the_feed_does_not_answer() {
+        let (harness, state) = restored(Err("offline".into()));
+        assert_eq!(
+            state.phase,
+            UpdatePhase::Ready {
+                version: "0.1.12".into()
+            }
+        );
+        assert!(PackageStore::new(harness.cache.clone()).record().is_some());
+    }
+
+    #[test]
+    fn a_withdrawn_or_superseded_restored_package_is_dropped() {
+        let (harness, state) = restored(Ok(None));
+        assert!(matches!(state.phase, UpdatePhase::UpToDate { .. }));
+        assert!(PackageStore::new(harness.cache.clone()).record().is_none());
+
+        let (harness, state) = restored(Ok(offer("0.1.13")));
+        assert!(matches!(
+            state.phase,
+            UpdatePhase::Available { ref version, .. } if version == "0.1.13"
+        ));
+        assert!(PackageStore::new(harness.cache.clone()).record().is_none());
+    }
+
+    #[test]
+    fn an_install_that_started_first_is_not_withdrawn() {
+        let mut controller: Controller<FakeHandle> = Controller::new(true, VERSION.into(), None);
+        assert!(controller.restore_ready(FakeHandle("0.1.12"), "0.1.12".into()));
+        assert!(controller.begin_install().is_some());
+        assert!(!controller.withdraw_ready(None, T0));
+        assert_eq!(
+            controller.state().phase,
+            UpdatePhase::Installing {
+                version: "0.1.12".into()
+            }
+        );
+    }
+
+    #[test]
+    fn clearing_the_cache_also_removes_interrupted_writes() {
+        let harness = Harness::new(true, None);
+        ready_with_package(&harness, vec![1]);
+        std::fs::write(harness.cache.join("package.bin.4242.tmp"), [0; 64]).unwrap();
+        PackageStore::new(harness.cache.clone()).clear();
+        assert_eq!(std::fs::read_dir(&harness.cache).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_package_whose_size_disagrees_with_its_record_is_not_read() {
+        let harness = Harness::new(true, None);
+        ready_with_package(&harness, vec![1, 2, 3]);
+        let store = PackageStore::new(harness.cache.clone());
+        let mut record = store.record().unwrap();
+        record.length = MAX_PACKAGE_BYTES + 1;
+        std::fs::write(
+            harness.cache.join(PACKAGE_RECORD),
+            serde_json::to_vec(&record).unwrap(),
+        )
+        .unwrap();
+        assert!(store.load("0.1.12").unwrap_err().contains("damaged"));
+        std::fs::write(harness.cache.join(PACKAGE_FILE), [1, 2, 3, 4]).unwrap();
+        record.length = 3;
+        std::fs::write(
+            harness.cache.join(PACKAGE_RECORD),
+            serde_json::to_vec(&record).unwrap(),
+        )
+        .unwrap();
+        assert!(store.load("0.1.12").unwrap_err().contains("damaged"));
     }
 
     #[test]
@@ -2078,6 +2281,23 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(dir.path().join(STORE_FILE)).unwrap())
                 .unwrap();
         assert_eq!(raw["policy"], "never");
+
+        // Fields this build does not own survive a write, and a null policy
+        // reads as absent.
+        std::fs::write(
+            dir.path().join(STORE_FILE),
+            r#"{"policy":null,"skippedVersion":"0.1.12","available":null}"#,
+        )
+        .unwrap();
+        let harness = Harness::new(true, Some(dir.path().to_path_buf()));
+        assert_eq!(harness.updater.snapshot().policy, DownloadPolicy::After24h);
+        harness.check(Ok(offer("0.1.13")));
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join(STORE_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(raw["skippedVersion"], "0.1.12");
+        assert_eq!(raw["policy"], "after-24h");
+        assert_eq!(raw["available"]["version"], "0.1.13");
 
         // An unreadable clock keeps a known policy.
         std::fs::write(
