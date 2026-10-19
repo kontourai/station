@@ -3147,7 +3147,10 @@ are also exported from `@kontourai/station-sdk/client`.
   authority (401, 403 or the route's non-disclosing 404) tombstones the
   scope's cached projection and pages. A 503, a network failure or a
   projection the contract refuses is a query `error` beside whatever was
-  already loaded, and is not retried automatically.
+  already loaded, and is not retried automatically. This narrower rule
+  differs on purpose from `useAnswerBasisQuery`, which still revokes on any
+  refusal: the inventory route reserves 503 for a read it could not
+  perform, so a 503 is not evidence of lost authority.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.

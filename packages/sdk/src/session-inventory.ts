@@ -95,6 +95,12 @@ export function clearSessionInventoryCache(
  * the authentication layer. A 503, a network failure or a projection the
  * contract refuses (status 0) is an ordinary failed read: what was already
  * authorized stays, and the surface reports the failure.
+ *
+ * This deliberately differs from `useAnswerBasisQuery`, which revokes on any
+ * `AnswerBasisRequestError`. The inventory route keeps 503 for a read it could
+ * not perform, so treating 503 as revocation would erase authorized content
+ * over an outage, and (before tombstoning) made the read loop. Aligning
+ * answer-basis with this rule is a separate change.
  */
 function lostAuthority(error: unknown): boolean {
   return (
