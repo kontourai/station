@@ -511,13 +511,21 @@ describe('scoped documentation freshness (#2923)', () => {
       expect(supplied.appendOnly).toBe(direct.appendOnly);
       const owners = [
         ...state.ledger.records.map((entry) => ({ ...entry, kind: 'review' })),
-        ...media.captures.map((entry) => ({ ...entry, kind: 'capture' })),
+        ...media.captures.map(
+          (entry: { path: string; sources: { path: string }[] }) => ({
+            ...entry,
+            kind: 'capture',
+          }),
+        ),
       ];
       for (const owner of owners) {
         const entry = {
           kind: owner.kind,
           path: owner.path,
-          inputs: [owner.path, ...owner.sources.map((source) => source.path)],
+          inputs: [
+            owner.path,
+            ...owner.sources.map((source: { path: string }) => source.path),
+          ],
         };
         expect(freshnessBlocks(supplied, entry)).toBe(
           freshnessBlocks(direct, entry),
@@ -554,7 +562,7 @@ describe('scoped documentation freshness (#2923)', () => {
             ]),
           );
           if (scenario === 'outside-range' || scenario === 'rewritten')
-            for (const problem of supplied.sourceDrops)
+            for (const problem of supplied.sourceDrops ?? [])
               expect(problem.problem).toContain('note revision outside');
         }
         expect(() =>
