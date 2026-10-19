@@ -36,6 +36,7 @@ import {
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { ChatSession } from '../types';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 
@@ -406,8 +407,36 @@ function DockedChat() {
 
 const realRect = HTMLElement.prototype.getBoundingClientRect;
 
+/** The conversation surface's ResizeObservers, fired by `resizeSurface`. */
+const surfaceObservers: Array<() => void> = [];
+class SurfaceResizeObserver {
+  constructor(private readonly callback: () => void) {}
+  observe() {
+    surfaceObservers.push(this.callback);
+  }
+  disconnect() {
+    const index = surfaceObservers.indexOf(this.callback);
+    if (index >= 0) surfaceObservers.splice(index, 1);
+  }
+  unobserve() {}
+}
+
+/** Resize the conversation surface the way a dock resize does. */
+async function resizeSurface(width: number) {
+  fixture.surfaceWidth = width;
+  await act(async () => {
+    for (const callback of [...surfaceObservers]) callback();
+  });
+}
+
 beforeEach(() => {
   window.localStorage.clear();
+  // The dock's project binding is a device setting held in a module store
+  // that outlives a test: a test that opens a project binds the dock, and the
+  // next would no longer see this chat's project as a mismatch.
+  deviceSettingsStore.reset('chatDockProjectSlug');
+  surfaceObservers.length = 0;
+  vi.stubGlobal('ResizeObserver', SurfaceResizeObserver);
   window.history.replaceState({}, '', '/?dock=open');
   navigationStore.navigate('/', { dock: 'open', maximize: null });
   fixture.session = SESSION;
@@ -526,6 +555,28 @@ describe('session context card visibility follows the dock body width', () => {
     },
   );
 
+  test('a card that unmounts stops counting as present, so a regrow with its chunk held back keeps the header facts', async () => {
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(branchBadge()).toBeNull();
+    // Shrink: the card folds away (and unmounts).
+    await resizeSurface(600);
+    await waitFor(() => expect(card()).toBeNull());
+    expect(branchBadge()?.textContent).toContain('feature/parser');
+    // Grow again while the card's chunk is held back: the card is wanted but
+    // not on screen, so the header must still carry the facts.
+    fixture.cardChunk = 'loading';
+    await resizeSurface(1200);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(chip()).toBeNull();
+    expect(card()).toBeNull();
+    expect(branchBadge()?.textContent).toContain('feature/parser');
+    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
+  });
+
   test('the threshold is the transcript floor plus the card column', async () => {
     fixture.surfaceWidth = 920;
     renderDock();
@@ -616,6 +667,8 @@ describe('the chip opens the rows as a sheet', () => {
     );
     expect(chip()!.getAttribute('aria-expanded')).toBe('false');
     await waitFor(() => expect(document.activeElement).toBe(chip()));
+    // Folded, so the header keeps the chat's project lead-in.
+    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
   });
 
   test('a row action closes the sheet before opening its surface', async () => {
@@ -770,6 +823,8 @@ describe('linked pull requests', () => {
     const row = await screen.findByRole('button', {
       name: '1 linked pull request — open chat details',
     });
+    // Shown, so the header's lead-in stands down.
+    expect(mismatchLabel()).toBeNull();
     expect(row.textContent).toContain('#42');
     expect(row.textContent).toContain('Parser fix');
     showSurfaceStub.mockClear();
