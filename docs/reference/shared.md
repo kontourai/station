@@ -781,7 +781,10 @@ legacy top-level fields. Read it with `readNotificationEnvelope` from
 `@kontourai/station-shared/notification-envelope`. Missing, unknown-version or
 malformed envelopes return `undefined`. Valid v1 reads ignore unknown keys;
 an unknown source or audience kind forces silent presentation, and an unknown
-target kind drops that target.
+target kind drops that target. A `path` target must be a same-origin Station
+path (`isRelativeStationPath`) whose normalized form also stays on Station:
+dot segments that collapse to `//host` (`/..//host`, `/%2e%2e//host`) make the
+envelope malformed.
 
 Trusted in-process producers use `parseNotificationEnvelopeForWrite`: exact
 keys, known kinds, no unresolved `principal` audience, and no producer-authored
