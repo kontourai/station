@@ -1,0 +1,23 @@
+{
+  "revision": "1e719a9223029fdb2c417213d02e88c1786ee90c",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Fix-round 7 delta: read_monitoring_events gains an optional producer filter passed to /monitoring/events. This document makes no claim about that tool's parameters; nothing here changes.","inputs":["docs/guides/agents.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix-round 7 delta: read_monitoring_events gains an optional producer filter passed to /monitoring/events. This document makes no claim about that tool's parameters; nothing here changes.","inputs":["docs/guides/connections.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency delta: api.md's Telemetry ingest section now describes the producer reader rule and producerActivity. Nothing here depends on it.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Fix-round 7: Insights API paragraph now says producer rows are outside the aggregates, summarized in producerActivity, scoped by producer=<name>. Checked against insights.ts and the composition test.","inputs":["docs/guides/monitoring.md","src-server/monitoring/otlp-receiver.ts","src-server/routes/operations/insights.ts","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Fix-round 7 delta: read_monitoring_events gains an optional producer filter passed to /monitoring/events. This document makes no claim about that tool's parameters; nothing here changes.","inputs":["docs/guides/self-configuring-agent.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix-round 7: replaced the namespacing-only account with the reader rule: producer rows never count toward Insights' Station figures (reported in producerActivity; producer=<name> scopes the response) and never match agent/engine/tool/conversation on /monitoring/events or read_monitoring_events unless producer=<name> is given; slug-less rows get producer:<name>:(unnamed); the receiver records no tool outcome for producer rows. Checked against insights.ts, monitoring.ts, otlp-receiver.ts and the composition test.","inputs":["docs/reference/api.md","src-server/monitoring/otlp-receiver.ts","src-server/routes/operations/insights.ts","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Fix-round 7: monitoring.ts adds a producer filter and stops Station filters from matching producer rows; station monitoring events' documented flags and behavior are unchanged.","inputs":["docs/reference/cli.md","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Fix-round 7 delta: read_monitoring_events gains an optional producer filter passed to /monitoring/events. This document makes no claim about that tool's parameters; nothing here changes.","inputs":["docs/reference/config.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Fix-round 7 delta: read_monitoring_events gains an optional producer filter passed to /monitoring/events. This document makes no claim about that tool's parameters; nothing here changes.","inputs":["examples/self-configuring-agent/README.md","src-server/tools/station-control-operations-tools.ts"]}
+  ]
+}
