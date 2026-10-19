@@ -19,7 +19,7 @@ export function DeveloperFeatures() {
   if (!settings.developerToolsEnabled) return null;
   return (
     <div className="settings__experimental-features">
-      <h3>Experimental features</h3>
+      <h3>Developer previews</h3>
       {FEATURES.map(([key, id]) => {
         const definition = DEVICE_SETTINGS_REGISTRY.find(
           (entry) => entry.key === key,

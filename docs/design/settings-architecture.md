@@ -66,10 +66,13 @@ Scope indicators use short **Account**, **This device**, and **Station** pills.
 Account and Station pills use quiet theme tints; the written label carries the
 meaning. Account means this person’s preferences on the connected Station, not
 cross-Station cloud sync. Scope details are available on hover. Reset actions
-sit with their controls, separate from the scope label. Font size uses its own
+sit with value controls, separate from the scope label; boolean preferences use
+only their on/off switch. Font size uses its own
 single reset in both account and device modes. The mixed personal/device
 group no longer repeats a paragraph explaining storage. Experimental switches
-have their own **Experimental features** heading and spacing.
+have their own **Developer previews** heading and spacing within Developer tools.
+On phones, toggle labels and scope pills have the full row width; the description
+and compact switch sit beneath them.
 
 ## Experimental project tools
 

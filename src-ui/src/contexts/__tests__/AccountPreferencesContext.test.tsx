@@ -17,6 +17,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { Toggle } from '../../components/Toggle';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   readModelPickerPreferences,
@@ -71,6 +72,16 @@ function Probe() {
       <SettingsPageRow
         {...settingsRow('smooth-answer-reveal')}
         control={null}
+      />
+      <SettingsPageRow
+        {...settingsRow('diff-wrap')}
+        control={
+          <Toggle
+            label="Diff line wrap"
+            checked={settings.diffWrap}
+            onChange={(enabled) => setDeviceSetting('diffWrap', enabled)}
+          />
+        }
       />
     </>
   );
@@ -283,18 +294,24 @@ test('unknown authority holds an inherited choice; a different verified account 
   view.unmount();
 });
 
-test('personal display overrides can return to built-in defaults without changing the device record', async () => {
+test('value controls can reset while boolean preferences use their toggle without changing the device record', async () => {
   deviceSettingsStore.merge({ theme: 'light' });
   fixture.get.mockResolvedValueOnce({
     schemaVersion: 1,
-    values: { theme: 'light', smoothReveal: true, bufferedDelivery: true },
+    values: {
+      theme: 'light',
+      smoothReveal: true,
+      bufferedDelivery: true,
+      diffWrap: true,
+    },
   });
   fixture.patch
     .mockResolvedValueOnce({
       schemaVersion: 1,
-      values: { smoothReveal: true, bufferedDelivery: true },
+      values: { smoothReveal: true, bufferedDelivery: true, diffWrap: true },
     })
-    .mockResolvedValueOnce({ schemaVersion: 1, values: {} });
+    .mockResolvedValueOnce({ schemaVersion: 1, values: { diffWrap: true } })
+    .mockResolvedValueOnce({ schemaVersion: 1, values: { diffWrap: false } });
   const view = render(tree(client()));
   fireEvent.click(
     await screen.findByRole('button', { name: 'Reset Theme to default' }),
@@ -302,6 +319,9 @@ test('personal display overrides can return to built-in defaults without changin
   await waitFor(() =>
     expect(screen.getByLabelText('Current theme').textContent).toBe('dark'),
   );
+  expect(
+    screen.queryByRole('button', { name: 'Reset Diff line wrap to default' }),
+  ).toBeNull();
   expect(fixture.patch.mock.calls[0]?.[1]).toEqual({ theme: null });
   fireEvent.click(
     screen.getByRole('button', { name: 'Reset Answer delivery to default' }),
@@ -318,6 +338,15 @@ test('personal display overrides can return to built-in defaults without changin
       }),
     ).toBeNull(),
   );
+  fireEvent.click(screen.getByRole('switch', { name: 'Diff line wrap' }));
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('switch', { name: 'Diff line wrap' })
+        .getAttribute('aria-checked'),
+    ).toBe('false'),
+  );
+  expect(fixture.patch.mock.calls[2]?.[1]).toEqual({ diffWrap: false });
   view.unmount();
   expect(deviceSettingsStore.get('theme')).toBe('light');
 });

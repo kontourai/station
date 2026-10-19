@@ -1,4 +1,5 @@
 import { ACCOUNT_PREFERENCE_KEYS } from '@kontourai/station-contracts/account-preferences';
+import { DEVICE_SETTINGS_REGISTRY } from '@kontourai/station-contracts/device-settings';
 import type { ComponentProps } from 'react';
 import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
@@ -22,6 +23,8 @@ export function SettingsPageRow({
   const isAnswerDelivery = entry?.id === 'smooth-answer-reveal';
   const canReset =
     !resetHandledByControl &&
+    DEVICE_SETTINGS_REGISTRY.find((definition) => definition.key === key)
+      ?.descriptor.kind !== 'boolean' &&
     (hasAccountValue ||
       (isAnswerDelivery &&
         (account.data?.values.smoothReveal !== undefined ||
