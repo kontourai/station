@@ -4152,7 +4152,9 @@ update functions:
   read `GET /api/system/core-update/state`.
 - `applyServerUpdateStateEvent(queryClient, apiBase, payload)` writes a
   `server-update:changed` payload into that cached state, under the key
-  `serverUpdateStateQueryKey(apiBase)`.
+  `serverUpdateStateQueryKey(apiBase)`. A payload whose failed-download
+  `reason` the broadcast withheld (`withheld`) is not stored; the state is
+  read again from its route instead.
 - `requestServerUpdateRunningTurns` and `useServerUpdateRunningTurnsQuery`
   read the agent turns a restart would interrupt.
 - `requestServerUpdateAction` and `useServerUpdateActionMutation` send a
