@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import ts from 'typescript-api';
 
@@ -16,8 +16,11 @@ export function providerShapeImplementations(root: string): string[] {
       else if (
         /\.(?:[cm]?ts|tsx)$/.test(entry.name) &&
         !/\.(?:test|spec|d)\.(?:[cm]?ts|tsx)$/.test(entry.name)
-      )
-        files.push(path);
+      ) {
+        const text = readFileSync(path, 'utf8');
+        if (text.includes('sendTurn') || text.includes('ProviderAdapterShape'))
+          files.push(path);
+      }
     }
   };
   walk(serverRoot);
@@ -30,11 +33,13 @@ export function providerShapeImplementations(root: string): string[] {
       ts.flattenDiagnosticMessageText(config.error.messageText, '\n'),
     );
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
-  const program = ts.createProgram(files, { ...parsed.options, noEmit: true });
+  const shapePath = join(providerRoot, 'adapter-shape.ts');
+  const program = ts.createProgram([...new Set([...files, shapePath])], {
+    ...parsed.options,
+    noEmit: true,
+  });
   const checker = program.getTypeChecker();
-  const shapeFile = program.getSourceFile(
-    join(providerRoot, 'adapter-shape.ts'),
-  );
+  const shapeFile = program.getSourceFile(shapePath);
   const declaration = shapeFile?.statements.find(
     (statement): statement is ts.InterfaceDeclaration =>
       ts.isInterfaceDeclaration(statement) &&
@@ -80,14 +85,20 @@ export function providerShapeImplementations(root: string): string[] {
           node.heritageClauses?.some((clause) =>
             clause.types.some((type) => shape(checker.getTypeAtLocation(type))),
           );
-        if (!abstract && (shape(type) || shape(contextual) || heritage)) {
-          let owner: ts.Node = node;
-          while (
-            ts.isParenthesizedExpression(owner.parent) ||
-            ts.isSatisfiesExpression(owner.parent) ||
-            ts.isAsExpression(owner.parent)
-          )
-            owner = owner.parent;
+        let owner: ts.Node = node;
+        while (
+          ts.isParenthesizedExpression(owner.parent) ||
+          ts.isSatisfiesExpression(owner.parent) ||
+          ts.isAsExpression(owner.parent)
+        )
+          owner = owner.parent;
+        // A double assertion gives the inner object an unknown context.
+        const asserted =
+          isObject && owner !== node && shape(checker.getTypeAtLocation(owner));
+        if (
+          !abstract &&
+          (shape(type) || shape(contextual) || heritage || asserted)
+        ) {
           const named =
             isClass && node.name
               ? node.name.text

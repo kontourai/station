@@ -1,9 +1,12 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ADAPTER_IMPLEMENTATIONS } from './adapter-contract-test-utils.js';
 import { providerShapeImplementations } from './provider-shape-inventory.js';
+
+const makeTempDir = trackTempDirs();
 
 const adaptersDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -40,12 +43,44 @@ const ATTACHMENT_FORWARDING_ADAPTERS = [
 
 describe('turn.started attachment projection inventory (station#4134)', () => {
   test('every concrete ProviderAdapterShape implementation across production src-server TypeScript registers in the deterministic conformance suite', () => {
-    // This existing repo-scans inventory runs on every PR, including additions
-    // with no import edge to an existing adapter test.
+    // Scan all production directories, including files with no existing import
+    // edge. The text prefilter requires sendTurn or ProviderAdapterShape in the
+    // file. Implementations assembled solely through aliases, inherited members,
+    // or spreads with neither marker are outside this guard; new adapters must
+    // name the contract or their required sendTurn method to join this inventory.
     const root = fileURLToPath(new URL('../../..', import.meta.url));
     expect(providerShapeImplementations(root)).toEqual(
       Object.values(ADAPTER_IMPLEMENTATIONS).sort(),
     );
+  }, 120_000);
+
+  test('discovers a shape implementation in a candidate fixture file', () => {
+    const root = makeTempDir('station-adapter-inventory-');
+    const providers = join(root, 'src-server/providers');
+    const services = join(root, 'src-server/services/nested');
+    mkdirSync(providers, { recursive: true });
+    mkdirSync(services, { recursive: true });
+    writeFileSync(join(root, 'tsconfig.json'), '{}');
+    writeFileSync(
+      join(providers, 'adapter-shape.ts'),
+      'export interface ProviderAdapterShape { sendTurn(): void }',
+    );
+    writeFileSync(
+      join(services, 'candidate.ts'),
+      `import type { ProviderAdapterShape } from '../../providers/adapter-shape';
+       export class Candidate implements
+         ProviderAdapterShape {}
+       export const asserted = {} as unknown as ProviderAdapterShape;`,
+    );
+    writeFileSync(
+      join(services, 'structural.ts'),
+      'export const structural = { sendTurn() {} };',
+    );
+    expect(providerShapeImplementations(root)).toEqual([
+      'services/nested/candidate.ts#Candidate',
+      'services/nested/candidate.ts#asserted',
+      'services/nested/structural.ts#structural',
+    ]);
   });
 
   test('enumerates every provider adapter that emits turn.started', () => {
