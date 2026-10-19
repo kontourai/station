@@ -38,8 +38,7 @@ import { _getApiBase } from './api';
  */
 export const PERSISTED_QUERY_GC_TIME_MS = 24 * 60 * 60 * 1000;
 
-export interface QueryConfig<T> {
-  structuralSharing?: UseQueryOptions<T>['structuralSharing'];
+export interface QueryConfig<_T> {
   staleTime?: number;
   gcTime?: number;
   enabled?: boolean;
@@ -127,22 +126,34 @@ export async function resolveApiBase(apiBase?: string): Promise<string> {
   return apiBase || (await _getApiBase());
 }
 
-export function typedStructuralSharing<T>(
-  share: (previous: T | undefined, next: T) => T,
-): Exclude<UseQueryOptions<T>['structuralSharing'], boolean | undefined> {
-  // TanStack erases callback data types; the owning query supplies T.
-  return share as Exclude<
-    UseQueryOptions<T>['structuralSharing'],
-    boolean | undefined
-  >;
-}
-
 export function useApiQuery<T = any>(
   queryKey: (string | number | object | null)[],
   queryFn: (signal?: AbortSignal) => Promise<T>,
   config?: QueryConfig<T>,
 ) {
   return useApiQueryWithMountPolicy(queryKey, queryFn, config, undefined);
+}
+
+/**
+ * TanStack erases sharing inputs to unknown; this query has no select step,
+ * so its cached and fetched data share the queryFn return type.
+ */
+export function useApiQueryWithSharing<T>(
+  queryKey: (string | number | object | null)[],
+  queryFn: (signal?: AbortSignal) => Promise<T>,
+  share: (previous: T | undefined, next: T) => T,
+  config?: Omit<QueryConfig<T>, 'structuralSharing'>,
+) {
+  return useApiQueryWithMountPolicy(
+    queryKey,
+    queryFn,
+    {
+      ...config,
+      structuralSharing: (previous: unknown, next: unknown) =>
+        share(previous as T | undefined, next as T),
+    },
+    undefined,
+  );
 }
 
 /**
@@ -200,7 +211,9 @@ function useApiQueryWithMountPolicy<T>(
   // `useQuery` callers in this package (`developerRuntime.ts`) already do this.
   queryKey: (string | number | object | null)[],
   queryFn: (signal?: AbortSignal) => Promise<T>,
-  config: QueryConfig<T> | undefined,
+  config:
+    | (QueryConfig<T> & Pick<UseQueryOptions<T>, 'structuralSharing'>)
+    | undefined,
   defaultRefetchOnMount: typeof refetchOnMountWhenInvalidated | undefined,
 ) {
   const queryClient = useQueryClient();

@@ -132,7 +132,7 @@ export function SystemSection({
           <option value="trace">Trace</option>
         </select>
         <span className="settings__field-hint">
-          Logging verbosity. Higher levels include more detail.
+          Choose how much detail Station logs.
         </span>
       </div>
 

@@ -1,0 +1,7 @@
+{
+  "revision": "f5c8b1e77f953ed36ecd0519124af8dbaede2db3",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed Activity latest-open, reader-controlled pause and Jump-to-latest claims through SessionTranscript, MutableSessionDetail and AttachedSessionDetail against the committed hook and 22 Chromium cases. Sibling sections above/below now stay followed through clamps and dynamic mounting; End during 100ms and animation-frame growth and downward navigation resume without admitting native anchoring or earlier toolbar growth as reader intent. Existing slow-upward, bottom-input, sustained-growth and paused-anchor cases remain green. Both fixes failed their committed-clean negative controls and passed after restoration. The design remains accurate; no prose or shipped MCP topic changes. Full-app, physical touch and native-shell qualification remain outside this fixture evidence.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/session-follow-reader.browser.test.tsx","src-ui/src/components/session-detail/useSessionTranscriptScroll.ts"]}
+  ]
+}

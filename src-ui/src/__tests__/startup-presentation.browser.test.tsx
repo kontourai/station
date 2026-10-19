@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { chromium, type Page } from '@playwright/test';
 import { build } from 'esbuild';
@@ -130,6 +130,7 @@ describe('cold-launch presentation in the browser', () => {
       resolve(ROOT, 'src-ui/index.html'),
       'utf8',
     ).replace('/src/boot.ts', '/fixture.js');
+    const fontErrors: string[] = [];
     await page.route(`${ORIGIN}/**`, async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path === '/')
@@ -142,18 +143,23 @@ describe('cold-launch presentation in the browser', () => {
       if (path.endsWith('.css'))
         return route.fulfill({ contentType: 'text/css', body: css });
       if (path.endsWith('.woff2')) {
-        const applicationFont = resolve(ROOT, 'src-ui/public', path.slice(1));
-        return route.fulfill({
-          body: readFileSync(
-            existsSync(applicationFont)
-              ? applicationFont
-              : resolve(
-                  ROOT,
-                  'node_modules/@kontourai/ui/tokens/fonts',
-                  basename(path),
-                ),
-          ),
-        });
+        const fontPath = path.startsWith('/fonts/')
+          ? resolve(ROOT, 'src-ui/public', path.slice(1))
+          : resolve(
+              ROOT,
+              'node_modules/@kontourai/ui/tokens/fonts',
+              basename(path),
+            );
+        let body: Buffer;
+        try {
+          body = readFileSync(fontPath);
+        } catch (error) {
+          fontErrors.push(
+            `Cannot load startup fixture font ${route.request().url()} from ${fontPath}: ${error}`,
+          );
+          return route.abort('failed');
+        }
+        return route.fulfill({ contentType: 'font/woff2', body });
       }
       if (path === '/startup-theme.js' || path.startsWith('/favicon'))
         return route.fulfill({
@@ -166,6 +172,10 @@ describe('cold-launch presentation in the browser', () => {
       () => window.startupFixture?.ready !== undefined,
     );
     await page.evaluate(() => document.fonts.ready);
+    if (fontErrors.length > 0) {
+      await page.close();
+      throw new Error(fontErrors.join('\n'));
+    }
     return page;
   }
 
