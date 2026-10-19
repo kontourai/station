@@ -1,12 +1,8 @@
 import type { GitStatusResult } from '@kontourai/station-sdk';
-import type { ReactNode, RefObject } from 'react';
+import type { ReactNode } from 'react';
 import type { WorkStatusTone } from '../../views/home/work-status';
 import { BranchGlyph, FolderGlyph } from '../icons/Glyph';
 import { useConversationPullRequestLinks } from '../pull-requests/useConversationPullRequestLinks';
-import {
-  ResponsiveDialogHeader,
-  ResponsiveDialogSurface,
-} from '../ResponsiveDialogSurface';
 import { SESSION_CONTEXT_CARD_WIDTH } from './sessionContextCardModel';
 import './SessionContextCard.css';
 
@@ -308,50 +304,5 @@ export function SessionContextCard(props: SessionContextCardProps) {
       <h2 className="session-context-card__title">This chat</h2>
       <SessionContextRows {...props} />
     </aside>
-  );
-}
-
-/**
- * The same rows behind the header chip: an anchored popover on a desktop dock
- * too narrow for the card, a bottom sheet on a phone. Back, Escape and the
- * backdrop close it through `ResponsiveDialogSurface`.
- */
-export function SessionContextSheet({
-  anchorRef,
-  returnFocusTarget,
-  onClose,
-  ...props
-}: SessionContextCardProps & {
-  anchorRef: RefObject<HTMLElement | null>;
-  returnFocusTarget?: HTMLElement | null;
-  onClose: () => void;
-}) {
-  return (
-    <ResponsiveDialogSurface
-      layer="popover"
-      ariaLabel="This chat"
-      onClose={onClose}
-      historyMode="entry"
-      anchorRef={anchorRef}
-      returnFocusTarget={returnFocusTarget}
-      overlayClassName="session-context-sheet-overlay"
-      panelClassName="session-context-sheet-panel"
-    >
-      <ResponsiveDialogHeader
-        title="This chat"
-        closeLabel="Close chat context"
-        onClose={onClose}
-      />
-      <div className="session-context-card session-context-card--sheet">
-        <SessionContextRows
-          {...props}
-          inventoryTrigger={returnFocusTarget}
-          wrap={(action) => {
-            onClose();
-            action();
-          }}
-        />
-      </div>
-    </ResponsiveDialogSurface>
   );
 }

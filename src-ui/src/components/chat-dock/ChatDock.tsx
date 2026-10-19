@@ -286,15 +286,16 @@ const loadBackgroundTasksSheet = () =>
 
 /**
  * The session context card (inline beside the transcript) and its sheet
- * (behind the header chip): one lazy chunk, loaded when either first shows.
- * The chip and the fit measurement are the only eager parts.
+ * (behind the header chip, or the phone's Chat actions row): lazy, loaded
+ * when either first shows. The chip and the fit measurement are the only
+ * eager parts.
  */
 const loadSessionContextCard = () =>
   import('./SessionContextCard').then((module) => ({
     default: module.SessionContextCard,
   }));
 const loadSessionContextSheet = () =>
-  import('./SessionContextCard').then((module) => ({
+  import('./SessionContextSheet').then((module) => ({
     default: module.SessionContextSheet,
   }));
 const loadChatDockSessionInventoryHost = () =>

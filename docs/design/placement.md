@@ -1860,6 +1860,54 @@ inbox fold is judged when a tool opens, is
 resized or restored and when the room rests after a resize, with the inbox's
 measured width at fold time deciding the unfold.
 
+## The session context card beside Chat (2026-10-19)
+
+**A compact panel at the dock body's right edge that answers "what is the
+state of this chat right now".** It is a Panel inside the Chat pane, not a
+pane, a region or a side panel of the Coding workbench, and it adds no
+server read beyond the pull request links Chat details already reads.
+
+- **Rows are facts the dock already holds.** Workspace (the session's
+  project and directory; opens Open in Coding under the More menu's own gate,
+  otherwise the project page), Branch (`gitStatus`: branch, changed-file
+  count, ahead/behind; opens the Active work Changed files panel), Activity
+  (the inbox row's status-ladder line for this chat from
+  `useOptionalObservedWorkStatus`, the Background tasks count and the
+  composer queue's pending count; opens Background tasks through the dock's
+  own router, so a desktop dock reveals the Agents pane), Pull requests
+  (only when links exist or the read failed; opens Chat details). The footer
+  presses the dock's one Chat inventory host. A row whose fact is absent is
+  omitted rather than worded as a state. There is no Kept row: no inventory
+  read runs for the active chat until the inventory opens, and adding one per
+  open chat to prefill a row is not cheap.
+- **Width decides, measured on the conversation surface.** The card shows
+  when the room beside it keeps the transcript's floor:
+  `CODING_TRANSCRIPT_MIN_WIDTH` (640px, derived from the message column's
+  rules in [codingPanels.ts](../../src-ui/src/components/coding-layout/codingPanels.ts))
+  plus the card's 280px column, so at least 920px
+  ([sessionContextCardModel.ts](../../src-ui/src/components/chat-dock/sessionContextCardModel.ts)).
+  The room is the surface plus the card while it shows, so showing it cannot
+  flip the answer back. A measurement rather than a CSS container query
+  because two places read the answer — the card in the body and the header
+  items it replaces, which render into the region bar's slots outside the
+  body — and both must read one derivation. A phone never shows it inline.
+  By the inbox's own width rule a full-width bottom dock keeps it from about
+  1211px with the inbox open (920px without); a side dock folds it.
+- **One copy of each fact.** While the card shows, the header's branch badge
+  and the More trigger's running-count badge stand down. While it is folded,
+  a chip after the project context names the ladder word and opens the same
+  rows as a popover anchored under it. On a phone the bar's edge reserve
+  (96px) holds exactly its two 44px controls, and a third wrapped the bar
+  onto a second line, so the sheet opens from a **This chat** row of the
+  Chat actions sheet instead, and closing it returns focus to ⋯. The actions
+  sheet's bare branch line went with it: the sheet's Branch row is labelled.
+- **One inventory host per dock.** The phone dock now mounts the
+  `ChatDockSessionInventoryHost` the desktop header mounts, with the phone
+  presentation (`full-fallback`), so Chat inventory is reachable on a phone
+  again after #2214 trimmed the actions sheet, and an answer's Basis chip,
+  which admits an occurrence only when exactly one host is registered for
+  the chat, can open there too.
+
 ## Failure shapes this design is meant to prevent
 
 - **A label nothing derives.** `docked` had zero readers for months while three
