@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import {
   readInstanceRegistry,
@@ -401,6 +408,36 @@ describe('stage and apply as separate requests (#3851)', () => {
     );
     expect(harness.stage).not.toHaveBeenCalled();
     expect(harness.sent).toEqual([]);
+  });
+
+  test('a stage removes the staged versions it supersedes, never the running or an older one (review F7)', async () => {
+    const harness = linkHarness(
+      'active',
+      vi.fn(async () => '1.2.0'),
+    );
+    for (const version of ['0.9.0', '1.0.0', '1.1.0', '1.2.0'])
+      stageVersion(harness.installRoot, version);
+    mkdirSync(join(harness.installRoot, 'versions', '.stage.123'));
+    // Sealed as install.sh leaves a version: read-only.
+    const sealed = join(harness.installRoot, 'versions', '1.1.0');
+    chmodSync(join(sealed, 'bin'), 0o555);
+    chmodSync(sealed, 0o555);
+    writeServiceUpdateRequest(harness.installRoot, undefined, {
+      mode: 'stage',
+    });
+    harness.link.tick();
+    await vi.waitFor(() =>
+      expect(harness.result()).toMatchObject({
+        status: 'staged',
+        version: '1.2.0',
+      }),
+    );
+    expect(readdirSync(join(harness.installRoot, 'versions')).sort()).toEqual([
+      '.stage.123',
+      '0.9.0',
+      '1.0.0',
+      '1.2.0',
+    ]);
   });
 
   test('an apply request must name its version', () => {

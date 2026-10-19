@@ -69,7 +69,13 @@ afterEach(async () => {
  * supervisor stage N+1 with N's own install.sh (stage-only), and the launcher
  * trials it. N+1 migrates the home schema (2 -> 3) on boot.
  */
-async function twoArchiveInstall(nextTrial: 'prepare' | 'exit') {
+async function twoArchiveInstall(
+  nextTrial: 'prepare' | 'exit',
+  // N+1's home schema. The fixture CLI's own store code knows only the
+  // current schema, so an N+1 that migrated cannot back the home up for a
+  // further update; a test that updates twice keeps it unmigrated.
+  nextHomeSchema: number | null = 3,
+) {
   const root = makeTempDir('station-launcher-e2e-');
   const home = join(root, 'home');
   const stationRoot = join(home, '.station');
@@ -95,7 +101,12 @@ async function twoArchiveInstall(nextTrial: 'prepare' | 'exit') {
     extraFiles: {
       'fixture.json': JSON.stringify({
         trial: nextTrial,
-        homeSchemaVersion: 3,
+        ...(nextHomeSchema === null
+          ? {}
+          : { homeSchemaVersion: nextHomeSchema }),
+        // Once it is the active version it stages with its own install.sh,
+        // as N does.
+        stage: 'real',
       }),
     },
   });
@@ -184,7 +195,19 @@ async function twoArchiveInstall(nextTrial: 'prepare' | 'exit') {
   signArchiveManifest(root, next, privateKey, RELEASE_KEY_ID, {
     name: rolling,
   });
-  return { install, launcher, env, manifestPath };
+  /** Publishes another release as the rolling manifest's newest. */
+  const publish = (version: string, behavior: Record<string, unknown>) =>
+    signArchiveManifest(
+      root,
+      buildPrebuiltArchive(root, version, {
+        cli,
+        extraFiles: { 'fixture.json': JSON.stringify(behavior) },
+      }),
+      privateKey,
+      RELEASE_KEY_ID,
+      { name: rolling },
+    );
+  return { install, launcher, env, manifestPath, publish };
 }
 
 function finished(install: LauncherInstall) {
@@ -345,6 +368,62 @@ describe('a service updates itself across two real archives (#2675 D)', {
       requestId: apply.id,
     });
     expect(homeSchemaVersion(install)).toBe(3);
+  });
+
+  it('a stage after an earlier committed update reads staged, not the old commit, and applies (review F1)', async () => {
+    const { install, launcher, publish } = await twoArchiveInstall(
+      'prepare',
+      null,
+    );
+    // The launcher's own committed record, from a real earlier update.
+    writeServiceUpdateRequest(install.installRoot);
+    await waitFor(
+      'the first update to commit',
+      () => finished(install)?.status === 'committed',
+      120_000,
+      () => `${fixtureLog(install).join('\n')}\n${launcher.output()}`,
+    );
+    await waitFor('N+1 serving', () =>
+      fixtureLog(install).includes('1.1.0 ready'),
+    );
+    publish('1.2.0', { trial: 'prepare', stage: 'real' });
+    const stage = writeServiceUpdateRequest(install.installRoot, undefined, {
+      mode: 'stage',
+    });
+    const staged = await waitFor(
+      'the stage to read staged',
+      () => {
+        const progress = readServiceUpdateProgress(install.installRoot);
+        if (progress.state === 'staging-failed')
+          throw new Error(`staging failed: ${progress.reason}`);
+        return progress.state === 'staged' ? progress : undefined;
+      },
+      120_000,
+      () => `${fixtureLog(install).join('\n')}\n${launcher.output()}`,
+    );
+    expect(staged).toMatchObject({ requestId: stage.id, version: '1.2.0' });
+    expect(readState(install)?.update).toMatchObject({
+      status: 'committed',
+      targetVersion: '1.1.0',
+    });
+    const apply = writeServiceUpdateRequest(install.installRoot, '1.2.0', {
+      mode: 'apply',
+    });
+    const update = await waitFor(
+      'the apply to commit',
+      () => {
+        const record = finished(install);
+        return record?.targetVersion === '1.2.0' ? record : undefined;
+      },
+      120_000,
+      () => `${fixtureLog(install).join('\n')}\n${launcher.output()}`,
+    );
+    expect(
+      update?.status,
+      `${JSON.stringify(update)}\n${fixtureLog(install).join('\n')}\n${launcher.output()}`,
+    ).toBe('committed');
+    expect(update).toMatchObject({ requestId: apply.id });
+    expect(readState(install)?.activeVersion).toBe('1.2.0');
   });
 
   it('an apply of a staged N+1 that crashes its trial is still rolled back, and N serves the restored home (#3851)', async () => {

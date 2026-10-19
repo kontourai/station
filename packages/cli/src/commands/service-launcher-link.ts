@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
+  lstatSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -8,6 +11,7 @@ import {
 } from 'node:fs';
 import { basename, delimiter, dirname, join } from 'node:path';
 import {
+  compareStationReleaseVersions,
   installerInheritedEnv,
   packagedInstallerCommand,
 } from '@kontourai/station-shared/prebuilt-archive';
@@ -278,6 +282,50 @@ export function stageServiceUpdate(input: {
   });
 }
 
+/** Installed versions are sealed read-only; a removal needs write bits back. */
+function makeWritable(dir: string): void {
+  chmodSync(dir, 0o700);
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory() && !entry.isSymbolicLink())
+      makeWritable(join(dir, entry.name));
+  }
+}
+
+/**
+ * Removes staged versions a newer stage superseded (#3851 review F7): every
+ * version directory NEWER than the running one except `keep`. The running
+ * version, and every older one (the launcher's rollback target among them),
+ * are never touched, nor are installer stages (dot entries). Best effort.
+ */
+export function pruneSupersededStagedVersions(
+  installRoot: string,
+  running: string,
+  keep: string,
+  log: (message: string) => void = () => undefined,
+): void {
+  const versions = join(installRoot, 'versions');
+  let names: string[];
+  try {
+    names = readdirSync(versions);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (name.startsWith('.') || name === keep || name === running) continue;
+    if (compareStationReleaseVersions(name, running) !== 1) continue;
+    const dir = join(versions, name);
+    try {
+      if (!lstatSync(dir).isDirectory()) continue;
+      makeWritable(dir);
+      rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+      log(
+        `Station could not remove the superseded ${dir}: ${(error as Error).message}`,
+      );
+    }
+  }
+}
+
 /**
  * A claimed request (`update-request.processing.json`) that no child is
  * working on (#2675 D review F5): the child that claimed it was killed
@@ -494,7 +542,13 @@ export function createServiceLauncherLink(
           }
           if (mode === 'stage') {
             // Downloaded and verified; the running version keeps running
-            // until someone applies it.
+            // until someone applies it. An older stage it supersedes goes.
+            pruneSupersededStagedVersions(
+              context.installRoot,
+              context.version,
+              staged,
+              log,
+            );
             finishRequest({
               requestId,
               status: 'staged',

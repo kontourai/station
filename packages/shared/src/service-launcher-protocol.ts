@@ -473,7 +473,9 @@ function launcherUpdateProgress(
  * `includeStaged: false` answers for a reader older than #3851, whose
  * parser turns a state it does not know into `unavailable` ("cannot be
  * read"): a `staged` result is skipped, and the launcher's record (or
- * `idle`) answers as it would have before the stage.
+ * `idle`) answers as it would have before the stage. A queued or staging
+ * download (a `stage` request) is skipped for it too, since such a reader
+ * presents those states as an update about to restart the server.
  */
 export function readServiceUpdateProgress(
   installRoot: string,
@@ -492,6 +494,10 @@ export function readServiceUpdateProgress(
         : null;
     // An unreadable request is still one the service will claim (and drop).
     if (!request) return { state: 'unavailable' };
+    // A reader older than #3851 shows queued or staging as an update under
+    // way, a restart to come; a download restarts nothing, so it is not
+    // shown to that reader at all (review F13).
+    if (options.includeStaged === false && request.mode === 'stage') continue;
     const intent = requestIntent(request);
     if (state === 'queued') return { state, requestId: request.id, intent };
     return {
@@ -522,8 +528,17 @@ export function readServiceUpdateProgress(
         record(stateFile.value)?.activeVersion === result.version))
   )
     result = null;
+  // When each record was written. `staged` ranks by when it was staged: the
+  // launcher keeps its last outcome (`committed`) forever, and a stage made
+  // after it must answer (review F1).
   const finished = (progress: ServiceUpdateProgress | null | undefined) =>
-    progress && 'finishedAt' in progress ? Date.parse(progress.finishedAt) : -1;
+    !progress
+      ? -1
+      : 'finishedAt' in progress
+        ? Date.parse(progress.finishedAt)
+        : progress.state === 'staged'
+          ? Date.parse(progress.stagedAt)
+          : -1;
   // An update the operator must recover outranks any later request result.
   if (launcher?.state === 'needs-operator') return launcher;
   if (launcher && finished(launcher) >= finished(result)) return launcher;

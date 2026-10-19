@@ -213,3 +213,80 @@ describe('stage and apply in the runtime files (#3851)', () => {
     ).toMatchObject({ mode: 'apply' });
   });
 });
+
+describe('staged after an earlier committed update (#3851 review F1)', () => {
+  const STAGE_REQUEST = '00000000-0000-4000-8000-000000000002';
+  /** service-state.json as station-launcher.mjs `onPrepared` persists it. */
+  function committedInstall(finishedAt: string) {
+    const installRoot = makeTempDir('station-launcher-protocol-');
+    const paths = serviceUpdatePaths(installRoot);
+    mkdirSync(paths.runtime, { recursive: true });
+    writeFileSync(
+      paths.state,
+      `${JSON.stringify(
+        {
+          protocol: 1,
+          activeVersion: '1.1.0',
+          update: {
+            id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+            fromVersion: '1.0.0',
+            targetVersion: '1.1.0',
+            requestId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+            status: 'committed',
+            attempts: 1,
+            finishedAt,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    const dir = join(installRoot, 'versions', '1.2.0');
+    mkdirSync(join(dir, 'bin'), { recursive: true });
+    writeFileSync(join(dir, 'bin', 'station.mjs'), '');
+    writeFileSync(join(dir, '.station-install-complete'), 'abc\n');
+    const stage = (at: string) =>
+      writeFileSync(
+        paths.result,
+        JSON.stringify({
+          requestId: STAGE_REQUEST,
+          status: 'staged',
+          version: '1.2.0',
+          at,
+        }),
+      );
+    return { installRoot, stage };
+  }
+
+  test('a stage made after the launcher committed an update reads staged', () => {
+    const { installRoot, stage } = committedInstall('2026-10-18T10:00:00.000Z');
+    stage('2026-10-19T10:00:00.000Z');
+    expect(readServiceUpdateProgress(installRoot)).toMatchObject({
+      state: 'staged',
+      version: '1.2.0',
+    });
+  });
+
+  test('a stage older than the committed update reads committed', () => {
+    const { installRoot, stage } = committedInstall('2026-10-19T12:00:00.000Z');
+    stage('2026-10-19T10:00:00.000Z');
+    expect(readServiceUpdateProgress(installRoot)).toMatchObject({
+      state: 'committed',
+      targetVersion: '1.1.0',
+    });
+  });
+
+  test('a reader older than #3851 does not see a download under way (review F13)', () => {
+    const installRoot = makeTempDir('station-launcher-protocol-');
+    writeServiceUpdateRequest(installRoot, '1.2.0', { mode: 'stage' });
+    expect(
+      readServiceUpdateProgress(installRoot, { includeStaged: false }),
+    ).toEqual({ state: 'idle' });
+    const paths = serviceUpdatePaths(installRoot);
+    fs.rmSync(paths.request);
+    const update = writeServiceUpdateRequest(installRoot);
+    expect(
+      readServiceUpdateProgress(installRoot, { includeStaged: false }),
+    ).toMatchObject({ state: 'queued', requestId: update.id });
+  });
+});
