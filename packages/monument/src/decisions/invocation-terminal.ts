@@ -78,7 +78,7 @@ function intent(value: unknown): value is PreparedTurnIntent {
     optionalText(value, 'dedupKey')
   );
 }
-export function isTerminalBoundaryRecord(
+function isTerminalBoundaryRecord(
   value: unknown,
 ): value is TurnBoundaryRecord {
   return (
@@ -121,7 +121,7 @@ export function isTerminalBoundaryRecord(
       isPreparedTurnSettlement(value.settlement))
   );
 }
-export function isTerminalDedupRecord(
+function isTerminalDedupRecord(
   value: unknown,
 ): value is TurnDedupRecord {
   return (
@@ -213,7 +213,7 @@ export function sameTerminalData(a: unknown, b: unknown): boolean {
     )
   );
 }
-export function factMatchesQuery(
+function factMatchesQuery(
   fact: InvocationTerminalFact,
   query: InvocationTerminalQuery,
 ): boolean {
