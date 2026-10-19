@@ -264,7 +264,7 @@ test.describe('A send whose app closed before Station answered', () => {
     browser,
     request,
     baseURL,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(240_000);
     if (!baseURL) throw new Error('Playwright baseURL is required');
     const authenticatedRequest = createAuthenticatedE2ERequest(request);
@@ -424,6 +424,67 @@ test.describe('A send whose app closed before Station answered', () => {
       await expect(
         observer.getByRole('region', { name: 'Messages held by Station' }),
       ).toContainText('1 pending message');
+
+      const initialViewport = observer.viewportSize();
+      const initialTheme = await observer
+        .locator('html')
+        .getAttribute('data-theme');
+      for (const viewport of [
+        { width: 1440, height: 900 },
+        { width: 390, height: 844 },
+      ]) {
+        await observer.setViewportSize(viewport);
+        for (const theme of ['light', 'dark']) {
+          await observer.evaluate((value) => {
+            document.documentElement.setAttribute('data-theme', value);
+          }, theme);
+          const held = observer.getByRole('region', {
+            name: 'Messages held by Station',
+          });
+          await expect(held).toContainText(followUp);
+          const refresh = held.getByRole('button', {
+            name: 'Refresh',
+            exact: true,
+          });
+          const remove = held.getByRole('button', {
+            name: `Remove held message: ${followUp}`,
+            exact: true,
+          });
+          await expect(refresh).toBeEnabled();
+          await refresh.focus();
+          await observer.keyboard.press('Tab');
+          await expect(remove).toBeFocused();
+          expect(
+            await remove.evaluate((node) => node.matches(':focus-visible')),
+          ).toBe(true);
+          for (const button of [refresh, remove]) {
+            const box = await button.boundingBox();
+            if (!box)
+              throw new Error(
+                'A held-message action must have a visible target.',
+              );
+            expect(box.width).toBeGreaterThanOrEqual(44);
+            expect(box.height).toBeGreaterThanOrEqual(44);
+            expect(box.x).toBeGreaterThanOrEqual(0);
+            expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+          }
+          expect(
+            await held.evaluate(
+              (node) => node.scrollWidth <= node.clientWidth + 1,
+            ),
+          ).toBe(true);
+          const name = `server-inbox-${viewport.width}-${theme}.png`;
+          const path = testInfo.outputPath(name);
+          await observer.screenshot({ path, animations: 'disabled' });
+          await testInfo.attach(name, { path, contentType: 'image/png' });
+        }
+      }
+      if (initialViewport) await observer.setViewportSize(initialViewport);
+      await observer.evaluate((value) => {
+        if (value === null)
+          document.documentElement.removeAttribute('data-theme');
+        else document.documentElement.setAttribute('data-theme', value);
+      }, initialTheme);
 
       const retainedKey = `${clientTurnId}-second`;
       const secondQueued = await authenticatedRequest.post(
