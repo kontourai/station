@@ -356,6 +356,27 @@ test.describe('A send whose app closed before Station answered', () => {
         .poll(() => turnPrompts(authenticatedRequest, conversationId))
         .toEqual([FIRST_MESSAGE, runningMessage]);
 
+      const bound = await authenticatedRequest.get(
+        `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/event-window?turnLimit=20`,
+      );
+      expect(bound.status()).toBe(200);
+      const binding: unknown = await bound.json();
+      if (
+        typeof binding !== 'object' ||
+        binding === null ||
+        !('data' in binding) ||
+        typeof binding.data !== 'object' ||
+        binding.data === null ||
+        !('session' in binding.data) ||
+        typeof binding.data.session !== 'object' ||
+        binding.data.session === null ||
+        !('cwd' in binding.data.session) ||
+        typeof binding.data.session.cwd !== 'string' ||
+        !binding.data.session.cwd
+      )
+        throw new Error(
+          'The real conversation must retain its directory binding.',
+        );
       const queued = await authenticatedRequest.post(
         '/api/orchestration/chat',
         {
@@ -363,6 +384,7 @@ test.describe('A send whose app closed before Station answered', () => {
             target: {
               environment: { kind: 'current' },
               agent: seededAgentSlug,
+              workspace: { kind: 'directory', cwd: binding.data.session.cwd },
             },
             message: followUp,
             conversationId,
