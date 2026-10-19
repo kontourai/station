@@ -123,6 +123,9 @@ pub struct DesktopUpdateState {
     /// When the policy downloads the available update by itself; absent when
     /// it never will (policy `never`, or nothing available).
     pub auto_download_at: Option<u64>,
+    /// Increases with every emitted change in this process, so a reader can
+    /// drop an event or snapshot older than one it already applied.
+    pub sequence: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -132,37 +135,183 @@ struct PersistedAvailable {
     since: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Persisted {
-    #[serde(default)]
     policy: DownloadPolicy,
-    #[serde(default)]
+    /// A policy value this build does not know (written by a newer build).
+    /// The default policy applies, and the value is written back unchanged
+    /// until the user picks a policy here.
+    unknown_policy: Option<serde_json::Value>,
     available: Option<PersistedAvailable>,
 }
 
 impl Persisted {
-    /// An unreadable or malformed file falls back to defaults: the only cost
-    /// is the default policy and a restarted 24h clock.
+    /// Fields are read independently: a corrupt or unknown field costs only
+    /// that field (default policy, or a restarted 24h clock), never the
+    /// other. A missing file is the ordinary first run; anything else that
+    /// cannot be read is logged.
     fn load(dir: &Path) -> Self {
-        std::fs::read_to_string(dir.join(STORE_FILE))
-            .ok()
-            .and_then(|raw| serde_json::from_str(&raw).ok())
-            .unwrap_or_default()
+        let path = dir.join(STORE_FILE);
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Self::default(),
+            Err(error) => {
+                log::warn!("could not read desktop update settings, using defaults: {error}");
+                return Self::default();
+            }
+        };
+        let value: serde_json::Value = match serde_json::from_str(&raw) {
+            Ok(value) => value,
+            Err(error) => {
+                log::warn!("desktop update settings are corrupt, using defaults: {error}");
+                return Self::default();
+            }
+        };
+        let mut persisted = Self::default();
+        if let Some(policy) = value.get("policy") {
+            match serde_json::from_value::<DownloadPolicy>(policy.clone()) {
+                Ok(policy) => persisted.policy = policy,
+                Err(_) => {
+                    log::warn!("unknown desktop update policy {policy}; using the default");
+                    persisted.unknown_policy = Some(policy.clone());
+                }
+            }
+        }
+        if let Some(available) = value.get("available").filter(|value| !value.is_null()) {
+            match serde_json::from_value::<PersistedAvailable>(available.clone()) {
+                Ok(available) => persisted.available = Some(available),
+                Err(error) => {
+                    log::warn!("ignoring an unreadable desktop update clock: {error}")
+                }
+            }
+        }
+        persisted
     }
 
     fn save(&self, dir: &Path) -> Result<(), String> {
-        std::fs::create_dir_all(dir)
-            .map_err(|error| format!("create the desktop config directory: {error}"))?;
-        let body = serde_json::to_vec_pretty(self)
-            .map_err(|error| format!("encode desktop update settings: {error}"))?;
-        // Write-then-rename so a crash never leaves a half-written file.
-        let temporary = dir.join(format!("{STORE_FILE}.{}.tmp", std::process::id()));
-        std::fs::write(&temporary, body)
-            .map_err(|error| format!("write desktop update settings: {error}"))?;
-        std::fs::rename(&temporary, dir.join(STORE_FILE))
-            .map_err(|error| format!("persist desktop update settings: {error}"))
+        let body = serde_json::to_vec_pretty(&serde_json::json!({
+            "policy": self
+                .unknown_policy
+                .clone()
+                .unwrap_or_else(|| serde_json::to_value(self.policy).unwrap_or_default()),
+            "available": self.available,
+        }))
+        .map_err(|error| format!("encode desktop update settings: {error}"))?;
+        write_atomically(dir, STORE_FILE, &body, "desktop update settings")
     }
+}
+
+/// Write-then-rename so a crash never leaves a half-written file; a failed
+/// rename removes its temporary file.
+fn write_atomically(dir: &Path, name: &str, body: &[u8], what: &str) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|error| format!("create {}: {error}", dir.display()))?;
+    let temporary = dir.join(format!("{name}.{}.tmp", std::process::id()));
+    std::fs::write(&temporary, body).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        format!("write {what}: {error}")
+    })?;
+    std::fs::rename(&temporary, dir.join(name)).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        format!("persist {what}: {error}")
+    })
+}
+
+/// The downloaded package, kept on disk (in the app cache directory) rather
+/// than in memory while it waits for a confirmed restart, so it survives a
+/// quit. `package.json` is written last and names the version, the release
+/// manifest the native handle is restored from, and the bytes' SHA-256.
+#[derive(Clone, Debug)]
+pub struct PackageStore {
+    dir: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageRecord {
+    pub version: String,
+    pub manifest: serde_json::Value,
+    pub sha256: String,
+    pub length: u64,
+}
+
+const PACKAGE_FILE: &str = "package.bin";
+const PACKAGE_RECORD: &str = "package.json";
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    ring::digest::digest(&ring::digest::SHA256, bytes)
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+impl PackageStore {
+    pub fn new(dir: PathBuf) -> Self {
+        Self { dir }
+    }
+
+    pub fn save(
+        &self,
+        version: &str,
+        manifest: serde_json::Value,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        // The record goes first out and last in: a crash between the two
+        // writes leaves no record, which reads as no package.
+        let _ = std::fs::remove_file(self.dir.join(PACKAGE_RECORD));
+        write_atomically(&self.dir, PACKAGE_FILE, bytes, "the downloaded update")?;
+        let record = PackageRecord {
+            version: version.to_string(),
+            manifest,
+            sha256: sha256_hex(bytes),
+            length: bytes.len() as u64,
+        };
+        let body = serde_json::to_vec_pretty(&record)
+            .map_err(|error| format!("encode the update record: {error}"))?;
+        write_atomically(&self.dir, PACKAGE_RECORD, &body, "the update record")
+    }
+
+    pub fn record(&self) -> Option<PackageRecord> {
+        let raw = std::fs::read_to_string(self.dir.join(PACKAGE_RECORD)).ok()?;
+        serde_json::from_str(&raw).ok()
+    }
+
+    /// The package bytes for `version`, only if the record names that
+    /// version and the bytes still hash to what was written.
+    pub fn load(&self, version: &str) -> Result<Vec<u8>, String> {
+        let record = self
+            .record()
+            .ok_or_else(|| "the downloaded update is missing; download it again".to_string())?;
+        if record.version != version {
+            return Err(format!(
+                "the downloaded update is version {}, not {version}; download it again",
+                record.version
+            ));
+        }
+        let bytes = std::fs::read(self.dir.join(PACKAGE_FILE))
+            .map_err(|error| format!("read the downloaded update: {error}"))?;
+        if bytes.len() as u64 != record.length || sha256_hex(&bytes) != record.sha256 {
+            return Err("the downloaded update is damaged; download it again".to_string());
+        }
+        Ok(bytes)
+    }
+
+    pub fn clear(&self) {
+        for name in [PACKAGE_RECORD, PACKAGE_FILE] {
+            match std::fs::remove_file(self.dir.join(name)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => log::warn!("could not remove a cached desktop update: {error}"),
+            }
+        }
+    }
+}
+
+/// The native update handle's identity, as far as the cache needs it.
+pub trait UpdateHandle: Clone + Send + 'static {
+    fn version(&self) -> &str;
+    /// The release manifest the handle can be restored from after a restart.
+    fn manifest(&self) -> serde_json::Value;
 }
 
 /// What a successful check found.
@@ -207,7 +356,7 @@ pub struct Controller<H> {
     store_dir: Option<PathBuf>,
     current_version: String,
     handle: Option<H>,
-    bytes: Option<Vec<u8>>,
+    sequence: u64,
     /// The phase a running check or download returns to when it fails.
     resume_phase: Option<UpdatePhase>,
     throttle: ProgressThrottle,
@@ -230,7 +379,7 @@ impl<H: Clone> Controller<H> {
             store_dir,
             current_version,
             handle: None,
-            bytes: None,
+            sequence: 0,
             resume_phase: None,
             throttle: ProgressThrottle::default(),
         }
@@ -243,6 +392,7 @@ impl<H: Clone> Controller<H> {
             policy: self.persisted.policy,
             current_version: self.current_version.clone(),
             auto_download_at: self.auto_download_at(),
+            sequence: self.sequence,
         }
     }
 
@@ -278,10 +428,10 @@ impl<H: Clone> Controller<H> {
     /// Persist first, then adopt: a policy that could not be saved would
     /// silently revert at the next launch, so it is refused instead.
     pub fn set_policy(&mut self, policy: DownloadPolicy) -> Result<(), String> {
-        let previous = self.persisted.policy;
+        let previous = (self.persisted.policy, self.persisted.unknown_policy.take());
         self.persisted.policy = policy;
         if let Err(error) = self.persist() {
-            self.persisted.policy = previous;
+            (self.persisted.policy, self.persisted.unknown_policy) = previous;
             return Err(error);
         }
         Ok(())
@@ -326,8 +476,14 @@ impl<H: Clone> Controller<H> {
             Ok(Some((offer, handle))) => {
                 // The 24h clock belongs to a version: a newer offer gets its
                 // own bake time, the same offer keeps its original start.
+                // A start in the future (a clock that moved back, or a
+                // tampered file) would postpone the download indefinitely.
                 let since = match &self.persisted.available {
-                    Some(previous) if previous.version == offer.version => previous.since,
+                    Some(previous)
+                        if previous.version == offer.version && previous.since <= now =>
+                    {
+                        previous.since
+                    }
                     _ => now,
                 };
                 let record = PersistedAvailable {
@@ -404,15 +560,15 @@ impl<H: Clone> Controller<H> {
         self.throttle.should_emit(downloaded, total, now)
     }
 
-    pub fn finish_download(&mut self, result: Result<Vec<u8>, String>) {
+    /// `result` is the outcome of downloading and caching the package.
+    pub fn finish_download(&mut self, result: Result<(), String>) {
         let UpdatePhase::Downloading { version, .. } = &self.phase else {
             return;
         };
         let version = version.clone();
         let resume = self.resume_phase.take();
         match result {
-            Ok(bytes) => {
-                self.bytes = Some(bytes);
+            Ok(()) => {
                 self.phase = UpdatePhase::Ready { version };
             }
             Err(message) => {
@@ -426,28 +582,40 @@ impl<H: Clone> Controller<H> {
         }
     }
 
-    /// Takes the verified bytes for installation. They come back through
-    /// [`Self::finish_install`] so a failed install can be retried.
-    pub fn begin_install(&mut self) -> Option<(H, Vec<u8>)> {
+    /// Adopts a package cached by an earlier run as `ready`. Only from
+    /// `idle`, i.e. at startup before any check.
+    pub fn restore_ready(&mut self, handle: H, version: String) -> bool {
+        if self.phase != UpdatePhase::Idle {
+            return false;
+        }
+        self.handle = Some(handle);
+        self.phase = UpdatePhase::Ready { version };
+        true
+    }
+
+    /// Starts installing the downloaded update; returns the handle and the
+    /// version whose cached package must be installed.
+    pub fn begin_install(&mut self) -> Option<(H, String)> {
         let UpdatePhase::Ready { version } = &self.phase else {
             return None;
         };
         let version = version.clone();
         let handle = self.handle.clone()?;
-        let bytes = self.bytes.take()?;
         self.error = None;
-        self.phase = UpdatePhase::Installing { version };
-        Some((handle, bytes))
+        self.phase = UpdatePhase::Installing {
+            version: version.clone(),
+        };
+        Some((handle, version))
     }
 
     /// On success the phase stays `installing` until the process restarts.
-    pub fn finish_install(&mut self, result: Result<(), String>, bytes: Vec<u8>) {
+    /// On failure the cached package stays for a retry.
+    pub fn finish_install(&mut self, result: Result<(), String>) {
         let UpdatePhase::Installing { version } = &self.phase else {
             return;
         };
         if let Err(message) = result {
             let version = version.clone();
-            self.bytes = Some(bytes);
             self.error = Some(UpdateError {
                 context: ErrorContext::Install,
                 message,
@@ -468,6 +636,7 @@ pub struct DesktopUpdater<H> {
     controller: Arc<Mutex<Controller<H>>>,
     emit: Arc<Emit>,
     clock: Arc<Clock>,
+    packages: PackageStore,
 }
 
 impl<H> Clone for DesktopUpdater<H> {
@@ -476,16 +645,23 @@ impl<H> Clone for DesktopUpdater<H> {
             controller: Arc::clone(&self.controller),
             emit: Arc::clone(&self.emit),
             clock: Arc::clone(&self.clock),
+            packages: self.packages.clone(),
         }
     }
 }
 
-impl<H: Clone + Send + 'static> DesktopUpdater<H> {
-    pub fn new(controller: Controller<H>, emit: Arc<Emit>, clock: Arc<Clock>) -> Self {
+impl<H: UpdateHandle> DesktopUpdater<H> {
+    pub fn new(
+        controller: Controller<H>,
+        emit: Arc<Emit>,
+        clock: Arc<Clock>,
+        packages: PackageStore,
+    ) -> Self {
         Self {
             controller: Arc::new(Mutex::new(controller)),
             emit,
             clock,
+            packages,
         }
     }
 
@@ -506,14 +682,18 @@ impl<H: Clone + Send + 'static> DesktopUpdater<H> {
     /// Applies one transition and emits the resulting state when it changed.
     /// The lock is released before emitting.
     fn update<T>(&self, transition: impl FnOnce(&mut Controller<H>) -> T) -> T {
-        let (value, before, after) = {
+        let (value, emitted) = {
             let mut controller = self.lock();
             let before = controller.state();
             let value = transition(&mut controller);
-            (value, before, controller.state())
+            let emitted = (controller.state() != before).then(|| {
+                controller.sequence += 1;
+                controller.state()
+            });
+            (value, emitted)
         };
-        if before != after {
-            (self.emit)(&after);
+        if let Some(state) = emitted {
+            (self.emit)(&state);
         }
         value
     }
@@ -560,15 +740,25 @@ impl<H: Clone + Send + 'static> DesktopUpdater<H> {
             let now = progress.now();
             let emitted = {
                 let mut controller = progress.lock();
-                controller
-                    .record_progress(chunk, total, now)
-                    .then(|| controller.state())
+                controller.record_progress(chunk, total, now).then(|| {
+                    controller.sequence += 1;
+                    controller.state()
+                })
             };
             if let Some(state) = emitted {
                 (progress.emit)(&state);
             }
         });
-        let result = download(handle, on_chunk).await;
+        let version = handle.version().to_string();
+        let manifest = handle.manifest();
+        // The bytes live on disk from here on; the in-memory copy is dropped
+        // as soon as it is written.
+        let result = download(handle, on_chunk)
+            .await
+            .and_then(|bytes| self.packages.save(&version, manifest, &bytes));
+        if result.is_err() {
+            self.packages.clear();
+        }
         self.update(|controller| controller.finish_download(result));
         self.snapshot()
     }
@@ -580,13 +770,52 @@ impl<H: Clone + Send + 'static> DesktopUpdater<H> {
     where
         F: FnOnce(&H, &[u8]) -> Result<(), String>,
     {
-        let Some((handle, bytes)) = self.update(Controller::begin_install) else {
+        let Some((handle, version)) = self.update(Controller::begin_install) else {
             return false;
         };
-        let result = install(&handle, &bytes);
+        let result = self
+            .packages
+            .load(&version)
+            .and_then(|bytes| install(&handle, &bytes));
         let installed = result.is_ok();
-        self.update(|controller| controller.finish_install(result, bytes));
+        self.update(|controller| controller.finish_install(result));
         installed
+    }
+
+    /// At startup: adopt a package an earlier run downloaded, if `restore`
+    /// rebuilds a handle for it (the release is still newer than this app)
+    /// and the bytes pass verification. Anything else is deleted. Returns
+    /// whether a package was restored.
+    pub fn restore_cached<F>(&self, restore: F) -> bool
+    where
+        F: FnOnce(&serde_json::Value, &[u8]) -> Result<Option<H>, String>,
+    {
+        let Some(record) = self.packages.record() else {
+            self.packages.clear();
+            return false;
+        };
+        let restored = self
+            .packages
+            .load(&record.version)
+            .and_then(|bytes| restore(&record.manifest, &bytes));
+        match restored {
+            Ok(Some(handle)) if handle.version() == record.version => {
+                let version = record.version.clone();
+                if self.update(|controller| controller.restore_ready(handle, version)) {
+                    return true;
+                }
+            }
+            Ok(_) => log::info!(
+                "discarding cached desktop update {}: no longer an update",
+                record.version
+            ),
+            Err(error) => log::warn!(
+                "discarding cached desktop update {}: {error}",
+                record.version
+            ),
+        }
+        self.packages.clear();
+        false
     }
 }
 
@@ -595,6 +824,64 @@ pub fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis() as u64)
         .unwrap_or(0)
+}
+
+/// The longest single sleep of the periodic schedule. The schedule follows
+/// wall-clock time: a machine that slept past the due time checks within one
+/// step of waking instead of a whole interval later.
+pub const SCHEDULE_STEP: Duration = Duration::from_secs(30);
+
+/// How long to sleep next before wall-clock `due`; `None` once it is due.
+pub fn schedule_step(now: u64, due: u64) -> Option<Duration> {
+    (now < due).then(|| Duration::from_millis(due - now).min(SCHEDULE_STEP))
+}
+
+/// Sleeps in short steps until wall-clock `due`.
+pub fn wait_until(due: u64, clock: &dyn Fn() -> u64, sleep: &dyn Fn(Duration)) {
+    while let Some(step) = schedule_step(clock(), due) {
+        sleep(step);
+    }
+}
+
+/// One periodic tick: check, then download if the policy says so. It is
+/// handed no install operation and no app handle, so a tick cannot install
+/// or restart; restart stays behind the confirmed install command.
+pub async fn periodic_tick<H, C, CF, D, DF>(
+    updater: &DesktopUpdater<H>,
+    check: C,
+    download: D,
+) -> DesktopUpdateState
+where
+    H: UpdateHandle,
+    C: FnOnce() -> CF,
+    CF: Future<Output = Result<Option<(Offer, H)>, String>>,
+    D: FnOnce(H, OnChunk) -> DF,
+    DF: Future<Output = Result<Vec<u8>, String>>,
+{
+    let state = updater.check(check).await;
+    if let Some(error) = &state.error {
+        log::info!("desktop update check did not complete: {}", error.message);
+    }
+    if updater.auto_download_due() {
+        log::info!("downloading the available desktop update per the download policy");
+        return updater.download(download).await;
+    }
+    updater.snapshot()
+}
+
+/// Startup for a managed updater. An unconfigured build restores nothing and
+/// starts no periodic check.
+pub fn start<H, R, P>(updater: &DesktopUpdater<H>, enabled: bool, restore: R, start_periodic: P)
+where
+    H: UpdateHandle,
+    R: FnOnce(&serde_json::Value, &[u8]) -> Result<Option<H>, String>,
+    P: FnOnce(DesktopUpdater<H>),
+{
+    if !enabled {
+        return;
+    }
+    updater.restore_cached(restore);
+    start_periodic(updater.clone());
 }
 
 pub use tauri_glue::*;
@@ -606,44 +893,95 @@ mod tauri_glue {
 
     pub type AppDesktopUpdater = DesktopUpdater<Update>;
 
-    const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
-    /// A download may legitimately take minutes, so it has no total timeout;
-    /// a connection that stops delivering bytes for this long fails instead
-    /// of hanging in `downloading` forever.
-    const DOWNLOAD_READ_TIMEOUT: Duration = Duration::from_secs(60);
+    impl UpdateHandle for Update {
+        fn version(&self) -> &str {
+            &self.version
+        }
+        fn manifest(&self) -> serde_json::Value {
+            self.raw_json.clone()
+        }
+    }
+
+    /// The updater's HTTP bounds. A check is bounded in total; a download
+    /// may legitimately take minutes, so it has no total bound, and a
+    /// connection that stops delivering bytes for `stall` fails instead of
+    /// hanging in `downloading` forever.
+    #[derive(Clone, Copy, Debug)]
+    pub struct Timeouts {
+        pub check: Duration,
+        pub stall: Duration,
+    }
+
+    pub const TIMEOUTS: Timeouts = Timeouts {
+        check: Duration::from_secs(30),
+        stall: Duration::from_secs(60),
+    };
+
+    fn build_updater<R: Runtime>(
+        app: &AppHandle<R>,
+        timeouts: Timeouts,
+    ) -> Result<tauri_plugin_updater::Updater, String> {
+        let stall = timeouts.stall;
+        app.updater_builder()
+            .timeout(timeouts.check)
+            // Copied into every update handle, so it also bounds downloads.
+            .configure_client(move |client| client.read_timeout(stall))
+            .build()
+            .map_err(|error| error.to_string())
+    }
 
     /// Manages the updater state for the app. `enabled` is the existing
     /// `desktop_updater_plugin_configured` decision: an unconfigured build
-    /// reports `disabled` and never checks.
+    /// reports `disabled`, restores nothing and never checks.
     pub fn manage<R: Runtime>(app: &AppHandle<R>, enabled: bool) {
-        let store_dir = app.path().app_config_dir().ok();
         let emitter = app.clone();
+        let packages = PackageStore::new(
+            app.path()
+                .app_cache_dir()
+                .unwrap_or_else(|_| std::env::temp_dir().join(&app.config().identifier))
+                .join("desktop-update"),
+        );
         let updater = AppDesktopUpdater::new(
-            Controller::new(enabled, app.package_info().version.to_string(), store_dir),
+            Controller::new(
+                enabled,
+                app.package_info().version.to_string(),
+                app.path().app_config_dir().ok(),
+            ),
             Arc::new(move |state: &DesktopUpdateState| {
                 if let Err(error) = emitter.emit(STATE_EVENT, state) {
                     log::warn!("could not emit desktop update state: {error}");
                 }
             }),
             Arc::new(now_ms),
+            packages,
         );
         app.manage(updater.clone());
-        if enabled {
-            start_periodic_check(app.clone(), updater);
-        }
+        let periodic_app = app.clone();
+        start(
+            &updater,
+            enabled,
+            |manifest, bytes| native_restore(app, manifest, bytes),
+            move |updater| start_periodic_check(periodic_app, updater),
+        );
     }
 
     /// The in-process re-check (owner preference: no OS job, cron or
-    /// launchd). One named thread sleeps between ticks; it lives exactly as
-    /// long as the app process.
+    /// launchd). One named thread waits on wall-clock time between ticks;
+    /// it lives exactly as long as the app process.
     fn start_periodic_check<R: Runtime>(app: AppHandle<R>, updater: AppDesktopUpdater) {
         let spawned = std::thread::Builder::new()
             .name("station-desktop-update".into())
             .spawn(move || {
-                std::thread::sleep(FIRST_CHECK_DELAY);
+                let sleep = |step: Duration| std::thread::sleep(step);
+                let mut due = now_ms() + FIRST_CHECK_DELAY.as_millis() as u64;
                 loop {
-                    tauri::async_runtime::block_on(tick(&app, &updater));
-                    std::thread::sleep(CHECK_INTERVAL);
+                    wait_until(due, &now_ms, &sleep);
+                    tauri::async_runtime::block_on(periodic_tick(
+                        &updater,
+                        || native_check(&app, TIMEOUTS),
+                        native_download,
+                    ));
+                    due = now_ms() + CHECK_INTERVAL.as_millis() as u64;
                 }
             });
         if let Err(error) = spawned {
@@ -651,31 +989,11 @@ mod tauri_glue {
         }
     }
 
-    async fn tick<R: Runtime>(app: &AppHandle<R>, updater: &AppDesktopUpdater) {
-        let state = updater.check(|| native_check(app)).await;
-        if let Some(error) = &state.error {
-            log::info!("desktop update check did not complete: {}", error.message);
-        }
-        maybe_auto_download(updater).await;
-    }
-
-    async fn maybe_auto_download(updater: &AppDesktopUpdater) {
-        if updater.auto_download_due() {
-            log::info!("downloading the available desktop update per the download policy");
-            updater.download(native_download).await;
-        }
-    }
-
-    async fn native_check<R: Runtime>(
+    pub(super) async fn native_check<R: Runtime>(
         app: &AppHandle<R>,
+        timeouts: Timeouts,
     ) -> Result<Option<(Offer, Update)>, String> {
-        let updater = app
-            .updater_builder()
-            .timeout(CHECK_TIMEOUT)
-            .configure_client(|client| client.read_timeout(DOWNLOAD_READ_TIMEOUT))
-            .build()
-            .map_err(|error| error.to_string())?;
-        match updater.check().await {
+        match build_updater(app, timeouts)?.check().await {
             Ok(Some(update)) => Ok(Some((
                 Offer {
                     version: update.version.clone(),
@@ -688,12 +1006,36 @@ mod tauri_glue {
         }
     }
 
-    async fn native_download(update: Update, mut on_chunk: OnChunk) -> Result<Vec<u8>, String> {
-        let mut update = update;
-        // The handle inherits the check's total timeout; see
-        // DOWNLOAD_READ_TIMEOUT for what bounds a stalled download instead.
+    /// Rebuilds the handle for a cached package and verifies its bytes with
+    /// the plugin's own signature check. `restore_update` returns nothing
+    /// when the release is no longer newer than this app.
+    pub(super) fn native_restore<R: Runtime>(
+        app: &AppHandle<R>,
+        manifest: &serde_json::Value,
+        bytes: &[u8],
+    ) -> Result<Option<Update>, String> {
+        let Some(update) = build_updater(app, TIMEOUTS)?
+            .restore_update(manifest.clone())
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        update.verify(bytes).map_err(|error| error.to_string())?;
+        Ok(Some(update))
+    }
+
+    /// The handle a download runs with: the check's total timeout removed,
+    /// leaving the stall bound from [`build_updater`].
+    pub(super) fn for_download(mut update: Update) -> Update {
         update.timeout = None;
         update
+    }
+
+    pub(super) async fn native_download(
+        update: Update,
+        mut on_chunk: OnChunk,
+    ) -> Result<Vec<u8>, String> {
+        for_download(update)
             .download(|chunk, total| on_chunk(chunk, total), || {})
             .await
             .map_err(|error| error.to_string())
@@ -710,7 +1052,7 @@ mod tauri_glue {
         updater: State<'_, AppDesktopUpdater>,
     ) -> Result<DesktopUpdateState, String> {
         let updater = updater.inner().clone();
-        updater.check(|| native_check(&app)).await;
+        updater.check(|| native_check(&app, TIMEOUTS)).await;
         spawn_download_if_due(&updater);
         Ok(updater.snapshot())
     }
@@ -739,7 +1081,9 @@ mod tauri_glue {
     }
 
     /// Installs the downloaded update and, only if that succeeded, restarts.
-    /// The webview calls this after the user confirmed the restart.
+    /// The webview calls this after the user confirmed the restart. The
+    /// returned state tells a caller whose request was refused (no `ready`
+    /// update) that nothing is installing.
     #[tauri::command]
     pub async fn desktop_update_install<R: Runtime>(
         app: AppHandle<R>,
@@ -748,6 +1092,7 @@ mod tauri_glue {
         let updater = updater.inner().clone();
         let installer = updater.clone();
         let installed = tauri::async_runtime::spawn_blocking(move || {
+            // `Update::install` verifies the signature of the bytes first.
             installer
                 .install(|update, bytes| update.install(bytes).map_err(|error| error.to_string()))
         })
@@ -772,6 +1117,171 @@ mod tauri_glue {
         spawn_download_if_due(&updater);
         Ok(state)
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::io::{Read, Write};
+        use std::net::{TcpListener, TcpStream};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::Instant;
+
+        const BODY_LENGTH: usize = 10 * 1024;
+
+        /// A loopback release feed: `/latest.json` announces 99.0.0, `/slow`
+        /// streams the package in ten pieces 100 ms apart, `/stall` sends
+        /// the headers and a few bytes, then nothing.
+        fn serve(listener: TcpListener) {
+            let port = listener.local_addr().unwrap().port();
+            std::thread::spawn(move || {
+                for stream in listener.incoming().flatten() {
+                    std::thread::spawn(move || answer(stream, port));
+                }
+            });
+        }
+
+        fn answer(mut stream: TcpStream, port: u16) {
+            let mut request = [0u8; 4096];
+            let read = stream.read(&mut request).unwrap_or(0);
+            let request = String::from_utf8_lossy(&request[..read]).to_string();
+            let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
+            let target = tauri_plugin_updater::target().unwrap();
+            match path.as_str() {
+                "/latest.json" | "/stall.json" => {
+                    let package = if path == "/latest.json" {
+                        "slow"
+                    } else {
+                        "stall"
+                    };
+                    let body = serde_json::json!({
+                        "version": "99.0.0",
+                        "platforms": { target: {
+                            "url": format!("http://127.0.0.1:{port}/{package}"),
+                            "signature": "not-a-signature",
+                        }},
+                    })
+                    .to_string();
+                    let _ = write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                }
+                "/slow" | "/stall" => {
+                    let _ = write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {BODY_LENGTH}\r\nConnection: close\r\n\r\n"
+                    );
+                    let piece = vec![7u8; BODY_LENGTH / 10];
+                    if path == "/slow" {
+                        for _ in 0..10 {
+                            let _ = stream.write_all(&piece);
+                            let _ = stream.flush();
+                            std::thread::sleep(Duration::from_millis(100));
+                        }
+                    } else {
+                        let _ = stream.write_all(&piece[..16]);
+                        let _ = stream.flush();
+                        std::thread::sleep(Duration::from_secs(8));
+                    }
+                }
+                _ => {
+                    let _ = write!(
+                        stream,
+                        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"
+                    );
+                }
+            }
+        }
+
+        fn app_for(feed: &str) -> tauri::App<tauri::test::MockRuntime> {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            serve(listener);
+            let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+            context.config_mut().plugins.0.insert(
+                "updater".into(),
+                serde_json::json!({
+                    "pubkey": "not-a-real-key",
+                    "endpoints": [format!("http://127.0.0.1:{port}/{feed}")],
+                    "dangerousInsecureTransportProtocol": true,
+                }),
+            );
+            tauri::test::mock_builder()
+                .plugin(tauri_plugin_updater::Builder::new().build())
+                .build(context)
+                .unwrap()
+        }
+
+        /// Short bounds so the test is fast: the download outlasts the
+        /// check's total bound, while no single gap reaches the stall bound.
+        const SHORT: Timeouts = Timeouts {
+            check: Duration::from_millis(300),
+            stall: Duration::from_millis(600),
+        };
+
+        fn checked(app: &tauri::App<tauri::test::MockRuntime>) -> Update {
+            let (offer, update) = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .unwrap()
+                .expect("the feed announces an update");
+            assert_eq!(offer.version, "99.0.0");
+            update
+        }
+
+        #[test]
+        fn a_download_is_not_cut_off_by_the_checks_total_timeout() {
+            let app = app_for("latest.json");
+            let update = checked(&app);
+            let received = Arc::new(AtomicU64::new(0));
+            let counter = Arc::clone(&received);
+            let started = Instant::now();
+            let result = tauri::async_runtime::block_on(native_download(
+                update,
+                Box::new(move |chunk, _| {
+                    counter.fetch_add(chunk as u64, Ordering::SeqCst);
+                }),
+            ));
+            // Every byte arrived although the transfer took longer than the
+            // check's 300 ms bound; only the (fake) signature fails.
+            assert!(started.elapsed() > SHORT.check);
+            assert_eq!(received.load(Ordering::SeqCst), BODY_LENGTH as u64);
+            let error = result.unwrap_err();
+            assert!(!error.to_lowercase().contains("timed out"), "{error}");
+        }
+
+        #[test]
+        fn a_stalled_download_fails_instead_of_hanging() {
+            let app = app_for("stall.json");
+            let update = checked(&app);
+            let (done, finished) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let result =
+                    tauri::async_runtime::block_on(native_download(update, Box::new(|_, _| {})));
+                let _ = done.send(result);
+            });
+            let result = finished
+                .recv_timeout(Duration::from_secs(4))
+                .expect("a stalled download must fail within the stall bound");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn a_cached_release_no_newer_than_this_app_is_not_restored() {
+            let app = app_for("latest.json");
+            let manifest = serde_json::json!({
+                "version": "0.0.1",
+                "platforms": { tauri_plugin_updater::target().unwrap(): {
+                    "url": "https://example.invalid/pkg", "signature": "x" } },
+            });
+            assert!(native_restore(app.handle(), &manifest, b"bytes")
+                .unwrap()
+                .is_none());
+            // A newer release whose bytes fail the signature check is refused.
+            let mut newer = manifest.clone();
+            newer["version"] = "99.0.0".into();
+            assert!(native_restore(app.handle(), &newer, b"bytes").is_err());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -784,6 +1294,15 @@ mod tests {
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct FakeHandle(&'static str);
+
+    impl UpdateHandle for FakeHandle {
+        fn version(&self) -> &str {
+            self.0
+        }
+        fn manifest(&self) -> serde_json::Value {
+            serde_json::json!({ "version": self.0 })
+        }
+    }
 
     fn offer(version: &'static str) -> Option<(Offer, FakeHandle)> {
         Some((
@@ -799,10 +1318,20 @@ mod tests {
         updater: DesktopUpdater<FakeHandle>,
         emitted: Arc<Mutex<Vec<DesktopUpdateState>>>,
         clock: Arc<AtomicU64>,
+        cache: PathBuf,
+        _cache_root: Option<tempfile::TempDir>,
     }
 
     impl Harness {
         fn new(enabled: bool, store_dir: Option<PathBuf>) -> Self {
+            let root = tempfile::tempdir().unwrap();
+            let cache = root.path().join("desktop-update");
+            let mut harness = Self::with_cache(enabled, store_dir, cache);
+            harness._cache_root = Some(root);
+            harness
+        }
+
+        fn with_cache(enabled: bool, store_dir: Option<PathBuf>, cache: PathBuf) -> Self {
             let emitted = Arc::new(Mutex::new(Vec::new()));
             let clock = Arc::new(AtomicU64::new(T0));
             let sink = Arc::clone(&emitted);
@@ -814,9 +1343,12 @@ mod tests {
                         sink.lock().unwrap().push(state.clone())
                     }),
                     Arc::new(move || time.load(Ordering::SeqCst)),
+                    PackageStore::new(cache.clone()),
                 ),
                 emitted,
                 clock,
+                cache,
+                _cache_root: None,
             }
         }
 
@@ -843,13 +1375,19 @@ mod tests {
     fn fixture(name: &str) -> serde_json::Value {
         let all: serde_json::Value =
             serde_json::from_str(include_str!("fixtures/desktop-update-states.json")).unwrap();
-        all.get(name)
+        let mut value = all
+            .get(name)
             .unwrap_or_else(|| panic!("fixture {name} is missing"))
-            .clone()
+            .clone();
+        // The sequence depends on the path taken; it has its own test.
+        assert!(value.as_object_mut().unwrap().remove("sequence").is_some());
+        value
     }
 
     fn json(state: &DesktopUpdateState) -> serde_json::Value {
-        serde_json::to_value(state).unwrap()
+        let mut value = serde_json::to_value(state).unwrap();
+        assert!(value.as_object_mut().unwrap().remove("sequence").is_some());
+        value
     }
 
     #[test]
@@ -1139,5 +1677,315 @@ mod tests {
             }
         }));
         assert!(matches!(nested.phase, UpdatePhase::UpToDate { .. }));
+    }
+
+    // --- #3851 fix round ------------------------------------------------
+
+    fn ready_with_package(harness: &Harness, bytes: Vec<u8>) {
+        harness.check(Ok(offer("0.1.12")));
+        harness.download(Ok(bytes));
+        assert_eq!(
+            harness.updater.snapshot().phase,
+            UpdatePhase::Ready {
+                version: "0.1.12".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_downloaded_package_is_cached_on_disk_with_its_manifest_and_digest() {
+        let harness = Harness::new(true, None);
+        ready_with_package(&harness, vec![5; 4096]);
+        let store = PackageStore::new(harness.cache.clone());
+        let record = store.record().expect("record written");
+        assert_eq!(record.version, "0.1.12");
+        assert_eq!(record.manifest, serde_json::json!({ "version": "0.1.12" }));
+        assert_eq!(record.length, 4096);
+        assert_eq!(record.sha256, sha256_hex(&[5; 4096]));
+        assert_eq!(
+            std::fs::read(harness.cache.join(PACKAGE_FILE)).unwrap(),
+            vec![5; 4096]
+        );
+    }
+
+    #[test]
+    fn a_failed_download_leaves_no_package() {
+        let harness = Harness::new(true, None);
+        ready_with_package(&harness, vec![1, 2, 3]);
+        // A failed download in a later run leaves no record behind.
+        let other = Harness::with_cache(true, None, harness.cache.clone());
+        other.check(Ok(offer("0.1.13")));
+        other.download(Err("network".into()));
+        assert!(PackageStore::new(harness.cache.clone()).record().is_none());
+    }
+
+    #[test]
+    fn a_package_cached_by_an_earlier_run_is_restored_as_ready() {
+        let first = Harness::new(true, None);
+        ready_with_package(&first, vec![9, 9, 9]);
+
+        let second = Harness::with_cache(true, None, first.cache.clone());
+        let mut seen = None;
+        assert!(second.updater.restore_cached(|manifest, bytes| {
+            seen = Some((manifest.clone(), bytes.to_vec()));
+            Ok(Some(FakeHandle("0.1.12")))
+        }));
+        assert_eq!(
+            seen,
+            Some((serde_json::json!({ "version": "0.1.12" }), vec![9, 9, 9]))
+        );
+        assert_eq!(json(&second.updater.snapshot()), fixture("ready"));
+        // And it installs from the cached bytes.
+        let mut installed = Vec::new();
+        assert!(second.updater.install(|_, bytes| {
+            installed.extend_from_slice(bytes);
+            Ok(())
+        }));
+        assert_eq!(installed, vec![9, 9, 9]);
+    }
+
+    #[test]
+    fn stale_damaged_or_mismatched_packages_are_deleted_at_startup() {
+        // No longer an update (the restore finds no newer release).
+        let first = Harness::new(true, None);
+        ready_with_package(&first, vec![1]);
+        let next = Harness::with_cache(true, None, first.cache.clone());
+        assert!(!next.updater.restore_cached(|_, _| Ok(None)));
+        assert!(PackageStore::new(first.cache.clone()).record().is_none());
+        assert!(!first.cache.join(PACKAGE_FILE).exists());
+        assert_eq!(next.updater.snapshot().phase, UpdatePhase::Idle);
+
+        // Damaged bytes never reach the restore (or its signature check).
+        let first = Harness::new(true, None);
+        ready_with_package(&first, vec![1, 2, 3]);
+        std::fs::write(first.cache.join(PACKAGE_FILE), [1, 2, 4]).unwrap();
+        let next = Harness::with_cache(true, None, first.cache.clone());
+        let called = AtomicUsize::new(0);
+        assert!(!next.updater.restore_cached(|_, _| {
+            called.fetch_add(1, Ordering::SeqCst);
+            Ok(Some(FakeHandle("0.1.12")))
+        }));
+        assert_eq!(called.load(Ordering::SeqCst), 0);
+        assert!(PackageStore::new(first.cache.clone()).record().is_none());
+
+        // A failed signature check, or a handle for another version.
+        for restore in [
+            Err("signature mismatch".to_string()),
+            Ok(Some(FakeHandle("0.1.13"))),
+        ] {
+            let first = Harness::new(true, None);
+            ready_with_package(&first, vec![7]);
+            let next = Harness::with_cache(true, None, first.cache.clone());
+            assert!(!next.updater.restore_cached(|_, _| restore));
+            assert!(PackageStore::new(first.cache.clone()).record().is_none());
+            assert_eq!(next.updater.snapshot().phase, UpdatePhase::Idle);
+        }
+    }
+
+    #[test]
+    fn a_damaged_package_is_not_installed() {
+        let harness = Harness::new(true, None);
+        ready_with_package(&harness, vec![4, 4]);
+        std::fs::write(harness.cache.join(PACKAGE_FILE), [4, 5]).unwrap();
+        let called = AtomicUsize::new(0);
+        assert!(!harness.updater.install(|_, _| {
+            called.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }));
+        assert_eq!(called.load(Ordering::SeqCst), 0);
+        let state = harness.updater.snapshot();
+        assert_eq!(
+            state.phase,
+            UpdatePhase::Ready {
+                version: "0.1.12".into()
+            }
+        );
+        assert!(state.error.unwrap().message.contains("damaged"));
+    }
+
+    #[test]
+    fn a_periodic_tick_downloads_per_policy_but_never_installs() {
+        let dir = tempfile::tempdir().unwrap();
+        let harness = Harness::new(true, Some(dir.path().to_path_buf()));
+        harness
+            .updater
+            .set_policy(DownloadPolicy::Immediately)
+            .unwrap();
+        let state = tauri::async_runtime::block_on(periodic_tick(
+            &harness.updater,
+            || async { Ok(offer("0.1.12")) },
+            |_, _| async { Ok(vec![1, 2, 3]) },
+        ));
+        assert_eq!(
+            state.phase,
+            UpdatePhase::Ready {
+                version: "0.1.12".into()
+            }
+        );
+        // A second tick with the update ready does nothing at all.
+        let state = tauri::async_runtime::block_on(periodic_tick(
+            &harness.updater,
+            || async { panic!("a ready update is not re-checked") },
+            |_, _| async { panic!("a ready update is not re-downloaded") },
+        ));
+        assert_eq!(
+            state.phase,
+            UpdatePhase::Ready {
+                version: "0.1.12".into()
+            }
+        );
+        assert!(harness
+            .emitted()
+            .iter()
+            .all(|state| !matches!(state.phase, UpdatePhase::Installing { .. })));
+    }
+
+    #[test]
+    fn an_unconfigured_start_restores_nothing_and_starts_no_periodic_check() {
+        let harness = Harness::new(false, None);
+        let calls = Mutex::new(Vec::new());
+        start(
+            &harness.updater,
+            false,
+            |_, _| {
+                calls.lock().unwrap().push("restore");
+                Ok(None)
+            },
+            |_| calls.lock().unwrap().push("periodic"),
+        );
+        assert!(calls.lock().unwrap().is_empty());
+
+        let first = Harness::new(true, None);
+        ready_with_package(&first, vec![3]);
+        let configured = Harness::with_cache(true, None, first.cache.clone());
+        start(
+            &configured.updater,
+            true,
+            |_, _| {
+                calls.lock().unwrap().push("restore");
+                Ok(Some(FakeHandle("0.1.12")))
+            },
+            |updater| {
+                // The periodic check starts after the restore.
+                assert!(matches!(
+                    updater.snapshot().phase,
+                    UpdatePhase::Ready { .. }
+                ));
+                calls.lock().unwrap().push("periodic");
+            },
+        );
+        assert_eq!(*calls.lock().unwrap(), vec!["restore", "periodic"]);
+    }
+
+    #[test]
+    fn the_schedule_follows_wall_clock_time_across_sleep() {
+        assert_eq!(schedule_step(1_000, 1_000), None);
+        assert_eq!(
+            schedule_step(1_000, 1_500),
+            Some(Duration::from_millis(500))
+        );
+        assert_eq!(schedule_step(0, 3_600_000), Some(SCHEDULE_STEP));
+        // The machine sleeps for two hours during the first step: the wait
+        // ends on waking, not a whole interval later.
+        let now = AtomicU64::new(0);
+        let sleeps = AtomicUsize::new(0);
+        wait_until(
+            CHECK_INTERVAL.as_millis() as u64,
+            &|| now.load(Ordering::SeqCst),
+            &|step| {
+                assert!(step <= SCHEDULE_STEP);
+                sleeps.fetch_add(1, Ordering::SeqCst);
+                now.fetch_add(2 * 3_600_000, Ordering::SeqCst);
+            },
+        );
+        assert_eq!(sleeps.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn every_emitted_state_has_a_greater_sequence() {
+        let harness = Harness::new(true, None);
+        harness.check(Ok(offer("0.1.12")));
+        tauri::async_runtime::block_on(harness.updater.download(|_, mut on_chunk| async move {
+            on_chunk(10, Some(100));
+            on_chunk(10, Some(100));
+            Ok(vec![0; 20])
+        }));
+        let sequences: Vec<u64> = harness
+            .emitted()
+            .iter()
+            .map(|state| state.sequence)
+            .collect();
+        assert!(sequences.len() >= 4, "{sequences:?}");
+        assert!(
+            sequences.windows(2).all(|pair| pair[0] < pair[1]),
+            "{sequences:?}"
+        );
+        assert_eq!(
+            harness.updater.snapshot().sequence,
+            *sequences.last().unwrap()
+        );
+    }
+
+    #[test]
+    fn a_stored_start_in_the_future_restarts_the_clock() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(STORE_FILE),
+            serde_json::json!({
+                "policy": "after-24h",
+                "available": { "version": "0.1.12", "since": T0 + 1_000_000_000 }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let harness = Harness::new(true, Some(dir.path().to_path_buf()));
+        let state = harness.check(Ok(offer("0.1.12")));
+        assert_eq!(state.auto_download_at, Some(T0 + AUTO_DOWNLOAD_DELAY_MS));
+    }
+
+    #[test]
+    fn settings_fields_are_read_independently_and_an_unknown_policy_survives() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(STORE_FILE),
+            serde_json::json!({
+                "policy": "when-idle",
+                "available": { "version": "0.1.12", "since": T0 - 5 }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let harness = Harness::new(true, Some(dir.path().to_path_buf()));
+        // The default applies, and the timer record is kept.
+        assert_eq!(harness.updater.snapshot().policy, DownloadPolicy::After24h);
+        let state = harness.check(Ok(offer("0.1.12")));
+        assert_eq!(
+            state.auto_download_at,
+            Some(T0 - 5 + AUTO_DOWNLOAD_DELAY_MS)
+        );
+        // Writing the clock back keeps the newer build's value.
+        harness.check(Ok(offer("0.1.13")));
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join(STORE_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(raw["policy"], "when-idle");
+        // Choosing a policy here replaces it.
+        harness.updater.set_policy(DownloadPolicy::Never).unwrap();
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join(STORE_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(raw["policy"], "never");
+
+        // An unreadable clock keeps a known policy.
+        std::fs::write(
+            dir.path().join(STORE_FILE),
+            r#"{"policy":"immediately","available":{"version":7}}"#,
+        )
+        .unwrap();
+        let harness = Harness::new(true, Some(dir.path().to_path_buf()));
+        assert_eq!(
+            harness.updater.snapshot().policy,
+            DownloadPolicy::Immediately
+        );
     }
 }
