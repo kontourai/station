@@ -128,8 +128,12 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
               options.threadIds.includes(session.threadId),
           );
       },
-      listActiveTurnThreadIds: () =>
-        sessions.map((session) => session.threadId),
+      // A webhook's ephemeral session runs a turn too: the read model never
+      // lists it, the restart still stops it (review round 2 item 4).
+      listActiveTurnThreadIds: () => [
+        ...sessions.map((session) => session.threadId),
+        'webhook-session',
+      ],
     });
     const app = new Hono();
     const context = deepStub({
@@ -197,7 +201,7 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
     return { app, phone, laptop, readAuthorities, noted };
   }
 
-  test('each caller sees its own running turn and only a count of the other', async () => {
+  test('each caller sees its own running turn and only a count of the rest, an ephemeral one included', async () => {
     const { app, phone, laptop, readAuthorities } = await setup();
     const turnsFor = async (credential: string) => {
       const response = await app.request(
@@ -215,13 +219,13 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
       turns: [
         expect.objectContaining({ title: 'Phone task', engine: 'codex' }),
       ],
-      hiddenCount: 1,
+      hiddenCount: 2,
     });
     expect(await turnsFor(laptop.credential)).toEqual({
       turns: [
         expect.objectContaining({ title: 'Laptop task', engine: 'claude' }),
       ],
-      hiddenCount: 1,
+      hiddenCount: 2,
     });
     // The titles were read with each caller's own authority.
     expect(readAuthorities).toContain(phone.owner);

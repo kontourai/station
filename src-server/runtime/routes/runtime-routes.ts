@@ -2778,12 +2778,6 @@ export function configureRuntimeRoutes(
   // #3851: the server's own update lifecycle, one per runtime. It checks
   // once after boot and when a newer client connects (below), never on a
   // schedule; see the coordinator's header.
-  const runningTurnSessions = async (
-    authority: Parameters<OrchestrationService['listSessionReadModel']>[0],
-  ) =>
-    (await context.orchestrationService.listSessionReadModel(authority)).filter(
-      (session) => session.hasActiveTurn === true,
-    );
   const serverUpdate = new ServerUpdateCoordinator({
     provenance: resolveThisServerProvenance,
     readDownloadPolicy: async () =>
@@ -2812,25 +2806,27 @@ export function configureRuntimeRoutes(
         ...createRuntimeSystemRouteDeps(context),
         serverUpdate,
         listRunningTurnsFor: async (c) => {
-          const running = await runningTurnSessions(
-            INTERNAL_SESSION_READ_SCOPE,
-          );
+          // What the restart would stop: every session with an active turn,
+          // ephemeral ones included, the same set apply-when-idle counts
+          // (review round 2 item 4). The caller sees the titles it may read;
+          // every other one is counted in hiddenCount.
+          const running =
+            context.orchestrationService.listActiveTurnThreadIds();
           if (running.length === 0) return { turns: [], hiddenCount: 0 };
-          // What the caller may read of them, by its own read authority; a
-          // caller with none reads none of their titles.
-          let readable = new Set<string>();
+          let mine: Awaited<
+            ReturnType<OrchestrationService['listSessionReadModel']>
+          > = [];
           try {
-            const mine =
-              await context.orchestrationService.listSessionReadModel(
-                conversationReadAuthorityForContext(c),
-                { threadIds: running.map((session) => session.threadId) },
-              );
-            readable = new Set(mine.map((session) => session.threadId));
+            mine = await context.orchestrationService.listSessionReadModel(
+              conversationReadAuthorityForContext(c),
+              { threadIds: running },
+            );
           } catch {
-            readable = new Set();
+            mine = [];
           }
-          const turns = running
-            .filter((session) => readable.has(session.threadId))
+          const active = new Set(running);
+          const turns = mine
+            .filter((session) => active.has(session.threadId))
             .map((session) => ({
               sessionId: session.threadId,
               conversationId: session.conversationId ?? null,
