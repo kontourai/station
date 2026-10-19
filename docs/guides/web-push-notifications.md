@@ -58,8 +58,10 @@ push service or displayed on screen.
 
 Subscribe/unsubscribe resolve the request credential to a paired device through
 `identifyDevice`. An operator credential alone is insufficient, and so is a
-personal access token (#3557: it is no device a notification reaches); an
-unidentified caller or a token reaching the route gets
+personal access token (#3557: it is no device a notification reaches). A relay
+alias of a paired device is refused at subscribe too: its read scope fails the
+credential gate first, and the handler refuses it as well. An
+unidentified caller, a token or an alias reaching the route gets
 `403 {error: 'device_pairing_required'}`. The
 outer credential gate can reject earlier with
 `401 {error: {code: 'authentication_required'}}`. Current audit reasons distinguish
