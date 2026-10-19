@@ -1,0 +1,7 @@
+{
+  "revision": "997f972f7234125ac12a6f7f104d1bede5201c01",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"Reviewed lite public source/channel admission, strict foundation schema reuse, IP-free persistence and logs, daily rollup semantics, safe-cell complementary suppression and publisher key isolation against HTTP/PostgreSQL owners. Public downloads are manually invoked and fixture-tested; no production or deployment qualification is claimed. Existing Full routes and probe protocol remain separate.","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/qualify.mjs","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/store.ts","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/lite-routes.ts","packages/telemetry-broker/src/public-dashboard.ts","packages/telemetry-broker/qualify-lite.mjs","packages/telemetry-broker/passive-signals.mjs","packages/telemetry-broker/src/__tests__/lite-rate-limit.test.ts","packages/telemetry-broker/src/__tests__/passive-signals.test.ts"]}
+  ]
+}
