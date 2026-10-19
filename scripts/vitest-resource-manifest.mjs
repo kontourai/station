@@ -1642,12 +1642,20 @@ function explicitFiles(manifest) {
  * and compares it to the exact manifest partition before a run can start.
  */
 export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
+  const siblings = new Map();
+  for (const file of explicitFiles(manifest)) {
+    const slash = file.lastIndexOf('/');
+    const directory = file.slice(0, slash + 1);
+    const names = siblings.get(directory) ?? [];
+    names.push(file.slice(slash + 1));
+    siblings.set(directory, names);
+  }
   return Object.freeze([
-    ...manifest.processHeavy.files,
-    ...manifest.processExclusive.files,
-    ...manifest.coordinatorExclusive.files,
-    ...manifest.credentialLedgerExclusive.files,
-    ...manifest.sharedOutput.files,
+    ...Array.from(siblings, ([directory, names]) =>
+      names.length === 1
+        ? `${directory}${names[0]}`
+        : `${directory}{${names.join(',')}}`,
+    ),
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
     `${manifest.dogfoodReconcile.prefix}/**`,
   ]);
