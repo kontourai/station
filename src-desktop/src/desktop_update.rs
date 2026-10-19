@@ -608,6 +608,21 @@ impl<H: Clone> Controller<H> {
         Some((handle, version))
     }
 
+    /// The cached package is missing or damaged: there is nothing to retry,
+    /// so the update is dropped and the next check offers it again.
+    pub fn discard_package(&mut self, message: String) {
+        let UpdatePhase::Installing { version } = &self.phase else {
+            return;
+        };
+        self.error = Some(UpdateError {
+            context: ErrorContext::Install,
+            message,
+            version: Some(version.clone()),
+        });
+        self.handle = None;
+        self.phase = UpdatePhase::Idle;
+    }
+
     /// On success the phase stays `installing` until the process restarts.
     /// On failure the cached package stays for a retry.
     pub fn finish_install(&mut self, result: Result<(), String>) {
@@ -773,10 +788,15 @@ impl<H: UpdateHandle> DesktopUpdater<H> {
         let Some((handle, version)) = self.update(Controller::begin_install) else {
             return false;
         };
-        let result = self
-            .packages
-            .load(&version)
-            .and_then(|bytes| install(&handle, &bytes));
+        let bytes = match self.packages.load(&version) {
+            Ok(bytes) => bytes,
+            Err(message) => {
+                self.packages.clear();
+                self.update(|controller| controller.discard_package(message));
+                return false;
+            }
+        };
+        let result = install(&handle, &bytes);
         let installed = result.is_ok();
         self.update(|controller| controller.finish_install(result));
         installed
@@ -1799,14 +1819,14 @@ mod tests {
             Ok(())
         }));
         assert_eq!(called.load(Ordering::SeqCst), 0);
+        // Nothing to retry: the update is dropped and offered again by the
+        // next check, which a ready update would not run.
         let state = harness.updater.snapshot();
-        assert_eq!(
-            state.phase,
-            UpdatePhase::Ready {
-                version: "0.1.12".into()
-            }
-        );
+        assert_eq!(state.phase, UpdatePhase::Idle);
         assert!(state.error.unwrap().message.contains("damaged"));
+        assert!(PackageStore::new(harness.cache.clone()).record().is_none());
+        let state = harness.check(Ok(offer("0.1.12")));
+        assert!(matches!(state.phase, UpdatePhase::Available { .. }));
     }
 
     #[test]
