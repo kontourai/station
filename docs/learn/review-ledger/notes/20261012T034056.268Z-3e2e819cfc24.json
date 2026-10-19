@@ -1,0 +1,7 @@
+{
+  "revision": "2bc998fc2fc6043c8fada67dad672ad36d539bea",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Rechecked after the docs-index-reachability.test.ts per-test timeout change: this document's claims about docs:foundations:test as required Veritas evidence and its lane membership are unchanged; only that one real-ledger test's timeout moved to 120 s for baseline-advance changes.","inputs":[".veritas/README.md","scripts/__tests__/docs-index-reachability.test.ts"]}
+  ]
+}

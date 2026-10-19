@@ -1,0 +1,29 @@
+.task-chat-start {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  background: var(--k-panel);
+  overflow: auto;
+}
+.task-chat-start .new-chat-modal__header {
+  padding: var(--k-space-3);
+  flex-shrink: 0;
+  max-height: none;
+}
+.task-chat-start .new-chat-modal__title-row {
+  margin-bottom: 0;
+}
+.chat-dock:has(.task-chat-start) {
+  max-height: 100dvh;
+}
+
+@media (max-width: 640px) {
+  .chat-dock:has(.task-chat-start) {
+    min-height: calc(100dvh - var(--app-toolbar-total-height));
+    max-height: calc(100dvh - var(--app-toolbar-total-height));
+  }
+}

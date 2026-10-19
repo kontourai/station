@@ -1,0 +1,7 @@
+{
+  "revision": "988949305e1df68541059efcb1e81d3e5f8ea739",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Changed input tests/e2e-manifest.mjs: added a product-bucket spec only; PR_BROWSER_SMOKE_CONTRACT and its seven selected specs are unchanged, so the journey table stays accurate. No prose change.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

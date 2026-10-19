@@ -1,0 +1,7 @@
+{
+  "revision": "50f42e3ab4f6cb99f6326295fd811e41a2012e54",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the formatter-only conditional line break in review-binding.mjs: strict YAML errors/warnings still return undefined before any parse is cached. Exact-byte cache identity, selected-value hashing, missing-value refusal, raw-check decisions and ordinary deletion-note requirements are unchanged. Earlier runtime controls remain tied to their revisions; this is only the incremental source-format disposition.","inputs":["docs/guides/documentation.md","scripts/lib/review-binding.mjs"]}
+  ]
+}

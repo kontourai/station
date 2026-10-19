@@ -36,6 +36,7 @@ import {
   wireTurnCompletionNotifications,
 } from '../../services/orchestration/turn-completion-notifications.js';
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
+import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
 import {
   AttentionProjectionService,
   type PausedGateReviewAggregate,
@@ -601,7 +602,7 @@ export function configureRuntimeSupportServices(
     webPushService,
     canUserReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
-    listNotifications: () => notificationService.list(),
+    getNotification: (id) => notificationService.get(id),
     // #2589 iOS alerts and #2588 Android alerts through the push gateway;
     // each channel is dormant until a phone of its platform registers.
     ...(pushGateway
@@ -703,6 +704,7 @@ export function configureRuntimeSupportServices(
     new PluginLifecycleProposalService(
       context.configLoader.getProjectHomeDir(),
     ),
+    new ToolLibraryService(context.configLoader.getProjectHomeDir()),
   );
   return {
     schedulerService,

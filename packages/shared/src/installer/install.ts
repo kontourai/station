@@ -39,6 +39,10 @@ import { join, parse, resolve, sep } from 'node:path';
 import { STATION_RELEASE_RINGS_DATA } from '../channel-ports.generated.js';
 import { renamePathSyncRetrying } from '../fs-windows-compat.js';
 import { findPortableServerTarget } from '../portable-server-targets.mjs';
+import {
+  decideAgainstAcceptedRelease,
+  recordAcceptedRelease,
+} from '../prebuilt-archive.js';
 import type { ReleaseManifestPayload } from '../release-manifest.mjs';
 import { STATION_RELEASE_MANIFEST_KEYS as PINNED_MANIFEST_SIGNING_KEYS } from '../release-manifest-keys.generated.js';
 import {
@@ -992,7 +996,9 @@ export type PreparedRelease = {
  * manifest, download and check the archive, read its identity, run the
  * downgrade check against `current`, then (after `prepare`, which claims the
  * roots it needs) reuse or extract `versions/<version>`. Nothing on disk
- * changes before `prepare`.
+ * changes before `prepare`, except seeding a missing accepted-release record
+ * on the nothing-to-do path into an install root that passes `prepare`'s
+ * checks.
  */
 export async function prepareRelease(
   context: Context,
@@ -1048,11 +1054,25 @@ export async function prepareRelease(
         actualChecksum,
         isActive,
       );
-      if (outcome === 'nothing-to-do')
+      if (outcome === 'nothing-to-do') {
+        // An install from before the record existed has none: the verified
+        // active release seeds it, but only into an install root that passes
+        // the same ownership and trust checks `prepare` applies (read-only
+        // here; nothing else changes on this path). An existing record,
+        // valid or not, is left to the next install that reaches its check.
+        if (isTrustedExistingInstallRoot(paths.installRoot, env))
+          recordAccepted(io, paths, payload, true);
         return { ...result, outcome: 'nothing-to-do' };
+      }
     }
+    checkAgainstAccepted(env, io, paths, payload);
     prepare();
 
+    // The install root is claimed from here on, so the verified release
+    // becomes the newest this install has accepted. It is raised even if a
+    // later step fails: the manifest is validly signed either way, and an
+    // older one is stale whatever became of this release.
+    recordAccepted(io, paths, payload);
     if (isCompleteVersion(releaseDir, actualChecksum)) {
       io.out('Station release already installed; reusing verified files.');
       return { ...result, outcome: 'ready' };
@@ -1169,6 +1189,79 @@ function withZipOrRefuse<T>(
       );
     throw error;
   }
+}
+
+function recordAccepted(
+  io: InstallerIo,
+  paths: Paths,
+  payload: ReleaseManifestPayload,
+  onlyIfAbsent = false,
+): void {
+  try {
+    recordAcceptedRelease(
+      paths.installRoot,
+      paths.ring,
+      payload.version,
+      onlyIfAbsent,
+    );
+  } catch (error) {
+    io.err(`${(error as Error).message}`);
+    fail('could not record the newest release this install accepted');
+  }
+}
+
+/**
+ * An existing install root this installer owns and trusts, checked without
+ * changing anything: prepareOwnedInstallRoot's checks for a root that
+ * already carries its marker.
+ */
+function isTrustedExistingInstallRoot(
+  root: string,
+  env: InstallerEnv,
+): boolean {
+  try {
+    if (!assertSafeDirectory(root)) return false;
+    const marker = join(root, INSTALL_ROOT_MARKER);
+    const info = lstatSync(marker);
+    if (
+      !info.isFile() ||
+      info.isSymbolicLink() ||
+      (owner !== null && (info.uid !== owner || (info.mode & 0o077) !== 0)) ||
+      readFileSync(marker, 'utf8') !== INSTALL_ROOT_SIGNATURE
+    )
+      return false;
+    return installRootTrustProblem(root, env) === null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Replay protection beyond `current` (install.sh check_accepted_release,
+ * the same accepted-release.mjs decision): a manifest older than the newest
+ * release this install root ever accepted is refused, even when it is newer
+ * than `current` (after a launcher rollback or a deliberate one). Only the
+ * caller naming the exact version with STATION_INSTALL_ALLOW_ROLLBACK=1
+ * installs it anyway.
+ */
+function checkAgainstAccepted(
+  env: InstallerEnv,
+  io: InstallerIo,
+  paths: Paths,
+  payload: ReleaseManifestPayload,
+): void {
+  const explicit =
+    env.STATION_INSTALL_ALLOW_ROLLBACK === '1' &&
+    (env.STATION_VERSION || 'latest') === payload.releaseTag;
+  const { action, message } = decideAgainstAcceptedRelease(
+    paths.installRoot,
+    paths.ring,
+    payload.version,
+    explicit,
+  );
+  if (action === 'note') io.out(message);
+  else if (action === 'warn') io.err(message);
+  else if (action === 'refuse') fail(message);
 }
 
 /**

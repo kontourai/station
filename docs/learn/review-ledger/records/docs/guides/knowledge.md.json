@@ -110,7 +110,11 @@
 
     "src-server/runtime/frameworks/__tests__/strands-tool-loader.test.ts",
 
-    "src-ui/src/__tests__/ProjectSettingsView.test.tsx"
+    "src-ui/src/__tests__/ProjectSettingsView.test.tsx",
+
+    "src-server/knowledge-index/embedding-identity.ts",
+
+    "src-server/services/plugins/tool-library-service.ts"
   ],
 
   "checks": [

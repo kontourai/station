@@ -1,0 +1,9 @@
+{
+  "revision": "efd3ec767d4edd884ac702adf1068825e4234d3d",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Moved the proposed binding supplement link below the original bound-caller paragraph at efd3ec767d4 to preserve the insertion context for open PR 3422. No technical claim or action behavior changed. git apply --check of PR 3422 Browser guide patch succeeds against these bytes. Prior parity execution and limitations remain unchanged.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Reviewed the Browser guide link relocation at efd3ec767d4. No delivered capability, profile, ownership, takeover or proposed cross-engine backend claim changed. The proposal remains accurate and unimplemented.","inputs":["docs/design/agent-interaction-capabilities.md","docs/guides/browser-workspace.md"]}
+  ]
+}

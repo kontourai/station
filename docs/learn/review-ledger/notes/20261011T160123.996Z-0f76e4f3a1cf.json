@@ -1,0 +1,7 @@
+{
+  "revision": "d8549f0a78737b29ed4a60c5c7f8f7aadc4900a4",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"This round only changes how the start composer's setup-read failure handles a failed retry (keeps the plain sentence and its Try again; setup check uses describeReadFailure) and the New chat alert's stale-Station reconnect message, matching the existing list retry. Re-read the document's failure, retry and setup-return claims; none describe this alert, and they remain accurate.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

@@ -407,6 +407,11 @@ channel — is **invalid-as-authored**, and the system says so where authoring h
 This is the same trust argument as connections-onboarding.md §1 ("never silent") made
 structural: honesty is a property of the contract, not a courtesy of each feature.
 
+Explicit `tools.askBeforeUse` rules are required policy: a saved Agent also
+refuses startup on an engine that cannot enforce them. Station and Claude
+currently deliver these rules; the ordinary deliverable-subset behavior does
+not discard an authored Ask requirement.
+
 ## 6. Per-session capability delivery and the overlay model
 
 ### 6.1 Owner policy: Station never installs into global CLI config
@@ -600,6 +605,8 @@ Decisions:
   there is no default case, and the engine is precisely the fact that disambiguates
   the two-identical-OpenCodes problem the badges were built for. Visual weight stays
   quiet (the existing status-badge family); chips are informative, not alarming.
+  The start pickers (the New Chat list and the start composer's Agent menu) carry
+  the same pill right after the Agent's name rather than on a line of its own, and leave it out where it only repeats the Agent's name.
 - **ACP never appears on a chip.** Transport is not identity. The engine's name and
   icon come from its connection/registry entry.
 - The badge components/tests (`AgentTypeBadge.tsx`, `agentTypeBadgeKind`, their four

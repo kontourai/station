@@ -1,0 +1,7 @@
+{
+  "revision": "cde26d277b4f48d0a1f4e392a7da7a79caf66d63",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Changed input ChatMessageList.tsx (fix round: touch/press tracking, reader-caused growth window, glide reverse-cancel, hashed trace keys). The doc's ChatMessageList claim (UIBlockActionsContext form submission via useSendMessage) is unchanged. No prose change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

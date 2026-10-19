@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 
 /**
@@ -18,7 +19,9 @@ import { describe, expect, test } from 'vitest';
  *
  * So the rule is enforced at the import: a rendering surface that names a
  * session's state calls the ladder (`workStatus`, or `sessionWorkStatus`
- * for a bare summary). The fold's label is an INPUT to the ladder, read by
+ * for a bare summary), directly or through the observation adapter. The
+ * adapter must itself call the ladder; import aliases do not change that
+ * route. The fold's label is an INPUT to the ladder, read by
  * the few modules that classify, and nothing else prints it.
  *
  * Deliberately a source scan and not a lint rule: it needs no new tooling,
@@ -26,6 +29,7 @@ import { describe, expect, test } from 'vitest';
  */
 
 const SRC_ROOT = fileURLToPath(new URL('..', import.meta.url));
+const OBSERVATION_ADAPTER = join('views', 'home', 'useObservedWorkStatus.ts');
 
 /**
  * The modules that may read the fold's label directly: the ladder and its
@@ -79,6 +83,58 @@ function withoutComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 }
 
+function callsStatusProducer(file: string, allowAdapters = true): boolean {
+  const producers = new Map([
+    [join(SRC_ROOT, 'views', 'home', 'work-status'), 'workStatus'],
+  ]);
+  if (allowAdapters) {
+    producers.set(
+      join(SRC_ROOT, 'views', 'sessions', 'sessions-lane-model'),
+      'sessionWorkStatus',
+    );
+    producers.set(
+      join(SRC_ROOT, 'views', 'home', 'useObservedWorkStatus'),
+      'useObservedWorkStatus',
+    );
+  }
+  const source = ts.createSourceFile(
+    file,
+    readFileSync(file, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const importedCalls = new Set<string>();
+  for (const statement of source.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier)
+    )
+      continue;
+    const producer = producers.get(
+      resolve(dirname(file), statement.moduleSpecifier.text),
+    );
+    const bindings = statement.importClause?.namedBindings;
+    if (!producer || !bindings || !ts.isNamedImports(bindings)) continue;
+    for (const binding of bindings.elements) {
+      if ((binding.propertyName ?? binding.name).text === producer) {
+        importedCalls.add(binding.name.text);
+      }
+    }
+  }
+  let called = false;
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      importedCalls.has(node.expression.text)
+    )
+      called = true;
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return called;
+}
+
 describe('a session state is worded by the ladder alone', () => {
   const files = sourceFiles(SRC_ROOT);
 
@@ -96,15 +152,17 @@ describe('a session state is worded by the ladder alone', () => {
     ).toEqual([]);
   });
 
-  test('every guarded surface prints its state through the ladder', () => {
+  test('every guarded surface calls a canonical status producer', () => {
     for (const guarded of GUARDED_SURFACES) {
-      const source = withoutComments(
-        readFileSync(join(SRC_ROOT, guarded), 'utf8'),
-      );
-      expect(source, `${guarded} no longer reads the status ladder`).toMatch(
-        /\b(workStatus|sessionWorkStatus)\(/,
-      );
+      expect(
+        callsStatusProducer(join(SRC_ROOT, guarded)),
+        `${guarded} no longer reads the status ladder or its adapter`,
+      ).toBe(true);
     }
+    expect(
+      callsStatusProducer(join(SRC_ROOT, OBSERVATION_ADAPTER), false),
+      'the observation adapter must delegate status wording to workStatus',
+    ).toBe(true);
   });
 
   test('outside the classifiers, nothing turns the fold label into text', () => {
@@ -125,6 +183,7 @@ describe('a session state is worded by the ladder alone', () => {
   test('the scan actually reaches the rendering surfaces it is guarding', () => {
     const scanned = files.map((file) => file.slice(SRC_ROOT.length));
     for (const guarded of GUARDED_SURFACES) expect(scanned).toContain(guarded);
+    expect(scanned).toContain(OBSERVATION_ADAPTER);
     expect(scanned.length).toBeGreaterThan(300);
   });
 });

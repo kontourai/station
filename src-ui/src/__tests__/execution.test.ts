@@ -232,6 +232,105 @@ describe('execution utils', () => {
     });
   });
 
+  describe('defaults the engine does not advertise', () => {
+    const acpEngine: AgentConnectionView = {
+      id: engineConnectionId('opencode'),
+      kind: 'agent',
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      capabilities: ['agent-runtime'],
+      config: { defaultModel: 'gpt-6.1-sol' },
+      status: 'ready',
+      setup: { state: 'ready', detected: true, configured: true },
+      prerequisites: [],
+    };
+    const advertisedModels = [
+      { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+    ];
+
+    test('a project default the ACP engine did not advertise is skipped, not sent', () => {
+      expect(
+        resolveEffectiveModel({
+          agent: { model: 'anthropic/claude-sonnet-4-6' },
+          runtimeConnection: acpEngine,
+          projectDefaultModel: 'gpt-6.1-sol',
+          advertisedModels,
+        }),
+      ).toMatchObject({
+        id: 'anthropic/claude-sonnet-4-6',
+        source: 'agent default',
+      });
+    });
+
+    test('every inherited default is checked, down to unknown when none is advertised', () => {
+      expect(
+        resolveEffectiveModel({
+          agent: { model: 'gpt-6.1-sol' },
+          runtimeConnection: acpEngine,
+          projectDefaultModel: 'gpt-6.1-sol',
+          lastChosenModel: 'gpt-6.1-sol',
+          advertisedModels,
+        }),
+      ).toMatchObject({ id: null, source: 'unknown' });
+    });
+
+    test('a default the engine advertises is kept', () => {
+      expect(
+        resolveEffectiveModel({
+          runtimeConnection: acpEngine,
+          projectDefaultModel: 'anthropic/claude-sonnet-4-6',
+          advertisedModels,
+        }),
+      ).toMatchObject({
+        id: 'anthropic/claude-sonnet-4-6',
+        source: 'project default',
+      });
+    });
+
+    test('with nothing advertised there is no list to check against', () => {
+      expect(
+        resolveEffectiveModel({
+          runtimeConnection: acpEngine,
+          projectDefaultModel: 'gpt-6.1-sol',
+          advertisedModels: [],
+        }),
+      ).toMatchObject({ id: 'gpt-6.1-sol', source: 'project default' });
+    });
+
+    test('a runtime catalog alone is not the list a default is checked against', () => {
+      expect(
+        resolveEffectiveModel({
+          runtimeConnection: {
+            ...acpEngine,
+            runtimeCatalog: {
+              source: 'live',
+              models: [
+                {
+                  id: 'claude-sonnet-4-6',
+                  name: 'Claude Sonnet 4.6',
+                  originalId: 'claude-sonnet-4-6',
+                },
+              ],
+              builtInModels: [],
+            },
+          },
+          projectDefaultModel: 'gpt-6.1-sol',
+        }),
+      ).toMatchObject({ id: 'gpt-6.1-sol', source: 'project default' });
+    });
+
+    test('an explicit session override is not vetoed here', () => {
+      expect(
+        resolveEffectiveModel({
+          runtimeConnection: acpEngine,
+          sessionOverride: 'gpt-6.1-sol',
+          advertisedModels,
+        }),
+      ).toMatchObject({ id: 'gpt-6.1-sol', source: 'session override' });
+    });
+  });
+
   test('guaranteeConcreteModel falls back to the first catalog model so New Chat is never unset', () => {
     const unset = resolveEffectiveModel({
       runtimeConnection: {

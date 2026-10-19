@@ -1,0 +1,7 @@
+{
+  "revision": "60af3e3cd1735d94e93c81c6a6a9ba05195da5e1",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed producer countsFor against consumer reconciliation and the real digest-bound attachment/reportExecution tests. Infrastructure errors no longer double-count as parser errors; genuine parser errors and inconsistent-count rejection remain.32 focused tests pass; reverting the production predicate gives1 intended failure, exact restoration32pass. Original e37 receipt and timing are untouched and remain NOT_VERIFIED.","inputs":["docs/reference/verification-receipts.md","scripts/lib/verification-ci-fast-diagnostics.mjs","scripts/__tests__/verification-terminal-receipt.test.ts"]}
+  ]
+}

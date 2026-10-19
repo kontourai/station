@@ -30,7 +30,12 @@ type ActiveChatsContextType = {
       role: 'user' | 'assistant' | 'system';
       content: string;
       attachments?: any[];
-      action?: { label: string; handler: () => void };
+      action?: {
+        label: string;
+        handler: () => void;
+        /** Ask first with the shared unconfirmed-message discard. */
+        confirm?: 'unconfirmed-discard';
+      };
       fullAccessRefusal?: FullAccessRefusalNotice;
       sendFailure?: boolean;
       queuedRetry?: boolean;
@@ -101,7 +106,12 @@ export function ActiveChatsProvider({ children }: { children: ReactNode }) {
         role: 'user' | 'assistant' | 'system';
         content: string;
         attachments?: any[];
-        action?: { label: string; handler: () => void };
+        action?: {
+          label: string;
+          handler: () => void;
+          /** Ask first with the shared unconfirmed-message discard. */
+          confirm?: 'unconfirmed-discard';
+        };
         sendFailure?: boolean;
         queuedRetry?: boolean;
       },
@@ -234,13 +244,15 @@ export function useActiveChatState(sessionId: string): ChatUIState | null {
     );
   }
 
-  const chats = useSyncExternalStore(
-    activeChatsStore.subscribe,
-    activeChatsStore.getSnapshot,
-    activeChatsStore.getSnapshot,
+  const getSnapshot = useCallback(
+    () => activeChatsStore.getSnapshot()[sessionId] ?? null,
+    [sessionId],
   );
-
-  return chats[sessionId] || null;
+  return useSyncExternalStore(
+    activeChatsStore.subscribe,
+    getSnapshot,
+    getSnapshot,
+  );
 }
 
 /**
@@ -324,6 +336,19 @@ export function useActiveChatActions() {
     );
   }
   return context;
+}
+
+function readActiveChatOrder(): string {
+  return JSON.stringify(Object.keys(activeChatsStore.getSnapshot()));
+}
+
+export function useActiveChatIds(): readonly string[] {
+  const signature = useSyncExternalStore(
+    activeChatsStore.subscribe,
+    readActiveChatOrder,
+    readActiveChatOrder,
+  );
+  return useMemo<string[]>(() => JSON.parse(signature), [signature]);
 }
 
 export function useAllActiveChats(): ActiveChatsMap {

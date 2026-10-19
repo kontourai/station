@@ -1,0 +1,46 @@
+name: Delivery validation
+
+on:
+  workflow_call:
+    inputs:
+      install: { type: boolean, default: true }
+      portable: { type: boolean, default: true }
+      native: { type: boolean, default: true }
+      desktop: { type: boolean, default: true }
+      ecosystem: { type: boolean, default: true }
+
+permissions: { contents: read }
+
+# Shared with scheduled full qualification, across distinct source revisions.
+# GitHub holds pending invocations before allocating their first runner.
+concurrency:
+  group: station-background-compute
+  queue: max
+  cancel-in-progress: false
+
+# These proofs follow required PR feedback, or one combined scheduled main
+# candidate. Sequence families instead of allocating every platform at once.
+jobs:
+  install:
+    if: ${{ inputs.install }}
+    uses: ./.github/workflows/install-smoke.yml
+  portable:
+    needs: install
+    if: ${{ always() && !cancelled() && inputs.portable }}
+    uses: ./.github/workflows/portable-server-archives.yml
+    with:
+      ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      version: 0.0.0
+      ring: stable
+  native:
+    needs: portable
+    if: ${{ always() && !cancelled() && inputs.native }}
+    uses: ./.github/workflows/desktop-rust.yml
+  desktop:
+    needs: native
+    if: ${{ always() && !cancelled() && inputs.desktop }}
+    uses: ./.github/workflows/desktop-clean-checkout.yml
+  ecosystem:
+    needs: desktop
+    if: ${{ always() && !cancelled() && inputs.ecosystem }}
+    uses: ./.github/workflows/ecosystem-packaging.yml

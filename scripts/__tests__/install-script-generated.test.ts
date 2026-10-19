@@ -2,17 +2,19 @@ import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   cpSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { CHANNEL_PORTS, RELEASE_RINGS } from '../channel-ports.mjs';
 import {
+  acceptedReleaseFunctionSource,
   bundleInstallerCore,
   checkInstallPs1Script,
   checkInstallScript,
@@ -36,6 +38,38 @@ function scratchCopy(): string {
   copyFileSync(INSTALL_SCRIPT_PATH, path);
   return path;
 }
+
+describe('the accepted-release program block (#187)', () => {
+  it('carries the shipped function, which is comments and one exported function', () => {
+    const source = readFileSync(
+      resolve(root, 'packages/shared/src/accepted-release.mjs'),
+      'utf8',
+    );
+    expect(acceptedReleaseFunctionSource(source)).toMatch(
+      /^function acceptedReleaseRules\(/,
+    );
+  });
+
+  it.each([
+    ["import { x } from 'node:fs';\n"],
+    ['const helper = 1;\n'],
+    ['/** doc */\nexport const extra = 1;\n'],
+  ])('refuses a statement before the function: %j', (prefix) => {
+    expect(() =>
+      acceptedReleaseFunctionSource(
+        `/** doc */\n${prefix}export function acceptedReleaseRules(rings) {}\n`,
+      ),
+    ).toThrow(/only comments and its one exported function/);
+  });
+
+  it('refuses a second export after the function', () => {
+    expect(() =>
+      acceptedReleaseFunctionSource(
+        'export function acceptedReleaseRules(rings) {}\nexport const x = 1;\n',
+      ),
+    ).toThrow(/only comments and its one exported function/);
+  });
+});
 
 describe('install.sh generated blocks', () => {
   it('matches what the generator renders from its config sources', () => {
@@ -325,6 +359,30 @@ describe('install.ps1 generated blocks (#2675 slice W)', () => {
   });
 });
 
+/**
+ * Every repository module the generator loads when it runs: its relative
+ * static imports, followed transitively, as repository-relative paths. A copy
+ * of the generator needs all of them, and a hand-kept list silently fell
+ * behind one (#3592). Refuses an import that resolves to no file.
+ */
+function generatorModuleClosure(): string[] {
+  const seen = new Set<string>();
+  const pending = ['scripts/install-script-generated.mjs'];
+  const specifier =
+    /^\s*(?:import|export)\b[^'"]*?(?:\bfrom\s*)?['"](\.\.?\/[^'"]+)['"]/gm;
+  while (pending.length > 0) {
+    const file = pending.pop() as string;
+    if (seen.has(file)) continue;
+    const absolute = join(root, file);
+    if (!existsSync(absolute))
+      throw new Error(`the generator's import ${file} does not exist`);
+    seen.add(file);
+    for (const [, target] of readFileSync(absolute, 'utf8').matchAll(specifier))
+      pending.push(relative(root, resolve(dirname(absolute), target)));
+  }
+  return [...seen].sort();
+}
+
 describe('install-script:check as a process', () => {
   // The gate verify:static:raw runs is the CLI, not the exported functions, so
   // run it as a child and read its exit status in both directions.
@@ -341,20 +399,32 @@ describe('install-script:check as a process', () => {
     expect(result.status, result.stderr).toBe(0);
   });
 
-  it('exits non-zero, naming the stale blocks, when install.sh drifts', () => {
-    const copy = makeTempDir('station-install-check-');
-    mkdirSync(join(copy, 'scripts/lib'), { recursive: true });
-    mkdirSync(join(copy, 'config'));
-    mkdirSync(join(copy, 'packages/shared/src'), { recursive: true });
+  it('derives the generator modules a copy needs from its real imports', () => {
+    const closure = generatorModuleClosure();
+    // Pinned beside the derivation: the modules the generator loads today.
     for (const file of [
       'scripts/install-script-generated.mjs',
       'scripts/channel-ports.mjs',
       'scripts/lib/module-entry.mjs',
+      'scripts/lib/public-release-locations.mjs',
+      'packages/shared/src/portable-server-targets.mjs',
+      'packages/shared/src/release-rings.generated.mjs',
+    ])
+      expect(closure).toContain(file);
+  });
+
+  it('exits non-zero, naming the stale blocks, when install.sh drifts', () => {
+    const copy = makeTempDir('station-install-check-');
+    // The generator's modules, and the data files it reads (not imports).
+    for (const file of [
+      ...generatorModuleClosure(),
       'config/channel-ports.json',
       'config/release-manifest-keys.json',
       'config/portable-server-node-runtime.json',
-      'packages/shared/src/portable-server-targets.mjs',
+      // Read as text for the ACCEPTED RELEASE PROGRAM block, not imported.
+      'packages/shared/src/accepted-release.mjs',
     ]) {
+      mkdirSync(dirname(join(copy, file)), { recursive: true });
       copyFileSync(join(root, file), join(copy, file));
     }
     const nightly = String(ports.nightly.serverPort);
@@ -367,7 +437,16 @@ describe('install-script:check as a process', () => {
 
     const result = runCheck(copy);
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/stale/i);
+    expect(result.stderr).toContain('Generated install.sh blocks are stale');
+    expect(result.stderr).not.toContain('ERR_MODULE_NOT_FOUND');
+
+    // The same copy with the real install.sh passes its install.sh check,
+    // so the failure above is the drift, not a broken copy. (The child then
+    // checks install.ps1, which needs the bundler this copy omits.)
+    copyFileSync(INSTALL_SCRIPT_PATH, join(copy, 'install.sh'));
+    const fresh = runCheck(copy);
+    expect(fresh.stderr).not.toContain('Generated install.sh blocks are stale');
+    expect(fresh.stderr).not.toContain('ERR_MODULE_NOT_FOUND');
   });
 
   it('exits non-zero, naming install.ps1, when only install.ps1 drifts', () => {
@@ -375,9 +454,7 @@ describe('install-script:check as a process', () => {
     // node_modules, so the child bundles the core as the real gate does.
     const copy = makeTempDir('station-install-check-ps1-');
     for (const path of [
-      'scripts/install-script-generated.mjs',
-      'scripts/channel-ports.mjs',
-      'scripts/lib/module-entry.mjs',
+      ...generatorModuleClosure(),
       'config/channel-ports.json',
       'config/release-manifest-keys.json',
       'config/portable-server-node-runtime.json',
@@ -390,6 +467,10 @@ describe('install-script:check as a process', () => {
       'packages/shared/src/windows-system-utility.mjs',
       'packages/shared/src/fs-windows-compat.ts',
       'packages/shared/src/service-launcher-protocol.ts',
+      'packages/shared/src/prebuilt-archive.ts',
+      'packages/shared/src/accepted-release.mjs',
+      'packages/shared/src/accepted-release.d.mts',
+      'packages/shared/src/ports.ts',
       'packages/shared/src/installer',
       'install.sh',
     ])

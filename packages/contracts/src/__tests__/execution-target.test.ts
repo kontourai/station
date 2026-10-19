@@ -26,9 +26,25 @@ type ReceiptKeys<T> = T extends
       : never;
 
 describe('execution target contract', () => {
-  it('addresses execution through Environment, Agent, model, and workspace only', () => {
+  it('addresses execution through Environment, Agent, model, and workspace, plus one refusal-only precondition', () => {
+    // `expectedEngine` is the single engine-shaped member and it is a
+    // PRECONDITION: the target Environment compares it with the binding it
+    // derives and can only refuse. Adding any other key here is a decision
+    // about what a caller may aim a request at, and fails this pin.
     expectTypeOf<keyof ExecutionTarget>().toEqualTypeOf<
-      'environment' | 'agent' | 'model' | 'workspace'
+      'environment' | 'agent' | 'model' | 'workspace' | 'expectedEngine'
+    >();
+  });
+
+  it('bounds the precondition to an engine identity: it can name an engine, never an address or a credential', () => {
+    // Exactly the receipt's `engine`, so it can never grow a field the
+    // receipt may not carry (the receipt test below forbids access state).
+    expectTypeOf<
+      NonNullable<ExecutionTarget['expectedEngine']>
+    >().toEqualTypeOf<ResolvedExecutionEngine>();
+    // And a finite set of keys: a widened index signature would absorb them.
+    expectTypeOf<ReceiptKeys<ResolvedExecutionEngine>>().toEqualTypeOf<
+      'kind' | 'connectionId'
     >();
   });
 

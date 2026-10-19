@@ -15,8 +15,9 @@ release overlays. Promotion never edits source, moves a tag, or relabels a
 preview artifact.
 
 Nightly is a separate, opt-in signed-public-manifest path:
-`STATION_CHANNEL=nightly` requires `STATION_INSTALL_PUBLIC_MANIFEST_URL`.
-The authenticated GitHub-release path serves Stable and Beta only. See
+`STATION_CHANNEL=nightly` installs from the rolling `portable-nightly`
+manifest unless `STATION_INSTALL_PUBLIC_MANIFEST_URL` names another signed
+manifest. The authenticated GitHub-release path serves Stable and Beta only. See
 [channel identity and coexistence](release-channel-ports.md) for Nightly's
 home/port admission and the distinction between the public manifest signature
 and a signed Git tag. Publication remains separate from installer support.
@@ -59,8 +60,10 @@ The optional `STATION_INSTALL_PUBLIC_MANIFEST_URL` path instead verifies an
 Ed25519 envelope against pinned channel-authorized keys, then verifies the
 archive digest. It needs no `gh` token. This is a separate opt-in trust path,
 not the default ring resolver: signature validity proves origin/integrity,
-not freshness. Existing-install downgrade guards do not prevent an old signed
-manifest from being offered to a fresh installation. Read the exact owner in
+not freshness. Existing-install downgrade guards compare with the active
+release and with the newest release the install root ever accepted (so a
+replayed manifest is refused after a rollback too), but they do not prevent an
+old signed manifest from being offered to a fresh installation. Read the exact owner in
 [`install.sh`](../../install.sh) before changing that policy.
 
 This public path also accepts the platform-array v2 manifest for prebuilt
@@ -161,7 +164,9 @@ The locations come from one base,
 manifest is `v<version>/station-portable-<ring>-manifest.json`. The rolling
 pointers are `portable-stable/station-portable-stable-manifest.json` and
 `portable-preview/station-portable-preview-manifest.json`. Nightly's
-`portable-nightly` pointer derives from the same base. Stable and preview
+`portable-nightly` pointer derives from the same base, and
+`scripts/install-script-generated.mjs` projects it into `install.sh` and
+`install.ps1` as the Nightly default. Stable and preview
 versions order numerically on `X.Y.Z` and `X.Y.Z-preview.N`.
 
 Nothing has been published this way yet. These remain owner actions: add the
@@ -171,6 +176,70 @@ set `allow_empty_host_manifest_bootstrap` on each ring's first publish.
 The installer's defaults are unchanged. `install.sh` already accepts a stable
 or preview manifest through `STATION_INSTALL_PUBLIC_MANIFEST_URL`, and making
 these URLs its default is #2960.
+
+## Author telemetry in official builds
+
+The repository **Actions variable** `STATION_AUTHOR_TELEMETRY_ENDPOINT` is public
+build metadata. It is embedded in distributed JavaScript, so it must never
+contain a secret. An unset or empty variable produces an empty constant and no
+author sink. Runtime environment variables cannot enable that sink in an
+already built binary or a source checkout.
+
+Setting this variable is an **owner-gated activation**, separate from merging
+these workflows. After the owner has authorized the receiver and real data
+flow, an owner with repository administration access can open **Settings →
+Secrets and variables → Actions → Variables**, create the repository variable
+`STATION_AUTHOR_TELEMETRY_ENDPOINT`, and enter the receiver's HTTPS URL. The
+build requires a canonical HTTPS URL: input must equal its normalized URL,
+including a trailing slash for a bare host. It rejects shorthand such as
+`https:example.com`, credentials, queries, fragments and whitespace.
+Do not set it as a secret. Do not set it, deploy a receiver, tag, publish or
+dispatch a release as part of an implementation or verification task.
+Removing the variable disables the author endpoint in subsequent builds;
+previously distributed bytes retain their baked value. User telemetry policy
+and opt-out still govern whether an available sink may send.
+
+The injection boundary is the official producer, not a workflow-wide `env`:
+
+| Build path | Endpoint and channel |
+| --- | --- |
+| Tagged stable/preview desktop, macOS/Windows/Linux (`release.yml`) | Repo variable and `STATION_CHANNEL` only in desktop build steps; the preflight ring maps `preview` to runtime channel `beta`. Tauri resource builds inherit both. |
+| Nightly desktop, macOS/Windows (`nightly-native-stage.yml`, called by `nightly.yml`) | Repo variable only in build steps for official main Nightly runs; server build stamp records `nightly`. The Windows wrapper and nested resource builds inherit it. There is no Nightly Linux release producer. |
+| Five portable server archive targets, stable/preview/nightly (`portable-server-archives.yml`) | Repo variable in both the initial server/UI build and the archive-packaging step, which rebuilds the server. Official tag or main Nightly callers must supply release inputs. Both builds use the runtime channel (`beta` for the `preview` ring); staging reads it from packaged-release metadata. Direct dispatch and PR packaging proof get no endpoint. |
+| npm CLI stable/Nightly and portable CLI | No endpoint injection: the CLI has no author sink. It installs or connects to a separately distributed host, whose server stamp owns telemetry. Existing CLI channel metadata is unchanged. There is no preview npm publisher. |
+| iOS device/simulator and Android stable/preview/nightly | These clients build the UI, not a Node server. No server author constant or author sink is embedded in those apps. A connected host uses its own build's endpoint and channel. Mobile channel metadata remains owned by the native release pipeline. |
+| Portable source archives (`station-portable.tar.gz`) | Source archives contain no built server. Building them on the user's machine remains a source build without an author endpoint. Use the prebuilt server archives above for an official server stamp. |
+| Source, development, PR/fork CI, Docker images | No endpoint. Docker release producers are deliberately outside desktop job environments. |
+
+The channel source is the server's existing `__STATION_SERVER_BUILD__.channel`
+metadata, also exposed as `BuildProvenance.channel` by the system API. Official
+server builds use runtime channels `stable`, `beta` and `nightly`; the release
+protocol calls the `beta` ring `preview`. The shared
+[`mapRuntimeChannelToTelemetryChannel`](../../packages/shared/src/product-telemetry.ts)
+maps runtime `beta` to telemetry `preview`, preserves other permitted telemetry
+channels, and omits unknown channels. The usage telemetry service applies it
+when capturing build metadata. There is no separate telemetry channel export
+or setting. This
+preserves ADR 0020's separate client/host identities and ring-tagged build
+model. A future promotion model must revisit baked channel metadata together
+with the existing release identity, rather than relabeling these bytes.
+
+[`author-telemetry-build.mjs`](../../scripts/lib/author-telemetry-build.mjs)
+refuses a nonempty endpoint outside the official repository's release workflow
+contexts or when it disagrees with the existing build channel.
+[`check-author-telemetry-workflows.mjs`](../../scripts/check-author-telemetry-workflows.mjs)
+checks the producer allowlist and excludes workflow-wide, PR and container
+injection; the ordinary actionlint gate runs it too. The focused build test
+runs the real server bundler into a temporary directory, checks exit statuses
+and baked metadata, compares desktop/portable preview channels, and exercises
+URL/context rejection and workflow leaks:
+
+```sh
+npm run test:focused -- scripts/__tests__/author-telemetry-build.test.ts
+```
+
+These are build and policy checks. They do not deploy a receiver, enable data
+flow, or prove signed native artifacts or store delivery.
 
 ## Publish a preview
 
@@ -267,6 +336,41 @@ That does not repair independent desktop rolling feeds or external stores.
 Follow [native release recovery](native-releases.md#stage-inspect-publish-and-roll-back)
 for those authorities, communicate the affected version through the incident
 owner, and publish a higher fixed version. Never silently move the tag.
+
+Withdrawal is roll-forward only for public-manifest installs. Each install
+root records the newest release it accepted from a verified manifest
+(`.station-release-accepted.json`). The record is raised as soon as the
+manifest verifies, before extraction, so it holds even when that install or
+the launcher's trial of it then failed and was rolled back. After that, a
+re-signed manifest for an older release is refused on that install as stale
+or replayed, the same as a hostile replay. So:
+
+- publish a higher fixed version, or
+- on each affected host, install the older release deliberately with
+  `STATION_VERSION=v<x.y.z>` and `STATION_INSTALL_ALLOW_ROLLBACK=1`. That
+  does not lower the record, so later updates still need a release at least
+  as new as the withdrawn one.
+
+The installers trust the record only if it is a regular file, owned by the
+installing user and readable by nobody else (`0600`), and names a release of
+the install's own ring. Anything else is treated as unreadable: installs and
+updates are refused, and the server's update check offers nothing and says
+why. To recover on the host, do one of these:
+
+- fix the record's owner or permissions,
+- remove `.station-release-accepted.json` from the install root (the next
+  verified install writes a fresh one), or
+- install a release explicitly with `STATION_VERSION=v<x.y.z>` and
+  `STATION_INSTALL_ALLOW_ROLLBACK=1`, which rewrites the record.
+
+Leftover `.station-release-accepted.json.*.tmp` files in the install root are
+staging files from an interrupted install and are safe to delete.
+
+One accepted edge: the record compares versions, not bytes. After a launcher
+rollback from vN, a manifest for different bytes signed as the same vN is not
+older than the record, and it is newer than the active release, so it
+installs without a flag. It still needs a valid signature from a key pinned
+for the ring.
 
 ## Rotating the attestation action pin
 

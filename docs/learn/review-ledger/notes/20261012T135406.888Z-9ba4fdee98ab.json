@@ -1,0 +1,7 @@
+{
+  "revision": "c17d2ff6b0dea9a9c98a22e2005ae454f3d665dd",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#3563: station-docs-content.ts was regenerated (npm run docs:mcp:generate) because module-map gained scheduler and recovery clauses. This reference describes the credential-free docs MCP surface and its generation, not module-map prose; its claims are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

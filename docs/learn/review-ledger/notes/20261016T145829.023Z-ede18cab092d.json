@@ -1,0 +1,7 @@
+{
+  "revision": "e5ece8deedba2cadd24df9b061f221254c7ec722",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed local CI pipeline and gate-for ladder: mandatory scoped push hooks and broad hosted checks are unchanged; only the additional broad local ci:fast pass becomes optional. Code-health analysis still runs in required CI. Focused evidence, mutation discipline, required checks and queue ownership remain intact.","inputs":["docs/guides/code-quality.md","AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

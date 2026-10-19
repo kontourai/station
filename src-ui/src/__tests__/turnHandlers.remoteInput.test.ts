@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test } from 'vitest';
+import { beginConversationHandoffUiState } from '../components/chat-dock/conversationHandoffUiState';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
@@ -115,4 +116,102 @@ test('a live steer that stopped the running step carries that onto its row', () 
     .getSnapshot()
     [id].messages?.find((message) => message.content === 'Still going?');
   expect(steerRow?.steerInterruptedRun).toBe(true);
+});
+test('a keyed turn.started binds the bubble carrying its key, never the newest one by position', () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  // Two unstarted local sends; the older one's turn starts first. The
+  // position heuristic would pin it on the newest bubble.
+  activeChatsStore.updateChat(id, {
+    pendingClientTurnId: 'key-new',
+    status: 'sending',
+    sendAwaitingTurnStart: true,
+    messages: [
+      { role: 'user', content: 'first message', clientId: 'key-old' },
+      { role: 'user', content: 'second message', clientId: 'key-new' },
+    ],
+  });
+  handleTurnStartedEvent({
+    eventId: 'event-old',
+    method: 'turn.started',
+    provider: 'codex',
+    threadId: id,
+    turnId: 'turn-old',
+    createdAt: '2026-10-13T00:00:00Z',
+    prompt: 'first message',
+    clientTurnId: 'key-old',
+  });
+  const chat = activeChatsStore.getSnapshot()[id];
+  expect(chat.messages).toMatchObject([
+    { clientId: 'key-old', turnId: 'turn-old' },
+    { clientId: 'key-new' },
+  ]);
+  expect(chat.messages?.[1]?.turnId).toBeUndefined();
+  // That was not the pending send's turn: its window stays open.
+  expect(chat.pendingClientTurnId).toBe('key-new');
+  expect(chat.sendAwaitingTurnStart).toBe(true);
+});
+test("another device's keyed turn is added as its own row, not pinned on this client's pending bubble", () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  activeChatsStore.updateChat(id, {
+    pendingClientTurnId: 'key-mine',
+    messages: [{ role: 'user', content: 'mine', clientId: 'key-mine' }],
+  });
+  handleTurnStartedEvent({
+    eventId: 'event-theirs',
+    method: 'turn.started',
+    provider: 'codex',
+    threadId: id,
+    turnId: 'turn-theirs',
+    createdAt: '2026-10-13T00:00:00Z',
+    prompt: 'theirs',
+    clientTurnId: 'key-theirs',
+  });
+  expect(activeChatsStore.getSnapshot()[id].messages).toMatchObject([
+    { clientId: 'key-mine' },
+    { content: 'theirs', turnId: 'turn-theirs' },
+  ]);
+  expect(
+    activeChatsStore.getSnapshot()[id].messages?.[0]?.turnId,
+  ).toBeUndefined();
+});
+test('a handoff turn whose start carries the dialog key binds the handoff bubble and closes its send window', () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  activeChatsStore.updateChat(
+    id,
+    beginConversationHandoffUiState(activeChatsStore.getSnapshot()[id], {
+      message: 'continue on the other engine',
+      clientTurnId: 'handoff:dialog-key',
+      now: 1,
+    }),
+  );
+  handleTurnStartedEvent({
+    eventId: 'event-handoff',
+    method: 'turn.started',
+    provider: 'codex',
+    threadId: id,
+    turnId: 'turn-handoff',
+    createdAt: '2026-10-13T00:00:00Z',
+    prompt: 'continue on the other engine',
+    // What Station stamps for a handoff: the key the dialog sent it with.
+    clientTurnId: 'handoff:dialog-key',
+  });
+  const chat = activeChatsStore.getSnapshot()[id];
+  expect(chat.messages).toMatchObject([
+    { clientId: 'handoff:dialog-key', turnId: 'turn-handoff' },
+  ]);
+  expect(chat.messages).toHaveLength(1);
+  expect(chat.pendingClientTurnId).toBeUndefined();
+  expect(chat.sendAwaitingTurnStart).toBeUndefined();
 });

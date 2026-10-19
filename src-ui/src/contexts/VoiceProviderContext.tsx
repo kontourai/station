@@ -161,6 +161,11 @@ export function VoiceProviderContext({
   );
 }
 
+/** The context, or `null` outside a provider (a surface then offers no mic). */
+export function useOptionalVoiceProviderContext(): VoiceProviderContextValue | null {
+  return useContext(VoiceProviderCtx);
+}
+
 export function useVoiceProviderContext(): VoiceProviderContextValue {
   const ctx = useContext(VoiceProviderCtx);
   if (!ctx)

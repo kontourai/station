@@ -45,6 +45,10 @@
       "count": 1,
       "reason": "prefers-reduced-motion. Keeps `animation: none` because the exit animation is `forwards`: under the motion primitive alone a 0.01ms run HOLDS the collapsed end state instead of leaving the panel as it was."
     },
+    "src-ui/src/components/modals/TaskChatStart.css": {
+      "count": 1,
+      "reason": "#3705: the New Task shaping start surface is a chat-dock sheet like BackgroundTasksSheet; on phones it fills the viewport below the toolbar so the page's own Start work composer cannot sit beside the shaping composer. No shared primitive owns chat-dock sheet height."
+    },
     "src-ui/src/components/chat/QueuedMessages.css": {
       "count": 1,
       "reason": "The queued-steer controls carry their own compact touch geometry, tighter than the shared floor."
@@ -214,7 +218,7 @@
       "reason": "The cron editor, detail fields and table scrollers; at 640px two table columns are dropped and the row name is clamped \u2014 a decision about THIS table's columns that no primitive can hold."
     },
     "src-ui/src/views/SessionsView.css": {
-      "count": 3,
+      "count": 2,
       "reason": "The session detail pane's compact ladder, including a viewport-HEIGHT rung (620px) for an open software keyboard, and the `--viewport-compact` variant that collapses only non-identity chrome (station#1170/#3305)."
     },
     "src-ui/src/views/SettingsView.css": {

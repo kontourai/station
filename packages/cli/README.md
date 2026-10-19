@@ -80,6 +80,14 @@ station agents list
 station chat my-agent 'what changed today?'
 ```
 
+Chat assigns a fresh turn key before sending. Use `--json` to retain
+`clientTurnId` and `conversationId` in success, pending, or failure output, or
+choose a key before sending with `--client-turn-id=<key>`. Reuse that key only
+for a deliberate retry of the same operation; keep the original conversation
+flag for a continuation. Inspect uncertain outcomes first. The CLI never
+resends automatically. See [chat identity and retry](../../docs/reference/cli.md#chat)
+for the error format and new-chat conversation binding.
+
 From a Station checkout, local setup installs its durable per-user service and
 then selects the conventional `kontour` Station:
 
@@ -208,6 +216,20 @@ The published CLI drives Stations that are already running — see `station stat
 `environment access list|approve|deny|devices|scope|revoke|remove`, `environment operator passkeys`, and `service status|start|stop` support
 an existing local installation. Local authorization validates the selected
 owner-only home and the loopback listener; it does not create a missing home.
+Bare host-approval commands prefer the live listener in the selected local home
+before project or saved-default Stations; explicit targets keep their precedence.
+`environment offer` creates a single-use invitation with Standard access. Choose
+ordinary Device-use permissions; protected management and consent permissions
+require a separate operator promotion after pairing. Choose
+`--scope` to change that access, `--require-approval` to review the recipient first,
+or `--browser-url=<web-origin>` to print a link for the web UI.
+For a saved paired Station, `environment access devices|scope|revoke|remove`
+use its paired credential and work remotely when the operator explicitly grants
+`access:devices`. This is separate from using full access. Only the operator can
+grant or remove this administrative scope; legacy `access:manage` does not
+qualify. See [device administration](../../docs/reference/cli.md#environment) for
+setup, revocation and mixed-version limits.
+
 Service start/stop controls an existing OS service rather than building or
 installing a backend. See the [availability table](../../docs/reference/cli.md)
 for the full boundary and prerequisites.

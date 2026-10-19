@@ -1,3 +1,7 @@
+import {
+  mcpToolApprovalKey,
+  resolveAuthoredToolApproval,
+} from '@kontourai/station-shared/mcp-tool-selection';
 /**
  * Streaming orchestration functions
  * Handles streaming pipeline setup, handler creation, and SSE output
@@ -16,6 +20,7 @@ import {
   findModelProviderError,
   MODEL_PROVIDER_CREDENTIALS_REJECTED,
   modelProviderErrorStatus,
+  modelProviderFailureKind,
   modelProviderFailureMessage,
 } from '../../providers/model-provider-failure.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -130,15 +135,7 @@ async function requestMcpElicitation(
  */
 export function createElicitationCallback(
   agentSpec: AgentSpec,
-  toolNameMapping: Map<
-    string,
-    {
-      original: string;
-      normalized: string;
-      server: string | null;
-      tool: string;
-    }
-  >,
+  toolNameMapping: Map<string, MCPToolNameMappingEntry>,
   approvalRegistry: ApprovalRegistry,
   injectableStream: InjectableStream,
   logger: any,
@@ -167,23 +164,42 @@ export function createElicitationCallback(
       const toolName = request.toolName;
 
       // Check if auto-approved (check both normalized and original names)
-      const isApproved = isAutoApproved(toolName, autoApprove);
+      const source = toolNameMapping.get(toolName)?.provenance;
+      const sourceKey = source
+        ? mcpToolApprovalKey(source.integrationId, source.originalToolName)
+        : undefined;
+      const isApproved =
+        isAutoApproved(
+          toolName,
+          autoApprove.filter((pattern) => !pattern.startsWith('mcp/')),
+        ) ||
+        (sourceKey !== undefined && isAutoApproved(sourceKey, autoApprove));
 
       // Also check if the original (non-normalized) name matches
       const toolMapping = Array.from(toolNameMapping.values()).find(
         (m) => m.normalized === toolName,
       );
       const isApprovedOriginal = toolMapping
-        ? isAutoApproved(toolMapping.original, autoApprove)
+        ? isAutoApproved(
+            toolMapping.original,
+            autoApprove.filter((pattern) => !pattern.startsWith('mcp/')),
+          )
         : false;
 
       // #2584: the built-in's bounded-write tools, by exact loader identity.
       const isIntrinsic = isIntrinsicStationEngineGrant(
         toolName,
-        toolNameMapping as ReadonlyMap<string, MCPToolNameMappingEntry>,
+        toolNameMapping,
       );
 
-      if (isApproved || isApprovedOriginal || isIntrinsic) {
+      const explicitAsk =
+        resolveAuthoredToolApproval(
+          [toolName, toolMapping?.original ?? toolName],
+          autoApprove,
+          agentSpec?.tools?.askBeforeUse,
+          sourceKey,
+        ) === 'ask';
+      if (!explicitAsk && (isApproved || isApprovedOriginal || isIntrinsic)) {
         logger.info('[Elicitation] Auto-approved, returning true immediately', {
           toolName,
           originalName: toolMapping?.original,
@@ -447,7 +463,11 @@ function outwardFailureStatus(error: unknown): {
 export function outwardTurnFailureText(error: unknown): string {
   const { statusCode, statusInferred } = outwardFailureStatus(error);
   if (statusInferred) return MODEL_PROVIDER_CREDENTIALS_REJECTED;
-  if (statusCode !== undefined) return modelProviderFailureMessage(statusCode);
+  if (statusCode !== undefined)
+    return modelProviderFailureMessage(
+      statusCode,
+      modelProviderFailureKind(error),
+    );
   if (error instanceof Error && error.message === STREAM_ABORTED_BY_CLIENT) {
     return STREAM_ABORTED_BY_CLIENT;
   }
@@ -475,6 +495,9 @@ export async function writeSSEError(
       type: 'error',
       errorText: outwardTransportError('sse'),
       statusCode,
+      ...(statusCode === 429
+        ? { failureKind: modelProviderFailureKind(error) }
+        : {}),
       ...(statusInferred ? { statusInferred } : {}),
     })}\n\n`,
   );

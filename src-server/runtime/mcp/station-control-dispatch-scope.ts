@@ -15,6 +15,7 @@ import { resolve } from 'node:path';
 import {
   type StationControlDispatchTarget,
   type StationControlScope,
+  type StationControlSessionProjectFacts,
   stationControlSessionScope,
 } from '../../tools/station-control-policy.js';
 import {
@@ -55,9 +56,13 @@ export interface StationControlDispatchScopeSources {
   defaultSessionDirectory(): string | undefined;
   /** `ProjectConfig.id` for a slug; `undefined` or a throw when none. */
   projectIdForSlug(slug: string): string | undefined;
-  /** Every Project with its working directory, for a folder's scope. */
+  /**
+   * Every Project with its working directory, for a folder's scope, and its
+   * slug, for the workspace a caller's own Project is dispatched as.
+   */
   projectDirectories(): readonly {
     readonly id: string;
+    readonly slug?: string;
     readonly workingDirectory?: string;
   }[];
   /** The working directory Station recorded for a session, if any. */
@@ -119,6 +124,23 @@ export interface StationControlDispatchScope {
   ): StationControlResolvedDispatchTarget | undefined;
   /** Whether a conversation already has a session (a follow-up, not a start). */
   conversationExists(conversationId: string): boolean;
+  /**
+   * The slug a new session in the caller's own Project is dispatched with:
+   * the Project its session record names (never a slug looked up now), when
+   * that Project has a working directory to run in, its slug still names
+   * it, and the caller's recorded owner holds `execute` there. `undefined`
+   * for a caller in the global space, one whose Project Station cannot
+   * confirm, one with no recorded owner, or one whose Project has no folder
+   * or whose owner may not dispatch there.
+   */
+  ownProjectSlug(
+    caller: StationControlSessionProjectFacts & {
+      readonly principal?: {
+        readonly id: string;
+        readonly elevationEligible: boolean;
+      };
+    },
+  ): string | undefined;
 }
 
 /**
@@ -327,7 +349,17 @@ export function createStationControlDispatchScope(
     ref: Extract<StationControlDispatchTargetRef, { kind: 'new' }>,
     action: StationControlProjectAction,
   ): StationControlResolvedDispatchTarget => {
-    const { scope, canonicalCwd } = newScope(ref);
+    const { scope: located, canonicalCwd } = newScope(ref);
+    const may = mayAct(ref.ownerId, located, action);
+    // A Project the owner may not act in reads as one Station cannot
+    // confirm: to that owner, a Project it is not a member of must not be
+    // told apart from one that does not exist (the Project routes' own
+    // opaque 404). Only a new Session names its Project; a started Session
+    // is the owner's own, so its Project is no secret to it.
+    const scope: StationControlScope =
+      located.kind === 'project' && may.ownerHoldsAction === false
+        ? { kind: 'unreadable' }
+        : located;
     // A new session starts confined: no station-control caller carries the
     // full-access grant (`fullAccessGrantFor` refuses an agent).
     return {
@@ -335,7 +367,7 @@ export function createStationControlDispatchScope(
       scope,
       host: false,
       remote: ref.remote,
-      ...mayAct(ref.ownerId, scope, action),
+      ...may,
       ...(canonicalCwd !== undefined ? { canonicalCwd } : {}),
     };
   };
@@ -369,6 +401,33 @@ export function createStationControlDispatchScope(
         }
       } catch {
         // A record that cannot be read is no scope: refuse.
+        return undefined;
+      }
+    },
+    ownProjectSlug(caller) {
+      const own = stationControlSessionScope(caller);
+      if (own.kind !== 'project') return undefined;
+      const ownerId = caller.principal?.elevationEligible
+        ? caller.principal.id
+        : undefined;
+      try {
+        // An owner who may not dispatch in its own Project keeps the request
+        // as sent (the default session directory), rather than being refused
+        // a Project it never named.
+        if (!ownerId || !sources.ownerMay(ownerId, own.id, 'execute'))
+          return undefined;
+        const project = sources
+          .projectDirectories()
+          .find((entry) => entry.id === own.id);
+        // Presence only: the folder is never read here; the dispatch resolves
+        // the Project's working directory (tilde-expanded) where it starts.
+        if (!project?.slug || !project.workingDirectory) return undefined;
+        // The slug is what the dispatch names; it must lead back to the
+        // same Project, or the session would start somewhere else.
+        return sources.projectIdForSlug(project.slug) === own.id
+          ? project.slug
+          : undefined;
+      } catch {
         return undefined;
       }
     },

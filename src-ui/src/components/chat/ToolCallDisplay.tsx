@@ -35,6 +35,7 @@ import {
   SearchGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import { useApprovalSheet } from './ApprovalSheetContext';
 import {
   boundedToolResultText,
@@ -42,11 +43,13 @@ import {
   fullToolResultText,
 } from './bounded-tool-result';
 import { DecisionActionRow, DecisionButtons } from './InputRequestDecision';
+import { transcriptMcpToolRef } from './mcp-app-tool-ref';
 import {
   RequestSheet,
   RequestSheetTrigger,
   useRequestSheet,
 } from './RequestSheet';
+import { TranscriptAppTools } from './TranscriptAppTools';
 import {
   callLabel,
   classifyToolCall,
@@ -55,6 +58,9 @@ import {
   toolCallPhase,
 } from './tool-call-labels';
 import { toolDisplayView } from './tool-display-view';
+
+const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
+
 import './ToolCallDetails.css';
 
 /**
@@ -161,7 +167,8 @@ function ToolCallDisplayComponent({
   toolCall,
   onApprove,
   showDetails = true,
-}: ToolCallDisplayProps) {
+  appTools,
+}: ToolCallDisplayProps & { appTools: ReadonlySet<string> }) {
   // `null` until the user toggles the row: until then it follows
   // `openByDefault` below, so a pending multi-line command opens and the row
   // closes again once the request settles. A toggle on a pending request is
@@ -182,6 +189,9 @@ function ToolCallDisplayComponent({
   // entrance rather than a replaying one.
   const revealClass = useRevealOnce(id ? `tool:${id}` : undefined);
   const server = toolCall.server;
+  const candidateRef = transcriptMcpToolRef(toolCall);
+  const appToolRef =
+    candidateRef && appTools.has(candidateRef) ? candidateRef : undefined;
   const display = toolDisplayView(toolCall);
   const toolName = display.toolName;
   const originalName = toolCall.originalName;
@@ -352,42 +362,6 @@ function ToolCallDisplayComponent({
             {lineContent}
           </div>
         )}
-        {awaitingApproval && onApprove && (
-          <div className="tool-call__actions">
-            <ToolApprovalControls
-              request={{
-                requestId: toolCall.approvalId ?? '',
-                threadId: toolCall.approvalThreadId,
-                requestEventId: toolCall.approvalEventId,
-              }}
-              onApprove={onApprove}
-              grantToolName={grantToolName}
-              sessionGrant={
-                // A part without the projected grant (a registry-route
-                // request) is judged by its tool name alone.
-                toolCall.approvalSessionGrant ??
-                toolRequestSessionGrant({ toolName: grantToolName })
-              }
-              summary={label}
-              details={
-                hasDetail ? (
-                  <ToolCallDetails
-                    id={id}
-                    server={server}
-                    toolName={toolName}
-                    originalName={originalName}
-                    args={args}
-                    result={result}
-                    error={error}
-                    cancelled={cancelled}
-                    unresolved={unresolved}
-                    approvalStatus={approvalStatus}
-                  />
-                ) : null
-              }
-            />
-          </div>
-        )}
       </div>
       {/* Collapsed-visible only while genuinely running — a settled row
           repeating its last progress line would read as ongoing activity.
@@ -409,6 +383,55 @@ function ToolCallDisplayComponent({
           approvalStatus={approvalStatus}
           lastProgress={running ? undefined : progressMessage}
         />
+      )}
+      {appToolRef && (
+        <LazyBoundary
+          key={id}
+          load={loadTranscriptMCPApp}
+          pending={null}
+          componentProps={{
+            toolRef: appToolRef,
+            toolCallId: id,
+            args,
+            result: toolCall.output ?? toolCall.result,
+          }}
+        />
+      )}
+      {awaitingApproval && onApprove && (
+        <div className="tool-call__actions">
+          <ToolApprovalControls
+            request={{
+              requestId: toolCall.approvalId ?? '',
+              threadId: toolCall.approvalThreadId,
+              requestEventId: toolCall.approvalEventId,
+            }}
+            onApprove={onApprove}
+            grantToolName={grantToolName}
+            sessionGrant={
+              // A part without the projected grant (a registry-route
+              // request) is judged by its tool name alone.
+              toolCall.approvalSessionGrant ??
+              toolRequestSessionGrant({ toolName: grantToolName })
+            }
+            summary={label}
+            details={
+              hasDetail ? (
+                <ToolCallDetails
+                  id={id}
+                  server={server}
+                  toolName={toolName}
+                  originalName={originalName}
+                  args={args}
+                  result={result}
+                  error={error}
+                  cancelled={cancelled}
+                  unresolved={unresolved}
+                  approvalStatus={approvalStatus}
+                />
+              ) : null
+            }
+          />
+        </div>
       )}
     </div>
   );
@@ -445,7 +468,9 @@ function useApprovalDecision(
   const previousShared = useRef(shared);
   useEffect(() => {
     const recovered =
-      previousShared.current?.phase === 'unconfirmed' && shared === null;
+      (previousShared.current?.phase === 'unconfirmed' ||
+        previousShared.current?.phase === 'sent') &&
+      shared === null;
     previousShared.current = shared;
     if (
       shared?.phase === 'already-settled' &&
@@ -455,7 +480,10 @@ function useApprovalDecision(
       setPhase('already-settled');
       setFailure(null);
       setChosen(undefined);
-    } else if (recovered && localPhase === 'unconfirmed') {
+    } else if (
+      recovered &&
+      (localPhase === 'unconfirmed' || localPhase === 'sent')
+    ) {
       admission.current = false;
       setPhase('idle');
       setFailure(null);
@@ -592,6 +620,18 @@ function ApprovalDecisionStatus({
 }) {
   return (
     <>
+      {(phase === 'sending' || phase === 'sent') && (
+        <p className="tool-call__approve-status" role="status">
+          {phase === 'sending'
+            ? 'Sending your decision…'
+            : 'Decision sent. Waiting for the tool to continue.'}
+          {phase === 'sent' && check && (
+            <Button pending={checking} onClick={() => void check()}>
+              Check status
+            </Button>
+          )}
+        </p>
+      )}
       {phase === 'already-settled' && (
         <p className="tool-call__approve-status" role="status">
           This request is no longer open.
@@ -602,7 +642,9 @@ function ApprovalDecisionStatus({
           <p>
             {phase === 'unconfirmed'
               ? 'Delivery is not confirmed.'
-              : 'Your decision was not delivered.'}{' '}
+              : phase === 'sent'
+                ? 'Current status is not confirmed.'
+                : 'Your decision was not delivered.'}{' '}
             {failure.summary}
           </p>
           {phase === 'unconfirmed' && check && (
@@ -1078,4 +1120,14 @@ function rememberToggle(key: string, expanded: boolean): void {
   }
 }
 
-export const ToolCallDisplay = memo(ToolCallDisplayComponent);
+export const ToolCallDisplay = memo(function ToolCallDisplay(
+  props: ToolCallDisplayProps,
+) {
+  return (
+    <TranscriptAppTools calls={[props.toolCall]}>
+      {(appTools) => (
+        <ToolCallDisplayComponent {...props} appTools={appTools} />
+      )}
+    </TranscriptAppTools>
+  );
+});

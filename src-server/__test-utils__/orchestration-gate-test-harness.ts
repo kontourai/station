@@ -15,6 +15,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
+  ProviderInterruptTurnResult,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
@@ -57,8 +58,11 @@ export class GateTestAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     return { threadId: input.threadId, turnId: 'turn-1' };
   }
-  async interruptTurn() {
-    return { outcome: 'no-active-turn' } as const;
+  async interruptTurn(
+    _threadId: string,
+    _turnId?: string,
+  ): Promise<ProviderInterruptTurnResult> {
+    return { outcome: 'no-active-turn' };
   }
   async respondToRequest(): Promise<void> {}
   async stopSession(): Promise<void> {}

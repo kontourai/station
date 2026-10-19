@@ -64,6 +64,7 @@ import {
   type PluginLifecycleProposalService,
   resolvePluginProposalSource,
 } from '../plugins/plugin-lifecycle-proposals.js';
+import { ToolLibraryService } from '../plugins/tool-library-service.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
 import type { ProposedChangeService } from './proposed-change-service.js';
 
@@ -281,6 +282,7 @@ export class AttentionProjectionService {
       PluginLifecycleProposalService,
       'listOpen'
     > | null,
+    private readonly toolLibrary?: Pick<ToolLibraryService, 'requests'>,
   ) {}
 
   /**
@@ -435,6 +437,26 @@ export class AttentionProjectionService {
       ...gateItems,
       ...proposedChangeItems,
       ...pluginProposalItems,
+      ...(viewer?.isOperator &&
+      !isHostedSessionReadAuthority(readAuthority) &&
+      this.toolLibrary
+        ? this.toolLibrary
+            .requests()
+            .filter((request) =>
+              ['pending', 'setting-up', 'failed'].includes(request.status),
+            )
+            .map((request) => ({
+              id: `tool-request:${request.id}`,
+              kind: 'tool-request' as const,
+              title: `${request.sourceName} for ${request.projectName}`,
+              body: `${request.requesterName} requested this tool.`,
+              createdAt: request.createdAt,
+              updatedAt: request.updatedAt,
+              projectSlug: request.projectSlug,
+              source: { requestId: request.id },
+              openHref: `/notifications?toolRequest=${encodeURIComponent(request.id)}`,
+            }))
+        : []),
       ...gateReviews.items,
       ...pairingItems,
       ...setupItems,
@@ -1260,6 +1282,11 @@ export class AttentionProjectionService {
             createdAt: timestamp,
             updatedAt: timestamp,
             deviceName: request.deviceName,
+            // Only a request the approver may trim: an ordinary device
+            // request. A delegation or account-bound grant is approved as asked.
+            ...(request.kind !== 'delegation' && !request.requireAccountBinding
+              ? { requestedScope: request.scope }
+              : {}),
             // Derived at the HTTP seam from the boundary's own predicate —
             // see `list()`'s `viewer` option. The card renders Approve/Deny
             // only when true; a session tier that cannot pass the pairing

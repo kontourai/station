@@ -1,0 +1,7 @@
+{
+  "revision": "e9b1f026820279d2caf9c4161152576dee98650f",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Fix round: resume fallback documented as fail-closed (only method-not-found with loadSession advertised falls back), and a send during start now waits up to 60s then refuses with retryable provider_session_starting. Checked against acp-adapter.ts awaitSessionStart / DEFAULT_SEND_TURN_START_WAIT_MS and the resume branch.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

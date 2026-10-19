@@ -68,6 +68,15 @@ export class LocalAccountAdministration {
     if (changed.changes !== 1) throw new Error('Local account not found.');
   }
 
+  /** #3586: whether the account exists at all (`permits` admits unknown ids). */
+  exists(accountId: string): boolean {
+    return (
+      this.database
+        .prepare('SELECT 1 AS found FROM user WHERE id = ?')
+        .get(accountId) !== undefined
+    );
+  }
+
   permits(accountId: string, sessionCreatedAt?: Date): boolean {
     const row = this.database
       .prepare(

@@ -20,7 +20,21 @@
 
     "src-server/runtime/bootstrap/agent-audience-gate.ts",
 
-    "src-server/services/agents/agent-audience.ts"
+    "src-server/services/agents/agent-audience.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-ui/src/components/profile/MyAccessPanel.tsx",
+
+    "src-ui/src/views/project-settings/ProjectAgentsPanel.tsx"
   ],
 
   "checks": [

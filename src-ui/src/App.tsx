@@ -23,6 +23,7 @@ import {
   resolveViewFromPath,
 } from './app-shell/routing';
 import { useScrollRestoration } from './app-shell/useScrollRestoration';
+import { TaskShapingHost } from './components/chat/TaskShapingComposer';
 import { ChatAuthRecoveryProvider } from './components/chat-dock/ChatAuthRecoveryContext';
 import {
   isDockOwnedViewType,
@@ -48,10 +49,7 @@ import { PushNotificationsProvider } from './contexts/PushNotificationsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useShowSurface } from './contexts/useShowSurface';
-import {
-  useDockFoldsToOneRegion,
-  useDockSlotPlacement,
-} from './hooks/useIsMobile';
+import { useDockSlotPlacement } from './hooks/useIsMobile';
 import { foldedDockRegion } from './regions/region-model';
 
 /**
@@ -101,6 +99,12 @@ const loadCoreUpdateLaunchCheck = () =>
 const loadDesktopUpdateLaunchCheck = () =>
   import('./components/DesktopUpdateLaunchCheck').then((module) => ({
     default: module.DesktopUpdateLaunchCheck,
+  }));
+
+// A connected server older than this app (#2675): same reasoning.
+const loadServerOlderLaunchCheck = () =>
+  import('./components/ServerOlderLaunchCheck').then((module) => ({
+    default: module.ServerOlderLaunchCheck,
   }));
 
 const loadOutboundQueueFlushMount = () =>
@@ -458,12 +462,9 @@ function App() {
   // from the `type` word alone: a plugin-contributed layout typed 'chat'
   // renders its own tabs and keeps the ambient regions (#1446), and one typed
   // 'coding' keeps Chat in the dock.
-  const dockFoldsToOneRegion = useDockFoldsToOneRegion();
   const layoutChatPlacement =
     displayCurrentView.type === 'layout' && !selectedLayoutUnknown
-      ? resolveLayoutChatPlacement(selectedLayout, {
-          bottomOnly: dockFoldsToOneRegion,
-        })
+      ? resolveLayoutChatPlacement(selectedLayout)
       : 'none';
   const isChatWorkspaceLayout = layoutChatPlacement === 'viewport';
   // A layout route waits for its type before mounting the ambient controller.
@@ -638,6 +639,7 @@ function App() {
   return (
     <PushNotificationsProvider value={pushNotifications}>
       <ProjectsProvider>
+        <TaskShapingHost />
         {/* The route's Chat placement, for readers outside the layout: the
           region shells suspend the dock's Chat and the Chat chord goes to the
           Coding centre while it owns Chat (`resolveLayoutChatPlacement`). */}
@@ -657,6 +659,11 @@ function App() {
             />
             <LazyBoundary
               load={loadDesktopUpdateLaunchCheck}
+              pending={null}
+              componentProps={{}}
+            />
+            <LazyBoundary
+              load={loadServerOlderLaunchCheck}
               pending={null}
               componentProps={{}}
             />

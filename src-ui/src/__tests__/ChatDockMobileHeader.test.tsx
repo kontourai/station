@@ -84,13 +84,13 @@ const PROJECTS = [
 function renderHeader(
   overrides: {
     onClear?: ReturnType<typeof vi.fn<() => void>>;
+    onTurnIntoTask?: () => void;
     onNewChat?: ReturnType<typeof vi.fn<() => void>>;
     onOpenTaskSwitcher?: ReturnType<typeof vi.fn<() => void>>;
     projectSwitcher?: ChatDockMobileProjectSwitcher | null;
     dockToggle?: ChatDockMobileDockToggle | null;
     projectScope?: { name: string; onClear: () => void } | null;
     agentIdentity?: { name: string; slug: string; icon?: string } | null;
-    branchLabel?: string | null;
     onOpenProject?: (() => void) | null;
     openProjectName?: string | null;
     showConnection?: boolean;
@@ -139,7 +139,6 @@ function renderHeader(
           ? overrides.agentIdentity
           : { name: 'Codex', slug: 'codex' }
       }
-      branchLabel={overrides.branchLabel ?? null}
       activeCount={overrides.activeCount ?? 0}
       unreadCount={overrides.unreadCount ?? 0}
       taskSwitcherTriggerRef={createRef<HTMLButtonElement>()}
@@ -149,6 +148,7 @@ function renderHeader(
       onDragClickCapture={vi.fn()}
       onNewChat={overrides.onNewChat ?? vi.fn()}
       overflow={{
+        onTurnIntoTask: overrides.onTurnIntoTask,
         onOpenConversation: vi.fn(),
         onToggleHistory: vi.fn(),
         onOpenChatSettings: vi.fn(),
@@ -291,10 +291,12 @@ describe('mobile conversation focus', () => {
     ).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Activity' })).toBeNull();
   });
-  test('keeps project scope and branch context in the sheet', async () => {
-    const onClear = renderHeader({ branchLabel: 'feature/chat' });
+  // The branch moved to the session context sheet's labelled Branch row
+  // (SessionContextCard.test.tsx); the actions sheet printed it as a bare,
+  // unlabelled line inside its menu.
+  test('keeps project scope in the sheet', async () => {
+    const onClear = renderHeader();
     await openActions();
-    expect(screen.getByText('feature/chat')).toBeTruthy();
     fireEvent.click(
       screen.getByRole('menuitem', { name: 'Clear project chat scope' }),
     );
@@ -505,4 +507,15 @@ describe('the ⋯ sheet’s copy rows (mobile parity)', () => {
       screen.queryByRole('menuitem', { name: 'Copy session ID' }),
     ).toBeNull();
   });
+});
+
+test('the phone chat actions offer Turn into Task and dismiss the sheet before shaping', async () => {
+  const turnIntoTask = vi.fn();
+  renderHeader({ onTurnIntoTask: turnIntoTask });
+  await openActions();
+  fireEvent.click(
+    await screen.findByRole('menuitem', { name: 'Turn into Task' }),
+  );
+  expect(turnIntoTask).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('menuitem', { name: 'Turn into Task' })).toBeNull();
 });

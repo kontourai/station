@@ -1,0 +1,7 @@
+{
+  "revision": "b6c88a5c570b84f069d4a46ede1977eb951d889a",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed useOpenConversation callback and controller propagation after hydration repair: its optional context does not authorize continuation; null includes fetch failure and superseded command. Public SDK exports remain unchanged. Focused controller/lifecycle tests and UI typecheck passed; no external provider execution claimed.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]}
+  ]
+}

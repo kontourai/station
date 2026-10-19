@@ -1,0 +1,7 @@
+{
+  "revision": "d0036aa15a8c558c8beaedf95d963feb64d9f571",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"StartComposer.tsx now imports MODEL_NOT_REPORTED from modelCapabilities instead of a local copy; Agent chip text and the New Chat steps are unchanged, so the guide stays accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/StartComposer.tsx"]}
+  ]
+}

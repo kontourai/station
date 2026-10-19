@@ -10,6 +10,11 @@
  * transition (no active connection -> one), and any change observed while
  * the persisted cache is still restoring.
  */
+
+import {
+  ConnectionStore,
+  ConnectionsProvider,
+} from '@kontourai/station-connect';
 import {
   QueryClient,
   QueryClientProvider,
@@ -19,10 +24,19 @@ import {
   type PersistedClient,
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
-import { render, renderHook, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { useInvalidateCachesOnConnectionSwitch } from '../hooks/useInvalidateCachesOnConnectionSwitch';
+import {
+  useConnectionSwitchScope,
+  useInvalidateCachesOnConnectionSwitch,
+} from '../hooks/useInvalidateCachesOnConnectionSwitch';
 import {
   QUERY_PERSISTENCE_STORAGE_KEY,
   setupQueryPersistence,
@@ -345,5 +359,83 @@ describe('useInvalidateCachesOnConnectionSwitch', () => {
     ).toBe(true);
 
     handle.unsubscribe();
+  });
+
+  describe('the live connection scope (useConnectionSwitchScope over a real ConnectionStore)', () => {
+    function renderLiveScope() {
+      const values = new Map<string, string>();
+      const store = new ConnectionStore({
+        storage: {
+          get: (key) => values.get(key) ?? null,
+          set: (key, value) => values.set(key, value),
+          remove: (key) => values.delete(key),
+        },
+      });
+      const seeded = store.add('Remote Station', 'https://station.tail.test');
+      store.setActive(seeded.id);
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const fetches = { count: 0 };
+      function Harness() {
+        const { apiBase, hasActiveConnection, connectionScope } =
+          useConnectionSwitchScope();
+        useInvalidateCachesOnConnectionSwitch(
+          apiBase,
+          hasActiveConnection,
+          connectionScope,
+        );
+        const observed = useQuery({
+          queryKey: ['agents'],
+          queryFn: async () => {
+            fetches.count += 1;
+            return fetches.count;
+          },
+          staleTime: Number.POSITIVE_INFINITY,
+        });
+        return <div data-testid="live-scope" data-fetches={observed.data} />;
+      }
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ConnectionsProvider store={store}>
+            <Harness />
+          </ConnectionsProvider>
+        </QueryClientProvider>,
+      );
+      const active = store.getActive();
+      if (!active) throw new Error('the seeded store has no active Station');
+      return { store, active, fetches };
+    }
+
+    it('does not refetch every query when the health probe flaps between timeout and success', async () => {
+      const { store, active, fetches } = renderLiveScope();
+      await waitFor(() => expect(fetches.count).toBe(1));
+
+      // The shape a slow remote Station produces: the probe misses its
+      // deadline, then the next accepted request retires the error.
+      for (let flap = 0; flap < 3; flap += 1) {
+        act(() => store.recordEndpointFailure(active.id, 'timeout'));
+        act(() => store.recordEndpointSuccess(active.id, active.url));
+        act(() => store.recordEndpointFailure(active.id, 'unreachable'));
+        act(() => store.recordEndpointSuccess(active.id, active.url));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(store.getActive()?.lastError).toBeUndefined();
+      expect(fetches.count).toBe(1);
+    });
+
+    it('still refetches when the active Station loses or regains its credential', async () => {
+      const { store, active, fetches } = renderLiveScope();
+      await waitFor(() => expect(fetches.count).toBe(1));
+
+      act(() =>
+        store.recordEndpointFailure(active.id, 'authentication-failed'),
+      );
+      await waitFor(() => expect(fetches.count).toBe(2));
+
+      act(() => store.recordEndpointSuccess(active.id, active.url));
+      await waitFor(() => expect(fetches.count).toBe(3));
+    });
   });
 });

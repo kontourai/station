@@ -134,7 +134,45 @@
 
     "src-ui/src/components/ModelSelector.tsx",
 
-    "src-ui/src/components/AutocompleteSelector.tsx"
+    "src-ui/src/components/AutocompleteSelector.tsx",
+
+    "src-ui/src/hooks/useAnchoredPopup.tsx",
+
+    "src-ui/src/hooks/useWorkingChatFocus.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockContentArea.tsx",
+
+    "src-ui/src/components/chat/ChatMessageList.tsx",
+
+    "src-ui/src/contexts/work-observation.ts",
+
+    "src-ui/src/components/chat-dock/conversationOpenController.ts",
+
+    "src-ui/src/views/home/useObservedWorkStatus.ts",
+
+    "src-ui/src/hooks/useSTT.ts",
+
+    "src-ui/src/components/chat-start/useStartDictation.ts",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "src-ui/src/components/modals/TaskChatStart.css",
+
+    "src-server/runtime/frameworks/voltagent-adapter.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts",
+
+    "src-ui/src/views/home/home-view-model.ts",
+
+    "src-ui/src/__tests__/composer-sizing.browser.test.tsx"
   ],
 
   "checks": [

@@ -96,6 +96,8 @@ export interface AgentTools {
    * use `unattendedAutoApprove` for those (#2613).
    */
   autoApprove?: string[];
+  /** Explicit attended prompts; take precedence over automatic and session grants. */
+  askBeforeUse?: string[];
   /**
    * #2613: explicit opt-in for tools this agent may run with nobody present —
    * scheduled jobs, `/invoke`, the CLI, and delegated children that cannot

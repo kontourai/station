@@ -752,9 +752,10 @@ export async function issueE2EBrowserSession({
     );
   }
   const setCookie = response.headers.get('set-cookie');
-  const match = /^station-device=([A-Za-z0-9_-]{43})(?:;|$)/.exec(
-    setCookie ?? '',
-  );
+  const match =
+    /^station-device(?:-[a-f0-9]{16})?=([A-Za-z0-9_-]{43})(?:;|$)/.exec(
+      setCookie ?? '',
+    );
   if (!match || !isValidE2EOperatorCredential(match[1])) {
     throw new Error('E2E UI bootstrap response omitted a valid session cookie');
   }

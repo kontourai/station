@@ -1,0 +1,7 @@
+{
+  "revision": "719bdf3ead1e62850fb907397e7943cceb9b8dae",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-read resolveConversationOpen after 719bdf3ead1 restored round-9 conversationOpenController: picker opens and active retries pass no per-call signal/timeout and add no command deadline, matching the restored code (epoch-generation gate only).","inputs":["docs/reference/sdk.md","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]}
+  ]
+}

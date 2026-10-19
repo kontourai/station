@@ -1,7 +1,11 @@
-const RIVER =
-  'M132 29 C111 39 89 25 77 39 C55 59 93 67 104 79 C133 107 71 107 58 125 L48 140';
-let startedAt: number | undefined;
-let firstPaintCleanup: (() => void) | undefined;
+import {
+  STARTUP_MARK_LIP,
+  STARTUP_MARK_RIVER,
+  STARTUP_MARK_SIZE,
+  STARTUP_MARK_WATER,
+} from './startup-mark-geometry';
+
+const MARK = STARTUP_MARK_SIZE;
 
 const fraction = (value: number) => Math.max(0, Math.min(1, value));
 const ease = (value: number) => 1 - (1 - fraction(value)) ** 3;
@@ -33,23 +37,39 @@ function trackPath(
   context.closePath();
 }
 
-/** Paints the boot surface without owning readiness or delaying its removal. */
-export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
-  releaseInitialStartupAnimation();
+/** Paints only visible time; the launch presentation owns its handoff. */
+export function startStartupAnimation(
+  canvas: HTMLCanvasElement,
+  {
+    isVisible = (): boolean => true,
+    onFrame = (_elapsed: number) => {},
+    onUnavailable = () => {},
+  }: {
+    isVisible?: () => boolean;
+    onFrame?: (elapsed: number) => void;
+    onUnavailable?: () => void;
+  } = {},
+): () => void {
   const candidate = canvas.getContext('2d');
   const parent = canvas.parentElement;
-  if (!candidate || !parent) return () => {};
+  if (!candidate || !parent) {
+    onUnavailable();
+    return () => {};
+  }
   const context = candidate;
   const surface = parent;
 
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const guide = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  guide.setAttribute('d', RIVER);
+  guide.setAttribute('d', STARTUP_MARK_RIVER);
   const length = guide.getTotalLength();
   const layer = document.createElement('canvas');
-  layer.width = layer.height = 187;
+  layer.width = layer.height = MARK;
   const candidateFlow = layer.getContext('2d');
-  if (!candidateFlow) return () => {};
+  if (!candidateFlow) {
+    onUnavailable();
+    return () => {};
+  }
   const flowContext = candidateFlow;
 
   const swatch = document.createElement('span');
@@ -65,6 +85,8 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
   let stopped = false;
   let frameId = 0;
   let lastPaint = 0;
+  let elapsed = 0;
+  let previous: number | undefined;
 
   function readTheme() {
     const styles = getComputedStyle(surface);
@@ -77,10 +99,11 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
 
   function loadMark() {
     const next = new Image();
-    const channel = document.documentElement.dataset.appChannel;
-    const variant = document.documentElement.classList.contains('is-dev-build')
+    const root = document.documentElement;
+    // Before the host report arrives, the mark startup-theme.js remembered.
+    const variant = root.classList.contains('is-dev-build')
       ? 'dev'
-      : channel;
+      : (root.dataset.appChannel ?? root.dataset.startupMark);
     next.src = ['dev', 'beta', 'nightly'].includes(variant ?? '')
       ? `/favicon-${variant}.png`
       : '/favicon.png';
@@ -90,12 +113,13 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
     next.onload = () => {
       if (stopped || image !== next) return;
       mask = document.createElement('canvas');
-      mask.width = mask.height = 187;
+      mask.width = mask.height = MARK;
       const maskContext = mask.getContext('2d');
       if (!maskContext) return;
-      maskContext.drawImage(next, 0, 0, 187, 187);
-      const pixels = maskContext.getImageData(0, 0, 187, 187);
-      const sample = (49 * 187 + 74) * 4;
+      maskContext.drawImage(next, 0, 0, MARK, MARK);
+      const pixels = maskContext.getImageData(0, 0, MARK, MARK);
+      const [waterX, waterY] = STARTUP_MARK_WATER;
+      const sample = (waterY * MARK + waterX) * 4;
       water = {
         red: pixels.data[sample],
         green: pixels.data[sample + 1],
@@ -115,7 +139,10 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
       ready = true;
       schedule();
     };
-    next.onerror = dispose;
+    next.onerror = () => {
+      dispose();
+      onUnavailable();
+    };
   }
 
   function draw(time: number) {
@@ -169,9 +196,9 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
       context.restore();
     }
 
-    const scale = size / 187;
-    const dropX = x + 46 * scale;
-    const lipY = y + 140 * scale;
+    const scale = size / MARK;
+    const dropX = x + STARTUP_MARK_LIP[0] * scale;
+    const lipY = y + STARTUP_MARK_LIP[1] * scale;
     const trackY = y + size + 36 * fit;
     const trackX = destination + 18 * fit;
     const trackWidth = totalWidth - 32 * fit;
@@ -248,7 +275,7 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
 
     if (!motion.matches) {
       flowContext.globalCompositeOperation = 'source-over';
-      flowContext.clearRect(0, 0, 187, 187);
+      flowContext.clearRect(0, 0, MARK, MARK);
       flowContext.strokeStyle = ink;
       flowContext.lineWidth = 0.8;
       flowContext.lineCap = 'round';
@@ -291,13 +318,26 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
     if (
       ready &&
       !document.hidden &&
+      isVisible() &&
+      canvas.clientWidth > 0 &&
+      canvas.clientHeight > 0 &&
       (motion.matches || now - lastPaint >= 1000 / 30)
     ) {
-      startedAt ??= now;
-      draw(motion.matches ? 3 : (now - startedAt) / 1000);
+      if (previous !== undefined) elapsed += now - previous;
+      previous = now;
+      draw(motion.matches ? 3 : elapsed / 1000);
       canvas.dataset.ready = 'true';
       lastPaint = now;
+      onFrame(elapsed);
     }
+    if (
+      !ready ||
+      document.hidden ||
+      !isVisible() ||
+      canvas.clientWidth === 0 ||
+      canvas.clientHeight === 0
+    )
+      previous = undefined;
     if (!document.hidden && (!ready || !motion.matches)) schedule();
   }
 
@@ -306,6 +346,7 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
   }
 
   function visibility() {
+    previous = undefined;
     cancelAnimationFrame(frameId);
     frameId = 0;
     if (!document.hidden) schedule();
@@ -328,14 +369,3 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
   });
   return dispose;
 }
-
-export function releaseInitialStartupAnimation(): void {
-  firstPaintCleanup?.();
-  firstPaintCleanup = undefined;
-}
-
-const firstPaintCanvas = document.querySelector<HTMLCanvasElement>(
-  '#root .station-startup__canvas',
-);
-if (firstPaintCanvas)
-  firstPaintCleanup = startStartupAnimation(firstPaintCanvas);

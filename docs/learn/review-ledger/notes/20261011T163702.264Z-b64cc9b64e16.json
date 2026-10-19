@@ -1,0 +1,7 @@
+{
+  "revision": "a23a8d18bc3e311d56e89341f31eaa1baac8042c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-read follow-up and @ mention steps: Send still defaults to Queue with a Steer option, @ results and the 64-mention limit are unchanged; only the picker's placement and the Send/mode styling changed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/FileMentionAutocomplete.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

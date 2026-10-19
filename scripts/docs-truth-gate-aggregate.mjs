@@ -21,6 +21,8 @@ export const DOCS_TRUTH_GATE_LANES = [
     id: 'docs:public:contract-examples',
     script: 'docs:public:contract-examples',
   },
+  // Includes the actual repo's ledger/capture freshness and artifact checks.
+  // Fixture-only policy suites run via test-impact-manifest and full regression.
   { id: 'docs:foundations:test', script: 'docs:foundations:test' },
   { id: 'docs:links:check', script: 'docs:links:check' },
   { id: 'docs:truth:biome', script: 'docs:truth:biome' },

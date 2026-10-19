@@ -24,7 +24,8 @@ rather than creating a second Interface reference.
 
 | Area | Disposition | Why it stays this way |
 | --- | --- | --- |
-| TurnDeduplicator | Completed | One opaque owner capability owns `(threadId, clientTurnId)` settlement across restart and contention. |
+| TurnDeduplicator | Completed | One opaque owner capability owns `(threadId, clientTurnId)` settlement across restart and contention. Its claim, resolve, release and retention rules are `@kontourai/monument`'s turn-dedup commands, run over Station's own dedup tables (#3565). |
+| SessionTurnBoundaryAuthority | Boundary writes, listing and event-authoritative polling use Monument | The host adapter binds the existing table, joins sealed-task admission and nests engine-opened boundaries inside event append. Polling filters event-retired IDs without deleting rows or retrying pending writes. The same host predicate physically retires rows before create/accepted admission and before raw boot recovery. Owner reconciliation stays in Station. |
 | AdoptionLedger | Completed | Reservation, ownership, legal transitions, and atomic commit moved out of EventStore forwarding methods. |
 | RecoveryLedger | Completed | Recovery arm/claim/terminal/compensation and startup reconciliation are one intent-shaped Interface. |
 | CredentialApplicationFactory/Handle | Completed, private | Exact stage/settle/ack evidence is composed with RecoveryLedger; raw attempt identities do not become a caller Interface. |
@@ -54,8 +55,9 @@ must never project success or cleanup completion without `applied`. A thrown or
 ambiguous SQLite operation is `unavailable`, so the caller retains its opaque
 capability for the exact retry rather than guessing durability.
 
-Bulk `reconcilePrepared` is startup-only: it first rejects a prepared row with
-a live durable owner fence, then atomically changes only an abandoned
+Bulk `reconcilePrepared` runs only in startup reconciliation passes (later
+callers retry the credential pass until it reconciles): it first rejects a
+prepared row with a live durable owner fence, then atomically changes only an abandoned
 owner/attempt/correlation tuple and returns its exact winners. Live profile
 completion is restricted to the original process-local claim capability; a
 reconstructed process has no claim and waits for startup reconciliation to
@@ -64,10 +66,14 @@ and guarded compare-and-set updates, preserving due ordering (`due_at`, then
 creation) while keeping transaction coordination and owner-liveness checks
 inside the Implementation.
 
-Both startup reconciliation readers catch scan failures and return an empty
-list. An empty result therefore does not establish that recovery storage was
-read successfully. [#2823](https://github.com/kontourai/station/issues/2823)
-tracks explicit unavailable scan results and the caller's admission policy.
+Both startup reconciliation readers return a typed scan: `available` with the
+rows read, or `unavailable` when the coordinator read failed, so an empty
+result now establishes that recovery storage was read. CredentialRecoveryModule
+reports an unavailable scan as `unavailable` and keeps its startup pass
+eligible for retry instead of latching it.
+[#2823](https://github.com/kontourai/station/issues/2823) still tracks the
+caller's admission policy and the due-path sweep, which has no in-process
+retry.
 
 Ownership pairs an owner UUID with the shared process-identity birth
 fingerprint. A matching live PID is retained; a dead PID or mismatched birth is

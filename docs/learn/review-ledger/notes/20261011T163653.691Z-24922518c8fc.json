@@ -1,0 +1,7 @@
+{
+  "revision": "a23a8d18bc3e311d56e89341f31eaa1baac8042c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the composer claims against the split Send/mode control, the removed idle mode slot, and the @ file picker now portaled through useAnchoredPopup with the slash and /model pickers; added both behaviors. Mobile reserved-geometry claim still holds (submit controls conceal with visibility while the draft is empty).","inputs":["docs/design/chat-composer.md","src-ui/src/components/AutocompleteSelector.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css","src-ui/src/hooks/useAnchoredPopup.tsx"]}
+  ]
+}

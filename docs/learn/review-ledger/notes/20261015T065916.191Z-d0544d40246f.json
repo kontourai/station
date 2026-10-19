@@ -1,0 +1,7 @@
+{
+  "revision": "84746f956321c7e9fcd2ba8df1a446fbf3589a14",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Fix round 8 of the delivery-state change: the flush hook's deferred-row retry timer now re-reads the queue when it fires (arming itself for the next row still waiting) before starting its pass, so a second deferred row is not stranded when the first one's pass claims nothing; 'deferredAt' joins OutboundDispatchIntent's omitted fields. Only outboundQueue.ts's intent type changed ('deferredAt' omitted). This document's statement that a deferred message is retried once its wait ends now holds for every waiting row (the retry re-reads the queue). No prose change.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

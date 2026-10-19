@@ -326,13 +326,7 @@ function writeServiceState(installRoot, state) {
     paths.runtime,
     `.${SERVICE_STATE_FILE}.${process.pid}.${randomUUID()}`,
   );
-  const fd = openSync(temp, 'wx', 0o600);
-  try {
-    writeFileSync(fd, `${JSON.stringify(state, null, 2)}\n`);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
+  writeStagedFile(temp, `${JSON.stringify(state, null, 2)}\n`);
   try {
     renamePathRetrying(temp, paths.state);
   } catch (error) {
@@ -700,16 +694,36 @@ export function reclaimStaleLock(lock, judged) {
   }
 }
 
+/**
+ * Creates `path` exclusively and writes and fsyncs `text`. A failed write
+ * (ENOSPC, EIO) removes the file: a caller that only cleans up after its
+ * publish step would otherwise leak one empty staging file per attempt, and a
+ * service restarting every few seconds on a full disk leaks them without
+ * bound.
+ */
+function writeStagedFile(path, text) {
+  const fd = openSync(path, 'wx', 0o600);
+  try {
+    try {
+      writeFileSync(fd, text);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  } catch (error) {
+    try {
+      rmSync(path, { force: true });
+    } catch {
+      // Report the write's failure, not the cleanup's.
+    }
+    throw error;
+  }
+}
+
 /** Publishes the full lock record at once where hard links exist. */
 function createLock(lock, record) {
   const staged = `${lock}.${process.pid}.${randomUUID()}.tmp`;
-  const fd = openSync(staged, 'wx', 0o600);
-  try {
-    writeFileSync(fd, record);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
+  writeStagedFile(staged, record);
   try {
     linkSync(staged, lock);
     return;
@@ -720,13 +734,7 @@ function createLock(lock, record) {
   } finally {
     rmSync(staged, { force: true });
   }
-  const fd2 = openSync(lock, 'wx', 0o600);
-  try {
-    writeFileSync(fd2, record);
-    fsyncSync(fd2);
-  } finally {
-    closeSync(fd2);
-  }
+  writeStagedFile(lock, record);
 }
 
 /**
@@ -954,11 +962,13 @@ class Launcher {
       }
     }
     // Self-supervised (Windows), the version's own `stop` also follows an
-    // orderly exit: measured on a Windows runner, `service run`'s shutdown
-    // could refuse to signal its UI ("identity could not be verified") and
-    // exit with it still running, which left the home active and failed the
-    // update's backup; `station stop` by record stopped it. With nothing
-    // left running it does nothing.
+    // orderly exit, as it follows the kill above: it is the backstop for
+    // anything `service run` left running, whatever the reason. The case
+    // measured on a Windows runner (#3361) was its shutdown refusing to
+    // signal its UI ("identity could not be verified") and exiting with it
+    // still running, which left the home active and failed the update's
+    // backup; `station stop` by record stopped it. With nothing left running
+    // it does nothing.
     if (this.selfSupervised) this.ownStop(version);
   }
 

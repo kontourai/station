@@ -4,6 +4,10 @@ import type { EngineId } from './agent-identity.js';
 export type { EngineId } from './agent-identity.js';
 
 import type { ChatAttachmentInput } from './chat-attachment.js';
+import {
+  type ConfinementPlan,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
+} from './execution-confinement.js';
 import type { TenantExecutionContext } from './tenancy.js';
 import type {
   WorkspaceIsolationConfig,
@@ -31,6 +35,29 @@ export interface ProviderContinuityCapabilities {
   resumeIdentity?: 'require-match';
   /** Resume a prior Session only within its recorded engine-home/profile binding. */
   nativeReturn?: 'same-binding';
+}
+
+/** Current delivery fidelity, not a promise that an interrupted effect is replayable. */
+export interface DurabilityCapability {
+  state: 'native' | 'emulated' | 'none';
+  /** User-facing limit owned by the declaring adapter. */
+  detail: string;
+}
+
+/** Every capability is explicit; an omitted cell is an invalid declaration. */
+export interface ProviderDurabilityProfile {
+  steerPlacement: DurabilityCapability;
+  crashContinuation: DurabilityCapability;
+  toolReplay: DurabilityCapability;
+  pendingApprovals: DurabilityCapability;
+  contextCarriage: DurabilityCapability;
+  fork: DurabilityCapability;
+  /** State describes Station's recovery support; ownership is independent. */
+  compaction: DurabilityCapability & {
+    owner: 'station' | 'engine' | 'unknown';
+  };
+  partialOutput: DurabilityCapability;
+  usage: DurabilityCapability;
 }
 
 export const NATIVE_RESUME_IDENTITY_METADATA_KEY = 'nativeResumeIdentity';
@@ -107,6 +134,14 @@ export interface ModelLaunchCapabilities extends ModelLifecycleCapabilities {
 export type ModelLifecyclePoint = 'start' | 'resume' | 'turn';
 
 export const MODEL_OVERRIDE_UNSUPPORTED_CODE = 'model-override-unsupported';
+/**
+ * A new session was refused because the model the request names is not one
+ * the engine's own fresh session options offered. The engine answered, so the
+ * start is settled rather than uncertain. Deterministic for that engine and
+ * catalog, so NOT retryable as sent: the caller has to choose a model the
+ * engine offers.
+ */
+export const MODEL_NOT_ADVERTISED_CODE = 'model_not_advertised';
 export const SESSION_REATTACH_CONFLICT_CODE = 'session-reattach-conflict';
 export type SessionReattachConflictReason =
   | 'model-change'
@@ -308,6 +343,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
   DELEGATION_PROVENANCE_METADATA_KEY,
 ] as const;
 
@@ -831,6 +867,35 @@ export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
 export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 
 /**
+ * Refusal code for a send that waited for its session's engine start (for
+ * an ACP session, reattaching to a stored native session) and the start had
+ * still not finished within the adapter's wait. Retryable: the same send
+ * succeeds once the session is ready, so clients keep it queued.
+ */
+export const PROVIDER_SESSION_STARTING_CODE = 'provider_session_starting';
+
+/**
+ * Refusal code for a send whose session's engine start failed while the send
+ * waited for it. Nothing was sent. Kept, not dropped: the client keeps the
+ * message queued with the reason and a Retry, and does not retry on its own.
+ */
+export const PROVIDER_SESSION_START_FAILED_CODE =
+  'provider_session_start_failed';
+
+/**
+ * Refusal code for a send whose idempotency key (`clientTurnId`) another
+ * in-flight attempt still holds, or released without sending. Nothing new
+ * was sent. Retryable with the same key: clients keep the message queued and
+ * re-send it.
+ */
+export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
+/** The key already names a different submitted intent. No turn was accepted. */
+export const CLIENT_TURN_INPUT_CONFLICT_CODE = 'client_turn_input_conflict';
+/** This keyed input cannot be represented completely by the supported digest. */
+export const CLIENT_TURN_INPUT_UNSUPPORTED_CODE =
+  'client_turn_input_unsupported';
+
+/**
  * A send refused before any engine effect because the bound engine cannot
  * take the attached input (an ACP engine whose `initialize` handshake did not
  * advertise `promptCapabilities.image`, or a file the engine only accepts as
@@ -939,6 +1004,7 @@ export interface ResolvedAgentDefinition {
    * authored empty array, which simply means "no shortcuts").
    */
   autoApprove?: string[];
+  askBeforeUse?: string[];
   /**
    * #90 D14: `false` when the agent's operator switched the built-in browser
    * tools (`station-browser`) off. Absent means the engine's default: an
@@ -1096,6 +1162,13 @@ export interface ProviderSessionStartInput {
    * commands omit this field; absent is `workspace`.
    */
   confinement?: StationConfinement;
+  /**
+   * #2494: server-resolved confinement mechanism for this spawn, present only
+   * when one is engaged. Public orchestration commands omit this field. The
+   * adapter that engages the mechanism observes the started process and
+   * stamps `STATION_CONFINEMENT_RECORD_METADATA_KEY` on `session.started`.
+   */
+  confinementPlan?: ConfinementPlan;
   metadata?: Record<string, unknown>;
   /**
    * Server-only opaque app-home selector for a single provider spawn. It is
@@ -1175,6 +1248,14 @@ export interface ProviderSendTurnInput {
    * HTTP/client schemas do not accept this field.
    */
   recoveryCorrelationId?: string;
+  /**
+   * Cancels this send before the engine has it (and interrupts a turn the
+   * engine accepted after it fired). Only an explicit, server-owned decision
+   * may supply it: a Stop/cancel, a server deadline, a shutdown. Never wire
+   * an HTTP request's or client connection's signal here: once Station has
+   * the message, the client may close or disconnect and the send must still
+   * go through.
+   */
   signal?: AbortSignal;
   /**
    * A client-generated per-turn idempotency

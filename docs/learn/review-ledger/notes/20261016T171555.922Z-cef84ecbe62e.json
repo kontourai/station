@@ -1,0 +1,21 @@
+{
+  "revision": "19d7495ea6012a79449f3523ca194e15d2a04f90",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Project tool-composition and runtime policy boundaries against the five-line deletion of unused isShared. allows, assertSources/assertAgent and catalog view remain the callers; no module, execution or recovery contract changed.","inputs":["docs/architecture/module-map.md","src-server/services/plugins/tool-library-service.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed Project source-ceiling and pre-tool delivery claims. Removal of uncalled isShared leaves allows, assertAgent and per-call policy enforcement intact; no engine-support or withdrawal guarantee changed.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/services/plugins/tool-library-service.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed Project agent authoring/acquisition and My access boundaries. The deleted accessor has no callers; authoring, Owner policy, operator installation, personal OAuth and member-execution refusal remain unchanged.","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/services/plugins/tool-library-service.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed Shared Projects, source sharing, requests and My access guidance. Sharing is still enforced by allows/assertSources and catalog view, not the removed unused accessor. The 12 focused catalog/route tests pass; no new provider or native claim.","inputs":["docs/guides/agents.md","src-server/services/plugins/tool-library-service.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed automatic Knowledge additions and selected source ceiling. Actual tool delivery still uses assertAgent/assertSources; removing uncalled isShared cannot broaden defaults or change store detection.","inputs":["docs/guides/knowledge.md","src-server/services/plugins/tool-library-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Project tool-library route table and current-person/Project authority claims. No route or DTO changes; source sharing, requests and account routes retain their existing enforcement owners.","inputs":["docs/reference/api.md","src-server/services/plugins/tool-library-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed security/tool-library.json state, all/selected ceiling and constrained Project Agent configuration. No schema/default/persistence change; only an unused read accessor was removed.","inputs":["docs/reference/config.md","src-server/services/plugins/tool-library-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed scoped tool-library admission, Admin/Owner authoring and member-execution/OAuth exclusions. The deletion has no callers and changes no Device/account/Project authorization gate or installation authority.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/plugins/tool-library-service.ts"]}
+  ]
+}

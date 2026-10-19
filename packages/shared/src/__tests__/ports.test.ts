@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_STATION_CHANNEL,
+  operatorCliCommand,
   resolveStationChannel,
   STATION_CHANNEL_PORTS,
   stationChannelPorts,
@@ -50,5 +51,26 @@ describe('Station channel port allocation', () => {
       uiPort: 38000,
     });
     expect(() => resolveStationChannel('preview')).toThrow(/STATION_CHANNEL/);
+  });
+});
+
+describe('operatorCliCommand', () => {
+  test('a nightly Station gets the nightly npm package', () => {
+    expect(operatorCliCommand('nightly')).toBe(
+      'npx @kontourai/station-cli@nightly',
+    );
+  });
+
+  test('every channel without its own published dist-tag gets latest', () => {
+    for (const channel of [
+      'stable',
+      'beta',
+      'development',
+      'source-checkout',
+      undefined,
+    ])
+      expect(operatorCliCommand(channel)).toBe(
+        'npx @kontourai/station-cli@latest',
+      );
   });
 });

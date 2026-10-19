@@ -101,6 +101,11 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Delivery suites read captured CLI data under fixtures/ (excluded from
+  // source pins); the scenario suite also reads files it creates in its isolated
+  // workspace. Direct scenario/mapper imports provide behavior-selection edges.
+  'scripts/__tests__/engine-delivery-probes.test.ts',
+  'src-server/providers/__tests__/claude-adapter-events.test.ts',
   // Reads identity/config files created in isolated Station temp homes, never
   // repository source. Direct telemetry imports own changed-test selection.
   'src-server/__tests__/telemetry.test.ts',
@@ -528,11 +533,15 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
+  'packages/supervisor/src/__tests__/control-server.test.ts':
+    'lists the run directory under its temporary Station home to check leftover private socket names',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/android-channel-release-generation.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/android-firebase-workflow-env.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/monument-import-boundary-gate.test.ts':
+    'the match is fixture source text (`import.meta.glob(...)`) written into a scratch repository; the suite itself walks no directory',
   'scripts/__tests__/basis-mcp-apps.test.ts':
     'git ls-files over its own generated outputs, to prove they are untracked',
   'scripts/__tests__/desktop-runtime-port-lease.test.ts':
@@ -575,6 +584,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/routes/orchestration/__tests__/tasks.routes.test.ts':
     TEMP_VIA_FIXTURE,
+  'src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts':
+    'lists only the temporary CLI report directory created by makeTempDir to inspect generated matrix results',
   'src-server/routes/plugins/__tests__/plugin-proposal-staged-reinstall.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/routes/plugins/__tests__/plugin-proposed-install-git-metadata.test.ts':
@@ -588,6 +599,11 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   'src-server/services/plugins/__tests__/example-manifest-fields.test.ts':
     'walks examples/; its examples/** edge selects it',
   'src-server/services/projects/__tests__/plugin-publish-service.test.ts':
+    TEMP_VIA_FIXTURE,
+  // The sole ls-files call is f.git(...): fixture() passes a tracked temp
+  // directory to codingDiffFixture, whose git closure fixes cwd to that root.
+  // Its index reads and filesystem race controls also use only owned temp roots.
+  'src-server/services/projects/__tests__/workspace-diff-service.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
     WRAPS_FS,
@@ -688,6 +704,35 @@ describe('whole-tree scans are run or classified (#2176)', () => {
     ).toEqual([]);
     // A comment naming the call is not a walk.
     expect(realTreeWalks(`// ${read}('docs')\n`)).toEqual([]);
+  });
+
+  it('the worktree diff fixture classification does not absorb additional real walks', () => {
+    const file =
+      'src-server/services/projects/__tests__/workspace-diff-service.test.ts';
+    const source = readFileSync(join(ROOT, file), 'utf8');
+    expect(DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS[file]).toBe(
+      TEMP_VIA_FIXTURE,
+    );
+    // The heuristic cannot follow the imported fixture object's git closure.
+    // Keep the reviewed call identity and walk population narrow: a new walk
+    // or an explicit real cwd must not inherit this fixture classification.
+    expect([
+      ...stripComments(source).matchAll(/\bf\s*\.\s*git\(\[\s*'ls-files'/g),
+    ]).toHaveLength(1);
+    const reviewed = ['ls-files cwd=.'];
+    expect(realTreeWalks(source)).toEqual(reviewed);
+    const read = ['read', 'dirSync'].join('');
+    for (const target of ["join(ROOT, 'src-server')", "'src-server'"]) {
+      const introduced = realTreeWalks(`${source}\n${read}(${target});`);
+      expect(introduced).toContain(target);
+      expect(introduced).not.toEqual(reviewed);
+    }
+    const ls = ['ls', '-files'].join('');
+    expect(
+      realTreeWalks(
+        `${source}\nexecFileSync('git', ['${ls}'], { cwd: ROOT });`,
+      ).map((walk) => walk.trim()),
+    ).toContain('ls-files cwd=ROOT');
   });
 
   it('every real-tree walker is a repo scan or classified with a reason', () => {

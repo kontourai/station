@@ -1,0 +1,7 @@
+{
+  "revision": "57f2a0862457da07ea8ac6e3018798b6b0316c5b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rechecked the round-3 focus rule after limiting the Resync DOM ref to that action. The real-composer approval-focus case preserves a still-focused button when its action changes; restoring the retained ref fails that assertion (1 failed / 13 passed) from clean committed 57f2a086245. The guide remains accurate. Earlier baseline and all five original mutations remain retained separately.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

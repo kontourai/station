@@ -1,0 +1,7 @@
+{
+  "revision": "a3d1edf34298f13ab95434b2147eda275d6d3f1e",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"PR 3778 post-merge review: read the full workspace-surfaces context and inspected the branch coding.ts delta against origin/main. The lane changes only the legacy coding file tree query validation/asynchronous listing and bounded legacy text-content route with typed refusals. Project location resolution remains in its existing caller, and the File Preview Pane still uses the separate workspace-file-preview API. The merged worktree-diff read route, confined repository/config snapshot, composition and limits described here are unchanged by the lane. All 531 focused owner/caller and merge-interaction tests pass across 22 suites, including coding Git read confinement, diff process and diff service tests. No prose change is needed. The scoped freshness diagnostic correctly rejected the newly tracked coding.ts input before this review; this note resolves that merge-introduced review gap. No installed release, native, geometry or multiwriter qualification is claimed.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-server/routes/projects/coding.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "43fb898cce68c1f87ff48cb49f1760155f80f253",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Resolved the previously withheld33-pixel mobile-http-consent-320 difference from hosted artifact12005373087/run38800945432. Independent decoded comparison confirmed the entire dialog panel x8..311 is identical; all differences are in the8px right backdrop gutter. The shared Dialog translucent overlay and mobile gutter expose the changed underlying Settings content/overview scroll, already verified separately. Accepted this sixth hosted PNG unchanged through canonical partial regeneration. Selected six-screen comparison passes; full comparison remains red for16 images, comprising15 exact inspected-main captures and the mixed palette image. Other48 baseline entries, production source, capture code and comparator policy remain unchanged.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

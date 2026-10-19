@@ -1,0 +1,7 @@
+{
+  "revision": "22ee38988b0d3a6476a61da53d55a6ad8f5c8180",
+
+  "notes": [
+    {"path":"examples/mcp-ui-demo/README.md","note":"Rechecked final tool picker CSS-only adjustment. Full approval labels and more readable classification text do not change disabled-by-default setup, refresh, or status_panel selection in this example.","inputs":["examples/mcp-ui-demo/README.md"]}
+  ]
+}

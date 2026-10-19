@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
@@ -30,6 +30,38 @@ afterEach(() => {
 });
 
 describe('LocalUiSessionGate pairing recovery (station#2093)', () => {
+  test('a fresh launcher success cannot be overwritten by an older pairing identity response', async () => {
+    let finishOld!: (response: Response) => void;
+    const old = new Promise<Response>((resolve) => {
+      finishOld = resolve;
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 401 }))
+      .mockReturnValueOnce(old)
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    renderWithIsolatedConnections(
+      <LocalUiSessionGate apiBase="http://127.0.0.1:42693">
+        <div>Protected application mounted</div>
+      </LocalUiSessionGate>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Complete pairing' }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      window.location.hash = `#station-ui-bootstrap=${'z'.repeat(43)}`;
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    await screen.findByText('Protected application mounted');
+    await act(async () => finishOld(new Response('{}', { status: 401 })));
+    expect(screen.getByText('Protected application mounted')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Complete pairing' }),
+    ).toBeNull();
+  });
+
   test('rechecks exactly once after pairing succeeds and mounts protected providers when the new cookie authenticates', async () => {
     const fetchMock = vi
       .fn()

@@ -1,0 +1,7 @@
+{
+  "revision": "a3c9be82fe514f8a8e1c4e0a136e59ce637c7a82",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#3552 rebaselined two screens (mobile-http-consent-320/390) in tests/screenshots.baseline.json via the documented refresh path (CI artifact -> npm run screenshot:baseline -- --gallery=<dir>, committed on its own). The guide describes the mechanism, not per-screen hashes; no claim changed.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

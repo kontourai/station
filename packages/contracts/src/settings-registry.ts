@@ -19,7 +19,7 @@ import { type AppConfig, templateVariableFormatError } from './config.js';
  */
 
 /** Who or what a setting controls, per docs/design/settings-architecture.md §3. */
-export type SettingScope = 'station' | 'defaults' | 'device';
+export type SettingScope = 'station' | 'defaults' | 'device' | 'account';
 
 export type SettingValueDescriptor =
   | { kind: 'string'; minLength?: number; maxLength?: number; pattern?: string }
@@ -96,6 +96,8 @@ export interface SettingDefinition<
    * declare it for a key whose resolver does not consult it.
    */
   envFallback?: string;
+  /** Compatibility fallbacks, in order, after a valid canonical environment value. */
+  envAliases?: readonly string[];
   secret?: boolean;
   /**
    * `null` is a legitimate STORED value for this key, distinct from absent
@@ -218,15 +220,82 @@ export const APP_SETTINGS_REGISTRY = [
     description: 'Minimum severity Station writes to its server logs.',
   }),
   defineSetting({
+    key: 'telemetryTier',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    label: 'Telemetry tiers',
+    help: 'Choose Off, Lite aggregates, or acknowledged Full events independently for each publisher.',
+    description:
+      'Per-publisher consent. Absent choices default to Lite; DO_NOT_TRACK forces Off. Full requires the current disclosure. Lite collection is not available yet.',
+    defaultValue: { kontour: 'lite', operator: 'lite' },
+  }),
+  defineSetting({
     key: 'telemetryEnabled',
     scope: 'station',
     descriptor: { kind: 'boolean' },
-    label: 'Usage telemetry',
-    help: 'Station sends the documented anonymous product-usage events only while this is on and a telemetry endpoint is configured.',
+    userFacing: false,
+    label: 'Legacy usage telemetry',
+    help: 'Legacy input migrates to per-publisher telemetry tiers when the configuration is loaded.',
     description:
-      'Allow Station to send the documented anonymous product-usage events when this Station has a telemetry endpoint configured. No endpoint is configured by default, so nothing is sent.',
+      'Deprecated compatibility input: false becomes Off; true becomes Full only with a current disclosure, otherwise Lite.',
     defaultValue: true,
-    envFallback: 'STATION_TELEMETRY_ENABLED',
+    envFallback: 'STATION_PRODUCT_TELEMETRY_ENABLED',
+    envAliases: ['STATION_TELEMETRY_ENABLED'],
+  }),
+  defineSetting({
+    key: 'productTelemetryEndpoint',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 2048,
+      pattern: '^https?://[^\\s?#@]+$',
+    },
+    label: 'Product receiver address',
+    help: 'Station sends disclosed product observations to this full POST address.',
+    description:
+      'A saved address takes precedence over the product environment destination. No address is configured by default. Saving does not acknowledge disclosure or configure the OTel collector.',
+    envFallback: 'STATION_PRODUCT_TELEMETRY_ENDPOINT',
+    envAliases: ['STATION_TELEMETRY_ENDPOINT'],
+  }),
+  defineSetting({
+    key: 'productTelemetryKeyRef',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 64,
+      pattern: '^[a-z][a-z0-9-]{0,63}$',
+    },
+    label: 'Product receiver key reference',
+    help: 'Station resolves this instance secret binding for the configured product receiver.',
+    description:
+      'Enter a SecretBinding ID, never a key. The binding must grant this exact product destination; missing, revoked, person-owned or ungranted bindings fail without falling back to an environment key.',
+  }),
+  defineSetting({
+    key: 'otelTelemetryEndpoint',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 2048,
+      pattern: '^https?://[^\\s?#@]+$',
+    },
+    label: 'Collector address',
+    help: 'Station uses this collector for metrics and traces after restart.',
+    description:
+      'A saved OTLP HTTP base address takes precedence over OTEL_EXPORTER_OTLP_ENDPOINT. Restart activates it. It does not configure product observations or acknowledge disclosure.',
+    envFallback: 'OTEL_EXPORTER_OTLP_ENDPOINT',
+  }),
+  defineSetting({
+    key: 'otelTelemetryKeyRef',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 64,
+      pattern: '^[a-z][a-z0-9-]{0,63}$',
+    },
+    label: 'Collector key reference',
+    help: 'Station resolves this instance secret binding for its collector after restart.',
+    description:
+      'Enter a SecretBinding ID, never a key. The binding must grant this exact OTLP destination. It does not confer product or person authority; missing or revoked grants fail without environment fallback.',
   }),
   defineSetting({
     key: 'registryUrl',
@@ -291,6 +360,33 @@ export const APP_SETTINGS_REGISTRY = [
     help: 'After a restart, only the skill registries you add yourself appear, and Station’s built-in catalogs are skipped.',
     description:
       'Skip Station’s built-in skill catalogs after the next Station restart so only registries you add yourself appear.',
+  }),
+  defineSetting({
+    key: 'reviewGuidesEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Review guides',
+    help: 'Allow AI-written tours of pull requests on this server.',
+    description:
+      'Enable shared, head-bound pull request guides. Generation sends the change to the configured model.',
+    defaultValue: false,
+  }),
+  defineSetting({
+    key: 'reviewGuideModel',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 255 },
+    label: 'Review guide model',
+    help: 'Choose the model that writes pull request guides.',
+    description: 'Uses the structure model when empty.',
+  }),
+  defineSetting({
+    key: 'reviewGuideInstructions',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 4000 },
+    label: 'Review guide instructions',
+    help: 'Change the emphasis and reading order of generated guides.',
+    description:
+      'Preferences cannot change file coverage, excerpt validation, or the guide format.',
   }),
   defineSetting({
     key: 'approvalGuardian',

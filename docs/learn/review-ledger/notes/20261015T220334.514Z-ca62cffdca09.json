@@ -1,0 +1,7 @@
+{
+  "revision": "f8a22ea9317e5a0936a98aa93d1f1dd7cc287714",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the added UI review evidence index entry against docs/reviews/workspace-map-20261015/README.md: it links the actual workspace map screenshot report and accurately names its review results, capture revisions, and verification limits. Existing audience routes and public publication boundaries are unchanged. The top-level-directory reachability assertion is now satisfied; focused freshness correctly refused the changed index before this review note.","inputs":["docs/README.md"]}
+  ]
+}

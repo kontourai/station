@@ -60,8 +60,6 @@
 
     "packages/shared/src/station-home-schema.ts",
 
-    "pnpm-lock.yaml",
-
     "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
 
     "scripts/apply-android-native-bootstrap.mjs",
@@ -144,7 +142,15 @@
 
     "src-ui/src/views/settings/SystemSection.tsx",
 
-    "vite.config.ts"
+    "vite.config.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "scripts/apply-android-channel-icons.mjs",
+
+    "scripts/lib/android-themed-icon.mjs"
   ],
 
   "checks": [

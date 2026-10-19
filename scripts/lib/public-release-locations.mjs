@@ -5,10 +5,11 @@
 // whose one manifest asset always names that ring's newest version.
 //
 // The publication helpers (scripts/lib/portable-publication.mjs, and through
-// it the Nightly and tagged-release publishers) read it today. install.sh's
-// generated blocks and the docs are meant to project it too (#2960), so a
-// later move to a kontourai.io redirect is a change to releaseBaseUrl, not to
-// its callers.
+// it the Nightly and tagged-release publishers) read it, and
+// scripts/install-script-generated.mjs projects the Nightly rolling manifest
+// URL into install.sh and install.ps1 as that channel's default. Stable and
+// preview defaults follow with #2960, so a later move to a kontourai.io
+// redirect is a change to releaseBaseUrl, not to its callers.
 import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
 
 /** The repository whose releases hold Station's public host manifests. */

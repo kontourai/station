@@ -1,0 +1,9 @@
+{
+  "revision": "d9f52cc6dcc38747ace138bed48d1126299c3c30",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Fix round 3 of #3671: reviewed the transcript card claims against the child-work fold, actual assistant row IDs, same-turn segment successor mapping and mounted ChatMessageList caller. Updated the no-prose spawn case to anchor to the next rendered segment in the same turn. Existing tool anchoring, retention, scoped notices, elapsed display and pane controls are unchanged. Executed baseline: seven focused suites, 94 passing tests and one existing TODO; recorded Codex writer captures cover live projected rows, completion, queued follow-up and cold replay. Browser and hosted qualification are separate.","inputs":["docs/design/placement.md","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/transcript-child-work.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Fix round 3 of #3671: reviewed the ChatMessageList delta and current form re-entry explanation. The only production caller change supplies rendered assistant rows to the child-work fold and adds its memo dependency. submitForm, UIBlockActionsContext, draft identity, normal sender admission and recovery remain unchanged; the June historical design and current form explanation remain accurate. No prose change needed.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

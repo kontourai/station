@@ -1,0 +1,185 @@
+/* A subagent spawned by a tool call, drawn where that call sits in the
+   transcript. One raised panel; the header is the disclosure button. */
+.subagent-card {
+  margin: var(--k-space-2) 0;
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+
+.subagent-card__main {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.subagent-card__main:hover {
+  background: var(--k-panel);
+}
+
+.subagent-card__main:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-width, 2px));
+}
+
+.subagent-card__glyph {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: 50%;
+  color: var(--k-text-muted);
+}
+
+.subagent-card__text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subagent-card__headline {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--k-space-2);
+}
+
+.subagent-card__title {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-card__status {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.subagent-card__status--completed {
+  color: var(--k-positive);
+}
+
+.subagent-card__status--failed {
+  color: var(--k-negative);
+}
+
+.subagent-card__status--stopped-unconfirmed,
+.subagent-card__status--unresolved {
+  color: var(--k-caution);
+}
+
+.subagent-card__spinner,
+.subagent-card__hollow {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.subagent-card__stopped {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+/* Observations of an absence (no outcome, an unconfirmed stop): dashed. */
+.subagent-card__hollow {
+  border-style: dashed;
+}
+
+.subagent-card__spinner {
+  border-right-color: transparent;
+  /* The shared spin keyframes and token; the global reduced-motion rule in
+     tokens.css stops it. */
+  animation: spin var(--motion-status-spin) var(--ease-linear) infinite;
+}
+
+.subagent-card__meta,
+.subagent-card__preview {
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-card__model {
+  font-family: var(--k-font-mono);
+}
+
+.subagent-card__model[data-reported="false"],
+.subagent-card__preview--gap {
+  color: var(--k-text-faint);
+  font-family: inherit;
+  font-style: italic;
+}
+
+.subagent-card__aside {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--k-space-2);
+  align-self: center;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.subagent-card__chevron {
+  display: inline-flex;
+}
+
+.subagent-card__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  padding: 0 var(--k-space-3) var(--k-space-3);
+  border-top: var(--k-border-thin, 1px) solid var(--k-line);
+  padding-top: var(--k-space-2);
+  font-size: var(--k-text-sm);
+}
+
+.subagent-card__summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.subagent-card__note {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.subagent-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}

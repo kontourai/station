@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest';
-import { readBuildInfo } from '../build-info';
+import { readBuildInfo, readClientReleaseVersion } from '../build-info';
 
 function documentWith(head: string): Document {
   return new DOMParser().parseFromString(
@@ -48,6 +48,43 @@ describe('build info metadata', () => {
     expect(readBuildInfo(undefined)).toEqual({
       version: '0.0.0',
       commit: 'dev',
+    });
+  });
+
+  describe('client release version', () => {
+    const identity =
+      '<meta name="station-build-version" content="0.1.11-nightly.2465"><meta name="station-build-commit" content="abcdef01">';
+
+    it('is the version only when a release pipeline stamped the build', () => {
+      expect(
+        readClientReleaseVersion(
+          documentWith(
+            `${identity}<meta name="station-build-release" content="true">`,
+          ),
+        ),
+      ).toBe('0.1.11-nightly.2465');
+    });
+
+    it.each([
+      ['an unstamped (local or dev) build', identity],
+      [
+        'a stamp that is not true',
+        `${identity}<meta name="station-build-release" content="false">`,
+      ],
+      [
+        'a duplicated stamp',
+        `${identity}<meta name="station-build-release" content="true"><meta name="station-build-release" content="true">`,
+      ],
+      [
+        'a stamp without an identity',
+        '<meta name="station-build-release" content="true">',
+      ],
+    ])('is null for %s', (_label, head) => {
+      expect(readClientReleaseVersion(documentWith(head))).toBeNull();
+    });
+
+    it('is null without a DOM', () => {
+      expect(readClientReleaseVersion(undefined)).toBeNull();
     });
   });
 });

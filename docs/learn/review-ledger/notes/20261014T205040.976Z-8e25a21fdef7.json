@@ -1,0 +1,7 @@
+{
+  "revision": "b47d9eb17efc4210889df826bb5e2a31e3a51baf",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-checked after the pending queue's row text became two-line clamped with Edit for the full text, and its panel was kept within its column; the composer design's queue claims are unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/QueuedMessages.css","src-ui/src/components/chat/QueuedMessages.tsx"]}
+  ]
+}

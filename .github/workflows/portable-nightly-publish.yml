@@ -77,7 +77,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -149,11 +149,11 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: station-server-*
           path: ${{ runner.temp }}/archives
@@ -202,7 +202,7 @@ jobs:
               echo 'Dry run: nothing is signed with the Nightly key and nothing is uploaded.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: portable-nightly-publication
           path: publication/
@@ -242,15 +242,15 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: station-server-*
           path: ${{ runner.temp }}/archives
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: portable-nightly-publication
           path: ${{ runner.temp }}/publication
@@ -294,13 +294,20 @@ jobs:
           set -euo pipefail
           mapfile -t archives < "$RUNNER_TEMP/archive-paths.txt"
           # Draft first so no half-uploaded release is ever visible; the tag is
-          # created on the source SHA when the draft is published.
-          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --draft --prerelease --latest=false --title "Station server $RELEASE_TAG" --notes "Portable server Nightly $VERSION from $SOURCE_SHA. Install through the signed rolling manifest ($ROLLING_TAG); these assets are immutable." "${archives[@]}" "$RUNNER_TEMP/$MANIFEST_ASSET"
+          # created on the source SHA when the draft is published. install.sh
+          # and install.ps1 are this checkout's, which plan bound to the
+          # source SHA: the installers of this exact Nightly. They are not
+          # signed; the archives are verified through the signed manifest.
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --draft --prerelease --latest=false --title "Station server $RELEASE_TAG" --notes "Portable server Nightly $VERSION from $SOURCE_SHA. Install with: curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh | STATION_CHANNEL=nightly sh (this release's install.sh and install.ps1 are the installers at $SOURCE_SHA). These assets are immutable." "${archives[@]}" "$RUNNER_TEMP/$MANIFEST_ASSET" install.sh install.ps1
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
       - name: Re-download the versioned assets and compare them with the manifest
         run: |
           set -euo pipefail
           node scripts/portable-nightly-publication.mjs verify-assets --payload "$RUNNER_TEMP/publication/payload.json"
+          for script in install.sh install.ps1; do
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/published-$script" "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$script"
+            cmp "$script" "$RUNNER_TEMP/published-$script"
+          done
           node scripts/portable-nightly-publication.mjs verify --manifest "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$MANIFEST_ASSET" --expected-payload "$RUNNER_TEMP/publication/payload.json"
       - name: Replace the rolling Nightly manifest (last)
         run: gh release upload "$ROLLING_TAG" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/$MANIFEST_ASSET"

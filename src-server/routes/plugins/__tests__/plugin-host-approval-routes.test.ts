@@ -77,6 +77,7 @@ function setup(
           verifyOperatorCredential: (candidate) =>
             candidate === OPERATOR_CREDENTIAL,
           identifyDevice: () => null,
+          resolveGrantedScope: () => undefined,
         },
       })
     : undefined;

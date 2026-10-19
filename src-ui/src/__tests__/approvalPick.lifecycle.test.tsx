@@ -211,6 +211,13 @@ function chat() {
   return activeChatsStore.getSnapshot()[SESSION_ID];
 }
 
+/** The "Approval mode set to …" notes this chat shows. */
+function setNotes() {
+  return (chat()?.ephemeralMessages ?? [])
+    .map((message) => message.content)
+    .filter((content) => content.startsWith('Approval mode set to'));
+}
+
 type Wire = {
   model?: { override?: string; options?: Record<string, unknown> };
   setApprovalMode?: string;
@@ -392,6 +399,9 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
     expect(chat().approvalPosture).toBe('ask');
     expect(chat().approvalPostureSequence).toBe(recorded.sequence);
     expect(chat().queuedApprovalMode).toBeUndefined();
+    expect(setNotes()).toEqual([
+      'Approval mode set to **Ask first**; it applies from the next turn.',
+    ]);
   });
 
   test('probe A: full access reads pending until the engine reports it, then Full access (not Default)', async () => {
@@ -428,6 +438,7 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
     await pick('never');
     expect(setOrchestrationApprovalMode).not.toHaveBeenCalled();
     expect(chat().queuedApprovalMode).toBe('never');
+    expect(setNotes()).toHaveLength(1);
     expect(renderPill().text).toBe('Full access · pending');
 
     const wire = await send();
@@ -449,6 +460,8 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
     await pick('ask');
     expect(chat().queuedApprovalMode).toBe('ask');
     expect(chat().approvalPosture).toBeUndefined();
+    // Still queued, so it is still the pick that applies next turn.
+    expect(setNotes()).toHaveLength(1);
 
     expect((await send()).setApprovalMode).toBe('ask');
     expect(chat().queuedApprovalMode).toBeUndefined();
@@ -618,13 +631,13 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       expect.objectContaining({ approvalMode: 'connection-default' }),
     );
     expect(chat().approvalPosture).toBe('connection-default');
-    expect(renderPill().text).toBe('Default');
+    expect(renderPill().text).toBe('Engine default');
     const wire = await send();
     expect(wire.setApprovalMode).toBeUndefined();
     expect(wire.model?.options ?? {}).not.toHaveProperty('approvalMode');
     // What the engine applied is what the chip names (#2409).
     act(() => turnStarted('t1', 'ask'));
-    expect(renderPill().name).toMatch(/^Approval mode: Default — Ask first/);
+    expect(renderPill().name).toMatch(/^Approval mode: Ask — Ask first/);
   });
 
   test('T3: the Station default is not sent for a new session when a posture is recorded', async () => {
@@ -674,6 +687,8 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
           ),
         ),
       ).toBe(true);
+      // A superseded pick never first reads as set.
+      expect(setNotes()).toEqual([]);
     });
 
     test('a carried pick the server dropped is cleared, with the standing posture and a note', async () => {
@@ -733,6 +748,8 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
           /Full access was not applied/.test(message.content),
         ),
       ).toBe(true);
+      // The refusal is the only word on it: no "set to full access" first.
+      expect(setNotes()).toEqual([]);
       expect((await send()).setApprovalMode).toBeUndefined();
     });
 

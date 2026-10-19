@@ -42,6 +42,7 @@ const transcriptMock = vi.hoisted(() => ({
   enabled: false,
   settled: true,
   messages: [] as any[],
+  error: null as Error | null,
 }));
 const chatInputPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
@@ -181,6 +182,7 @@ vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
     // matches the settled reader every other test in this file assumes.
     settled: transcriptMock.settled,
     upgradeRequired: false,
+    error: transcriptMock.error,
     loadOlder: vi.fn(async () => {}),
     reload: vi.fn(async () => {}),
   }),
@@ -321,10 +323,12 @@ function renderDock({
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  // `rerenderSession` moves the same mounted dock to another state of the
+  // session (a load finishing), as the app does: the dock is not re-keyed.
+  const dock = (activeSession: ChatSession) => (
     <QueryClientProvider client={queryClient}>
       <ChatDockBody
-        activeSession={session}
+        activeSession={activeSession}
         activeOrchestrationSession={orchestrationSession}
         activeOrchestrationSessionRead={resolvedRead}
         onRetryOrchestrationSessions={onRetryOrchestrationSessions}
@@ -342,8 +346,12 @@ function renderDock({
         chatInput={buildChatInput() as any}
         setShowStatsPanel={vi.fn()}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(dock(session));
+  return Object.assign(view, {
+    rerenderSession: (next: ChatSession) => view.rerender(dock(next)),
+  });
 }
 
 describe('ChatDockBody failed-session banner (station#3213)', () => {
@@ -355,6 +363,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     transcriptMock.enabled = false;
     transcriptMock.settled = true;
     transcriptMock.messages = [];
+    transcriptMock.error = null;
     chatInputPropsMock.current = null;
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
@@ -1106,6 +1115,227 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(screen.queryByText(/is read-only/)).toBeNull();
   });
 
+  // A reload with the transcript already read: the open read's wait is shown
+  // by the composer and announced as text, with no panel under the rows.
+  test('a resolving reload over a displayed transcript says so without drawing a panel', async () => {
+    transcriptMock.messages = [
+      { role: 'user', content: 'earlier question', timestamp: 1 },
+      { role: 'assistant', content: 'earlier answer', timestamp: 2 },
+    ];
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+      }),
+      // An ordinary load, still inside the delay before the long-wait copy.
+      loadingEscapeDelayMs: 60_000,
+    });
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.loadingConversation).toBe(true),
+    );
+    const announcement = screen.getByTestId('chat-dock-loading-announcement');
+    expect(announcement.textContent, 'the wait is announced').toBe(
+      'Loading chat',
+    );
+    expect(announcement.getAttribute('role')).toBe('status');
+    // ...and not drawn: no visible panel under the rows.
+    expect(announcement.classList.contains('sr-only')).toBe(true);
+    expect(document.querySelector('.skeleton-block')).toBeNull();
+    // No status region nests another.
+    for (const region of screen.getAllByRole('status'))
+      expect(region.querySelector('[role="status"]')).toBeNull();
+  });
+
+  /*
+   * Screen readers announce a change to a live region that already exists. A
+   * region inserted together with its words (or naming the wait only in
+   * `aria-label`) is mostly not read, so "Loading chat" was never heard.
+   */
+  test('the loading announcement is written into a live region that already existed', async () => {
+    const insertedText: Node[] = [];
+    let announcer: Element | null = null;
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (
+          record.type === 'childList' &&
+          record.target instanceof Element &&
+          record.target.matches(
+            '[data-testid="chat-dock-loading-announcement"]',
+          )
+        )
+          insertedText.push(...record.addedNodes);
+        if (record.type === 'characterData') {
+          const parent = record.target.parentElement;
+          if (parent?.matches('[data-testid="chat-dock-loading-announcement"]'))
+            insertedText.push(record.target);
+        }
+      }
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    try {
+      renderDock({
+        orchestrationSession: buildOrchestrationSession({
+          status: 'idle',
+          lifecycleState: 'idle',
+        }),
+        session: buildSession({
+          conversationId: 'cool',
+          conversationOpenPending: true,
+          messages: [],
+        }),
+        loadingEscapeDelayMs: 60_000,
+      });
+      announcer = screen.getByTestId('chat-dock-loading-announcement');
+      await waitFor(() => expect(announcer!.textContent).toBe('Loading chat'));
+      // Flush the observer's queued records.
+      for (const record of observer.takeRecords()) {
+        if (record.target === announcer)
+          insertedText.push(...record.addedNodes);
+      }
+    } finally {
+      observer.disconnect();
+    }
+    expect(announcer!.getAttribute('role')).toBe('status');
+    expect(announcer!.getAttribute('aria-live')).toBe('polite');
+    expect(announcer!.getAttribute('aria-atomic')).toBe('true');
+    // The words arrived as a change INSIDE the mounted region, not with it.
+    expect(
+      insertedText.map((node) => node.textContent),
+      'text added to the already-mounted region',
+    ).toContain('Loading chat');
+  });
+
+  test('the loading announcement says the wait once, adds the long-wait words, then goes quiet', () => {
+    vi.useFakeTimers();
+    try {
+      const loading = buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+        messages: [],
+      });
+      const view = renderDock({
+        orchestrationSession: buildOrchestrationSession({
+          status: 'idle',
+          lifecycleState: 'idle',
+        }),
+        session: loading,
+        onNewChat: vi.fn(),
+        loadingEscapeDelayMs: 1_500,
+      });
+      const announcer = screen.getByTestId('chat-dock-loading-announcement');
+      expect(announcer.textContent).toBe('Loading chat');
+
+      // A re-render with nothing new to say writes nothing into the region.
+      const writes: MutationRecord[] = [];
+      const observer = new MutationObserver((records) =>
+        writes.push(...records),
+      );
+      observer.observe(announcer, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+      view.rerenderSession({ ...loading });
+      view.rerenderSession({ ...loading });
+      writes.push(...observer.takeRecords());
+      expect(writes, 'no announcement on an unchanged re-render').toEqual([]);
+
+      act(() => {
+        vi.advanceTimersByTime(1_500);
+      });
+      expect(screen.getByTestId('chat-dock-loading-announcement')).toBe(
+        announcer,
+      );
+      expect(announcer.textContent).toBe(
+        'This conversation is taking longer to load. Waiting for Station.',
+      );
+      // The visible copy of those words is not a second live region.
+      const visible = screen
+        .getAllByText(
+          'This conversation is taking longer to load. Waiting for Station.',
+        )
+        .filter((node) => node !== announcer);
+      expect(visible).toHaveLength(1);
+      expect(visible[0].closest('[role="status"], [aria-live]')).toBeNull();
+
+      // The load ends: the same region empties and says nothing more.
+      view.rerenderSession({ ...loading, conversationOpenPending: false });
+      act(() => {
+        vi.runOnlyPendingTimers();
+      });
+      expect(screen.getByTestId('chat-dock-loading-announcement')).toBe(
+        announcer,
+      );
+      expect(announcer.textContent).toBe('');
+      observer.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The history read failing during a long load hides the skeleton but not
+  // the visible long-wait row; the announcement follows the row.
+  test('a history failure during a long load still announces the longer wait', async () => {
+    transcriptMock.enabled = true;
+    transcriptMock.settled = false;
+    transcriptMock.error = new Error('history read failed');
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+        messages: [],
+      }),
+      onNewChat: vi.fn(),
+    });
+    const row = document.querySelector('.session-history-controls');
+    expect(row?.textContent).toContain(
+      'This conversation is taking longer to load. Waiting for Station.',
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('chat-dock-loading-announcement').textContent,
+      ).toBe(
+        'This conversation is taking longer to load. Waiting for Station.',
+      ),
+    );
+  });
+
+  test('an empty resolving reload: the filler is one region with no skeleton region inside, and the wait is spoken by the separate announcement region', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+      }),
+    });
+    const notice = await screen.findByLabelText('Loading chat');
+    // The persistent filler names the wait (it later announces the empty
+    // state or notice); the skeleton inside is not a second region.
+    expect(notice.classList.contains('chat-messages--empty')).toBe(true);
+    expect(notice.getAttribute('role')).toBe('status');
+    expect(notice.querySelector('[role="status"]')).toBeNull();
+    // The pair: the words are spoken by the dock's announcement region, which
+    // is not nested in the filler.
+    const announcer = screen.getByTestId('chat-dock-loading-announcement');
+    expect(notice.contains(announcer)).toBe(false);
+    await waitFor(() => expect(announcer.textContent).not.toBe(''));
+  });
+
   // The three simultaneous claims E3 recorded, each asserted absent by the
   // words the user actually saw.
   test('#1582 E3 a resolving reload shows one state, not three', async () => {
@@ -1179,6 +1409,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       expect(
         screen.getByRole('button', { name: 'Start new chat' }),
       ).toBeTruthy();
+      expect(
+        document.querySelector('.session-history-controls')?.textContent,
+      ).toContain(
+        'This conversation is taking longer to load. Waiting for Station.',
+      );
     } finally {
       vi.useRealTimers();
     }

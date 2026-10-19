@@ -26,15 +26,11 @@
 
     "packages/sdk/src/queryFactories.ts",
 
-    "packages/shared/package.json",
-
     "packages/shared/package.json#/exports/.~1build",
 
     "packages/shared/package.json#/exports/.~1git",
 
     "packages/shared/package.json#/exports/.~1parsers",
-
-    "pnpm-lock.yaml",
 
     "scripts/mobile-css-ratchet.mjs",
 
@@ -92,7 +88,15 @@
 
     "src-ui/src/__tests__/serverHealth.test.ts",
 
-    "src-ui/src/__tests__/compatibility.test.ts"
+    "src-ui/src/__tests__/compatibility.test.ts",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/package.json#/exports",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

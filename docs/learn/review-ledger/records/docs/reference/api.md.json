@@ -414,7 +414,59 @@
 
     "src-server/routes/system/resource-posture-routes.ts",
 
-    "packages/contracts/src/system-status.ts"
+    "packages/contracts/src/system-status.ts",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts",
+
+    "src-server/routes/operations/usage-telemetry-disclosure.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "src-server/services/layouts/personal-layout-operation.ts",
+
+    "packages/sdk/src/personal-board.ts",
+
+    "src-server/security/coding-authority.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/plugins/install-registry-integration.ts",
+
+    "src-server/services/plugins/tool-library-catalog.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "packages/cli/src/commands/telemetry.ts"
   ],
 
   "checks": [

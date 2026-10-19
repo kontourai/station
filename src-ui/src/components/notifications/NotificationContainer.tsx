@@ -12,7 +12,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
+import { useActiveChatIds } from '../../contexts/ActiveChatsContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useNotificationHistory, useToast } from '../../contexts/ToastContext';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
@@ -287,7 +287,7 @@ function ToastCard({
 export function NotificationContainer() {
   const history = useNotificationHistory();
   const { dismissToast } = useToast();
-  const activeChats = useAllActiveChats();
+  const activeChatIds = useActiveChatIds();
   const { navigate } = useNavigationActions();
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
@@ -495,7 +495,7 @@ export function NotificationContainer() {
 
   const getSessionShortcut = (sessionId: string | undefined): string | null => {
     if (!sessionId) return null;
-    const sessionIndex = Object.keys(activeChats).indexOf(sessionId);
+    const sessionIndex = activeChatIds.indexOf(sessionId);
     if (sessionIndex < 0 || sessionIndex >= 9) return null;
     const isMac = navigator.platform.toUpperCase().includes('MAC');
     return `${isMac ? '⌘' : 'Ctrl+'}${sessionIndex + 1}`;

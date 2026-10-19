@@ -114,6 +114,14 @@ export const PAIRING_SCOPE_TERMINAL_OPERATE = 'terminal:operate' as const;
 /** Pairing/device management (creating offers, confirming/denying requests, revoking devices). */
 export const PAIRING_SCOPE_ACCESS_MANAGE = 'access:manage' as const;
 /**
+ * Administer already-paired devices: list, change scopes, revoke, and remove
+ * revoked records. Only the operator may grant or remove this permission;
+ * its holder cannot delegate it. No preset or historical default grants it.
+ * This permits granting other device permissions, including full access,
+ * without granting operator identity, account administration, or peer access.
+ */
+export const PAIRING_SCOPE_ACCESS_DEVICES = 'access:devices' as const;
+/**
  * Fleet inference (archive#1398, `docs/design/inference-fleet.md` §3.3):
  * invoke a *model completion* on this Station's contributed connections, and
  * read which models it contributes. Deliberately NOT `orchestration:operate`:
@@ -286,6 +294,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPE_ACCESS_MANAGE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_RELAY_MANAGE,
@@ -341,7 +350,8 @@ export const DEFAULT_GRANT_PAIRING_SCOPE: string = [
  * The pairing-UI presets: "Read-only" pairs a device that can only
  * read/stream state, "Standard" additionally grants control (mutate + open a
  * terminal) but withholds `access:manage` — a paired device, however
- * broadly scoped, can never manage other devices or pairing offers itself.
+ * broadly scoped, needs a separate access:devices grant to manage existing
+ * devices. Pairing offers remain operator-only.
  *
  * `delegation` (archive#1123, `docs/design/station-peer-pairing.md`
  * §2) is a THIRD preset, not a reuse of `standard`: every call
@@ -450,6 +460,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // preset, and deliberately never added to one — elevation at pairing time
   // grants the most to the least-known device. See archive#1883.
   [PAIRING_SCOPE_ACCESS_MANAGE]: ['default-grant'],
+  [PAIRING_SCOPE_ACCESS_DEVICES]: ['operator-promotion'],
   [PAIRING_SCOPE_INFERENCE_INVOKE]: ['preset'],
   // archive#1887: the only token whose sole path is an operator promoting an
   // already-paired device. In no preset (elevation at pairing time grants the
@@ -473,9 +484,13 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // instead of it, so promotion after pairing is the only shape that is both
   // additive and backward-compatible.
   [PAIRING_SCOPE_ENGINE_LOGIN]: ['operator-promotion'],
-  // #2412: operator promotion only, for the reasons on its docblock.
+  // #2412 / #2436: still the operator's grant, for the reasons on their
+  // docblocks. A device may ASK for either at pairing
+  // (DEVICE_REQUESTABLE_EXTRA_SCOPES; the Station app asks for everything),
+  // but asking grants nothing: only the operator credential or the desktop's
+  // own local grant may keep one when approving. That approval is the
+  // operator promoting the device at pairing time, never a pairing preset.
   [PAIRING_SCOPE_CODING_EXEC]: ['operator-promotion'],
-  // #2436: operator promotion only, for the reasons on its docblock.
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: ['operator-promotion'],
 };
 
@@ -506,6 +521,11 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
     label: 'Manage access',
     summary:
       'Can manage pairing offers and devices. Held only by older default grants; never granted to a device here.',
+  },
+  [PAIRING_SCOPE_ACCESS_DEVICES]: {
+    label: 'Manage device access',
+    summary:
+      'Can list devices, change their permissions (including full access), revoke access and remove revoked records. Only the Station operator can grant or remove this administrative permission.',
   },
   [PAIRING_SCOPE_INFERENCE_INVOKE]: {
     label: 'Fleet inference',
@@ -545,9 +565,9 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
       "Can run one-off shell commands on this Station's computer (the Coding terminal's command box), as you and with your keys. Without it the device still reads and edits the Project's files.",
   },
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: {
-    label: 'Allow full access',
+    label: 'Skip approval prompts',
     summary:
-      "Can put a chat, or an Agent's default, at full access: the agent runs with no sandbox and no approval prompts, as you. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
+      "Can put a chat, or an Agent's default, in full access mode: the agent runs with no sandbox and no approval prompts, as you. It grants no other permission. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
   },
 };
 
@@ -566,6 +586,57 @@ export const DEFAULT_PAIRING_SCOPE_PRESET: PairingScopePreset = 'standard';
 /** The space-delimited scope string a UI preset resolves to. */
 export function pairingScopePresetString(preset: PairingScopePreset): string {
   return PAIRING_SCOPE_PRESETS[preset].join(' ');
+}
+
+/**
+ * What a device may ask for in its own access request
+ * (`PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH`, body `scope`): one base,
+ * Read-only or Standard, plus any of {@link DEVICE_REQUESTABLE_EXTRA_SCOPES}.
+ * The Station app and browser ask for everything (Standard and both extras);
+ * the operator sees the request and may limit it before approving. A request that names no scope still receives
+ * {@link DEFAULT_GRANT_PAIRING_SCOPE}, which Station peers and older clients
+ * rely on; nothing a device asks for includes `access:manage`.
+ */
+export const DEVICE_REQUESTABLE_BASE_PRESETS = [
+  'read-only',
+  'standard',
+] as const satisfies readonly PairingScopePreset[];
+
+/**
+ * The elevated grants a device may ask for at pairing time. Asking grants
+ * nothing by itself: keeping one when approving needs the operator, never an
+ * `access:approve` device or an unauthenticated approval.
+ * The same rule covers an operator-created offer that carries one. Every
+ * other elevated grant stays operator-added after pairing.
+ */
+export const DEVICE_REQUESTABLE_EXTRA_SCOPES = [
+  PAIRING_SCOPE_CODING_EXEC,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+] as const satisfies readonly PairingScope[];
+
+/**
+ * Whether `scope` is something a device may ask for: exactly one requestable
+ * base preset, plus only requestable extras.
+ */
+export function isDeviceRequestableScope(scope: string): boolean {
+  const tokens = parsePairingScope(scope);
+  if (!tokens) return false;
+  const extras: readonly PairingScope[] = DEVICE_REQUESTABLE_EXTRA_SCOPES;
+  const base = tokens.filter((token) => !extras.includes(token));
+  return DEVICE_REQUESTABLE_BASE_PRESETS.some((preset) => {
+    const presetTokens: readonly PairingScope[] = PAIRING_SCOPE_PRESETS[preset];
+    return (
+      base.length === presetTokens.length &&
+      presetTokens.every((token) => base.includes(token))
+    );
+  });
+}
+
+/** The requestable extras `scope` carries: what only the operator may keep. */
+export function deviceRequestedExtraScopes(scope: string): PairingScope[] {
+  const tokens = parsePairingScope(scope) ?? [];
+  const extras: readonly PairingScope[] = DEVICE_REQUESTABLE_EXTRA_SCOPES;
+  return tokens.filter((token) => extras.includes(token));
 }
 
 /**
@@ -852,6 +923,12 @@ export interface DevicePairingAccessRequestResponse {
   expiresAt: number;
   accountCandidate?: DeviceAccountBindingCandidate;
   requireAccountBinding?: true;
+  /**
+   * The operator CLI command on the Station's host, for the approve command
+   * the requester shows (`npx @kontourai/station-cli@nightly` on a nightly).
+   * Absent from a Station that predates it; a client then shows `station`.
+   */
+  operatorCli?: string;
 }
 
 /**
@@ -874,7 +951,7 @@ export type PairedDeviceRevocation =
   | { state: 'unobserved-before-revocation-provenance' }
   | {
       state: 'recorded';
-      actor: 'operator-credential';
+      actor: 'operator-credential' | 'device-access';
       reason: 'owner-request';
     }
   | {
@@ -933,6 +1010,11 @@ export interface PairedDevice {
    * migrates it in place the same way `scope` itself was migrated
    * (archive#1098 R4). Never absent on a value read out of the service.
    */
+  /**
+   * #3557: present only on a personal access token resolved as a headless
+   * device of its owner; never persisted in the device registry.
+   */
+  readonly credentialKind?: 'personal-token';
   kind: PairedDeviceKind;
   createdAt: number;
   /**
@@ -990,6 +1072,11 @@ export interface PairedDevice {
    * device paired before this field existed has no such key at all.
    */
   requester?: TailscaleServeRequester;
+  /**
+   * #3557: device lists only. What a live device may use now: `scope`
+   * capped by its person's Station group (equal to `scope` when untied).
+   */
+  effectiveScope?: string;
   /**
    * Ephemeral connection state, added only by the access-management listing.
    * It is not persisted with a paired device and never includes session ids.

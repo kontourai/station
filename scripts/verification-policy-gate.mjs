@@ -108,6 +108,10 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
   Object.freeze([
     'npm',
+    Object.freeze(['run', 'monument-import-boundary:gate']),
+  ]),
+  Object.freeze([
+    'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'settings:registry:gate'])]),
@@ -128,6 +132,9 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     'npm',
     Object.freeze(['run', 'docs:public:contract-examples']),
   ]),
+  // The Corpus decision registry and the numbered-ADR freeze; see
+  // run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'check:decisions'])]),
   // Generates the git-ignored Basis MCP app bundles the typecheck lanes
   // resolve; a precondition of the aggregate below, like `build:connect`.
   Object.freeze([
@@ -216,9 +223,9 @@ export const SUBMISSION_HANDOFF_GUIDANCE_DOCS = Object.freeze([
   'docs/guides/development.md',
 ]);
 export const SUBMISSION_HANDOFF_GUIDANCE_MARKERS = Object.freeze([
-  'Ordinary pull requests use focused evidence plus `npm run ci:fast`.',
+  'Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.',
   'Do not run `npm run full:regression`\nlocally merely because `main` moved.',
-  'Nightly and tagged preview and stable promotions',
+  'Scheduled main qualification and tagged Preview/Stable',
   'manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.',
   'one exact source SHA',
 ]);

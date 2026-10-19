@@ -485,10 +485,6 @@ export function scanLoadingStringsFile(file, content) {
  */
 export const PRE_SHELL_LOADING_EXCLUSIONS = [
   {
-    file: 'src-ui/src/components/LocalUiSessionGate.tsx',
-    text: "Checking this browser's Station access…",
-  },
-  {
     file: 'packages/sdk/src/components/Loading.tsx',
     text: 'Loading...',
   },

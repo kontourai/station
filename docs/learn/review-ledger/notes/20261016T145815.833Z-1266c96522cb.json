@@ -1,0 +1,7 @@
+{
+  "revision": "e5ece8deedba2cadd24df9b061f221254c7ec722",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed ordinary PR path against unchanged normal pre-push hooks, hosted CI and merge-group workflows: local broad ci:fast is optional; focused proof and required hosted checks remain mandatory. Deferrals and omitted local diagnostics remain non-passes. Root instructions, gate-for output, test-audit skill, development and code-quality guidance agree. Existing gate-for and instruction tests passed 22 cases.","inputs":["docs/guides/testing.md"]}
+  ]
+}

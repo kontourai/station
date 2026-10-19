@@ -1,0 +1,7 @@
+{
+  "revision": "fa08748729eaaa67830668ab9c34982156ea20b7",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Added the user-facing label row for live turn navigation: the rail's accessible name Conversation turns, and the Previous turn / Next turn steps, matching the aria-labels in TranscriptTurnRail.tsx; History remains ConversationTimeline's view. station-vocabulary.test.ts passes with the new sources.","inputs":["docs/glossary.md"]}
+  ]
+}

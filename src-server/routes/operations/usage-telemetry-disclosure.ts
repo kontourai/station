@@ -1,6 +1,11 @@
 import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
 import { Hono } from 'hono';
+import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
+import {
+  checkOtelTelemetryConnection,
+  getOtelTelemetryDeliveryStatus,
+} from '../../telemetry-delivery-state.js';
 
 /** The inventory is served from the emitter's source so disclosure copy cannot drift. */
 /**
@@ -18,6 +23,53 @@ export function createUsageTelemetryDisclosureRoutes(
   const resolve = () =>
     typeof serviceOrGetter === 'function' ? serviceOrGetter() : serviceOrGetter;
   const app = new Hono();
+  app.get('/status', async (c) => {
+    const service = resolve();
+    if (!service)
+      return c.json(
+        { success: false, error: { code: 'telemetry_not_ready' } },
+        503,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, data: await service.telemetryStatus() });
+  });
+  app.get('/delivery-status', async (c) => {
+    const service = resolve();
+    if (!service)
+      return c.json(
+        { success: false, error: { code: 'telemetry_not_ready' } },
+        503,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({
+      success: true,
+      data: {
+        protocol: 'station-telemetry-delivery/v1',
+        product: await service.deliveryStatus(),
+        otel: getOtelTelemetryDeliveryStatus(),
+      },
+    });
+  });
+  app.post('/connection-checks/:transport', async (c) => {
+    const transport = c.req.param('transport');
+    if (transport !== 'product' && transport !== 'otel')
+      return c.json(
+        { success: false, error: { code: 'telemetry_transport_invalid' } },
+        400,
+      );
+    const service = resolve();
+    if (!service)
+      return c.json(
+        { success: false, error: { code: 'telemetry_not_ready' } },
+        503,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    const result =
+      transport === 'product'
+        ? await service.checkConnection()
+        : await checkOtelTelemetryConnection();
+    return c.json({ success: true, data: result });
+  });
   app.get('/disclosure', async (c) => {
     const service = resolve();
     if (!service)
@@ -28,6 +80,15 @@ export function createUsageTelemetryDisclosureRoutes(
     return c.json({ success: true, data: await service.disclosure() });
   });
   app.post('/disclosure/acknowledgements', async (c) => {
+    if (requestMayBeAnAgent(c.req.raw))
+      return c.json(
+        {
+          success: false,
+          error:
+            'Agents cannot acknowledge telemetry consent. The operator can review it in Settings.',
+        },
+        403,
+      );
     const service = resolve();
     if (!service)
       return c.json(
@@ -76,6 +137,15 @@ export function createUsageTelemetryDisclosureRoutes(
           success: false,
           error:
             'Usage telemetry disclosure changed; review the current inventory.',
+        },
+        409,
+      );
+    if (disclosure.publishers.operator.reason === 'DNT')
+      return c.json(
+        {
+          success: false,
+          error:
+            'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
         },
         409,
       );

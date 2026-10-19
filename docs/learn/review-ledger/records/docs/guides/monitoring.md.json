@@ -10,8 +10,6 @@
   "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
   "sources": [
-    "pnpm-lock.yaml",
-
     "scripts/generate-metric-reference.mjs",
 
     "src-server/index.ts",
@@ -104,6 +102,20 @@
 
     "src-server/routes/system/resource-posture-routes.ts",
 
+    "src-ui/src/components/usage-stats/UsageBreakdownSection.tsx",
+
+    "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
+
+    "src-ui/src/components/usage-stats/UsageSummaryCards.tsx",
+
+    "src-ui/src/components/usage-stats/period.ts",
+
+    "src-ui/src/components/usage-stats/UsageTrendChart.tsx",
+
+    "tests/profile.spec.ts",
+
+    "src-ui/src/components/usage-stats/UsageStatsPanel.css",
+
     "src-server/__tests__/telemetry.test.ts",
 
     "src-server/runtime/bootstrap/hosted-tenant-mode.ts",
@@ -116,7 +128,39 @@
 
     "packages/telemetry-broker/src/main.ts",
 
-    "packages/telemetry-broker/README.md"
+    "packages/telemetry-broker/README.md",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-server/domain/telemetry-bootstrap-config.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "src-ui/src/views/settings/TelemetryDelivery.tsx",
+
+    "packages/telemetry-broker/artifact-manifest.mjs",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
+
+    "src-server/routes/operations/__tests__/usage-export.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/telemetry-broker/src/noisy-count.ts",
+
+    "packages/telemetry-broker/src/lite-store.ts",
+
+    "packages/telemetry-broker/qualify-resilience.mjs",
+
+    "src-server/domain/migrations/016-session-parent-mentions.ts",
+
+    "packages/telemetry-broker/src/client-address.ts"
   ],
 
   "checks": [

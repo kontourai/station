@@ -330,7 +330,8 @@ describe('header', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Copy session ID']);
+    ).toEqual(['Turn into Task', 'Copy session ID']);
+    expect(menu.textContent).not.toContain(THREAD);
     const details = screen.getByTestId('session-details-disclosure');
     expect(details.textContent).toContain(THREAD);
   });

@@ -1,9 +1,12 @@
+import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
 import type {
   InterruptTurnResult,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -24,6 +27,7 @@ import {
   skillExperienceInputErrors,
 } from '@kontourai/station-shared/skill-experience-values';
 import { useCallback } from 'react';
+import { useAccountPreferences } from '../contexts/AccountPreferencesContext';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
@@ -34,11 +38,17 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../contexts/active-chats-store';
+import {
+  type ObservedAgentCatalog,
+  observedEngine,
+} from '../lib/expectedEngine';
 import type {
+  LiveOutboundDispatch,
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
 import type { SkillExperienceDraft } from '../lib/skill-experience-draft';
+import { TASK_SHAPING_INSTRUCTION } from '../lib/task-shaping';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
   approvalModeChipLabel,
@@ -57,6 +67,7 @@ import {
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
+import { withDeliveryCheck } from '../utils/messageDeliveryState';
 import { steerRefusalMessage } from '../utils/steerTurn';
 import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
 import { isReplayThread } from './orchestration/replay/replay-registry';
@@ -92,17 +103,49 @@ type UserCancelableAbortController = AbortController & {
   _userInitiated?: boolean;
 };
 
+/**
+ * Refusals that move a composer send into the queue under the same key (the
+ * engine is replying on its own, or the session is still starting). The
+ * outbox row and the queue must agree on this list: the row becomes the
+ * queued message's held copy, never a refusal that hands the text back.
+ */
+function isQueuedOnRefusalCode(code: unknown): boolean {
+  return (
+    code === PROVIDER_TURN_IN_PROGRESS_CODE ||
+    code === PROVIDER_SESSION_STARTING_CODE
+  );
+}
+
 function prepareSendTransaction(options: {
   state: ChatUIState | undefined;
   submittedDraft: string;
   modelInput: string;
   attachments?: FileAttachment[];
+  /** The send's idempotency key: the bubble's identity too. */
+  clientTurnId: string;
 }): SendTransaction {
   const originalMessages = options.state?.messages ?? [];
+  // A resend of the same key (a replay of a kept row, a Retry) is the same
+  // message: it keeps its one bubble instead of gaining a second.
+  if (
+    originalMessages.some(
+      (message) =>
+        message.role === 'user' && message.clientId === options.clientTurnId,
+    )
+  )
+    return {
+      submittedDraft: options.submittedDraft,
+      originalMessages,
+      optimisticMessages: originalMessages,
+      optimisticMessageClientId: options.clientTurnId,
+      attachments: options.attachments,
+      attachmentStages: options.state?.attachmentStages,
+    };
   const outgoing = buildOutgoingUserMessage(
     originalMessages,
     options.modelInput,
     options.attachments,
+    options.clientTurnId,
   );
   return {
     submittedDraft: options.submittedDraft,
@@ -223,6 +266,70 @@ async function observeSendAdmission<T>(
   }
 }
 
+/**
+ * How long a send waits for its durable outbox row before going without one
+ * (the composer then keeps its saved draft until Station answers).
+ */
+
+/**
+ * The notice for a send of a message the user already discarded. It claims
+ * the text is back only when it was put back; otherwise it carries the text,
+ * so the words are never lost behind a draft the user has since typed.
+ */
+function discardedMessageNotice(
+  restored: boolean,
+  text: string,
+): { role: 'system'; content: string } {
+  return {
+    role: 'system',
+    content: restored
+      ? 'This message was discarded, so it was not sent. Its text is back in the composer.'
+      : `This message was discarded, so it was not sent. Its text was:\n\n${text}`,
+  };
+}
+
+const LIVE_DURABILITY_TIMEOUT_MS = 3_000;
+
+/**
+ * Station itself answered (its envelope, any status). A proxy's or tunnel's
+ * 502/503/504, or any body without Station's shape, is not Station's answer
+ * and proves nothing about the send.
+ */
+function stationAnswered(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { status, stationEnvelope } = error as {
+    status?: unknown;
+    stationEnvelope?: unknown;
+  };
+  return (
+    typeof status === 'number' &&
+    Number.isFinite(status) &&
+    stationEnvelope !== false
+  );
+}
+
+/** Bound on the keys a chat remembers sending in this session. */
+const LOCAL_SEND_KEYS_MAX = 32;
+
+function withLocalSendKey(
+  keys: ChatUIState['localSendKeys'],
+  clientTurnId: string,
+): ChatUIState['localSendKeys'] {
+  return [
+    ...(keys ?? []).filter((key) => key !== clientTurnId),
+    clientTurnId,
+  ].slice(-LOCAL_SEND_KEYS_MAX);
+}
+
+function withoutDeliveryCheck(
+  checks: ChatUIState['deliveryChecks'],
+  clientTurnId: string,
+): ChatUIState['deliveryChecks'] {
+  if (!checks || !(clientTurnId in checks)) return checks;
+  const { [clientTurnId]: _stale, ...rest } = checks;
+  return rest;
+}
+
 export function useSendMessage(
   apiBase: string,
   onActiveSessionChange?: (newSessionId: string) => void,
@@ -247,8 +354,13 @@ export function useSendMessage(
   };
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
-  const { namespace: experienceNamespace, status: experienceAuthorityStatus } =
-    useAuthorityPersistence();
+  const accountPreferences = useAccountPreferences();
+  const {
+    namespace: experienceNamespace,
+    status: experienceAuthorityStatus,
+    observation: authorityObservation,
+  } = useAuthorityPersistence();
+  const stationEnvironmentId = authorityObservation?.environmentId;
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -284,8 +396,16 @@ export function useSendMessage(
         queueOnBusy?: boolean;
         /** Form ownership observes admission without inferring delivery from the legacy return value. */
         onAdmission?: (status: SendAdmission) => void;
+        /**
+         * Called once this send's text is durable in the outbox, before its
+         * request is made: the composer's saved draft may be let go then.
+         * Not called when the send cannot be made durable (attachments, a
+         * visual skill, a replay, or storage unavailable).
+         */
+        onDurable?: () => void;
         /** Retire recovery actions whose originating submission was superseded. */
         claimRetry?: () => boolean;
+        skipPersonalApprovalDefault?: boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -302,7 +422,64 @@ export function useSendMessage(
       if (isReplayThread(sessionId))
         throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
-      const currentState = allChats[sessionId];
+      let currentState = allChats[sessionId];
+      if (
+        currentState?.queuedApprovalDefaultNamespace &&
+        (!experienceNamespace || experienceAuthorityStatus !== 'verified')
+      ) {
+        if (options?.dispatch)
+          return {
+            kind: 'deferred',
+            reason: 'Waiting for account verification.',
+          } satisfies OutboundDispatchTransportResult;
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content: 'Connect to this chat’s account before sending.',
+        });
+        return false;
+      }
+      if (
+        currentState?.queuedApprovalDefaultNamespace &&
+        currentState.queuedApprovalDefaultNamespace !== experienceNamespace
+      ) {
+        currentState = {
+          ...currentState,
+          queuedApprovalMode: undefined,
+          queuedApprovalDefaultNamespace: undefined,
+        };
+        updateChat(sessionId, {
+          queuedApprovalMode: undefined,
+          queuedApprovalDefaultNamespace: undefined,
+        });
+      }
+
+      const firstInteractiveSend =
+        !conversationId &&
+        !currentState?.conversationId &&
+        !currentState?.orchestrationSessionStarted &&
+        !options?.dispatch;
+      if (
+        firstInteractiveSend &&
+        (accountPreferences.status === 'loading' ||
+          accountPreferences.status === 'error' ||
+          accountPreferences.saving)
+      ) {
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content:
+            accountPreferences.status === 'error'
+              ? 'Account preferences could not be loaded. Reload saved preferences in Settings before starting this chat.'
+              : 'Wait for account preferences to finish loading or saving before starting this chat.',
+        });
+        return false;
+      }
+      if (
+        currentState?.taskShaping &&
+        !ambientContext?.includes(TASK_SHAPING_INSTRUCTION)
+      )
+        ambientContext = [ambientContext, TASK_SHAPING_INSTRUCTION]
+          .filter(Boolean)
+          .join('\n\n');
       const submittedDraft = content;
       const experienceDraft = options?.dispatch
         ? undefined
@@ -380,9 +557,13 @@ export function useSendMessage(
           return false;
         }
         if (options?.skipInMemoryQueueOnBusy) {
+          // A turn still running is a temporary gate, not a refusal: the
+          // message waits without spending one of its attempts, so a queue
+          // replayed during a long turn never wears out to failed.
           return options?.dispatch
             ? ({
-                kind: 'not-invoked',
+                kind: 'deferred',
+                reason: 'A turn is still running in this conversation.',
               } satisfies OutboundDispatchTransportResult)
             : undefined;
         }
@@ -566,18 +747,76 @@ export function useSendMessage(
         }
       }
 
+      // archive#1207: reuse the id passed in by a Retry handler; mint a
+      // fresh one for every other call (first send, queued-message drain,
+      // "Continue" after tool-calls/length) since those are genuinely new
+      // turns, not a resend of this one. It is also the bubble's id, so the
+      // turn's `turn.started` (which carries it) matches this message.
+      if (
+        currentState &&
+        firstInteractiveSend &&
+        !options?.skipPersonalApprovalDefault &&
+        currentState.queuedApprovalMode === undefined &&
+        (options?.executionSnapshot
+          ? options.executionSnapshot.executionOnCurrentStation
+          : currentState?.executionOnCurrentStation) !== false
+      ) {
+        if (
+          accountPreferences.requestScope &&
+          !accountPreferences.requestScope.isCurrent()
+        )
+          return false;
+        const catalog = queryClient.getQueryData<ObservedAgentCatalog>([
+          'agents',
+        ]);
+        const selectedAgent =
+          (options?.executionSnapshot
+            ? options.executionSnapshot.executionAgentId
+            : currentState?.executionAgentId) ?? agentSlug;
+        const engine = observedEngine(catalog, selectedAgent);
+        const engineId =
+          engine?.kind === 'connection' ? engine.connectionId : undefined;
+        const agentDefault = catalog?.agents?.find(
+          (agent) => agent.slug === selectedAgent,
+        )?.execution?.approvalMode;
+        const personalDefault =
+          (!agentDefault || agentDefault === 'connection-default') &&
+          (engineId === 'codex' || engineId === 'claude' || engineId === 'muse')
+            ? engineId === 'codex'
+              ? accountPreferences.data?.values.interactiveApprovalModes?.codex
+              : engineId === 'claude'
+                ? accountPreferences.data?.values.interactiveApprovalModes
+                    ?.claude
+                : accountPreferences.data?.values.interactiveApprovalModes?.muse
+            : undefined;
+        if (personalDefault) {
+          currentState = {
+            ...currentState,
+            queuedApprovalMode: personalDefault,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
+          };
+          updateChat(sessionId, {
+            queuedApprovalMode: personalDefault,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
+          });
+        }
+      }
+      const resolvedTurnId = turnId ?? randomCorrelationId();
       const transaction = prepareSendTransaction({
         state: currentState,
         submittedDraft,
         modelInput: content,
         attachments,
+        clientTurnId: resolvedTurnId,
       });
-
-      // archive#1207: reuse the id passed in by a Retry handler; mint a
-      // fresh one for every other call (first send, queued-message drain,
-      // "Continue" after tool-calls/length) since those are genuinely new
-      // turns, not a resend of this one.
-      const resolvedTurnId = turnId ?? randomCorrelationId();
+      // The conversation this send names; the delivery lookup asks by it.
+      // A replay sends (and is looked up) under the conversation its row
+      // recorded, never one the chat learned since.
+      const sentConversationId =
+        (options?.dispatch ? conversationId : undefined) ??
+        currentState?.conversationId ??
+        conversationId ??
+        sessionId;
 
       const abortController = new AbortController();
 
@@ -593,7 +832,169 @@ export function useSendMessage(
         pendingClientTurnId: resolvedTurnId,
         attachments: [],
         attachmentStages: [],
+        // A new attempt for this key: a lookup answer about an earlier one
+        // (a `received` whose refusal was lost in transit, before the
+        // lookup-driven resend) describes nothing in flight now.
+        deliveryChecks: withoutDeliveryCheck(
+          activeChatsStore.getSnapshot()[sessionId]?.deliveryChecks,
+          resolvedTurnId,
+        ),
+        // This window's own message: without any later fact it reads "Not
+        // confirmed", never delivered.
+        localSendKeys: withLocalSendKey(
+          activeChatsStore.getSnapshot()[sessionId]?.localSendKeys,
+          resolvedTurnId,
+        ),
+        durableClientTurnId: undefined,
       });
+
+      // Durable BEFORE the request: from here until Station answers, the
+      // text lives in the outbox as `invoking`, so closing the app cannot lose
+      // it, and a relaunch asks Station what became of this key instead of
+      // guessing. Text-only composer sends; a replay already has its row, and
+      // attachment bytes and visual skills are not kept there.
+      let live: LiveOutboundDispatch | undefined;
+      if (
+        !options?.dispatch &&
+        !sourceStart &&
+        !attachments?.length &&
+        !currentState?.attachmentStages?.length
+      ) {
+        try {
+          const { outboundDispatch } = await import('../lib/outboundQueue');
+          const durable = outboundDispatch.beginLive({
+            clientTurnId: resolvedTurnId,
+            station: {
+              apiBase,
+              ...(stationEnvironmentId
+                ? { environmentId: stationEnvironmentId }
+                : {}),
+            },
+            sessionId,
+            agentSlug,
+            executionAgentId: currentState?.executionAgentId,
+            executionOnCurrentStation: currentState?.executionOnCurrentStation,
+            expectedDefinitionFingerprint:
+              currentState?.expectedDefinitionFingerprint,
+            conversationId: sentConversationId,
+            projectSlug: currentState?.projectSlug,
+            content,
+            ambientContext,
+            requestedModel: currentState?.requestedModel,
+            requestedProviderOptions: currentState?.requestedProviderOptions,
+            model: currentState?.model,
+            providerOptions: currentState?.providerOptions,
+          });
+          // Bounded: a stuck lock or storage must not hold the send. Past the
+          // bound the send goes without the durable row (the composer keeps
+          // its saved draft until Station answers), and a row that lands late
+          // is let go, since nothing here will settle it.
+          let timedOut = false;
+          live = await Promise.race([
+            durable,
+            new Promise<undefined>((resolve) =>
+              setTimeout(() => {
+                timedOut = true;
+                resolve(undefined);
+              }, LIVE_DURABILITY_TIMEOUT_MS),
+            ),
+          ]);
+          if (!live && timedOut)
+            void durable.then((late) => late.refused()).catch(() => undefined);
+        } catch (error) {
+          const refusal = (error as { name?: unknown })?.name;
+          if (
+            refusal === 'OutboundRowInFlightError' ||
+            refusal === 'OutboundKeyRetiredError'
+          ) {
+            // This exact message is already on its way, or may already have
+            // reached the agent: its outbox row is where it is settled.
+            // Sending it from here would bypass that record.
+            updateChat(sessionId, {
+              status: 'idle',
+              abortController: undefined,
+              pendingClientTurnId: undefined,
+              sendAwaitingTurnStart: undefined,
+              // A bubble this call added goes; the outbox list shows the row.
+              ...(transaction.optimisticMessages !==
+              transaction.originalMessages
+                ? {
+                    messages: activeChatsStore
+                      .getSnapshot()
+                      [sessionId]?.messages?.filter(
+                        (message) => message.clientId !== resolvedTurnId,
+                      ),
+                  }
+                : {}),
+            });
+            const retiredAs =
+              refusal === 'OutboundKeyRetiredError'
+                ? (error as { reason?: unknown }).reason
+                : undefined;
+            if (retiredAs === 'discarded') {
+              // The user discarded this message (in some window) and is now
+              // sending it again: the text goes back to the composer, never
+              // lost, and a new send of it is a new message.
+              const latest = activeChatsStore.getSnapshot()[sessionId];
+              const restored = (latest?.input ?? '') === '';
+              if (restored) updateChat(sessionId, { input: submittedDraft });
+              addEphemeralMessage(
+                sessionId,
+                discardedMessageNotice(restored, submittedDraft),
+              );
+              options?.onAdmission?.('not-invoked');
+              return false;
+            }
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content:
+                retiredAs === 'accepted'
+                  ? 'This message was already delivered, so it was not sent again.'
+                  : 'This message is already on its way or may have reached the agent, so it was not sent again. Check it in the outbox list.',
+            });
+            // Never "not sent": it was delivered, or may well arrive. A
+            // caller told it was not sent would offer it again under a new key.
+            options?.onAdmission?.(
+              retiredAs === 'accepted' ? 'accepted' : 'indeterminate',
+            );
+            return false;
+          }
+          // Storage unavailable: send as before, and the composer keeps its
+          // saved draft until Station answers.
+          live = undefined;
+        }
+        if (live) {
+          updateChat(sessionId, { durableClientTurnId: resolvedTurnId });
+          try {
+            options?.onDurable?.();
+          } catch {
+            // An observer cannot undo the durable record.
+          }
+        }
+      }
+      // A slow answer: ask Station whether it has this send. Reports only.
+      const stopDeliveryWatch = options?.dispatch
+        ? undefined
+        : await import('../lib/deliveryLookup').then(
+            ({ watchInFlightDelivery }) =>
+              watchInFlightDelivery({
+                apiBase,
+                conversationId: sentConversationId,
+                clientTurnId: resolvedTurnId,
+                projectSlug: currentState?.projectSlug,
+                onAnswer: (outcome) => {
+                  updateChat(
+                    sessionId,
+                    withDeliveryCheck(
+                      activeChatsStore.getSnapshot()[sessionId],
+                      resolvedTurnId,
+                      outcome,
+                    ),
+                  );
+                  void live?.observed(outcome);
+                },
+              }),
+          );
 
       try {
         const { dispatchForeground } = await import(
@@ -618,6 +1019,21 @@ export function useSendMessage(
           expectedDefinitionFingerprint: options?.executionSnapshot
             ? options.executionSnapshot.expectedDefinitionFingerprint
             : currentState?.expectedDefinitionFingerprint,
+          // What the composer's snapshot showed this Agent running on, stated
+          // only for a chat's first send: a conversation already bound to an
+          // engine continues there, and a replayed (offline/queued) send may be
+          // arbitrarily older than the snapshot it would be judged against.
+          expectedEngine:
+            currentState?.conversationId === undefined &&
+            conversationId === undefined &&
+            !options?.dispatch
+              ? observedEngine(
+                  queryClient.getQueryData<ObservedAgentCatalog>(['agents']),
+                  (options?.executionSnapshot
+                    ? options.executionSnapshot.executionAgentId
+                    : currentState?.executionAgentId) ?? agentSlug,
+                )
+              : undefined,
           projectSlug: currentState?.projectSlug,
           setApprovalMode: carriedApprovalPick,
           setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
@@ -634,8 +1050,7 @@ export function useSendMessage(
             ? options.executionSnapshot.providerOptions
             : currentState?.providerOptions,
           message: content,
-          conversationId:
-            currentState?.conversationId ?? conversationId ?? sessionId,
+          conversationId: sentConversationId,
           attachments,
           attachmentStages: currentState?.attachmentStages,
           ambientContext,
@@ -650,9 +1065,20 @@ export function useSendMessage(
             experienceDraft?.attachmentAssignments,
           requestScope: sourceStart
             ? options?.experienceRequestScope
-            : undefined,
+            : accountPreferences.requestScope,
         });
 
+        stopDeliveryWatch?.();
+        // Station answered with the turn: the transcript holds it now.
+        await live?.accepted();
+        updateChat(
+          sessionId,
+          withDeliveryCheck(
+            activeChatsStore.getSnapshot()[sessionId],
+            resolvedTurnId,
+            'started',
+          ),
+        );
         if (sourceStart) invalidate(['skills', 'experiences', 'session']);
         if (currentState?.conversationId !== receipt.conversationId) {
           assignConversationId(sessionId, receipt.conversationId);
@@ -731,6 +1157,75 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
+        stopDeliveryWatch?.();
+        const deliveryWasObserved = () => {
+          const observedChat = activeChatsStore.getSnapshot()[sessionId];
+          return (
+            !options?.dispatch &&
+            observedChat?.deliveryChecks?.[resolvedTurnId] === 'started'
+          );
+        };
+        const settleObservedDelivery = async () => {
+          await live?.accepted();
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if (latest?.abortController === abortController)
+            updateChat(sessionId, {
+              abortController: undefined,
+              ...(latest.pendingClientTurnId === resolvedTurnId
+                ? {
+                    pendingClientTurnId: undefined,
+                    sendAwaitingTurnStart: undefined,
+                  }
+                : {}),
+            });
+          options?.onAdmission?.('accepted');
+          return true;
+        };
+        // A witnessed start outranks a later failure of this HTTP response.
+        if (deliveryWasObserved()) return settleObservedDelivery();
+        // The outbox row follows what the answer proves. Any response is
+        // Station's own answer: a refusal started nothing (the composer gets
+        // the text back below), and a may-have-started answer keeps the row
+        // as unconfirmed evidence, never resent, and says so in the chat.
+        // No response: kept for replay with the same key (the queue notice
+        // below). No response and not a transport failure: kept as
+        // evidence, never resent.
+        if (live) {
+          const foreground = await import('../lib/outboundQueue')
+            .then((queue) => queue.readForeground(error))
+            .catch(() => undefined);
+          const userStopped =
+            (abortController as UserCancelableAbortController)._userInitiated &&
+            abortController.signal.aborted;
+          const providerBusy =
+            isQueuedOnRefusalCode((error as { code?: unknown })?.code) &&
+            stationAnswered(error);
+          if (foreground) {
+            // Station said it may have started: keep the text as unconfirmed
+            // evidence (never resent), and say so on the message.
+            await live.indeterminate('Station could not confirm the start.');
+            updateChat(
+              sessionId,
+              withDeliveryCheck(
+                activeChatsStore.getSnapshot()[sessionId],
+                resolvedTurnId,
+                'indeterminate',
+              ),
+            );
+          } else if (providerBusy) {
+            // Moved into the local queue below, under the same key; its row
+            // becomes the held copy only once the queue holds it (below), so
+            // a held-copy sync in between cannot drop it.
+          } else if (stationAnswered(error) || userStopped) {
+            // Station refused it (nothing started): the composer gets the
+            // text back below.
+            await live.refused();
+          } else {
+            // No answer from Station: only its delivery lookup can say what
+            // happened, so the row is released for that, never resent blind.
+            await live.unanswered();
+          }
+        }
         if (sourceStart) {
           const latest = activeChatsStore.getSnapshot()[sessionId];
           const rollback = rejectedSendRollback(transaction, latest);
@@ -827,6 +1322,7 @@ export function useSendMessage(
                               queueOnBusy: options?.queueOnBusy,
                               onAdmission,
                               claimRetry: options?.claimRetry,
+                              skipPersonalApprovalDefault: true,
                             },
                           ),
                         options?.onAdmission,
@@ -866,15 +1362,14 @@ export function useSendMessage(
           };
         const latestState = activeChatsStore.getSnapshot()[sessionId];
 
-        // archive#1224 (offline): a genuinely offline send (the
-        // browser already knows it has no network) or a network-level fetch
-        // failure (the request never reached the server at all — a real
-        // HTTP error response, which DOES reach the server, is deliberately
-        // excluded; see `isNetworkLevelSendError`'s doc comment) is queued
-        // for automatic replay instead of surfacing as a dead-end error.
-        // The optimistic user message (already rendered above) is kept
-        // as-is — never rolled back — so it visibly sits in the
-        // conversation with a pending affordance until it sends for real.
+        // archive#1224 (offline), as #3652 refined it: a send that produced
+        // no answer from Station (a thrown fetch, a proxy's or tunnel's
+        // response, or a browser that reports no network) is not a refusal.
+        // `classifyUndeliverableSend` names which; none proves the request
+        // never arrived. A live send's row is released for Station's
+        // delivery lookup (sent once only if Station never received it); any
+        // other send is queued under its key. The optimistic bubble is kept,
+        // never rolled back, and reads as waiting for Station until it goes.
         // A queue chunk outage is itself an unavailable durable path. Keep
         // the foreground error total rather than stranding the composer in
         // `sending` because its error classifier could not load.
@@ -886,30 +1381,77 @@ export function useSendMessage(
         if (undeliverableCause && !options?.dispatch) {
           try {
             const { outboundDispatch } = await import('../lib/outboundQueue');
-            await outboundDispatch.enqueue(
-              {
-                clientTurnId: resolvedTurnId,
-                sessionId,
-                agentSlug,
-                executionAgentId: currentState?.executionAgentId,
-                executionOnCurrentStation:
-                  currentState?.executionOnCurrentStation,
-                expectedDefinitionFingerprint:
-                  currentState?.expectedDefinitionFingerprint,
-                conversationId: latestState?.conversationId ?? conversationId,
-                content,
-                attachments,
-                ambientContext,
-                requestedModel: currentState?.requestedModel,
-                requestedProviderOptions:
-                  currentState?.requestedProviderOptions,
-                model: currentState?.model,
-                providerOptions: currentState?.providerOptions,
-              },
-              error,
-            );
+            // A live send already has its outbox row, settled by the outcome
+            // branch above (with no answer, `live.unanswered()` released it
+            // for Station's delivery lookup), so it is not queued again.
+            if (!live)
+              await outboundDispatch.enqueue(
+                {
+                  clientTurnId: resolvedTurnId,
+                  sessionId,
+                  agentSlug,
+                  executionAgentId: currentState?.executionAgentId,
+                  executionOnCurrentStation:
+                    currentState?.executionOnCurrentStation,
+                  expectedDefinitionFingerprint:
+                    currentState?.expectedDefinitionFingerprint,
+                  conversationId: latestState?.conversationId ?? conversationId,
+                  content,
+                  attachments,
+                  ambientContext,
+                  requestedModel: currentState?.requestedModel,
+                  requestedProviderOptions:
+                    currentState?.requestedProviderOptions,
+                  model: currentState?.model,
+                  providerOptions: currentState?.providerOptions,
+                },
+                error,
+              );
           } catch (queueError) {
             clearStreamingMessage(sessionId);
+            const retiredAs =
+              (queueError as { name?: unknown })?.name ===
+              'OutboundKeyRetiredError'
+                ? (queueError as { reason?: unknown }).reason
+                : undefined;
+            if (retiredAs !== undefined) {
+              // Settled already: never "Send unavailable", which invites a
+              // resend of a message that was delivered or that the user
+              // threw away. A discarded text still goes back to the user.
+              const latest = activeChatsStore.getSnapshot()[sessionId];
+              const restored =
+                retiredAs === 'discarded' && (latest?.input ?? '') === '';
+              updateChat(sessionId, {
+                status: 'idle',
+                abortController: undefined,
+                pendingClientTurnId: undefined,
+                sendAwaitingTurnStart: undefined,
+                ...(restored ? { input: submittedDraft } : {}),
+                // Not sent from here: the bubble this call added goes.
+                ...(transaction.optimisticMessages !==
+                transaction.originalMessages
+                  ? {
+                      messages: latest?.messages?.filter(
+                        (message) => message.clientId !== resolvedTurnId,
+                      ),
+                    }
+                  : {}),
+              });
+              addEphemeralMessage(
+                sessionId,
+                retiredAs === 'discarded'
+                  ? discardedMessageNotice(restored, submittedDraft)
+                  : {
+                      role: 'system',
+                      content:
+                        'This message was already delivered, so it was not sent again.',
+                    },
+              );
+              options?.onAdmission?.(
+                retiredAs === 'discarded' ? 'not-invoked' : 'accepted',
+              );
+              return false;
+            }
             updateChat(sessionId, {
               status: 'error',
               error:
@@ -920,6 +1462,8 @@ export function useSendMessage(
             });
             return false;
           }
+          // A turn can arrive while the durable claim above is released.
+          if (deliveryWasObserved()) return settleObservedDelivery();
           clearStreamingMessage(sessionId);
           updateChat(sessionId, {
             status: 'queued',
@@ -945,13 +1489,23 @@ export function useSendMessage(
                 ? 'Your browser reports no network — queued to retry automatically'
                 : "Send wasn't confirmed — queued to retry automatically",
             action: {
-              label: 'Discard',
+              // No answer came back, so the message may already have
+              // reached Station: Discard asks first, with the risk stated
+              // (`UnconfirmedDiscardConfirm`).
+              label: 'Discard…',
+              confirm: 'unconfirmed-discard',
               handler: async () => {
                 try {
-                  const { outboundDispatch } = await import(
-                    '../lib/outboundQueue'
+                  const { discardMessage } = await import(
+                    '../lib/messageDeliveryActions'
                   );
-                  await outboundDispatch.discard(resolvedTurnId);
+                  // A live send's row awaits the lookup and is only ever
+                  // withdrawn explicitly; a queued one is a plain discard.
+                  await discardMessage(
+                    sessionId,
+                    resolvedTurnId,
+                    live ? 'unconfirmed' : 'not-sent',
+                  );
                   updateChat(sessionId, { status: 'idle' });
                 } catch (discardError) {
                   updateChat(sessionId, {
@@ -971,9 +1525,10 @@ export function useSendMessage(
         // refusal is retryable: move the message into the queue that drains
         // when that turn finishes, rather than calling it failed. A send with
         // attachments cannot ride the text queue, so it keeps the ordinary
-        // error and Retry below.
+        // error and Retry below. A send that outwaited its session's start
+        // (an ACP reattach) is queued the same way.
         if (
-          err.code === PROVIDER_TURN_IN_PROGRESS_CODE &&
+          isQueuedOnRefusalCode(err.code) &&
           !options?.dispatch &&
           !(attachments && attachments.length > 0)
         ) {
@@ -989,7 +1544,24 @@ export function useSendMessage(
             pendingClientTurnId: undefined,
             sendAwaitingTurnStart: undefined,
             queuedMessages: [...(latestState?.queuedMessages ?? []), content],
+            // A lookup answer about the refused attempt (a `received` while
+            // it waited on a starting session) must not label the resend.
+            deliveryChecks: withoutDeliveryCheck(
+              latestState?.deliveryChecks,
+              resolvedTurnId,
+            ),
+            // The same key the send carried: its durable held row and the
+            // drain's eventual send are one message.
+            queuedMessageMetadata: [
+              ...(latestState?.queuedMessageMetadata ??
+                (latestState?.queuedMessages ?? []).map(() => ({
+                  id: randomCorrelationId(),
+                  mode: 'queue' as const,
+                }))),
+              { id: resolvedTurnId, mode: 'queue' as const },
+            ],
           });
+          await live?.hold();
           // The turn it waited on may already have ended while this refusal
           // was in flight; its end was the queue's only trigger.
           if (
@@ -1110,7 +1682,13 @@ export function useSendMessage(
               : terminalSession ||
                   foregroundIndeterminate ||
                   dispatchClaim ||
-                  err.code === SESSION_START_INDETERMINATE_CODE
+                  err.code === SESSION_START_INDETERMINATE_CODE ||
+                  // The chips changed under the user; a blind resend would run
+                  // on the new engine without them having looked.
+                  err.code === EXECUTION_ENGINE_CHANGED_CODE ||
+                  // Refused for the same model every time; the user has to
+                  // choose another, so a blind Retry only repeats the refusal.
+                  err.code === MODEL_NOT_ADVERTISED_CODE
                 ? undefined
                 : {
                     label: 'Retry',
@@ -1144,6 +1722,20 @@ export function useSendMessage(
         if (err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
           invalidate(['connections', 'engines']);
         }
+        // The engine answered for itself which models it offers, or the
+        // Agent's binding changed under the snapshot the composer showed: the
+        // composer's snapshot of the Agent, its engine and that list is what
+        // let the model be chosen or the engine be assumed. Re-read all three
+        // so the picker and the next send reflect the engine this chat
+        // actually resolved to.
+        if (
+          err.code === MODEL_NOT_ADVERTISED_CODE ||
+          err.code === EXECUTION_ENGINE_CHANGED_CODE
+        ) {
+          invalidate(['agents']);
+          invalidate(['acp-connections']);
+          invalidate(['connections', 'engines']);
+        }
         // A send that did not take can turn a Draft into a first-send failure
         // (or leave one). The composer reads that from the session list, which
         // is otherwise fetched once — without this the model picker a refused
@@ -1172,6 +1764,10 @@ export function useSendMessage(
     },
     [
       addEphemeralMessage,
+      accountPreferences.data,
+      accountPreferences.requestScope,
+      accountPreferences.status,
+      accountPreferences.saving,
       experienceNamespace,
       experienceAuthorityStatus,
       agentConnections,
@@ -1186,6 +1782,7 @@ export function useSendMessage(
       onActiveSessionChange,
       onError,
       updateChat,
+      stationEnvironmentId,
     ],
   );
 

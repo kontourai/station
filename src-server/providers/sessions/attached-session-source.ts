@@ -88,6 +88,15 @@ export interface AttachedSessionSource {
     resumeCursor?: unknown;
   }): string | undefined;
   discover(): Promise<AttachedSessionDiscoveryResult>;
+  /**
+   * Sources with a moving cold-read window must pin its start before read().
+   * The follower persists this bounded cursor before observing any events.
+   * A legacy row gaining source affinity persists it after a successful read.
+   * Undefined means the descriptor could not be validated; do not read it.
+   */
+  initialCursor?(
+    session: AttachedSessionDescriptor,
+  ): Promise<AttachedSessionCursor | undefined>;
   read(
     session: AttachedSessionDescriptor,
     cursor?: AttachedSessionCursor,

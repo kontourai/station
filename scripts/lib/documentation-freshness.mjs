@@ -12,8 +12,8 @@ import { captureInputs, compileLearningMedia } from './learning-media.mjs';
 import { createLearningSourceReader } from './learning-source-reader.mjs';
 import { bindingFile } from './review-binding.mjs';
 import {
+  createReviewInputComparator,
   reviewDecisionChanged,
-  touchedReviewInputs,
 } from './review-history.mjs';
 import {
   isNoteArchiveFile,
@@ -384,6 +384,7 @@ export function resolveDocumentationFreshness({
     ? { ledger, media }
     : readReviewState(root, { history: false });
   const previous = readReviewStateAt(root, selection.mergeBase);
+  const touchedReviewInputs = createReviewInputComparator(root);
   const reader = createLearningSourceReader(root);
   const changedPaths = new Set(selection.paths);
   const entries = {
@@ -455,7 +456,8 @@ export function resolveDocumentationFreshness({
   const appendOnlyProblems = [];
   const layoutV3 = current.ledger?.layoutVersion === 3;
   if (layoutV3) {
-    const baseState = readReviewStateAt(root, base);
+    const baseState =
+      base === selection.mergeBase ? previous : readReviewStateAt(root, base);
     appendOnlyProblems.push(
       ...appendOnlyNoteProblems(root, selection.mergeBase, {
         from: previous.ledger?.coverageBaseline,
@@ -475,11 +477,10 @@ export function resolveDocumentationFreshness({
           ...new Set([...inputsFor(old), ...inputsFor(entry)]),
         ];
         const touched = touchedReviewInputs(
-          root,
           dependencies,
           changedPaths,
           selection.mergeBase,
-          'HEAD',
+          head,
         );
         // Working-tree edits are included even when HEAD still holds the old value.
         if (reviewDecisionChanged(old, entry) && !touched.includes(path))
@@ -533,7 +534,6 @@ export function resolveDocumentationFreshness({
               const changedLater = later.some(
                 (commit) =>
                   touchedReviewInputs(
-                    root,
                     [input],
                     new Set([bindingFile(input)]),
                     `${commit}^`,

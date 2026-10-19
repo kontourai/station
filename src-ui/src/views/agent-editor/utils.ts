@@ -1,4 +1,5 @@
 import {
+  mcpToolApprovalKey,
   mcpToolIdentities,
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
@@ -28,6 +29,7 @@ export function removeIntegration(
   integrationId: string,
 ): AgentFormData {
   const prefix = `${integrationId}_`;
+  const approvalPrefix = mcpToolApprovalKey(integrationId, '');
   const servers = new Set(form.tools.mcpServers);
   servers.delete(integrationId);
   return {
@@ -40,10 +42,15 @@ export function removeIntegration(
         (entry) => !entry.startsWith(prefix),
       ),
       autoApprove: form.tools.autoApprove.filter(
-        (entry) => !entry.startsWith(prefix),
+        (entry) =>
+          !entry.startsWith(prefix) && !entry.startsWith(approvalPrefix),
       ),
       unattendedAutoApprove: form.tools.unattendedAutoApprove.filter(
         (entry) => !entry.startsWith(prefix),
+      ),
+      askBeforeUse: form.tools.askBeforeUse?.filter(
+        (entry) =>
+          !entry.startsWith(prefix) && !entry.startsWith(approvalPrefix),
       ),
     },
   };
@@ -81,7 +88,7 @@ function effectiveAgentToolPatterns(form: AgentFormData): string[] {
     : [];
 }
 
-export function addIntegration(
+function addIntegration(
   form: AgentFormData,
   integrationId: string,
 ): AgentFormData {
@@ -162,26 +169,139 @@ export function selectIntegrationTools(
     : patterns;
   const available = existing.filter((entry) => !entry.startsWith(prefix));
   available.push(...(names === 'all' ? [`${prefix}*`] : names));
+  const retainedApproval = (entry: string) =>
+    names === 'all' ||
+    (!entry.startsWith(prefix) &&
+      !entry.startsWith(mcpToolApprovalKey(integrationId, ''))) ||
+    names.includes(entry) ||
+    (entry.startsWith(mcpToolApprovalKey(integrationId, '')) &&
+      names.some(
+        (name) =>
+          name.startsWith(prefix) &&
+          mcpToolApprovalKey(integrationId, name.slice(prefix.length)) ===
+            entry,
+      ));
+
   return {
     ...added,
     toolsAvailableEdited: true,
     tools: {
       ...added.tools,
       available,
+      askBeforeUse: added.tools.askBeforeUse?.flatMap((entry) => {
+        if (
+          names !== 'all' &&
+          (entry === `${prefix}*` ||
+            entry === mcpToolApprovalKey(integrationId))
+        )
+          return names.length ? [entry] : [];
+        return retainedApproval(entry) ? [entry] : [];
+      }),
       autoApprove: [
         ...new Set(
           added.tools.autoApprove.flatMap((entry) => {
             if (names !== 'all' && entry === `${prefix}*`) return names;
-            return !entry.startsWith(prefix) ||
-              names === 'all' ||
-              names.includes(entry)
-              ? [entry]
-              : [];
+            return retainedApproval(entry) ? [entry] : [];
           }),
         ),
       ],
     },
   };
+}
+
+export function setIntegrationToolApproval(
+  form: AgentFormData,
+  integrationId: string,
+  key: string,
+  mode: 'always' | 'ask',
+  tools: Tool[],
+): AgentFormData {
+  const tool = tools.find(
+    (item) => getIntegrationToolKey(integrationId, item) === key,
+  );
+  const approvalKey = tool
+    ? mcpToolApprovalKey(integrationId, tool.toolName || tool.name)
+    : key;
+  const identities = tool
+    ? [
+        ...mcpToolIdentities(integrationId, tool.toolName || tool.name),
+        approvalKey,
+      ]
+    : [key];
+  const retain = (patterns: readonly string[] = []) =>
+    patterns.filter((pattern) => !identities.includes(pattern));
+  return {
+    ...form,
+    tools: {
+      ...form.tools,
+      autoApprove: [
+        ...retain(form.tools.autoApprove),
+        ...(mode === 'always' ? [approvalKey] : []),
+      ],
+      askBeforeUse: [
+        ...retain(form.tools.askBeforeUse),
+        ...(mode === 'ask' ? [approvalKey] : []),
+      ],
+    },
+  };
+}
+
+export function applyNewToolApprovalDefaults(
+  form: AgentFormData,
+  previous: AgentFormData,
+  integrationId: string,
+  tools: Tool[],
+  engineId: string,
+): AgentFormData {
+  if (!['station', 'claude'].includes(engineId)) return form;
+  const names = tools.map((tool) => tool.toolName || tool.name);
+  const before = previous.tools.mcpServers.includes(integrationId)
+    ? selectedMcpTools(
+        integrationId,
+        names,
+        effectiveAgentToolPatterns(previous),
+        previous.tools.mcpServers,
+      )
+    : [];
+  const after = selectedMcpTools(
+    integrationId,
+    names,
+    effectiveAgentToolPatterns(form),
+    form.tools.mcpServers,
+  );
+  const defaults =
+    after === undefined
+      ? {
+          ...form,
+          tools: {
+            ...form.tools,
+            askBeforeUse: [
+              ...new Set([
+                ...(form.tools.askBeforeUse ?? []),
+                mcpToolApprovalKey(integrationId),
+              ]),
+            ],
+          },
+        }
+      : form;
+  return tools.reduce((next, tool) => {
+    const name = tool.toolName || tool.name;
+    if (
+      before === undefined ||
+      before.includes(name) ||
+      (after !== undefined && !after.includes(name))
+    )
+      return next;
+    return setIntegrationToolApproval(
+      next,
+      integrationId,
+      getIntegrationToolKey(integrationId, tool),
+      tool.classificationSource === 'station' && tool.readOnly === true
+        ? 'always'
+        : 'ask',
+      tools,
+    );
+  }, defaults);
 }
 
 export function toggleIntegrationToolEnabled(
@@ -192,7 +312,9 @@ export function toggleIntegrationToolEnabled(
   catalogs: Record<string, Tool[]> = { [integrationId]: tools },
 ): AgentFormData {
   const patterns = canonicalAgentToolPatterns(form, catalogs);
-  const all = patterns.includes('*') || patterns.includes(`${integrationId}_*`);
+  const all =
+    form.tools.mcpServers.includes(integrationId) &&
+    (patterns.includes('*') || patterns.includes(`${integrationId}_*`));
   const enabled = new Set(
     all
       ? tools.map((tool) => getIntegrationToolKey(integrationId, tool))

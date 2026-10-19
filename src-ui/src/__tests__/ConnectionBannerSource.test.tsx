@@ -809,6 +809,20 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 
+  it('keeps a same-origin browser restart transient instead of asking for another address', async () => {
+    connectionStatus.reason = 'timeout';
+    connectionStatus.failureStreak = 4;
+    activeConnection = {
+      id: 'conn-1',
+      name: 'This Station',
+      url: window.location.origin,
+    };
+
+    renderChrome();
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
   it('withholds it until the same sustained streak the old rule required', async () => {
     connectionStatus.reason = 'unreachable';
     connectionStatus.failureStreak = 2;

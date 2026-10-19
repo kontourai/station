@@ -176,8 +176,18 @@ describe('Tool Routes', () => {
     const app = createToolRoutes(service as any, vi.fn());
     const result = await json(await app.request('/'));
     expect(result.data[0].tools).toEqual([
-      { name: 'weather_read', toolName: 'read', disabled: false },
-      { name: 'weather_weatherRead', toolName: 'weather_read', disabled: true },
+      {
+        name: 'weather_read',
+        toolName: 'read',
+        disabled: false,
+        classificationSource: 'publisher',
+      },
+      {
+        name: 'weather_weatherRead',
+        toolName: 'weather_read',
+        disabled: true,
+        classificationSource: 'publisher',
+      },
     ]);
     expect(result.data[0].disabledTools).toEqual(['weather_weatherRead']);
   });
@@ -186,7 +196,21 @@ describe('Tool Routes', () => {
     const service = createMockMCPService();
     service.listIntegrations.mockResolvedValue([
       { id: 'station-control', name: 'Station' },
-      { id: 'mcp-1', name: 'Test MCP' },
+      {
+        id: 'mcp-1',
+        name: 'Test MCP',
+        probe: {
+          toolNames: ['mcp-1_mcp-1_export_report'],
+          tools: [
+            {
+              name: 'mcp-1_export_report',
+              description: 'Export quarterly revenue',
+              group: 'Reporting',
+            },
+          ],
+        },
+      },
+      { id: 'station-docs', name: 'Station documentation' },
     ]);
     service.getMCPToolCatalog.mockResolvedValue([
       {
@@ -210,11 +234,25 @@ describe('Tool Routes', () => {
     );
     expect(result.data[1].tools).toEqual([
       expect.objectContaining({
+        toolName: 'mcp-1_export_report',
+        description: 'Export quarterly revenue',
+        group: 'Reporting',
+      }),
+      expect.objectContaining({
         name: 'mcp-1_render',
         toolName: 'render',
         group: 'Reports',
       }),
     ]);
+    expect(result.data[2].tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolName: 'search_station_docs',
+          group: 'Documentation',
+          readOnly: true,
+        }),
+      ]),
+    );
   });
 
   test('POST / saves integration', async () => {
@@ -860,6 +898,7 @@ describe('Tool Routes', () => {
     expect(svc.readMCPUIResource).toHaveBeenCalledWith(
       'mcp-1',
       'ui://mcp-1/render.html',
+      false,
     );
   });
 

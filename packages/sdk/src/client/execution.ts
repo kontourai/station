@@ -17,8 +17,11 @@ import type {
 } from '@kontourai/station-contracts/execution-target';
 import {
   type ConversationHandoffStatusProjection,
+  type ConversationInboxEntry,
+  type ConversationInboxQueuedReceipt,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
+  type TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import type {
   SkillExperienceInventoryV1,
@@ -148,9 +151,19 @@ export class ForegroundMessageIndeterminateError extends ChatHttpError {
   }
 }
 
+/** Station retained this message in its FIFO inbox; no provider turn is accepted yet. */
+export class ForegroundMessageQueuedError extends Error {
+  readonly status = 202;
+  readonly outcome = 'queued';
+  constructor(readonly receipt: ConversationInboxQueuedReceipt) {
+    super('This message is already waiting in the conversation inbox.');
+    this.name = 'ForegroundMessageQueuedError';
+  }
+}
+
 type ExecutionErrorResponse = {
   success: boolean;
-  data?: ForegroundMessageReceipt;
+  data?: ForegroundMessageReceipt | ConversationInboxQueuedReceipt;
   error?: string;
   code?: string;
   outcome?: unknown;
@@ -255,6 +268,17 @@ function readExecutionReceipt(
     throw chatRefusal(response, result, failed);
   }
   if (
+    response.status === 202 &&
+    'outcome' in result.data &&
+    result.data.outcome === 'queued' &&
+    typeof result.data.conversationId === 'string' &&
+    typeof result.data.clientTurnId === 'string' &&
+    result.data.entry?.conversationId === result.data.conversationId &&
+    result.data.entry.clientTurnId === result.data.clientTurnId
+  )
+    throw new ForegroundMessageQueuedError(result.data);
+  if (
+    !('providerTurnId' in result.data) ||
     typeof result.data.providerTurnId !== 'string' ||
     !result.data.providerTurnId
   ) {
@@ -320,6 +344,122 @@ export async function sendExecutionMessageWithInventory(
   );
   const result = (await readExecutionBody(response)) as ExecutionErrorResponse;
   return readExecutionReceipt(response, result);
+}
+
+/**
+ * #3568: a follow-up Station may hold for its conversation. `started` is the
+ * ordinary receipt; `queued` means Station holds the message in the
+ * conversation's inbox behind a running turn and sends it itself when that
+ * turn ends, so the client may forget it (and must not send it again).
+ */
+export type QueuedFollowUpResult =
+  | { readonly outcome: 'started'; readonly receipt: ForegroundMessageReceipt }
+  | ConversationInboxQueuedReceipt;
+
+/**
+ * #3568: send a follow-up that Station holds in the conversation's inbox when
+ * the conversation is busy, instead of refusing it. Station queues only a
+ * plain continuation (no attachments, approval pick, input reply or visual
+ * skill start); any other busy send is refused as `sendExecutionMessage`'s
+ * is. So is every busy send to a Station that predates the inbox, which
+ * ignores `whenBusy`: keep the message on a `provider_turn_in_progress` or
+ * `provider_session_starting` refusal, exactly as before.
+ */
+export async function queueExecutionMessage(
+  apiBase: string,
+  input: ForegroundMessageFields & {
+    conversationId: string;
+    clientTurnId: string;
+    /** Station never holds a send that carries an approval pick. */
+    setApprovalMode?: undefined;
+    setApprovalModeBasedOn?: undefined;
+  },
+  opts?: ClientRequestOptions,
+): Promise<QueuedFollowUpResult> {
+  const { automaticBackground: _background, ...body } = input;
+  const response = await mutateJson(
+    `${apiBase}/api/orchestration/chat`,
+    'POST',
+    opts,
+    { ...body, whenBusy: 'queue' },
+  );
+  const result = (await readExecutionBody(response)) as ExecutionErrorResponse;
+  const queued = (result as { data?: unknown }).data as
+    | Partial<ConversationInboxQueuedReceipt>
+    | undefined;
+  if (
+    response.status === 202 &&
+    result.success &&
+    queued?.outcome === 'queued' &&
+    queued.clientTurnId === input.clientTurnId &&
+    queued.entry
+  )
+    return queued as ConversationInboxQueuedReceipt;
+  return {
+    outcome: 'started',
+    receipt: readExecutionReceipt(response, result),
+  };
+}
+
+/**
+ * #3568: the follow-ups Station holds for a conversation, in the order it
+ * sends them, as every client of the conversation sees them. A Station
+ * without an inbox, or a conversation the caller may not read, answers 404.
+ */
+export async function listConversationInbox(
+  apiBase: string,
+  conversationId: string,
+  opts?: ClientRequestOptions,
+): Promise<ConversationInboxEntry[]> {
+  const response = await getJson(
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`,
+    opts,
+  );
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: { entries?: ConversationInboxEntry[] };
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok || !result.success || !Array.isArray(result.data?.entries))
+    throw chatRefusal(
+      response,
+      result,
+      'The conversation inbox is unavailable.',
+    );
+  return result.data.entries;
+}
+
+/**
+ * #3568: withdraw a follow-up Station still holds, or dismiss one that is
+ * `unconfirmed` (which also lets the messages behind it go) or `refused`.
+ * Refused with `inbox_entry_sending` while Station is sending it, and
+ * `inbox_entry_sent` once it went.
+ */
+export async function cancelConversationInboxEntry(
+  apiBase: string,
+  conversationId: string,
+  clientTurnId: string,
+  opts?: ClientRequestOptions,
+): Promise<ConversationInboxEntry> {
+  const response = await mutateJson(
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox/${encodeURIComponent(clientTurnId)}`,
+    'DELETE',
+    opts,
+  );
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: { entry?: ConversationInboxEntry };
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok || !result.success || !result.data?.entry)
+    throw chatRefusal(
+      response,
+      result,
+      'The queued message could not be removed.',
+    );
+  return result.data.entry;
 }
 
 export type ContinueForegroundMessageInput = Omit<
@@ -403,6 +543,44 @@ export async function getConversationHandoffStatus(
       result,
       'Conversation handoff status is unavailable.',
     );
+  }
+  return result.data;
+}
+
+/**
+ * What Station knows about one foreground send, by the idempotency key it
+ * carried (`clientTurnId`) into `conversationId`. Read-only: it never sends,
+ * claims or releases anything, so a device can ask after losing its
+ * connection, or after a restart, whether resending the same key is safe.
+ * See `TurnDeliveryInspection` for each outcome. A Station without this
+ * lookup answers 404, which surfaces as a refusal, never as `not-received`.
+ */
+export async function getTurnDelivery(
+  apiBase: string,
+  conversationId: string,
+  clientTurnId: string,
+  opts?: ClientRequestOptions & {
+    /**
+     * The Project the send named, if any. A Project whose default
+     * Environment is another Station keeps its turns there, so Station then
+     * answers `unknown` rather than claiming the key was never received.
+     */
+    projectSlug?: string;
+  },
+): Promise<TurnDeliveryInspection> {
+  const { projectSlug, ...requestOptions } = opts ?? {};
+  const response = await getJson(
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/turn-deliveries/${encodeURIComponent(clientTurnId)}${projectSlug ? `?projectSlug=${encodeURIComponent(projectSlug)}` : ''}`,
+    requestOptions,
+  );
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: TurnDeliveryInspection;
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok || !result.success || !result.data) {
+    throw chatRefusal(response, result, 'Message delivery is unavailable.');
   }
   return result.data;
 }

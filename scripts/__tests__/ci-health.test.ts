@@ -40,6 +40,8 @@ const job = (id = 1, overrides = {}) => ({
   started_at: at(6),
   completed_at: at(16),
   labels: ['ubuntu-latest'],
+  runner_id: id + 1,
+  runner_name: `runner-${id}`,
   health_run_key: '1:1',
   steps: [],
   ...overrides,
@@ -128,6 +130,103 @@ describe('CI health metrics', () => {
       macos: { count: 1, median: 21, p90: 21 },
     });
   });
+  it('does not mistake GitHub queued placeholder timestamps for runner execution', () => {
+    // Retained API shapes: 117287700463 was queued with started_at=created_at;
+    // 117276468422 was cancelled before any runner was assigned.
+    const snapshot = buildSnapshot(
+      {
+        ...emptyData(),
+        jobs: [
+          job(1, {
+            status: 'queued',
+            conclusion: null,
+            started_at: at(0),
+            completed_at: null,
+            runner_id: null,
+            runner_name: null,
+          }),
+          job(2, {
+            conclusion: 'cancelled',
+            started_at: at(0),
+            completed_at: at(10),
+            runner_id: 0,
+            runner_name: '',
+          }),
+          job(3, {
+            status: 'in_progress',
+            conclusion: null,
+            started_at: at(10),
+            completed_at: null,
+          }),
+        ],
+      },
+      options,
+    );
+    expect(snapshot.capacity).toMatchObject({
+      executed: 0,
+      runnerHours: 0,
+      waitingHours: 80 / 60,
+      unfinishedWaitMinutes: { count: 2, median: 60, p90: 60 },
+      concurrency: { histogramMinutes: { 0: 10, 1: 50 } },
+    });
+    expect(snapshot.incomplete).toBe(true);
+  });
+  it('clips capacity occupancy to the requested window and separates hosted runners', () => {
+    const snapshot = buildSnapshot(
+      {
+        ...emptyData(),
+        jobs: [
+          job(1, { started_at: at(0), completed_at: at(80) }),
+          job(2, {
+            started_at: at(0),
+            completed_at: at(80),
+            labels: ['self-hosted', 'Linux'],
+          }),
+          job(3, {
+            created_at: at(70),
+            started_at: at(70),
+            completed_at: at(80),
+          }),
+        ],
+      },
+      { ...options, since: at(10), until: at(60) },
+    );
+    expect(snapshot.capacity.runnerHours).toBe(100 / 60);
+    expect(snapshot.capacity.concurrency.histogramMinutes).toEqual({ 2: 50 });
+    expect(snapshot.capacity.hostedConcurrency.histogramMinutes).toEqual({
+      1: 50,
+    });
+    expect(snapshot.capacity.selfHostedConcurrency.histogramMinutes).toEqual({
+      1: 50,
+    });
+  });
+  it.each(['completed', 'in_progress'])(
+    'keeps %s jobs with missing runner attribution unavailable',
+    (status) => {
+      const snapshot = buildSnapshot(
+        {
+          ...emptyData(),
+          jobs: [
+            job(1, {
+              status,
+              conclusion: status === 'completed' ? 'success' : null,
+              completed_at: status === 'completed' ? at(16) : null,
+              runner_id: null,
+              runner_name: null,
+            }),
+          ],
+        },
+        options,
+      );
+      expect(snapshot.capacity.executed).toBe(0);
+      expect(snapshot.capacity.runnerHours).toBe(0);
+      expect(snapshot.capacity.platformWaitMinutes.linux.count).toBe(0);
+      expect(snapshot.incomplete).toBe(true);
+      expect(snapshot.reasons).toContain(
+        'window includes 1 jobs with unavailable runner attribution',
+      );
+    },
+  );
   it('groups PR workflows by baseline PR/ten-minute bucket and merge workflows by queue branch', () => {
     const runs = [
       run(),
@@ -334,6 +433,115 @@ describe('CI health metrics', () => {
       groupsTimedOut: 1,
       regressionMinutes: { count: 3, median: 2, p90: 4 },
     });
+  });
+  it('attributes integration durations to the current owner per exact merge candidate, retaining every owner attempt', () => {
+    const integration = (
+      id: number,
+      name: string,
+      minutes: number,
+      overrides = {},
+    ) =>
+      run(id, {
+        name,
+        event: 'merge_group',
+        head_branch: 'queue',
+        run_started_at: at(0),
+        updated_at: at(minutes),
+        ...overrides,
+      });
+    const historical = [
+      integration(1, 'Merge-queue regression', 2, { head_sha: 'old1' }),
+      integration(2, 'Merge integration', 4, { head_sha: 'old2' }),
+      integration(3, 'PR: Merge integration', 6, { head_sha: 'old3' }),
+      integration(3, 'PR: Merge integration', 8, {
+        head_sha: 'old3',
+        run_attempt: 2,
+      }),
+    ];
+    const current = [
+      integration(4, 'PR: CI', 3, { conclusion: 'failure' }),
+      integration(4, 'PR: CI', 9, { run_attempt: 2 }),
+    ];
+    const ownerJobs = (runs: ReturnType<typeof run>[]) =>
+      runs
+        .filter((r) => r.name === 'PR: CI')
+        .map((r) =>
+          job(r.id, {
+            name: 'Merge-queue regression',
+            health_run_key: `${r.id}:${r.run_attempt}`,
+            conclusion: r.conclusion,
+            status: r.conclusion == null ? 'in_progress' : 'completed',
+            completed_at: r.conclusion == null ? null : at(16),
+          }),
+        );
+    const measure = (runs: ReturnType<typeof run>[]) =>
+      mergeMetrics(runs, ownerJobs(runs), {}, at(0), at(60)).regressionMinutes;
+    expect(measure(historical)).toEqual({ count: 4, median: 6, p90: 8 });
+    expect(measure(current)).toEqual({ count: 2, median: 9, p90: 9 });
+    const renamed = current.map((r) => ({
+      ...r,
+      name: 'Source verification',
+      path: '.github/workflows/ci.yml',
+    }));
+    expect(
+      mergeMetrics(renamed, ownerJobs(current), {}, at(0), at(60))
+        .regressionMinutes,
+    ).toEqual({ count: 2, median: 9, p90: 9 });
+    expect(
+      mergeMetrics(
+        renamed.map((r) => ({ ...r, path: '.github/workflows/unrelated.yml' })),
+        ownerJobs(current),
+        {},
+        at(0),
+        at(60),
+      ).regressionMinutes.count,
+    ).toBe(0);
+    const transitional = [
+      integration(5, 'PR: Merge integration', 40),
+      ...current,
+    ];
+    expect(measure(transitional)).toEqual({ count: 2, median: 9, p90: 9 });
+    expect(measure([...current, ...historical])).toEqual({
+      count: 6,
+      median: 6,
+      p90: 9,
+    });
+    expect(
+      measure([
+        integration(6, 'PR: CI', 50, { event: 'workflow_dispatch' }),
+        integration(7, 'Diagnostic: Merge integration', 55, {
+          event: 'workflow_dispatch',
+        }),
+        ...historical,
+      ]),
+    ).toEqual({ count: 4, median: 6, p90: 8 });
+    // An old PR: CI run without the integration job must not mask legacy timing.
+    expect(
+      mergeMetrics(transitional, [], {}, at(0), at(60)).regressionMinutes,
+    ).toEqual({
+      count: 1,
+      median: 40,
+      p90: 40,
+    });
+    // A job from a different attempt cannot establish this attempt's ownership.
+    expect(
+      mergeMetrics([current[0]], ownerJobs([current[1]]), {}, at(0), at(60))
+        .regressionMinutes.count,
+    ).toBe(0);
+    for (const conclusion of ['cancelled', null]) {
+      const runs = [
+        integration(8, 'PR: Merge integration', 40),
+        integration(9, 'PR: CI', 10, { conclusion }),
+      ];
+      expect(measure(runs)).toEqual({ count: 0, median: null, p90: null });
+      expect(
+        mergeMetrics(runs, ownerJobs(runs), {}, at(0), at(60)).groupsCancelled,
+      ).toBe(conclusion === 'cancelled' ? 1 : 0);
+      expect(
+        buildSnapshot({ ...emptyData(), runs, jobs: ownerJobs(runs) }, options)
+          .incomplete,
+      ).toBe(conclusion == null);
+    }
   });
   it('reports qualification recovery and actual agent attempts separately from queue churn', () => {
     const runs = ['failure', 'timed_out', 'success'].map((conclusion, i) =>
@@ -568,6 +776,206 @@ describe('CI health collection bounds and command interface', () => {
     expect(Object.keys(data.timelines)).toEqual(['3102', '3103']);
     expect(calls.filter((p) => p.includes('/jobs'))).toHaveLength(1);
   });
+  describe('attributing a pull-request run whose pull_requests list is empty', () => {
+    const branch =
+      'dependabot/npm_and_yarn/runtime-and-ui-minor-patch-75d864bfe7';
+    const head = (label: string, sha = 'f'.repeat(40)) => ({
+      label: `kontourai:${label}`,
+      ref: label,
+      sha,
+      repo: { full_name: 'kontourai/station' },
+    });
+    // Shapes captured from the GitHub REST API: PR 3085 was closed with its
+    // head branch deleted, and 3553 is contained by two later stacked PRs.
+    const closedPull = {
+      number: 3085,
+      state: 'closed',
+      created_at: '2026-10-01T11:11:45Z',
+      closed_at: '2026-10-02T18:12:53Z',
+      merged_at: null,
+      head: head(branch, '4dad606189e37f6a123c3f0b6509c8886d3ff102'),
+    };
+    const pullRun = (id: number, sha: string, overrides = {}) => ({
+      ...run(id, {
+        name: 'Secret Scan',
+        event: 'pull_request',
+        head_sha: sha,
+        head_branch: branch,
+        created_at: '2026-10-01T21:40:50Z',
+        pull_requests: [],
+        head_repository: {
+          full_name: 'kontourai/station',
+          owner: { login: 'kontourai' },
+        },
+        ...overrides,
+      }),
+    });
+    async function collect(
+      runs: unknown[],
+      routes: { sha?: Record<string, unknown[]>; head?: unknown[] },
+    ) {
+      const calls: string[] = [];
+      const data = await collectHealth(
+        { ...options, until: '2026-10-04T00:00:00.000Z' },
+        async (endpoint: string) => {
+          calls.push(endpoint);
+          if (endpoint.includes('/actions/runs?'))
+            return { total_count: runs.length, workflow_runs: runs };
+          if (endpoint.includes('/jobs')) return { total_count: 0, jobs: [] };
+          const bySha = endpoint.match(/\/commits\/([^/]+)\/pulls/);
+          if (bySha) return routes.sha?.[bySha[1]] ?? [];
+          if (endpoint.includes('/pulls?state=all&head='))
+            return routes.head ?? [];
+          throw new Error(`Unexpected REST call ${endpoint}`);
+        },
+        async (_exe: string, args: string[]) =>
+          args[0] === 'remote'
+            ? 'git@github.com:kontourai/station.git'
+            : args[0] === 'rev-parse'
+              ? 'false'
+              : '',
+      );
+      return { data, calls };
+    }
+
+    it('resolves an unreachable head, and the head a force-push replaced, from the branch and PR lifetime', async () => {
+      const current = pullRun(1, '4dad606189e37f6a123c3f0b6509c8886d3ff102');
+      const replaced = pullRun(2, '10d49bea031f8a2489951d039b3c9f3f070076bf', {
+        created_at: '2026-10-01T21:40:48Z',
+      });
+      const { data, calls } = await collect([current, replaced], {
+        head: [closedPull],
+      });
+      expect(data.reasons).toEqual([]);
+      expect(data.runs.map((r: any) => r.pull_requests)).toEqual([
+        [{ number: 3085 }],
+        [{ number: 3085 }],
+      ]);
+      // One branch lookup serves both heads.
+      expect(calls.filter((c) => c.includes('/pulls?state=all&head='))).toEqual(
+        [
+          `repos/kontourai/station/pulls?state=all&head=${encodeURIComponent(`kontourai:${branch}`)}&per_page=100&page=1`,
+        ],
+      );
+    });
+    it('credits only the PR whose head is the branch, not stacked PRs that contain the commit', async () => {
+      const sha = '51bc37b501b4b89417de61230c976aa8de4a8fd0';
+      const pairing = 'feature/32af3a2a-pairing-permissions';
+      const { data } = await collect(
+        [
+          pullRun(1, sha, {
+            head_branch: pairing,
+            created_at: '2026-10-02T12:00:00Z',
+          }),
+        ],
+        {
+          sha: {
+            [sha]: [
+              {
+                number: 3553,
+                state: 'closed',
+                created_at: '2026-10-01T00:00:00Z',
+                closed_at: '2026-10-03T00:00:00Z',
+                head: head(pairing),
+              },
+              {
+                number: 3584,
+                state: 'open',
+                created_at: '2026-10-01T00:00:00Z',
+                closed_at: null,
+                head: head('feat/station-groups-3557'),
+              },
+              {
+                number: 3585,
+                state: 'open',
+                created_at: '2026-10-01T00:00:00Z',
+                closed_at: null,
+                head: head('feat/personal-tokens-3557'),
+              },
+            ],
+          },
+        },
+      );
+      expect(data.reasons).toEqual([]);
+      expect(data.runs[0].pull_requests).toEqual([{ number: 3553 }]);
+    });
+    it('reports the residual run when no PR had the branch before the run', async () => {
+      const beforeAnyPull = pullRun(7, 'a'.repeat(40), {
+        created_at: '2026-10-01T11:00:00Z',
+      });
+      const { data } = await collect([beforeAnyPull], { head: [closedPull] });
+      expect(data.runs[0].pull_requests).toEqual([]);
+      expect(data.reasons).toEqual([
+        `Cannot resolve PR push: run 7 (${'a'.repeat(12)} on kontourai/station:${branch}): no pull request lists this commit or had this head branch before the run`,
+      ]);
+      expect(buildSnapshot(data, options).incomplete).toBe(true);
+    });
+    it('credits a run created seconds after its PR closed (real #3085 timestamps)', async () => {
+      // CI run 37045922691 was created 3s after #3085 closed at 18:12:53Z.
+      const late = pullRun(9, '4dad606189e37f6a123c3f0b6509c8886d3ff102', {
+        name: 'CI',
+        event: 'pull_request_target',
+        created_at: '2026-10-02T18:12:56Z',
+      });
+      const viaBranch = await collect([late], { head: [closedPull] });
+      expect(viaBranch.data.reasons).toEqual([]);
+      expect(viaBranch.data.runs[0].pull_requests).toEqual([{ number: 3085 }]);
+      const viaSha = await collect([late], {
+        sha: { '4dad606189e37f6a123c3f0b6509c8886d3ff102': [closedPull] },
+      });
+      expect(viaSha.data.runs[0].pull_requests).toEqual([{ number: 3085 }]);
+    });
+    it('credits only the PR that owned the run when a branch name was reused', async () => {
+      const sha = 'c'.repeat(40);
+      const older = {
+        ...closedPull,
+        number: 100,
+        created_at: '2026-09-01T00:00:00Z',
+        closed_at: '2026-09-02T00:00:00Z',
+        head: head(branch, sha),
+      };
+      const newer = {
+        ...closedPull,
+        number: 200,
+        created_at: '2026-10-01T11:11:45Z',
+        closed_at: null,
+        state: 'open',
+        head: head(branch, sha),
+      };
+      const { data } = await collect([pullRun(10, sha)], {
+        sha: { [sha]: [older, newer] },
+      });
+      expect(data.runs[0].pull_requests).toEqual([{ number: 200 }]);
+    });
+    it('credits the latest-created PR when every candidate closed before the run', async () => {
+      const sha = 'd'.repeat(40);
+      const first = {
+        ...closedPull,
+        number: 300,
+        created_at: '2026-09-01T00:00:00Z',
+        closed_at: '2026-09-02T00:00:00Z',
+        head: head(branch, sha),
+      };
+      const second = {
+        ...first,
+        number: 301,
+        created_at: '2026-09-03T00:00:00Z',
+        closed_at: '2026-10-01T21:40:00Z',
+      };
+      // The run lands after both closed; listed oldest first so a "first
+      // candidate" pick would credit the wrong PR.
+      const { data } = await collect([pullRun(11, sha)], {
+        sha: { [sha]: [first, second] },
+      });
+      expect(data.runs[0].pull_requests).toEqual([{ number: 301 }]);
+    });
+    it('does not guess when the head repository is gone', async () => {
+      const orphan = pullRun(8, 'b'.repeat(40), { head_repository: null });
+      const { data, calls } = await collect([orphan], { head: [closedPull] });
+      expect(data.reasons).toHaveLength(1);
+      expect(calls.some((c) => c.includes('/pulls?state=all'))).toBe(false);
+    });
+  });
   it('marks rate limits and exhausted job pagination incomplete rather than complete zeroes', async () => {
     const rateLimited = await collectHealth(options, async () => {
       throw new Error('API rate limit exceeded (HTTP 403)');
@@ -637,6 +1045,23 @@ describe('CI health collection bounds and command interface', () => {
       '--record and --history require --issue=<n>',
     );
     expect(result.stdout).toBe('');
+  });
+  it('renders hosted occupancy separately and never substitutes legacy total occupancy', () => {
+    const snapshot = buildSnapshot(emptyData(), options);
+    snapshot.capacity.concurrency.shareAtLeast18 = 1;
+    snapshot.capacity.hostedConcurrency.shareAtLeast18 = 0.25;
+    expect(renderSnapshot(snapshot)).toContain(
+      '| Time with >=18 hosted jobs running | 25% |',
+    );
+    expect(renderHistory([snapshot])).toContain('| 25% |');
+    const { hostedConcurrency: _hosted, ...legacyCapacity } = snapshot.capacity;
+    const legacy = { ...snapshot, capacity: legacyCapacity };
+    expect(renderSnapshot(legacy)).toContain(
+      '| Time with >=18 hosted jobs running | unavailable (legacy snapshot) |',
+    );
+    expect(renderHistory([legacy])).toContain(
+      '| unavailable (legacy snapshot) |',
+    );
   });
   it('round-trips snapshot comments and prints key rates in chronological history', () => {
     const snapshot = buildSnapshot(emptyData(), options);

@@ -276,7 +276,7 @@ describe('portable Nightly publication workflow: the owner gate', () => {
     );
   });
 
-  it('is reachable from Main qualification only through nightly.yml', () => {
+  it('has no reusable Nightly caller that can bypass its independent entry gate', () => {
     const nightlyCallers = readdirSync(workflowsDir)
       .filter((file) => /\.ya?ml$/.test(file))
       .filter((file) =>
@@ -284,7 +284,7 @@ describe('portable Nightly publication workflow: the owner gate', () => {
           (job) => job?.uses === './.github/workflows/nightly.yml',
         ),
       );
-    expect(nightlyCallers).toEqual(['main-qualification.yml']);
+    expect(nightlyCallers).toEqual([]);
   });
 
   it('is a plain conjunction that nothing upstream can widen', () => {
@@ -399,6 +399,21 @@ describe('portable Nightly publication workflow: token, secret and effect scope'
     // The versioned release is never the repository's "latest".
     expect(steps[index('Upload the versioned release assets')].run).toContain(
       '--latest=false',
+    );
+    // This Nightly's installers ride on its immutable release, created with
+    // it, and are read back byte for byte before the rolling write.
+    expect(steps[index('Upload the versioned release assets')].run).toMatch(
+      /gh release create "\$RELEASE_TAG" [^\n]* install\.sh install\.ps1\n/,
+    );
+    const readback =
+      steps[
+        index(
+          'Re-download the versioned assets and compare them with the manifest',
+        )
+      ].run ?? '';
+    expect(readback).toContain('for script in install.sh install.ps1; do');
+    expect(readback).toContain(
+      'cmp "$script" "$RUNNER_TEMP/published-$script"',
     );
   });
 
@@ -582,21 +597,17 @@ describe('the dry run cannot turn Nightly red until publication is enabled', () 
 describe('Nightly caller', () => {
   const caller = nightly.jobs['portable-nightly'];
 
-  it('passes the native reservation as the version and waits for full regression', () => {
+  it('passes the native reservation as the version and waits for source usability', () => {
     expect(caller.uses).toBe(`./.github/workflows/${PUBLISH_WORKFLOW}`);
     expect(caller.with).toEqual({
       source_sha: expr('needs.test-gate.outputs.source_sha'),
       marketing_version: expr('needs.native-stage.outputs.marketing_version'),
       version_code: expr('needs.native-stage.outputs.bundle_version'),
     });
-    expect(caller.needs).toEqual([
-      'test-gate',
-      'full-regression',
-      'native-stage',
-    ]);
+    expect(caller.needs).toEqual(['test-gate', 'native-stage']);
     const parts = conjuncts(caller.if ?? '');
     for (const required of [
-      "(needs['full-regression'].result == 'success' || inputs.caller_qualification == 'success')",
+      "needs['test-gate'].result == 'success'",
       "github.ref == 'refs/heads/main'",
       "needs['native-stage'].outputs.build == 'true'",
     ])

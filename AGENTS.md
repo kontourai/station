@@ -8,9 +8,9 @@
 - Run `npm run dependencies:ci` to arm hooks. Before editing, use `npm run gate:for -- <paths...>`; it routes to focused evidence. Run selected tests with `npm run test:focused -- <file...>`, not ad-hoc `npx vitest`.
 - Managed installs use pinned pnpm; `npm run` is the script interface. Never run raw npm installs in this workspace.
 - Never `git push --no-verify`; no required CI check re-runs the pre-push gates. The transfer gate reads `STATION_TRANSFER_BASELINE_ROOT`; slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (see docs/guides/testing.md).
-- `npm run test:changed -- --base=origin/main --explain` selects a diagnostic lane; exit 3 is provisional/deferred, not completion. For ordinary pull requests, run focused evidence and `npm run ci:fast`; GitHub's merge queue verifies the synthesized latest-main candidate. Do not run `npm run full:regression` locally merely because `main` moved.
-- Pre-push and PR CI own the full typecheck; locally use `gate:for` evidence or one `typecheck:<lane>`, and never background a full `typecheck` or `ci:fast` to poll its sentinel. Every lane shares host-wide tsc slots ([testing guide](docs/guides/testing.md#host-typecheck-slots-and-incremental-compiles)).
-- The reusable hosted full-regression workflow owns canonical completion receipts for Nightly and tagged preview/stable promotions. `PR: CI` manual dispatch is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
+- `npm run test:changed -- --base=origin/main --explain` selects diagnostics; deferral is not completion. Ordinary PRs use focused evidence and normal hooks; hosted PR/queue checks own broad integration. Use local `npm run ci:fast` only for a specific failure or an explicit request. Do not run `npm run full:regression` locally merely because `main` moved.
+- Hosted `fast-checks` owns readiness and full typechecking. Locally use `gate:for` or one `typecheck:<lane>`; never background full `typecheck` or `ci:fast` to poll its sentinel. Lanes share [host-wide tsc slots](docs/guides/testing.md#host-typecheck-slots-and-incremental-compiles).
+- Hosted full-regression owns canonical receipts for scheduled main and tagged preview/stable promotions. Nightly has a separate exact-source usability gate. `PR: CI` manual dispatch is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
@@ -43,7 +43,7 @@ queue is part of it. What that means in practice:
     mergeQueue { entries(first:20) { nodes {
       position state pullRequest { number } } } } } }'
   ```
-- **The queue batches** (3 builds, 3 merges, `ALLGREEN`); a red entry is
+- **The queue batches** (1 build, up to 3 merges, `ALLGREEN`); a red entry is
   removed and those behind it rebuild.
 - **Automate with the app token, not your quota**
   ([setup](docs/guides/development.md#github-automation-token)); read PR and
@@ -88,7 +88,7 @@ Codex loads only this root automatically; read the routed scope explicitly. Clau
 
 | Touched path | Read |
 | --- | --- |
-| Documentation | [docs/guides/documentation.md](docs/guides/documentation.md) |
+| Documentation, decisions | [docs/guides/documentation.md](docs/guides/documentation.md) |
 | `src-server/**` | [src-server/AGENTS.md](src-server/AGENTS.md) |
 | `src-ui/**` | [src-ui/AGENTS.md](src-ui/AGENTS.md) |
 | `scripts/**`, `.github/**`, root configuration, package scripts | [scripts/AGENTS.md](scripts/AGENTS.md) |
@@ -101,5 +101,5 @@ Read [docs/glossary.md](docs/glossary.md), the affected canonical guide, and [do
 
 <!-- veritas:governance-block:start -->
 This repo uses Veritas for AI governance. Read `.veritas/GOVERNANCE.md` before making changes.
-After changes, run `veritas readiness` and address any FAIL lines before finishing.
+After changes, run `npx --no @kontourai/veritas readiness` and address any FAIL lines before finishing.
 <!-- veritas:governance-block:end -->

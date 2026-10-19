@@ -1,0 +1,7 @@
+{
+  "revision": "bb46d2e121f4d126cf79db2e6d27144f364df186",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Re-read the Transcript layout tracing section against tests/transcript-load-stability.spec.ts and the frame sampler. The spec still runs the throttled 390 x 844 gated journey, samples geometry every frame (now also the composer's top edge against the transcript's bottom) and attaches the timeline and tracer dump; the added test asserts no painted frame leaves space under the newest message. Run command unchanged. No prose change needed.","inputs":["docs/guides/development.md","tests/transcript-load-stability.spec.ts"]}
+  ]
+}

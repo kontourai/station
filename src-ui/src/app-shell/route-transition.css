@@ -29,7 +29,8 @@
    the sessions sidebar's pinned footer rendered under the dock with no
    scroller able to reach it). Scoped to fill frames so flow routes keep the
    automatic minimum that lets `.content-view` scroll them. */
-.page-frame--fill > .page-frame__body > .route-transition {
+.page-frame--fill > .page-frame__body > .route-transition,
+.route-transition--fill {
   min-height: 0;
 }
 

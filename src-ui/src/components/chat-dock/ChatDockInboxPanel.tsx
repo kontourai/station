@@ -3,6 +3,7 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { navigationStore } from '../../contexts/navigation-store';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
@@ -11,7 +12,7 @@ import {
   openWorkItem,
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
-import { MessageGlyph } from '../icons/Glyph';
+import { MessageGlyph, RefreshGlyph } from '../icons/Glyph';
 import { NewChatAction } from '../NewChatAction';
 import { Empty } from '../state';
 import {
@@ -20,6 +21,7 @@ import {
   type InboxGroupListProps,
   moveFocusBeforeRemovingInboxRow,
 } from './ChatDockInboxRows';
+import { InboxScopeFilter, useInboxScope } from './InboxScopeFilter';
 import {
   clearSnooze,
   snoozeKeyFor,
@@ -55,6 +57,16 @@ export interface ChatDockInboxPanelProps {
   onAcknowledgeConversation?: (item: HomeWorkItem) => void;
   onOpenHistory: () => void;
   onNewChat?: () => void;
+  /**
+   * The inbox's own freshness: whether its last read failed (the rows are the
+   * last known list, not the current one), whether a read is running, and the
+   * explicit resync. Omitted renders no refresh control.
+   */
+  sync?: {
+    failed: boolean;
+    refreshing: boolean;
+    onRefresh: () => void;
+  };
   /**
    * station#3309: mounted only to play its exit. The panel is still on screen,
    * but the user's decision to collapse it is already complete, so it is inert
@@ -104,6 +116,7 @@ function ChatDockInboxPanelImpl({
   onAcknowledgeConversation,
   onOpenHistory,
   onNewChat,
+  sync,
   exiting = false,
   now: suppliedNow,
   agents,
@@ -136,7 +149,8 @@ function ChatDockInboxPanelImpl({
   );
   // The live groups (held lifecycles, live snoozes): the same hook the
   // inbox toggle's Needs-you count reads, so the two cannot disagree.
-  const groups = useInboxGroups(items, now);
+  const scope = useInboxScope(items, now, workFacts);
+  const groups = useInboxGroups(scope.items, now, workFacts);
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
     setDeviceSetting('inboxSections', { ...sections, [id]: !sections[id] });
@@ -151,8 +165,18 @@ function ChatDockInboxPanelImpl({
       aria-label="Inbox chats"
       tabIndex={-1}
     >
+      <InboxScopeFilter scope={scope} />
       <div className="chat-dock-inbox__scroll">
-        {!hasAnyItems && <Empty variant="compact" label="Nothing here yet." />}
+        {!hasAnyItems && (
+          <Empty
+            variant="compact"
+            label={
+              scope.value === 'all'
+                ? 'Nothing here yet.'
+                : 'No work in this filter.'
+            }
+          />
+        )}
         {hasAnyItems && (
           <InboxGroupList
             groups={groups}
@@ -172,6 +196,12 @@ function ChatDockInboxPanelImpl({
               // something. Acknowledging first moved a row the user could
               // not open out of "Just finished" — a failed open quietly
               // buried its own evidence.
+              if (item.kind === 'task') {
+                navigationStore.navigate(
+                  `/tasks/${encodeURIComponent(item.id)}`,
+                );
+                return;
+              }
               void openWorkItem(item, {
                 onFocusChat,
                 onOpenConversation,
@@ -215,10 +245,27 @@ function ChatDockInboxPanelImpl({
         )}
       </div>
       <footer className="chat-dock-inbox__footer">
+        {sync?.failed && (
+          <p className="chat-dock-inbox__sync-status" role="status">
+            Couldn't refresh. Showing the last known list.
+          </p>
+        )}
         <button type="button" onClick={onOpenHistory}>
           <MessageGlyph />
           History
         </button>
+        {sync && (
+          <button
+            type="button"
+            className="chat-dock-inbox__refresh"
+            onClick={sync.onRefresh}
+            disabled={sync.refreshing}
+            aria-label={sync.refreshing ? 'Refreshing inbox' : 'Refresh inbox'}
+          >
+            <RefreshGlyph />
+            {sync.refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        )}
         {onNewChat && <NewChatAction onClick={onNewChat} />}
       </footer>
     </aside>

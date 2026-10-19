@@ -128,6 +128,7 @@ export async function rehydrateChatSession(
   );
   const latestPlanArtifact =
     deriveLatestPlanArtifactFromMessages(normalizedMessages as any) ??
+    activeChatsStore.getSnapshot()[sessionId]?.planArtifact ??
     chat.planArtifact ??
     null;
 

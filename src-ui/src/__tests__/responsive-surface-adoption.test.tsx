@@ -28,7 +28,6 @@ describe('responsive surface adoption', () => {
     render(
       <AgentAddModal
         type="skills"
-        availableTools={[]}
         availableSkills={[]}
         form={createEmptyAgentForm()}
         setForm={vi.fn()}

@@ -152,7 +152,9 @@ function decodeBase64Url(value: string): string {
   );
 }
 
-export function encodeDevicePairingPayload(offer: DevicePairingOffer): string {
+export function encodeDevicePairingPayload(
+  offer: DevicePairingOffer | ScannedPairingOffer,
+): string {
   const payload: ScannedPairingOffer = {
     ...(offer.kind === 'delegation' ? { kind: offer.kind } : {}),
     protocolVersion: offer.protocolVersion,
@@ -358,7 +360,7 @@ const PAIRING_REQUEST_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
   request_not_confirmed:
     'Nobody has approved this request yet. Approve it on the Station, then try again.',
   approval_requires_operator:
-    'This request has to be approved on the Station itself. Run “station environment access approve” there.',
+    'This request has to be approved on the Station itself: in the Station desktop app under Paired devices, or with its CLI’s “environment access approve”.',
   identity_credential_quota_reached:
     'This Station has already granted you as many devices as it allows. Revoke one under Paired Devices on the Station, then try again.',
   unattributed_credential_quota_reached:
@@ -400,6 +402,19 @@ export function requestDevicePairing(input: {
   });
 }
 
+/**
+ * A Station's operator CLI command, as its access request reported it, when
+ * it is one Station publishes: `station`, or the published package through
+ * `npx`. Anything else is dropped, so a Station cannot put arbitrary text in
+ * a command this device asks a person to run.
+ */
+export function knownOperatorCli(value: unknown): string | undefined {
+  return typeof value === 'string' &&
+    /^(?:station|npx @kontourai\/station-cli@(?:latest|nightly))$/.test(value)
+    ? value
+    : undefined;
+}
+
 export function requestCurrentStationAccess(input: {
   endpoint: string;
   deviceName: string;
@@ -407,6 +422,13 @@ export function requestCurrentStationAccess(input: {
   clientInstanceId?: string;
   /** Server-enforced intent: confirmation may create only an account-bound Device. */
   requireAccountBinding?: true;
+  /**
+   * The grant to ask for, one of `REQUESTABLE_DEVICE_ACCESS_SCOPES`. Omitted,
+   * the Station issues its default grant, which carries `access:manage`; the
+   * device-pairing panel asks for `standard` so a phone or browser never
+   * inherits it. A Station that predates the field ignores it.
+   */
+  scope?: string;
   /**
    * Explicit `Origin` header value. Browser callers omit this — the browser
    * sets `Origin` itself and forbids scripts from overriding it. Non-browser
@@ -426,6 +448,7 @@ export function requestCurrentStationAccess(input: {
         pairingClientInstanceIdForOrigin(input.endpoint),
       deviceName: input.deviceName,
       requireAccountBinding: input.requireAccountBinding,
+      scope: input.scope,
     },
     'same-origin',
     input.origin ? { Origin: input.origin } : undefined,
@@ -519,6 +542,8 @@ export interface PendingPairingExchange {
   targetConnectionId?: string;
   /** Snapshot of that row's user-facing label, retained across active-host changes. */
   targetConnectionLabel?: string;
+  /** The host's operator CLI, from the access request, for the approve command. */
+  operatorCli?: string;
   /** Project setup saves access without switching its controlling Station. */
   activateConnection?: boolean;
   /** False only when setup began without a selected Station. */
@@ -658,7 +683,9 @@ export function loadPendingExchange(
       (parsed.activateConnection !== undefined &&
         typeof parsed.activateConnection !== 'boolean') ||
       (parsed.targetConnectionLabel !== undefined &&
-        typeof parsed.targetConnectionLabel !== 'string')
+        typeof parsed.targetConnectionLabel !== 'string') ||
+      (parsed.operatorCli !== undefined &&
+        knownOperatorCli(parsed.operatorCli) === undefined)
     ) {
       selectedStorage?.removeItem?.(key);
       return null;

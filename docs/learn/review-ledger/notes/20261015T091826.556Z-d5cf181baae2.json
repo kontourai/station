@@ -1,0 +1,7 @@
+{
+  "revision": "a75e1374339db7750b57e19b13ff0fa4031dddb2",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"PR #3676 Fix round 8: Re-read the integration guide after its SDK-reference dependency changed. Public-contract routing still points to the canonical SDK reference, which now documents optional open cancellation/deadline options. Integration ownership, hosted targets, and dated sizing assumptions are unaffected by this local read-lifetime fix; no prose change or cloud qualification is claimed.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

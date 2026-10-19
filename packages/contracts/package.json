@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-contracts",
-  "version": "0.8.0",
+  "version": "0.10.0",
   "sideEffects": false,
   "description": "Runtime, provider, and orchestration contracts for Station",
   "type": "module",
@@ -25,7 +25,10 @@
     "LICENSE"
   ],
   "exports": {
+    "./pull-request-review-guide": "./src/pull-request-review-guide.ts",
+    "./tool-library": "./src/tool-library.ts",
     "./product-telemetry": "./src/product-telemetry.ts",
+    "./telemetry-delivery": "./src/telemetry-delivery.ts",
     "./relay-management": "./src/relay-management.ts",
     "./usage-stats": "./src/usage-stats.ts",
     "./insights": "./src/insights.ts",
@@ -48,6 +51,8 @@
     "./agent-plugin": "./src/agent-plugin.ts",
     "./skill-experience": "./src/skill-experience.ts",
     "./plugin-visibility": "./src/plugin-visibility.ts",
+    "./station-groups": "./src/station-groups.ts",
+    "./personal-tokens": "./src/personal-tokens.ts",
     "./agent-identity": "./src/agent-identity.ts",
     "./agent-validation": "./src/agent-validation.ts",
     "./answer-share": "./src/answer-share.ts",
@@ -60,6 +65,7 @@
     "./automation": "./src/automation.ts",
     "./deployment-authentication": "./src/deployment-authentication.ts",
     "./board": "./src/board.ts",
+    "./personal-board": "./src/personal-board.ts",
     "./catalog": "./src/catalog.ts",
     "./child-work": "./src/child-work.ts",
     "./channel-assurance": "./src/channel-assurance.ts",
@@ -85,6 +91,7 @@
     "./enriched-agent": "./src/enriched-agent.ts",
     "./environment-security": "./src/environment-security.ts",
     "./external-monitor": "./src/external-monitor.ts",
+    "./execution-confinement": "./src/execution-confinement.ts",
     "./execution-preparation": "./src/execution-preparation.ts",
     "./execution-target": "./src/execution-target.ts",
     "./fleet-contribution": "./src/fleet-contribution.ts",
@@ -158,6 +165,7 @@
     "./workspace-pane-host": "./src/workspace-pane-host.ts",
     "./workspace-pane-host-contract": "./src/workspace-pane-host-contract.ts",
     "./workspace-pane-host-contribution": "./src/workspace-pane-host-contribution.ts",
+    "./provider-failure": "./src/provider-failure.ts",
     "./provider": "./src/provider.ts",
     "./orchestration": "./src/orchestration.ts",
     "./scheduler": "./src/scheduler.ts",
@@ -167,6 +175,7 @@
     "./tool": "./src/tool.ts",
     "./user-profile": "./src/user-profile.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
+    "./usage-export": "./src/usage-export.ts",
     "./thread-usage-tree": "./src/thread-usage-tree.ts",
     "./unified-search": "./src/unified-search.ts",
     "./turn-provenance": "./src/turn-provenance.ts",
@@ -211,13 +220,15 @@
     "./harness-questions": "./src/harness-questions.ts",
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
-    "./mcp-prompts": "./src/mcp-prompts.ts"
+    "./mcp-prompts": "./src/mcp-prompts.ts",
+    "./account-preferences": "./src/account-preferences.ts",
+    "./html-reply": "./src/html-reply.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",
-    "@kontourai/flow": "5.1.3",
+    "@kontourai/flow": "5.2.1",
     "@kontourai/flow-agents": "6.5.1",
-    "@kontourai/surface": "^3.2.0",
+    "@kontourai/surface": "^6.1.0",
     "@kontourai/thread": "0.5.0"
   },
   "publishConfig": {

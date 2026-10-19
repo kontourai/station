@@ -1,0 +1,7 @@
+{
+  "revision": "67e673fab1f7e5bff8c7a48a7f690e5ecc5c9251",
+
+  "notes": [
+    {"path":"docs/user/pull-request-guides.md","note":"Final guide-only delta: fixed the new Guide grid to a bounded single column; browser measured a 415px track/navigation in a 415px container after a long excerpt previously expanded it to 5239px. Replaced the new guide route outward raw error message with bounded generic refusal text; no existing route, auth or other documented behavior changed. User-guide controls and limits remain accurate; screenshot uses an explicitly labeled seeded guide with a live GitHub review snapshot, not live model generation.","inputs":["docs/user/pull-request-guides.md","src-server/routes/pull-requests/pull-request-routes.ts"]}
+  ]
+}

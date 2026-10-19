@@ -70,8 +70,9 @@ update/link operations for an intentional change, not another create request.
 `sqlite-vec` provider at `<STATION_HOME>/knowledge-index/index.db`. It stores
 vectors, chunk text, metadata, and references to source records. It is a copy
 for retrieval, not the authority for record content. Search resolves each hit
-through the owning adapter before returning it, but its excerpt still comes
-from the index and can lag an edited record.
+through the owning adapter before returning it. It returns the indexed excerpt
+only while the re-read record still contains it; an excerpt from an edited
+record is withheld until the next rebuild.
 
 Station also retains the older per-Project document/namespace API through
 `KnowledgeService`. That service uses configured embedding and vector
@@ -93,9 +94,9 @@ flowchart LR
   Roots["Registered file and conversation roots"] -->|"explicit rebuild reads records"| Build["Embed and replace a root partition"]
   Build --> Index["Derived sqlite-vec index"]
   Search["Search request and query embedding"] --> Index
-  Index -->|"record IDs and cached excerpts"| Resolve["Check access and re-read source records"]
+  Index -->|"current-generation record IDs and excerpts"| Resolve["Check access and re-read source records"]
   Roots --> Resolve
-  Resolve --> Result["Current title/category; cached excerpt"]
+  Resolve --> Result["Current title/category; excerpt still in the record"]
   Legacy["Older document / namespace API"] --> Service["KnowledgeService"]
   Service --> Providers["Configured embedding and vector providers"]
   OldFiles["Older document and vector files"] -->|"explicit migration"| Roots
@@ -162,17 +163,35 @@ identical ranking after source edits or a model change.
 
 ### Changing the embedding model
 
-The index records vector width, not the embedding provider/model identity.
-A write with a different width drops and recreates the shared vector table,
-emptying every root's partition and clearing their rebuild timestamps. A
-search with the wrong width fails rather than rebuilding automatically.
-Changing to another model with the same width is not detected.
+Every indexed chunk records the embedding generation that produced it: the
+provider kind, model and vector width. Credentials and endpoints are not part
+of it, so the same model served from another endpoint counts as the same
+generation. Search embeds the query with the current connection and reads only
+chunks of that generation. A root indexed under another generation is left out
+of the results and named in the response's `index.staleRoots`, with reason
+`embedding-changed`. `./station knowledge search` prints a warning on stderr
+that names the root and the reindex command.
 
-After changing an embedding provider or model, run
-`./station knowledge reindex` without `--root` to rebuild all roots. A rebuild
-restricted to one root is isolated only while the vector width stays the same.
+A rebuild is per root. After a model change, rebuilding one root makes that
+root searchable again while the others stay reported until you rebuild them, so
+two embedding spaces are never ranked together. Run `./station knowledge
+reindex` without `--root` to rebuild every root at once.
+
+A write with a different vector width still drops and recreates the shared
+vector table, emptying every root's partition and clearing their rebuild
+timestamps; vector width is fixed when the table is created. A search with the
+wrong width fails rather than rebuilding automatically.
+
+An index written by a Station release from before generations were recorded
+has no generation for any chunk. Search reports each of its roots as
+`unknown-generation` and returns nothing from them. The first rebuild replaces
+the old table, so rebuild every root after upgrading. A third-party embedder
+that does not declare `embeddingIdentity()` is identified by its provider id
+and width alone, so its model changes are not detected; every built-in Station
+embedder declares its model.
 [The index implementation](../../src-server/knowledge-index/sqlite-vec-index-provider.ts)
-owns these rules.
+and [the identity rule](../../src-server/knowledge-index/embedding-identity.ts)
+own these rules.
 
 ## `./station knowledge migrate` — bring in pre-store knowledge
 
@@ -204,11 +223,10 @@ Scope it to a single project with `--project`:
 ./station knowledge migrate --project=acme
 ```
 
-Migration reuses existing vectors when their dimensions match the current
-embedder and the source chunks are available. This is a width check, not proof
-that the same model produced them. Missing or incompatible vectors trigger a
-root rebuild. Run a full reindex after changing the embedding model, including
-a change to one with the same width.
+Migration never reuses the pre-index vectors. `vectors.json` does not record
+which model produced them, and a matching width is not proof. Each migrated
+root is rebuilt from its records with the current embedder, so a migration
+costs one embedding pass over the migrated documents.
 
 ### The non-destructive guarantee
 
@@ -262,10 +280,22 @@ Scope it to one root with `--root`, same flag as `reindex`:
 Each result names the matched record's root, title, category, score, and a text excerpt — the same
 `POST /api/knowledge/index/search` route the Ask tab (below) and the `search_knowledge` station-control
 MCP tool both call. The route re-reads each record through its adapter and
-returns the current title/category with the cached excerpt and score. Missing
-or inaccessible records are omitted. There is no generic body-version comparison
-or active-status check in this route: open the source record for its current
-body and lifecycle, and reindex after edits when you need fresh excerpts.
+returns the current title/category with the indexed excerpt and score.
+
+- A missing or inaccessible record is omitted.
+- An excerpt is returned only while the re-read record's body still contains it
+  as a chunk. A title or category edit keeps the hit; a body edit that removes
+  the indexed text withholds it. Withheld records are counted in
+  `index.staleRecords`, and the CLI warns about them. Reindex to search them again.
+- A retired record is still returned while its body is unchanged; the route
+  does not check lifecycle status. Open the source record for its lifecycle.
+- Hits the caller may not read, and withheld hits, do not shrink the answer.
+  The route reads further down the ranking, up to 1,000 hits, until it has
+  `topK` results. If it stops at that bound first, `index.scanLimitReached` is
+  `true`.
+
+The `search_knowledge` tool and the Ask tab return only the results, not this
+report.
 
 ## `root:conversations`: past conversations as a knowledge root
 
@@ -349,6 +379,9 @@ Project Settings → Tools adds configured MCP servers to Agents working in that
 Project. The default **Use Knowledge** setting adds `station-knowledge` when a
 registered Project store exists; disabling it removes the Project's addition.
 An Agent can still carry Knowledge independently in its own configuration.
+All delivery, including automatic Knowledge additions, is subject to the
+Project's [Tool permissions](agents.md#shared-projects) and operator sharing.
+Defaults cannot broaden the Owner's selected source ceiling.
 
 The [Project Knowledge panel](../../src-ui/src/views/project-page/ProjectKnowledgeStores.tsx)
 detects registered stores and offers **Create store** when none exists. Expand a
@@ -615,6 +648,20 @@ every future Kit version.
 | Default file | `records/<id>.md`, plus `graph-index.json` and `alias-index.json` |
 | Obsidian | Person records under `people/`; concept/snapshot records under category paths; raw/compiled records under the category's sources directory; superseded records under `archive/`; graph, path, and alias indexes |
 
+The default file adapter rejects unsafe IDs on create, with `MISSING_EVIDENCE`
+before writing records or indexes. Create IDs must be at most 200 ASCII
+characters, start with a letter or digit, contain only letters, digits, dots,
+underscores or hyphens, and contain no `..`. The `.md` filename is therefore at
+most 203 bytes. Omitted IDs receive a UUID.
+Category-scoped slug aliases can still contain `/`; they are lookup handles,
+not record filenames.
+
+Other adapter operations do not apply this create-ID validation. The transaction
+owner prevents paths from escaping the store root. Legacy path-shaped records
+inside that root remain readable through `get` when their persisted identity
+matches the requested ID, but records outside `records/` remain absent from
+listings. This change does not migrate those files.
+
 Obsidian record bodies can contain arbitrary Markdown. A structural delimiter
 separates the body from generated Sources/People/Related sections. Preserve
 these rules when changing the adapter:
@@ -641,8 +688,9 @@ label injection. These reasons replace the former long source-header history;
 the parsing rules and regression references remain beside the code.
 
 Store mutation notifications cover operations through `KnowledgeStoreProvider`.
-They are not a filesystem watcher. Direct file edits and new conversations need
-an explicit index rebuild for fresh search excerpts.
+They are not a filesystem watcher. A direct file edit is still read by search:
+an excerpt the edit removed is withheld, and new text is not searchable until
+an explicit index rebuild. New conversations likewise need a rebuild.
 
 ## Code and evidence
 

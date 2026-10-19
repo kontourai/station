@@ -61,6 +61,10 @@ import {
   draggedConversationReference,
   endConversationReferenceDrag,
 } from './conversationReferenceDrag';
+import {
+  UnconfirmedDiscardConfirm,
+  useUnconfirmedDiscardDisclosure,
+} from './UnconfirmedDiscardConfirm';
 import './chat.css';
 import { SkeletonBlock, SkeletonList } from '../state';
 
@@ -163,11 +167,11 @@ interface ChatInputAreaProps {
   mentionAuthority?: string | null;
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  onEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   // Status
   disabled: boolean;
   /** A busy continuation may accept a draft while sends remain blocked. */
   allowDraftWhileDisabled?: boolean;
-  isSending: boolean;
   /**
    * A turn is outstanding — see `isTurnInFlight` (active-chats-state.ts) for
    * the derivation. Renamed from `hasAbortController` in the fix:
@@ -221,6 +225,7 @@ interface ChatInputAreaProps {
   modelRuntimeOptions?: Record<string, unknown>;
   // Approval mode (archive#727) — External-agent sessions only
   executionMode?: ExecutionMode;
+  approvalModeIsNewSession?: boolean;
   approvalModeAgentDefault?: unknown;
   /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
   approvalModeStationDefault?: unknown;
@@ -270,7 +275,12 @@ interface ChatInputAreaProps {
    * the notice's words are its description. A queued send is not a failure, so
    * this is not the send-failure line.
    */
-  queuedRetryNotice?: { text: string; onDiscard: () => void };
+  queuedRetryNotice?: {
+    text: string;
+    onDiscard: () => void;
+    /** Ask first with the shared unconfirmed-message discard. */
+    confirm?: boolean;
+  };
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
   onCancelAttachmentStage?: (id: string) => void | Promise<void>;
   onReplaceAttachmentFile?: (id: string, files: File[]) => void | Promise<void>;
@@ -313,11 +323,23 @@ interface ChatInputAreaProps {
   secondaryActions?: ComposerActionsMenuProps;
   /** The visible, context-preserving Agent handoff entry point. */
   agentLabel?: string;
+  /**
+   * How the Agent is reached ("via model-proxy (home-server)"), when it is
+   * not direct. Kept apart from the name so a narrow composer drops it first
+   * (#3050); the accessible name always carries it.
+   */
+  agentRoute?: string;
   onOpenAgentHandoff?: () => void;
   agentHandoffTriggerRef?: React.RefObject<HTMLButtonElement | null>;
   agentHandoffDisabled?: boolean;
   agentHandoffDisabledReason?: string;
   workspaceRefused?: boolean;
+  /**
+   * The conversation's open read is still in flight: the composer is disabled
+   * and its placeholder names the wait. It occupies no new space, so the
+   * transcript above keeps its height.
+   */
+  loadingConversation?: boolean;
   onStartNewChat?: (
     initialMessage?: string,
     attachments?: FileAttachment[],
@@ -334,17 +356,33 @@ interface ChatInputAreaProps {
  * draft nobody has typed, at the transcript's expense.
  */
 function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
-  textarea.style.height = 'auto';
-  const rows = textarea.rows;
-  textarea.rows = 1;
-  const contentHeight = textarea.scrollHeight;
-  textarea.rows = rows;
-  const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
-  const height = Math.min(textarea.scrollHeight, maxHeight);
-  textarea.style.height = `${height}px`;
-  textarea.style.overflowY =
-    textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  // Measure out of flow: collapsing the live draft lets the browser clamp
+  // the pinned transcript while the composer is temporarily shorter (#3661).
+  const mirror = textarea.cloneNode(false) as HTMLTextAreaElement;
+  mirror.removeAttribute('id');
+  mirror.removeAttribute('name');
+  mirror.setAttribute('aria-hidden', 'true');
+  mirror.tabIndex = -1;
+  mirror.value = textarea.value;
   const style = getComputedStyle(textarea);
+  Object.assign(mirror.style, {
+    position: 'fixed',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    width: style.width,
+    height: 'auto',
+    minHeight: '0',
+    maxHeight: 'none',
+  });
+  textarea.parentElement?.appendChild(mirror);
+  const draftHeight = mirror.scrollHeight;
+  mirror.rows = 1;
+  const contentHeight = mirror.scrollHeight;
+  mirror.remove();
+  const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
+  const height = Math.min(draftHeight, maxHeight);
+  textarea.style.height = `${height}px`;
+  textarea.style.overflowY = draftHeight > maxHeight ? 'auto' : 'hidden';
   const fontSize = Number.parseFloat(style.fontSize) || 16;
   const line = Number.parseFloat(style.lineHeight) || fontSize * 1.2;
   const chrome =
@@ -372,9 +410,9 @@ export function ChatInputArea({
   quoteContext,
   attachments,
   textareaRef,
+  onEnabledChange,
   disabled,
   allowDraftWhileDisabled = false,
-  isSending,
   turnInFlight,
   busySteeringKind = 'native',
   busyFollowUp = 'queue',
@@ -403,6 +441,7 @@ export function ChatInputArea({
   agentConnectionId,
   modelRuntimeOptions,
   executionMode,
+  approvalModeIsNewSession,
   approvalModeAgentDefault,
   approvalModeStationDefault,
   toolPolicyDelivery,
@@ -423,9 +462,9 @@ export function ChatInputArea({
   queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
-  removalUnblocksSend = false,
+  removalUnblocksSend: removalUnblocksSendProp = false,
   attachmentStages = [],
-  sendBlockedReason,
+  sendBlockedReason: sendBlockedReasonProp,
   onRetryAttachmentStage,
   onCancelAttachmentStage,
   onReplaceAttachmentFile,
@@ -453,18 +492,37 @@ export function ChatInputArea({
   onVoiceStop,
   secondaryActions,
   agentLabel,
+  agentRoute,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
   agentHandoffDisabled = false,
   agentHandoffDisabledReason,
   workspaceRefused = false,
+  loadingConversation = false,
   onStartNewChat,
 }: ChatInputAreaProps) {
+  const textareaDisabled = disabled && !allowDraftWhileDisabled;
+  useEffect(() => {
+    onEnabledChange?.(textareaDisabled ? null : textareaRef.current);
+    return () => onEnabledChange?.(null);
+  }, [textareaDisabled, textareaRef, onEnabledChange]);
   const isMobile = useIsMobile();
   const hasSendableDraft = Boolean(
     input.trim() || hasQuotedContext || attachments.length,
   );
   const hideMobileSubmit = isMobile && !hasSendableDraft;
+  // Steering takes text only (`steerTurn` carries an input string) and the
+  // mid-turn follow-up queue holds text only, so a draft with files cannot
+  // join a running turn. The paperclip stays usable — the next message can
+  // be prepared now — and this says why it waits, with the way out.
+  const busyAttachmentReason =
+    turnInFlight && (attachments.length > 0 || attachmentStages.length > 0)
+      ? 'Files can’t be added to a running turn: Steer and Queue carry text only. Send when this turn ends, or remove them.'
+      : undefined;
+  const sendBlockedReason = sendBlockedReasonProp ?? busyAttachmentReason;
+  const removalUnblocksSend =
+    removalUnblocksSendProp ||
+    (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
   const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
   useEffect(() => {
@@ -597,7 +655,7 @@ export function ChatInputArea({
   ]
     .filter(Boolean)
     .join(' ');
-  const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
+  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
   // A turn is in flight. Steer is the default on engines that can take
   // mid-turn input; otherwise Enter queues until this turn finishes.
   const mentionLocation =
@@ -606,19 +664,21 @@ export function ChatInputArea({
       : null;
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
-    : allowDraftWhileDisabled
-      ? turnInFlight
-        ? 'Draft a follow-up while this turn finishes…'
-        : 'Waiting on this chat — check again above to send…'
-      : turnInFlight
-        ? sendMode === 'steer' && busyFollowUp === 'steer'
-          ? busySteeringKind === 'native'
-            ? 'Steer this turn…'
-            : 'Send at a safe boundary…'
-          : 'Queue a follow-up…'
-        : mentionLocation && mentionRequestScope
-          ? 'Type a message — @ files, / for commands…'
-          : 'Type a message — / for commands…';
+    : loadingConversation
+      ? 'Loading chat…'
+      : allowDraftWhileDisabled
+        ? turnInFlight
+          ? 'Draft a follow-up while this turn finishes…'
+          : 'Waiting on this chat — check again above to send…'
+        : turnInFlight
+          ? sendMode === 'steer' && busyFollowUp === 'steer'
+            ? busySteeringKind === 'native'
+              ? 'Steer this turn…'
+              : 'Send at a safe boundary…'
+            : 'Queue a follow-up…'
+          : mentionLocation && mentionRequestScope
+            ? 'Type a message — @ files, / for commands…'
+            : 'Type a message — / for commands…';
   const composerTokens = parseComposerTokens(input);
   const displayInput = composerDisplayValue(input, composerTokens);
 
@@ -632,14 +692,31 @@ export function ChatInputArea({
       ? composerMentionWireLength(input, composerTokens)
       : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
+  // A blocked Send is disabled; it must not keep the active accent that reads
+  // as "ready". The send-mode segment takes the same accent when Send is ready
+  // so the pair reads as one split button.
+  const sendReady =
+    !isOverLimit &&
+    !sendBlockedReason &&
+    (workspaceRefused || hasSendableDraft);
   const mentionAutocompleteAvailable = Boolean(
     mentionLocation && mentionRequestScope,
   );
+  const syncMentionQuery = (value: string, cursor: number) => {
+    const trigger = mentionAutocompleteAvailable
+      ? mentionQueryAt(value, cursor)
+      : null;
+    setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
+  };
   const mentionAutocompleteOpen = Boolean(
     mentionQuery && mentionAutocompleteAvailable,
   );
 
   const queuedRetryText = queuedRetryNotice?.text;
+  // The queued notice's Discard opens the shared confirmation first; it
+  // closes again whenever the notice goes.
+  const queuedDiscard = useUnconfirmedDiscardDisclosure();
+  if (!queuedRetryText && queuedDiscard.open) queuedDiscard.close();
   const queuedRetryDescriptionId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
@@ -671,17 +748,24 @@ export function ChatInputArea({
         root.style.minHeight,
         root.style.flexShrink,
         root.style.maxHeight,
-        textarea.style.height,
       ] as const;
+      // The draft's floor is applied by arithmetic, not by shrinking the
+      // textarea to it: a layout with the composer even one line shorter
+      // hands that line to the transcript above, and the browser clamps a
+      // transcript pinned to its newest message to the taller box. Restoring
+      // the textarea does not restore the scroll position, so the frame
+      // painted with a one-line gap under the newest message.
       const measure = () => {
         root.style.minHeight = '';
         root.style.flexShrink = '0';
         root.style.maxHeight = 'none';
-        textarea.style.height = `${floor}px`;
-        const height = Math.ceil(root.getBoundingClientRect().height);
+        const height = Math.ceil(
+          root.getBoundingClientRect().height -
+            textarea.getBoundingClientRect().height +
+            floor,
+        );
         root.style.flexShrink = saved[1];
         root.style.maxHeight = saved[2];
-        textarea.style.height = saved[3];
         return height;
       };
       if (!body?.classList.contains('chat-dock__body')) {
@@ -709,7 +793,14 @@ export function ChatInputArea({
       for (const child of body.children) {
         if (child === root || !(child instanceof HTMLElement)) continue;
         const style = getComputedStyle(child);
-        if (style.display === 'none') continue;
+        // Out of flow (the dock's visually hidden status region, an overlay):
+        // it takes no room from the composer.
+        if (
+          style.display === 'none' ||
+          style.position === 'absolute' ||
+          style.position === 'fixed'
+        )
+          continue;
         const edge = (name: string) =>
           Number.parseFloat(style.getPropertyValue(name)) || 0;
         const margins = edge('margin-top') + edge('margin-bottom');
@@ -928,6 +1019,12 @@ export function ChatInputArea({
                 </span>
                 <span className="chat-input__agent-name">
                   {agentLabel ?? 'Current Agent'}
+                  {agentRoute && (
+                    <span className="chat-input__agent-route">
+                      {' · '}
+                      {agentRoute}
+                    </span>
+                  )}
                 </span>
               </span>
               <ArrowDownGlyph className="choice-caret" />
@@ -991,6 +1088,7 @@ export function ChatInputArea({
                 toolPolicyDelivery={toolPolicyDelivery}
                 sessionOverride={approvalModeOverride?.mode}
                 sessionOverrideState={approvalModeOverride?.state}
+                isNewSession={approvalModeIsNewSession}
                 agentDefault={approvalModeAgentDefault}
                 stationDefault={approvalModeStationDefault}
                 lastAppliedApprovalMode={lastAppliedApprovalMode}
@@ -1008,6 +1106,7 @@ export function ChatInputArea({
         <fieldset
           className="chat-input__textarea-wrapper"
           aria-label="Message composer"
+          tabIndex={-1}
         >
           {(attachments.length > 0 || attachmentStages.length > 0) && (
             <React.Suspense
@@ -1082,50 +1181,43 @@ export function ChatInputArea({
             </React.Suspense>
           )}
           {mentionQuery && mentionLocation && mentionRequestScope && (
-            <div>
-              <React.Suspense
-                fallback={
-                  <div className="file-mention-picker__status">
-                    Finding files…
-                  </div>
-                }
-              >
-                <FileMentionAutocomplete
-                  location={mentionLocation}
-                  requestScope={mentionRequestScope}
-                  query={mentionQuery.query}
-                  listboxId={mentionListboxId}
-                  keyboardController={mentionKeyboardController}
-                  onActiveDescendantChange={setMentionActiveDescendant}
-                  onSelect={(entry) => {
-                    const generation = mentionGeneration.current;
-                    const next = insertComposerMention(
-                      input,
-                      mentionQuery.start,
-                      mentionQuery.end,
-                      {
-                        label: entry.name,
-                        path: entry.path,
-                        workspace: mentionLocation.workingDir,
-                        authority: mentionAuthority ?? '',
-                        type: entry.type,
-                      },
-                    );
-                    onInputChange(next);
-                    updateFromInput(next);
-                    setMentionQuery(null);
-                    requestAnimationFrame(() => {
-                      if (mentionGeneration.current !== generation) return;
-                      const textarea = textareaRef.current;
-                      if (!textarea) return;
-                      textarea.focus();
-                      const cursor = mentionQuery.start + entry.name.length + 2;
-                      textarea.setSelectionRange(cursor, cursor);
-                    });
-                  }}
-                />
-              </React.Suspense>
-            </div>
+            <React.Suspense fallback={null}>
+              <FileMentionAutocomplete
+                location={mentionLocation}
+                requestScope={mentionRequestScope}
+                query={mentionQuery.query}
+                listboxId={mentionListboxId}
+                keyboardController={mentionKeyboardController}
+                onActiveDescendantChange={setMentionActiveDescendant}
+                anchorRef={textareaRef}
+                onSelect={(entry) => {
+                  const generation = mentionGeneration.current;
+                  const next = insertComposerMention(
+                    input,
+                    mentionQuery.start,
+                    mentionQuery.end,
+                    {
+                      label: entry.name,
+                      path: entry.path,
+                      workspace: mentionLocation.workingDir,
+                      authority: mentionAuthority ?? '',
+                      type: entry.type,
+                    },
+                  );
+                  onInputChange(next);
+                  updateFromInput(next);
+                  setMentionQuery(null);
+                  requestAnimationFrame(() => {
+                    if (mentionGeneration.current !== generation) return;
+                    const textarea = textareaRef.current;
+                    if (!textarea) return;
+                    textarea.focus();
+                    const cursor = mentionQuery.start + entry.name.length + 2;
+                    textarea.setSelectionRange(cursor, cursor);
+                  });
+                }}
+              />
+            </React.Suspense>
           )}
           {modelQuery !== null && input.startsWith('/model ') && (
             <React.Suspense fallback={null}>
@@ -1168,26 +1260,43 @@ export function ChatInputArea({
             }
             placeholder={placeholder}
             value={displayInput}
-            disabled={disabled && !allowDraftWhileDisabled}
+            disabled={textareaDisabled}
             tabIndex={0}
-            onFocus={() => {
+            onFocus={(e) => {
               setShortcutContext('composerFocused', true);
               updateFromInput(input);
+              // Blur closes the file picker; refocusing inside an `@` query brings it
+              // back, as it does for the other pickers. Read the caret a frame later: a
+              // click focuses on mousedown, before the caret moves to the click point.
+              const textarea = e.currentTarget;
+              const focusedValue = textarea.value;
+              requestAnimationFrame(() => {
+                if (
+                  document.activeElement !== textarea ||
+                  textarea.value !== focusedValue
+                )
+                  return;
+                syncMentionQuery(
+                  input,
+                  textarea.selectionStart ?? focusedValue.length,
+                );
+              });
             }}
             onBlur={() => {
               setShortcutContext('composerFocused', false);
               closeAll();
+              // The file picker is portaled out of the composer, so it no
+              // longer hides with it; close it like the other pickers.
+              setMentionQuery(null);
             }}
             onChange={(e) => {
               const next = reconcileComposerDisplay(input, e.target.value);
               onInputChange(next);
               updateFromInput(next);
-              const cursor = e.target.selectionStart ?? e.target.value.length;
-              const trigger =
-                mentionLocation && mentionRequestScope
-                  ? mentionQueryAt(next, cursor)
-                  : null;
-              setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
+              syncMentionQuery(
+                next,
+                e.target.selectionStart ?? e.target.value.length,
+              );
             }}
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);
@@ -1421,16 +1530,17 @@ export function ChatInputArea({
               onFilesSelected={selectAttachmentFiles}
               onRemove={onRemoveAttachment}
               onClearAll={onClearAttachments}
+              // A running turn does not disable the paperclip: files join the
+              // draft for the next message (`busyAttachmentReason` says why
+              // they cannot steer or queue). Only a composer that cannot
+              // take input at all, or a model that takes nothing, refuses.
               disabled={
                 disabled ||
-                isSending ||
                 (!modelSupportsAttachments && !fileAttachmentsSupported)
               }
               supportsImages={modelSupportsAttachments}
               supportsFiles={fileAttachmentsSupported}
-              unavailableReason={
-                disabled || isSending ? undefined : attachUnavailableReason
-              }
+              unavailableReason={disabled ? undefined : attachUnavailableReason}
               onUnavailable={onAttachUnavailable}
             />
           </React.Suspense>
@@ -1439,7 +1549,9 @@ export function ChatInputArea({
               state={voiceState}
               supported={voiceSupported ?? false}
               unsupportedReason={voiceUnsupportedReason}
-              disabled={disabled || isSending}
+              // Dictation only writes the draft, so a running turn is no
+              // reason to refuse it.
+              disabled={disabled && !allowDraftWhileDisabled}
               onStart={onVoiceStart}
               onStop={onVoiceStop}
             />
@@ -1481,21 +1593,38 @@ export function ChatInputArea({
           )}
           {queuedRetryNotice && (
             <span className="chat-input__queued-retry-actions">
-              <button
-                type="button"
-                aria-describedby={queuedRetryDescriptionId}
-                onClick={queuedRetryNotice.onDiscard}
-              >
-                Discard
-              </button>
+              {queuedRetryNotice.confirm ? (
+                <button
+                  type="button"
+                  aria-describedby={queuedRetryDescriptionId}
+                  {...queuedDiscard.triggerProps}
+                >
+                  Discard…
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-describedby={queuedRetryDescriptionId}
+                  onClick={queuedRetryNotice.onDiscard}
+                >
+                  Discard
+                </button>
+              )}
               <span id={queuedRetryDescriptionId} className="sr-only">
                 {queuedRetryNotice.text}
               </span>
             </span>
           )}
           <span className="chat-controls-row__spacer" />
-          <div className="chat-input__send-group">
-            {turnInFlight && (
+          {/* On a phone Send/Queue hide (keeping their width) until there is
+              something to send, so typing never moves Stop. Stop therefore
+              sits after them, at the row's edge: before them it floated
+              beside an empty reserved gap. Desktop keeps Stop first. */}
+          <div
+            className="chat-input__send-group"
+            data-stop-placement={isMobile ? 'trailing' : undefined}
+          >
+            {turnInFlight && !isMobile && (
               <ComposerStopButton
                 onCancel={onCancel}
                 stopPending={stopPending}
@@ -1562,16 +1691,7 @@ export function ChatInputArea({
                     : (sendBlockedReason ?? 'Send')
                 }
                 className={`send-button chat-input__send-btn ${
-                  !isOverLimit &&
-                  // A blocked Send is disabled; it must not keep the active
-                  // accent that reads as "ready".
-                  !sendBlockedReason &&
-                  (
-                    workspaceRefused ||
-                      input.trim() ||
-                      hasQuotedContext ||
-                      attachments.length > 0
-                  )
+                  sendReady
                     ? 'chat-input__send-btn--active'
                     : 'chat-input__send-btn--inactive'
                 }`}
@@ -1595,7 +1715,9 @@ export function ChatInputArea({
               {turnInFlight && onQueueFollowUp && (
                 <button
                   type="button"
-                  className="choice-trigger chat-input__send-mode"
+                  className={`chat-input__send-mode ${
+                    sendReady ? 'chat-input__send-mode--active' : ''
+                  }`}
                   aria-label={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
                   title={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
                   tabIndex={hideMobileSubmit ? -1 : 0}
@@ -1611,10 +1733,13 @@ export function ChatInputArea({
                   <ArrowDownGlyph />
                 </button>
               )}
-              {!(turnInFlight && onQueueFollowUp) && (
-                <span className="chat-input__mode-slot" aria-hidden="true" />
-              )}
             </div>
+            {turnInFlight && isMobile && (
+              <ComposerStopButton
+                onCancel={onCancel}
+                stopPending={stopPending}
+              />
+            )}
           </div>
           {sendModeOpen && (
             <ResponsiveDialogSurface
@@ -1652,6 +1777,30 @@ export function ChatInputArea({
             </ResponsiveDialogSurface>
           )}
         </div>
+        {/* The composer clips what overflows it in a short dock, which is
+            the only dock that shows this Discard…. Its question opens as the
+            composer's own popover (a sheet on a phone): above everything,
+            after the button in reading order, Escape or a tap outside keeps
+            the message. */}
+        {queuedRetryNotice?.confirm && queuedDiscard.open && (
+          <ResponsiveDialogSurface
+            layer="popover"
+            role="alertdialog"
+            ariaLabel="Discard this message?"
+            onClose={queuedDiscard.confirmProps.onKeep}
+            anchorRef={queuedDiscard.triggerProps.ref}
+            overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+            panelClassName="composer-popover-panel chat-input__queued-retry-confirm"
+          >
+            <UnconfirmedDiscardConfirm
+              {...queuedDiscard.confirmProps}
+              onConfirm={() => {
+                queuedDiscard.close();
+                queuedRetryNotice.onDiscard();
+              }}
+            />
+          </ResponsiveDialogSurface>
+        )}
         {sessionReferencesOpen && (
           <React.Suspense
             fallback={<SkeletonBlock label="Conversation reference picker" />}

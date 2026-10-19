@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import ts from 'typescript-api';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { renderInline } from '../build-github-pages.mjs';
 
 const read = (file: string) => readFileSync(file, 'utf8');
@@ -275,6 +276,27 @@ describe('documentation foundations', () => {
     expect(reference).toContain('runtime-resolver server port');
     expect(reference).not.toContain(
       'Loopback default target | `http://127.0.0.1:$' + '{STATION_PORT:-3141}`',
+    );
+  });
+});
+
+describe('documentation freshness sweep contract', () => {
+  it('runs on a schedule with read-only contents and issue writes on the sweep job alone', () => {
+    const workflow = parse(
+      readFileSync('.github/workflows/docs-freshness-sweep.yml', 'utf8'),
+    );
+    expect(Object.keys(workflow.on)).toEqual(['schedule', 'workflow_dispatch']);
+    expect(workflow.permissions).toEqual({ contents: 'read' });
+    expect(Object.keys(workflow.jobs)).toEqual(['sweep']);
+    expect(workflow.jobs.sweep.if).toBeUndefined();
+    expect(workflow.jobs.sweep.permissions).toEqual({
+      contents: 'read',
+      issues: 'write',
+    });
+    const text = JSON.stringify(workflow);
+    expect(text).not.toMatch(/secrets\./);
+    expect(workflow.jobs.sweep.steps[0].with['persist-credentials']).toBe(
+      false,
     );
   });
 });

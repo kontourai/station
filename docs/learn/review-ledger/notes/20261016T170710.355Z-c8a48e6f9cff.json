@@ -1,0 +1,13 @@
+{
+  "revision": "7d1826e6db5995af246fbefd695c464f2332f9fa",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed testing-guide framework/validation split against this scope: real repository documentation validation, focused behavior evidence, fixture discipline and failure semantics remain required; no scope-specific tests or authority rules changed.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed testing-guide framework/validation split against this scope: real repository documentation validation, focused behavior evidence, fixture discipline and failure semantics remain required; no scope-specific tests or authority rules changed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed testing-guide framework/validation split against this scope: real repository documentation validation, focused behavior evidence, fixture discipline and failure semantics remain required; no scope-specific tests or authority rules changed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed testing-guide framework/validation split against this scope: real repository documentation validation, focused behavior evidence, fixture discipline and failure semantics remain required; no scope-specific tests or authority rules changed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

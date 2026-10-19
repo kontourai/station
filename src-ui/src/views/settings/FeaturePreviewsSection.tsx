@@ -2,9 +2,9 @@ import {
   useFeaturePreviewsQuery,
   useUpdateFeaturePreviewMutation,
 } from '@kontourai/station-sdk';
-import { PageRow } from '../../components/PageRow';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
+import { SettingsPageRow as PageRow } from './SettingsPageRow';
 import { SettingsSection } from './SettingsSection';
 
 /**

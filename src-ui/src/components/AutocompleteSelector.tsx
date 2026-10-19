@@ -1,13 +1,11 @@
 import {
-  type CSSProperties,
   type ReactNode,
   type RefObject,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
-import { createPortal } from 'react-dom';
+import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 
 export interface AutocompleteItem {
   id: string;
@@ -47,60 +45,7 @@ export function AutocompleteSelector({
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  const [popupStyle, setPopupStyle] = useState<CSSProperties>();
-  useLayoutEffect(() => {
-    const anchor = anchorRef?.current;
-    if (!anchor) return;
-    const surface = anchor.closest('.chat-input__capsule') ?? anchor;
-    const viewport = window.visualViewport;
-    const place = () => {
-      const rect = surface.getBoundingClientRect();
-      const top = viewport?.offsetTop ?? 0;
-      const left = viewport?.offsetLeft ?? 0;
-      const width = viewport?.width ?? window.innerWidth;
-      const height = viewport?.height ?? window.innerHeight;
-      const above = Math.max(0, rect.top - top - 16);
-      const below = Math.max(0, top + height - rect.bottom - 16);
-      const placeAbove = above >= 160 || above >= below;
-      const popupWidth = Math.min(rect.width, Math.max(0, width - 16));
-      setPopupStyle({
-        position: 'fixed',
-        zIndex: 'calc(var(--layer-dock, 9200) + 1)',
-        top: placeAbove ? rect.top - 8 : rect.bottom + 8,
-        left: Math.max(
-          left + 8,
-          Math.min(rect.left, left + width - popupWidth - 8),
-        ),
-        width: popupWidth,
-        right: 'auto',
-        bottom: 'auto',
-        marginBottom: 0,
-        transform: placeAbove ? 'translateY(-100%)' : undefined,
-        maxHeight: Math.min(300, placeAbove ? above : below),
-      });
-    };
-    place();
-    const observer =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
-    observer?.observe(surface);
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    viewport?.addEventListener('resize', place);
-    viewport?.addEventListener('scroll', place);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
-      viewport?.removeEventListener('resize', place);
-      viewport?.removeEventListener('scroll', place);
-    };
-  }, [anchorRef]);
-  const renderPopup = (content: ReactNode) =>
-    anchorRef
-      ? popupStyle
-        ? createPortal(content, document.body)
-        : null
-      : content;
+  const { popupStyle, renderPopup } = useAnchoredPopup(anchorRef);
 
   // Update refs
   selectedIndexRef.current = selectedIndex;

@@ -1,0 +1,7 @@
+{
+  "revision": "9cec0f0f6445564ab36b438e35f44ba8587d5802",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read the reservation and loading claims against ChatInputArea.tsx and ChatDockBody.tsx. The composer still reserves room for a two-line draft and the short-dock yielding order is unchanged; only how the reservation measures the draft's floor changed (arithmetic on the current layout instead of a forced layout at the floor), which the doc does not describe. The loading wait's screen-reader announcement moved to one persistent dock-level status region; the doc makes no claim about it. No prose change needed.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "d56131615d0612b26ba71831c5bda2dd65f570d6",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Reviewed merge2eccebaf096 threeconflicts and parentpreservation,213 executedfocusedtests and executableproof,70settinggenerator withnodrift,33fixtures/E2Etypes; realbrowsertransitiondiagnosis and4/4finalpasses plus56pxwidthfault restoredbyteidenticallygreen. Local3screencapture visuallyreviewed only; no newreference/hosted/landing claim.","inputs":["docs/reviews/workspace-map-20261015/README.md","tests/sidebar-geometry.spec.ts"]}
+  ]
+}

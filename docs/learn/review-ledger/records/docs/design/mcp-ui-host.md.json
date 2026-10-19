@@ -38,7 +38,43 @@
 
     "src-ui/src/__tests__/MCPToolUIFrame.test.tsx",
 
-    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
+
+    "src-ui/src/components/chat/TranscriptMCPApp.tsx",
+
+    "src-ui/src/components/chat/mcp-app-tool-ref.ts",
+
+    "src-ui/src/components/chat/ToolCallDisplay.tsx",
+
+    "src-ui/src/hooks/orchestration/conversationTranscriptParts.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/__tests__/event-store-mcp-app-results.test.ts",
+
+    "packages/shared/src/mcp-app-result.ts",
+
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.css",
+
+    "examples/mcp-ui-demo/server.mjs",
+
+    "src-ui/src/components/chat/TranscriptAppTools.tsx",
+
+    "packages/contracts/src/runtime-events.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/services/plugins/__tests__/mcp-service.test.ts",
+
+    "src-server/domain/config-loader.ts",
+
+    "src-server/tools/station-control-mcp-server.ts",
+
+    "src-server/runtime/agents/__tests__/runtime-default-agent.test.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/__tests__/pairing-route-scopes.test.ts"
   ],
 
   "checks": [

@@ -1,6 +1,7 @@
 import type {
   NativePushRegistrationRequest,
   NativePushRegistrationResponse,
+  NativePushRegistrationStatus,
 } from '@kontourai/station-contracts/native-push';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -37,6 +38,8 @@ function harness(
     registerError?: Error;
     unregisterError?: Error;
     permissionGrants?: boolean;
+    /** The Station's status answer; omitted = no status dependency at all. */
+    registrationStatus?: () => Promise<NativePushRegistrationStatus | null>;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -86,6 +89,7 @@ function harness(
     apiBase: string;
   }> = [];
   const unregistered: string[] = [];
+  const statusReads: string[] = [];
   const storage = new Map<string, string>();
   const store = localAgentActivityRegistrationStore({
     getItem: (key) => storage.get(key) ?? null,
@@ -111,6 +115,15 @@ function harness(
       unregistered.push(apiBase);
       if (options.unregisterError) throw options.unregisterError;
     },
+    ...(options.registrationStatus
+      ? {
+          async registrationStatus(apiBase: string) {
+            events.push('registration_status');
+            statusReads.push(apiBase);
+            return options.registrationStatus?.() ?? null;
+          },
+        }
+      : {}),
     store,
     async requestNotificationPermission() {
       events.push('permission');
@@ -128,6 +141,7 @@ function harness(
     events,
     registered,
     unregistered,
+    statusReads,
     store,
     storage,
     setToken: (next: string) => {
@@ -345,6 +359,114 @@ describe('agent activity controller', () => {
       command: 'plugin:station-agent-activity|clear',
       args: { registrationId: REGISTRATION_ID },
     });
+  });
+});
+
+describe('agent activity refresh against the Station registration status', () => {
+  const OTHER_ID = 'reg_BBBBBBBBBBBBBBBBBBBB';
+
+  async function enabled(
+    registrationStatus: () => Promise<NativePushRegistrationStatus | null>,
+    response?: { registrationId: string },
+  ) {
+    let answer: { registrationId: string } | undefined;
+    const h = harness({
+      registrationStatus,
+      get response() {
+        return answer;
+      },
+    });
+    await h.ready();
+    await h.controller.enable(target);
+    answer = response;
+    h.calls.length = 0;
+    h.events.length = 0;
+    h.advance(60_000);
+    return h;
+  }
+
+  it('re-registers a fresh, unchanged record the Station no longer holds', async () => {
+    const h = await enabled(async () => ({
+      registered: false,
+      registrationId: null,
+    }));
+
+    await expect(h.controller.refresh(target)).resolves.toBe('refreshed');
+    expect(h.events).toEqual([
+      'push_token',
+      'registration_status',
+      'register',
+      'configure',
+    ]);
+    expect(h.statusReads).toEqual([API_BASE]);
+    expect(h.registered.at(-1)?.request.token).toBe('fcm-token-1');
+  });
+
+  it('re-registers when the Station holds a different registration, and clears the old one on the phone', async () => {
+    const h = await enabled(
+      async () => ({ registered: true, registrationId: OTHER_ID }),
+      { registrationId: OTHER_ID },
+    );
+
+    await expect(h.controller.refresh(target)).resolves.toBe('refreshed');
+    expect(h.events).toEqual([
+      'push_token',
+      'registration_status',
+      'register',
+      'configure',
+      'clear',
+    ]);
+    expect(h.calls.at(-1)).toEqual({
+      command: 'plugin:station-agent-activity|clear',
+      args: { registrationId: REGISTRATION_ID },
+    });
+    expect(h.controller.registration(STATION)?.registrationId).toBe(OTHER_ID);
+  });
+
+  it('stays current when the Station holds this same registration', async () => {
+    const h = await enabled(async () => ({
+      registered: true,
+      registrationId: REGISTRATION_ID,
+    }));
+
+    await expect(h.controller.refresh(target)).resolves.toBe('current');
+    expect(h.events).toEqual(['push_token', 'registration_status']);
+    expect(h.registered).toHaveLength(1);
+  });
+
+  it('keeps the token and age rule with a Station that predates the status route', async () => {
+    const h = await enabled(async () => null);
+
+    await expect(h.controller.refresh(target)).resolves.toBe('current');
+    expect(h.events).toEqual(['push_token', 'registration_status']);
+    h.setToken('fcm-token-2');
+    await expect(h.controller.refresh(target)).resolves.toBe('refreshed');
+    expect(h.registered.at(-1)?.request.token).toBe('fcm-token-2');
+  });
+
+  it('keeps the token and age rule when the Station cannot answer', async () => {
+    const h = await enabled(async () => {
+      throw new Error('Failed to fetch');
+    });
+
+    await expect(h.controller.refresh(target)).resolves.toBe('current');
+    expect(h.registered).toHaveLength(1);
+    h.advance(AGENT_ACTIVITY_REFRESH_AFTER_MS);
+    await expect(h.controller.refresh(target)).resolves.toBe('refreshed');
+    expect(h.registered).toHaveLength(2);
+  });
+
+  it('never asks the Station for a registration the person did not turn on', async () => {
+    const status = vi.fn(async () => ({
+      registered: false,
+      registrationId: null,
+    }));
+    const h = harness({ registrationStatus: status });
+    await h.ready();
+
+    await expect(h.controller.refresh(target)).resolves.toBe('off');
+    expect(status).not.toHaveBeenCalled();
+    expect(h.registered).toEqual([]);
   });
 });
 

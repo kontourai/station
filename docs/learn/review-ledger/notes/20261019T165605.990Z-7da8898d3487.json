@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Added Session context card (This chat) and its user-facing label; checked against SessionContextCard.tsx/SessionContextSheet.tsx rows, ChatDock visibility gate and the phone actions-sheet row.","inputs":["docs/glossary.md"]}
+  ]
+}

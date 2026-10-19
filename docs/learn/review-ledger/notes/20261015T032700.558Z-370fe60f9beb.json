@@ -1,0 +1,7 @@
+{
+  "revision": "57883058b626b3ea1803643c3c050bd2e384f188",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Re-read the bound-table test delta after the aggregate typecheck rejected a union-valued property spread inside an assertion callback. The fixture now captures its checked binding in a constant; all 52 owner tests pass with unchanged assertions and runtime behavior. The documented storage contract and the production-integration deferral remain accurate.","inputs":["packages/monument/README.md","packages/monument/src/__tests__/sqlite-bound-boundaries.test.ts"]}
+  ]
+}

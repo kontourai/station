@@ -1,0 +1,716 @@
+[
+  [
+    {
+      "eventId": "writer-start",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-23T00:00:00.000Z",
+      "method": "turn.started",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "prompt": "Start"
+    },
+    {
+      "eventId": "b46f9774-e042-4f8b-a110-e8e6a6a4a5a7",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:09.151Z",
+      "method": "session.state-changed",
+      "sessionId": "thread-codex",
+      "from": "idle",
+      "to": "running"
+    },
+    {
+      "eventId": "3c9ae47d-40a0-40fb-99af-9cb01eb2de1c",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:14.271Z",
+      "method": "token-usage.updated",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "promptTokens": 18300,
+      "completionTokens": 75,
+      "totalTokens": 18375,
+      "cacheReadTokens": 1408
+    },
+    {
+      "eventId": "dbed8ef1-16ba-49c1-bcac-f2709d6b0a59",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:17.046Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "snapshot",
+        "producer": "engine-subagent",
+        "reporterThreadId": "thread-codex",
+        "running": [
+          {
+            "producer": "engine-subagent",
+            "reporterThreadId": "thread-codex",
+            "childId": "00000000-0000-7000-8000-000000000004",
+            "status": "running",
+            "parent": {
+              "turnId": "00000000-0000-7000-8000-000000000002",
+              "toolCallId": "call_0001"
+            },
+            "depth": 1,
+            "title": "In the current working directory, create a file named hello.txt containing exactly the single word hello. Do not add any other content. Then reply exactly: done",
+            "model": {
+              "id": "gpt-5.5",
+              "source": "spawn-result"
+            },
+            "startedAt": "2026-09-24T01:33:17.046Z"
+          }
+        ]
+      }
+    },
+    {
+      "eventId": "297358aa-0622-4bc8-9423-b649166564da",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:17.046Z",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "method": "turn.started",
+      "prompt": "Also check this",
+      "inputKind": "steer"
+    },
+    {
+      "eventId": "47e17a80-88e9-4ceb-abe6-e7a50742db03",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:17.098Z",
+      "method": "token-usage.updated",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "promptTokens": 38575,
+      "completionTokens": 126,
+      "totalTokens": 38701,
+      "cacheReadTokens": 6912
+    },
+    {
+      "eventId": "1f60f96c-dd8c-46af-b2e3-3a7ea5c1dba2",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:17.192Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "upsert",
+        "item": {
+          "producer": "engine-subagent",
+          "reporterThreadId": "thread-codex",
+          "childId": "00000000-0000-7000-8000-000000000004",
+          "status": "running",
+          "parent": {
+            "turnId": "00000000-0000-7000-8000-000000000002",
+            "toolCallId": "call_0001"
+          },
+          "depth": 1,
+          "title": "In the current working directory, create a file named hello.txt containing exactly the single word hello. Do not add any other content. Then reply exactly: done",
+          "model": {
+            "id": "gpt-5.5",
+            "source": "spawn-result"
+          },
+          "startedAt": "2026-09-24T01:33:17.046Z",
+          "controls": {
+            "stop": "provider-task-stop"
+          }
+        }
+      }
+    },
+    {
+      "eventId": "2dc25b9c-8182-4d1b-bc18-247ff8aaaa8b",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:21.457Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "upsert",
+        "item": {
+          "producer": "engine-subagent",
+          "reporterThreadId": "thread-codex",
+          "childId": "00000000-0000-7000-8000-000000000004",
+          "status": "running",
+          "parent": {
+            "turnId": "00000000-0000-7000-8000-000000000002",
+            "toolCallId": "call_0001"
+          },
+          "depth": 1,
+          "title": "In the current working directory, create a file named hello.txt containing exactly the single word hello. Do not add any other content. Then reply exactly: done",
+          "model": {
+            "id": "gpt-5.5",
+            "source": "spawn-result"
+          },
+          "startedAt": "2026-09-24T01:33:17.046Z",
+          "controls": {
+            "stop": "provider-task-stop"
+          },
+          "usage": {
+            "totalTokens": 18322
+          }
+        }
+      }
+    },
+    {
+      "eventId": "a7076f99-031e-41e2-968d-3f02578659fe",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:22.738Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "upsert",
+        "item": {
+          "producer": "engine-subagent",
+          "reporterThreadId": "thread-codex",
+          "childId": "00000000-0000-7000-8000-000000000004",
+          "status": "running",
+          "parent": {
+            "turnId": "00000000-0000-7000-8000-000000000002",
+            "toolCallId": "call_0001"
+          },
+          "depth": 1,
+          "title": "In the current working directory, create a file named hello.txt containing exactly the single word hello. Do not add any other content. Then reply exactly: done",
+          "model": {
+            "id": "gpt-5.5",
+            "source": "spawn-result"
+          },
+          "usage": {
+            "totalTokens": 36688
+          },
+          "startedAt": "2026-09-24T01:33:17.046Z",
+          "controls": {
+            "stop": "provider-task-stop"
+          }
+        }
+      }
+    },
+    {
+      "eventId": "051305cd-4024-4198-81cc-3e3b25d6ef6c",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:22.786Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "settle",
+        "producer": "engine-subagent",
+        "reporterThreadId": "thread-codex",
+        "childId": "00000000-0000-7000-8000-000000000004",
+        "status": "completed",
+        "result": {
+          "summary": "done"
+        },
+        "usage": {
+          "totalTokens": 36688,
+          "durationMs": 5726
+        },
+        "identity": {
+          "endedAt": "2026-09-24T01:33:22.786Z",
+          "depth": 1,
+          "controls": {}
+        }
+      }
+    },
+    {
+      "eventId": "cbf78f74-5d95-40cd-ba6e-3aaaddbc0712",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:22.863Z",
+      "method": "token-usage.updated",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "promptTokens": 58953,
+      "completionTokens": 182,
+      "totalTokens": 59135,
+      "cacheReadTokens": 26752
+    },
+    {
+      "eventId": "34cd5a47-e03b-47d8-b874-4e6af5caad4f",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.089Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0004",
+      "delta": "The"
+    },
+    {
+      "eventId": "2a027074-2b66-4a70-b8c6-057efb29b753",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.116Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0004",
+      "delta": " sub"
+    },
+    {
+      "eventId": "9ee6cb76-b341-45fd-8fc1-778a44761014",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.132Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0004",
+      "delta": "agent"
+    },
+    {
+      "eventId": "07174efe-a417-443f-8946-4492a9949e89",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.146Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0004",
+      "delta": " finished"
+    },
+    {
+      "eventId": "837118ef-3d7d-4638-980b-62e52d60c06c",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.167Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0004",
+      "delta": " and"
+    },
+    {
+      "eventId": "af06621c-fc07-4af3-808d-b59d5a04bd87",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.183Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0004",
+      "delta": " replied"
+    },
+    {
+      "eventId": "192fe0bc-d196-424f-bcf9-9c7a5de0b82e",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.213Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0004",
+      "delta": " done"
+    },
+    {
+      "eventId": "61dd4372-6fc2-42b7-a1d4-eab97fe1d417",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.215Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0004",
+      "delta": "."
+    },
+    {
+      "eventId": "73d6ada3-6f93-4f55-aff8-55792260507b",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.392Z",
+      "method": "token-usage.updated",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "promptTokens": 79485,
+      "completionTokens": 194,
+      "totalTokens": 79679,
+      "cacheReadTokens": 43520
+    },
+    {
+      "eventId": "b5120e89-6817-4409-ad19-868bce1aed27",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.406Z",
+      "method": "session.state-changed",
+      "sessionId": "thread-codex",
+      "from": "running",
+      "to": "idle"
+    },
+    {
+      "eventId": "fea81d2a-1656-415f-b451-585b57b2c2ac",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.407Z",
+      "method": "turn.completed",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "finishReason": "stop",
+      "outputText": "The subagent finished and replied done."
+    },
+    {
+      "eventId": "392f06d4-64f5-470e-8ab6-fe411183c4d3",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:33:24.407Z",
+      "method": "session.exited",
+      "sessionId": "thread-codex",
+      "reason": "stopped"
+    }
+  ],
+  [
+    {
+      "eventId": "writer-start",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-23T00:00:00.000Z",
+      "method": "turn.started",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "prompt": "Start"
+    },
+    {
+      "eventId": "e2463349-4610-4fdb-912d-78142b5848ff",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:41.453Z",
+      "method": "session.state-changed",
+      "sessionId": "thread-codex",
+      "from": "idle",
+      "to": "running"
+    },
+    {
+      "eventId": "315cc9d4-0823-4520-89a9-9f8f8a0b6136",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:45.599Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "snapshot",
+        "producer": "engine-subagent",
+        "reporterThreadId": "thread-codex",
+        "running": [
+          {
+            "producer": "engine-subagent",
+            "reporterThreadId": "thread-codex",
+            "childId": "00000000-0000-7000-8000-000000000004",
+            "status": "running",
+            "parent": {
+              "turnId": "00000000-0000-7000-8000-000000000002",
+              "toolCallId": "call_0001"
+            },
+            "depth": 1,
+            "title": "create_hello",
+            "startedAt": "2026-09-24T01:22:45.599Z"
+          }
+        ]
+      }
+    },
+    {
+      "eventId": "8ffe567f-8164-4caa-8e59-405fe2bc84f3",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:45.599Z",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "method": "turn.started",
+      "prompt": "Also check this",
+      "inputKind": "steer"
+    },
+    {
+      "eventId": "f19d9957-9832-41ea-90db-a040004cd490",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:45.601Z",
+      "method": "token-usage.updated",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "promptTokens": 19346,
+      "completionTokens": 52,
+      "totalTokens": 19398,
+      "cacheReadTokens": 11008
+    },
+    {
+      "eventId": "1872c428-8874-4a04-81f7-85dcb2e42078",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:45.602Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "upsert",
+        "item": {
+          "producer": "engine-subagent",
+          "reporterThreadId": "thread-codex",
+          "childId": "00000000-0000-7000-8000-000000000004",
+          "status": "running",
+          "parent": {
+            "turnId": "00000000-0000-7000-8000-000000000002",
+            "toolCallId": "call_0001"
+          },
+          "depth": 1,
+          "title": "create_hello",
+          "startedAt": "2026-09-24T01:22:45.599Z",
+          "controls": {
+            "stop": "provider-task-stop"
+          }
+        }
+      }
+    },
+    {
+      "eventId": "28c30aef-a9e0-4286-81ec-3b53a47bebdd",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:48.617Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "upsert",
+        "item": {
+          "producer": "engine-subagent",
+          "reporterThreadId": "thread-codex",
+          "childId": "00000000-0000-7000-8000-000000000004",
+          "status": "running",
+          "parent": {
+            "turnId": "00000000-0000-7000-8000-000000000002",
+            "toolCallId": "call_0001"
+          },
+          "depth": 1,
+          "title": "create_hello",
+          "startedAt": "2026-09-24T01:22:45.599Z",
+          "controls": {
+            "stop": "provider-task-stop"
+          },
+          "usage": {
+            "totalTokens": 21368
+          }
+        }
+      }
+    },
+    {
+      "eventId": "bb5f694c-f867-4632-96cb-90bc246169d7",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.067Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "upsert",
+        "item": {
+          "producer": "engine-subagent",
+          "reporterThreadId": "thread-codex",
+          "childId": "00000000-0000-7000-8000-000000000004",
+          "status": "running",
+          "parent": {
+            "turnId": "00000000-0000-7000-8000-000000000002",
+            "toolCallId": "call_0001"
+          },
+          "depth": 1,
+          "title": "create_hello",
+          "usage": {
+            "totalTokens": 42764
+          },
+          "startedAt": "2026-09-24T01:22:45.599Z",
+          "controls": {
+            "stop": "provider-task-stop"
+          }
+        }
+      }
+    },
+    {
+      "eventId": "83fc0da8-ef0e-40a8-b19e-622d6a1bd2b1",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.082Z",
+      "method": "child-work.updated",
+      "delta": {
+        "kind": "settle",
+        "producer": "engine-subagent",
+        "reporterThreadId": "thread-codex",
+        "childId": "00000000-0000-7000-8000-000000000004",
+        "status": "completed",
+        "result": {
+          "summary": "done"
+        },
+        "usage": {
+          "totalTokens": 42764,
+          "durationMs": 4478
+        },
+        "identity": {
+          "endedAt": "2026-09-24T01:22:50.082Z",
+          "depth": 1,
+          "controls": {}
+        }
+      }
+    },
+    {
+      "eventId": "964531bd-2e8b-49fe-b7ea-46437727db0c",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.088Z",
+      "method": "token-usage.updated",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "promptTokens": 38766,
+      "completionTokens": 74,
+      "totalTokens": 38840,
+      "cacheReadTokens": 30208
+    },
+    {
+      "eventId": "db32bd97-d609-41c6-b69a-62083d002586",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.846Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": "The"
+    },
+    {
+      "eventId": "67163293-4931-4900-a4f2-7b2e22fbe16d",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.857Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": " sub"
+    },
+    {
+      "eventId": "b311a262-4432-4f9f-8fac-201a59d527da",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.861Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": "agent"
+    },
+    {
+      "eventId": "6da3eb4a-5aeb-4b2e-bd48-d407637bc7a8",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.887Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": " created"
+    },
+    {
+      "eventId": "713f8155-93b1-4d0a-947b-4e697d44bd11",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.944Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": " `"
+    },
+    {
+      "eventId": "958d36a2-7b6c-45e1-96f3-75b8bd93b30f",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.973Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": "hello"
+    },
+    {
+      "eventId": "881ac00e-7975-4b29-811c-53a01e336017",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.973Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": ".txt"
+    },
+    {
+      "eventId": "385df5d9-7abb-4f11-b187-0547d081e001",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.973Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": "`"
+    },
+    {
+      "eventId": "d4f0ffb8-1e1f-4e47-b33f-eda9281f0ecd",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:50.994Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": " with"
+    },
+    {
+      "eventId": "137d478c-9f00-48f7-90cc-e051ffd10ff0",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:51.004Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": " the"
+    },
+    {
+      "eventId": "ede91e9a-b9bd-442b-9801-44013caab53a",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:51.018Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": " word"
+    },
+    {
+      "eventId": "c7bfa7c5-0ccf-4ab1-8d23-d7617411e1c9",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:51.096Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": " `"
+    },
+    {
+      "eventId": "3947c736-d2f5-4c62-902c-997e65054b7c",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:51.097Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": "hello"
+    },
+    {
+      "eventId": "3bc4c037-18f3-4679-ac0a-e671428cd711",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:51.097Z",
+      "method": "content.text-delta",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "itemId": "msg_0002",
+      "delta": "`."
+    },
+    {
+      "eventId": "7a473ccb-e655-48db-bc3c-1bc97ece25ff",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:51.237Z",
+      "method": "token-usage.updated",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "promptTokens": 58270,
+      "completionTokens": 92,
+      "totalTokens": 58362,
+      "cacheReadTokens": 49408
+    },
+    {
+      "eventId": "2008c806-5f67-45ed-b504-9f008ba435b8",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:51.239Z",
+      "method": "session.state-changed",
+      "sessionId": "thread-codex",
+      "from": "running",
+      "to": "idle"
+    },
+    {
+      "eventId": "33457ad1-3018-4fbc-8eb0-a3a373b070a2",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:51.239Z",
+      "method": "turn.completed",
+      "turnId": "00000000-0000-7000-8000-000000000002",
+      "finishReason": "stop",
+      "outputText": "The subagent created `hello.txt` with the word `hello`."
+    },
+    {
+      "eventId": "a9c3fb68-9568-4662-82a1-91a3266c19b9",
+      "provider": "codex",
+      "threadId": "thread-codex",
+      "createdAt": "2026-09-24T01:22:51.239Z",
+      "method": "session.exited",
+      "sessionId": "thread-codex",
+      "reason": "stopped"
+    }
+  ]
+]

@@ -31,6 +31,10 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
   // independently resolved npm-tarball consumer. It owns packages/cli/dist.
   'packages/cli/src/__tests__/bundle.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
+  // #3565: builds packages/monument/dist (it removes the directory first),
+  // packs it and installs the tarballs into scratch consumers. It owns
+  // packages/monument/dist.
+  'scripts/__tests__/monument-pack-smoke.test.ts',
   // Reads exact generated-policy documentation while other corpus members may
   // regenerate it; one serial lane makes that read a stable input.
   'scripts/__tests__/verification-policy-gate.test.ts',
@@ -123,6 +127,27 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Disposable Chromium previews, including renderer limits and process cleanup.
+  'src-server/services/__tests__/html-reply-preview.process.test.ts',
+  'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
+  // Real temporary Git repositories; isolated home per case.
+  'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
+  'src-server/routes/pull-requests/__tests__/pull-request-routes.test.ts',
+  'src-server/runtime/routes/__tests__/runtime-routes-station-control-declare-pull-request.test.ts',
+  // Creates real FIFOs with bounded mkfifo to check prompt CLI attachment refusal.
+  'src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts',
+  // Real server esbuild children and executable workflow-policy negative controls.
+  'scripts/__tests__/author-telemetry-build.test.ts',
+  // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
+  // Claude handshake; skips loudly where Seatbelt cannot apply (non-macOS).
+  'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+  // The stale-session reaper case spawns one short-lived Node child to obtain
+  // a pid that has exited.
+  'src-server/security/confinement/__tests__/seatbelt.test.ts',
+  // Invokes the real pinned actionlint parser against isolated stdin fixtures.
+  'scripts/__tests__/actionlint-queue-compat.test.ts',
+  // Owns a bounded Datum child and a private fake CLI; asserts exact cancellation cleanup.
+  'src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts',
   // Real OTLP loopback receiver and SDK providers own sockets and export timers.
   'src-server/__tests__/telemetry.test.ts',
   // Real author-build children refuse FIFO definitions/Skills; timeout follows observed startup.
@@ -135,6 +160,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/qualification-evidence.test.ts',
   // Runs the advisory review gate as a real child against a loopback GitHub API.
   'scripts/__tests__/advisory-review-gate.test.ts',
+  // #2675: runs the Nightly plan step's shell under bash in a temporary dir.
+  'scripts/__tests__/ios-web-build-version.test.ts',
+  // Executes cancellation against a loopback Actions API; owns one short Node child.
+  'scripts/__tests__/pr-ci-supersession.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes
@@ -234,6 +263,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+  // Creates real Git and POSIX FIFO fixtures within its isolated workspace.
+  'src-server/routes/projects/__tests__/coding-content.routes.test.ts',
   // #2374 (epic #2323 S6): real `git` plumbing and pushes into temp bare
   // repositories, through the production publish service and route.
   'src-server/routes/projects/__tests__/plugin-publish-routes.test.ts',
@@ -334,6 +365,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // prove the reaper survives, the same resource shape as platform.test.ts.
   'packages/cli/src/__tests__/helpers/longrunning-fixture-child.abnormal-exit.test.ts',
   'packages/cli/src/__tests__/platform.test.ts',
+  // #3567: bounded CLI executable children send to a per-test loopback
+  // fixture to verify lost-response JSON handles in both entry points.
+  'packages/cli/src/__tests__/core-http.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
   // a real child ownership boundary, so it belongs in the two-worker pool.
@@ -379,6 +413,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2012: a real child runtime races the home maintenance ownership fence.
   'packages/shared/src/__tests__/station-home-lifecycle.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  // #3565: a real child claims a turn through the node:sqlite adapter and is
+  // SIGKILLed; the parent reopens the file. Single-shot, no wall-clock bound.
+  'packages/monument/src/__tests__/sqlite-crash.process.test.ts',
+  // #3565: runs the monument import boundary gate as a child process against
+  // throwaway git repositories. Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/monument-import-boundary-gate.test.ts',
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
@@ -398,6 +438,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // from ci.yml against simulated job results. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/ci-fast-checks-job-graph.test.ts',
+  'scripts/__tests__/pr-delivery-plan.test.ts',
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
@@ -419,6 +460,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // to prove reclaim, and runs one real `tsc` on a two-file temp project
   // three times to prove a warm incremental run still reports errors.
   'scripts/__tests__/typecheck-host-slots.test.ts',
+  // Drives verification CLI admission without launching compilers.
+  'scripts/__tests__/live-service-verification.process.test.ts',
   // Real loopback file-server CLI with owned child cleanup and artifact replacement.
   'scripts/__tests__/install-smoke-file-server.test.ts',
   // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
@@ -502,6 +545,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
   'scripts/__tests__/dependency-patch-binding.test.ts',
+  // Installed YAML CLI children protect the parser migration's public behavior.
+  'scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts',
   // Bounded Bash children test Linux bootstrap recovery with inert swap commands.
   'scripts/__tests__/gcp-bootstrap.test.ts',
   // Offline Git children validate encrypted workspace transport against real repositories.
@@ -539,6 +584,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Bounded Git fixtures run the freshness check and review-record CLIs (#3036).
   'scripts/__tests__/review-ledger-guards.test.ts',
   'scripts/__tests__/documentation-review-notes.test.ts',
+  'scripts/__tests__/documentation-value-bindings.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
@@ -661,6 +707,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
   // single-shot children for each golden vector.
   'scripts/__tests__/release-manifest-vectors.test.ts',
+  // #187: runs install.sh's accepted-release functions (cut from the shipped
+  // script) as bounded single-shot `sh -c` children, two per parity case.
+  'scripts/__tests__/accepted-release-parity.test.ts',
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
@@ -842,6 +891,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.
   'scripts/__tests__/desktop-runtime-port-lease.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
+  'scripts/__tests__/engine-delivery-probes.test.ts',
+  'scripts/__tests__/engine-delivery-routes.test.ts',
+  // Matrix CLI refusals and sends use real routes, SQLite and a fake adapter.
+  'src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts',
   // Drives the deploy-ledger commit-back's
   // bounded re-derive-and-retry against real local git repositories — the
   // two-writer convergence proof, the off-main ancestry refusal, retry
@@ -977,6 +1030,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2238: starts real Station children against one SQLite claims
   // store to prove construction preserves live ownership.
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
+  // #3581: runs the real `/chat` stream as an owner process over SQLite,
+  // SIGKILLs it before or after its agent call, and retries the same client
+  // turn from a reopened store. Single-shot children; no wall-clock bound.
+  'src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts',
+  // #3559: runs a real OrchestrationService owner process over SQLite,
+  // SIGKILLs it before or after its engine call, and retries the same client
+  // turn from a restarted store. Single-shot children; no wall-clock bound.
+  'src-server/services/orchestration/__tests__/turn-dedup-crash.process.test.ts',
   // The child process is owned by the hermetic helper rather than imported by
   // the test file; its broken-pipe proof also writes a 4 MiB stdin payload.
   'src-server/services/__tests__/helpers/hermetic-openssh.test.ts',
@@ -985,6 +1046,17 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and asserts the startup sweep reaps the orphaned group. Same process-tree
   // shape as process-utils.test.ts; must not run under the ordinary pool.
   'src-server/services/infra/__tests__/owned-process-reaping.test.ts',
+  // #561: spawns the real Codex app-server path against a stub executable
+  // that starts a grandchild in its group, then sweeps and terminates it.
+  // Same process-tree shape as owned-process-reaping.test.ts.
+  'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
+  // #561: runs a real Flow shell command (a stub script that leaves a
+  // grandchild in its group) to prove the spawn is registered and released
+  // only once the whole group exits. Same shape as the Codex test above.
+  'src-server/services/flow/__tests__/flow-run-service.owned-process.test.ts',
+  // #561: wraps the birth-probe primitives pass-through and registers two
+  // real detached sleepers to count probes of this process.
+  'src-server/services/infra/__tests__/owned-process-owner-birth.test.ts',
   // station#1895: spawns a real node child process (through `tsx`) to prove
   // the durable log sink survives an actual uncaught exception, the same
   // resource shape as `agent-registry.test.ts`'s schema-gate child probe.
@@ -994,6 +1066,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // knowledge-root journal/lock, proving prepared multi-file recovery and
   // cross-process serialization without sharing an in-memory test double.
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
+  // Real Node writers (the pre-move KnowledgeFileTransactions document writer
+  // and the current ProjectFileTransactions owner) crash or hold a namespace
+  // lock, proving journal recovery and cross-build exclusion on legacy docs.
+  'src-server/services/knowledge/__tests__/knowledge-document-transactions.process.test.ts',
   // The observer's FIFO proof swaps a real pipe exactly at native open and
   // kills only its own child after proving the old flags remain blocked.
   'src-server/knowledge-store/__tests__/knowledge-record-observation.process.test.ts',
@@ -1039,6 +1115,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // The coding git read routes over real repositories, with plain git as the
   // control for every planted `.git`.
   'src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts',
+  // Bounded Node process owns the real coding route outside the UI compiler.
+  'src-server/routes/projects/__tests__/coding-worktree-diff-process.test.ts',
+  // Task binding mounts the real renderer over a public diff route and real Git fixture.
+  'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
+  'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
   // Checkpoint capture and restore over real repositories, with a `.git`
   // swapped or a config rewritten at a chosen git call.
   'src-server/services/checkpoints/__tests__/checkpoint-own-repository.test.ts',
@@ -1107,6 +1188,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/ssh/__tests__/openssh-reachability.process.test.ts',
   'src-server/services/orchestration/__tests__/planned-home-transfer-store.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
+  // #2675: runs the Windows identity probe (System32 PowerShell) against a
+  // real child node.exe; it runs only on win32, in the Windows PR job.
+  'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   // Timing-sensitive responsive-UI suites: no child_process import, kept out
@@ -1135,6 +1219,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // launches a real Chromium via `@playwright/test` to measure real cascade-
   // resolved layout at phone viewports.
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
+  // Runs real canvas/React startup handoffs with Chromium's controlled clock.
+  'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
   // station#4470a: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved geometry (the
   // disclosure toggle vs. the message text's own line rects) at a phone
@@ -1360,6 +1446,35 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // geometry, a squatted locator global, a covered button, 300,000
   // elements, a page spinning forever). Explicit skip without a browser.
   'src-server/services/browser/__tests__/browser-agent-hostile.real.test.ts',
+  // Process supervisor: real supervisor children fork fixture core
+  // generations, hand a held listening socket between them, and hammer it
+  // with keep-alive HTTP and SSE clients on an ephemeral port.
+  'packages/supervisor/src/__tests__/handoff.test.ts',
+  'packages/supervisor/src/__tests__/rollback.test.ts',
+  'packages/supervisor/src/__tests__/crash-restart.test.ts',
+  'packages/supervisor/src/__tests__/build-root.test.ts',
+  'packages/supervisor/src/__tests__/listener-handle.test.ts',
+  // A SIGKILLed supervisor, its orphaned core, and a second supervisor that reaps it.
+  'packages/supervisor/src/__tests__/stale-generation.test.ts',
+  // Spawns a sleeper process to prove a mismatched fingerprint is never killed.
+  'packages/supervisor/src/__tests__/generation-registry.test.ts',
+  // Two and three supervisor processes contending for one instance lock.
+  'packages/supervisor/src/__tests__/instance-lock.test.ts',
+  // In-process lock epochs; fingerprinting runs `ps` as a child process.
+  'packages/supervisor/src/__tests__/instance-lock-module.test.ts',
+  // --break-lock as a child process against live, dead, and unverifiable holders.
+  'packages/supervisor/src/__tests__/break-lock.test.ts',
+  // runSupervisor in-process, forking a fixture core generation.
+  'packages/supervisor/src/__tests__/supervisor-embedding.test.ts',
+  // A supervisor whose run directory turns read-only, and one loaded with a fatal-error injector.
+  'packages/supervisor/src/__tests__/registry-failure.test.ts',
+  // Runs the supervisor entry and its built bundle as child processes.
+  'packages/supervisor/src/__tests__/cli.test.ts',
+  'packages/supervisor/src/__tests__/bundle.test.ts',
+  // Two supervisor processes, raw control-socket clients, and an esbuild bundle run.
+  'packages/supervisor/src/__tests__/protocol.test.ts',
+  // Forks two children that pass a raw listening handle through this worker.
+  'packages/supervisor/src/__tests__/handle-guard.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =
@@ -1527,12 +1642,20 @@ function explicitFiles(manifest) {
  * and compares it to the exact manifest partition before a run can start.
  */
 export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
+  const siblings = new Map();
+  for (const file of explicitFiles(manifest)) {
+    const slash = file.lastIndexOf('/');
+    const directory = file.slice(0, slash + 1);
+    const names = siblings.get(directory) ?? [];
+    names.push(file.slice(slash + 1));
+    siblings.set(directory, names);
+  }
   return Object.freeze([
-    ...manifest.processHeavy.files,
-    ...manifest.processExclusive.files,
-    ...manifest.coordinatorExclusive.files,
-    ...manifest.credentialLedgerExclusive.files,
-    ...manifest.sharedOutput.files,
+    ...Array.from(siblings, ([directory, names]) =>
+      names.length === 1
+        ? `${directory}${names[0]}`
+        : `${directory}{${names.join(',')}}`,
+    ),
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
     `${manifest.dogfoodReconcile.prefix}/**`,
   ]);

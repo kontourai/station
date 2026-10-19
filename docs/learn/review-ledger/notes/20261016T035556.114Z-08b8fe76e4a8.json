@@ -1,0 +1,7 @@
+{
+  "revision": "661d76cfd8c7a8962421eb7c2c44ba6b7151ce08",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Rechecked final shared-state and intrinsic-layout repairs, including the 44x44 source link floor. At the isolated c783c07e9ce runtime, 390px source rows and Inbox actions fit without horizontal overflow, per-action Ask me persisted and reopened selected, and a visual-fixture request declined through the UI persisted and left Needs attention. These observations support the existing guide; no browser/computer backend expansion or live provider parity is claimed.","inputs":["docs/guides/agents.md","src-ui/src/views/agent-editor/AgentToolPicker.css","src-ui/src/views/agent-editor/AgentToolCatalog.tsx","src-ui/src/views/agent-editor/AgentToolLibrary.tsx","src-ui/src/views/project-settings/ProjectAgentsPanel.tsx","src-ui/src/components/profile/MyAccessPanel.tsx","src-ui/src/components/profile/MyAccessPanel.css","src-ui/src/components/profile/ToolRequestsPanel.css","src-ui/src/components/attention/AttentionCard.css"]}
+  ]
+}

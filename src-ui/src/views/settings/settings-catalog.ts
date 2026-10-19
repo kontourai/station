@@ -5,6 +5,7 @@ import { interpolate } from '../../i18n/LocaleContext';
 import { pseudoLocalize } from '../../i18n/pseudo';
 
 export type SettingsSectionId =
+  | 'account-preferences'
   // #2182 dissolved 'station-config'. It was a card named after a FILE
   // FORMAT that had collected sixteen unrelated controls — a permission
   // screener beside a shell path beside a telemetry switch — and nobody
@@ -17,6 +18,8 @@ export type SettingsSectionId =
   | 'plugin-visibility'
   // #1973: machines this Station runs simulators and emulators on over SSH.
   | 'device-hosts'
+  // #3557: people with devices tied to them, their Station group and tokens.
+  | 'people'
   | 'host-runtime'
   | 'sources'
   | 'telemetry'
@@ -50,6 +53,7 @@ export interface SettingsCatalogEntry {
   configKeys?: readonly string[];
   /** The persistence authority that owns an edit, when this is editable. */
   scope?:
+    | 'account'
     | 'station'
     | 'defaults'
     | 'device'
@@ -85,6 +89,7 @@ export interface SettingsCatalogEntry {
 export type SettingsNavGroup = 'this-station' | 'control' | 'you' | 'knowledge';
 
 export const SETTINGS_SECTIONS = [
+  { id: 'account-preferences', title: 'Your account', group: 'you' },
   { id: 'system', title: 'System', group: 'this-station' },
   // archive#3313 (IA option A): the retired standalone Feature Previews view,
   // as a Station-scope section (previews persist on the Station).
@@ -101,6 +106,9 @@ export const SETTINGS_SECTIONS = [
   // #1973: operator-only, like plugin visibility: the hosts are machines
   // Station reaches with the operator's own ssh keys.
   { id: 'device-hosts', title: 'Device hosts', group: 'this-station' },
+  // #3557: operator-only, like device hosts: the groups and every person's
+  // tokens live on this Station, and only its operator changes them.
+  { id: 'people', title: 'People', group: 'this-station' },
   { id: 'host-runtime', title: 'Station host', group: 'this-station' },
   // #2182: where this Station gets agents, skills, plugins and layouts from.
   { id: 'sources', title: 'Sources', group: 'this-station' },
@@ -148,6 +156,31 @@ export const SETTINGS_SECTIONS = [
 }[];
 
 const SETTINGS_CATALOG_SOURCE = [
+  {
+    id: 'account-preference-sync',
+    title: 'Import previous preferences',
+    section: 'account-preferences',
+    keywords: ['account', 'sync', 'device', 'migration', 'preferences'],
+  },
+  {
+    id: 'personal-codex-approval',
+    title: 'New Codex chats',
+    section: 'account-preferences',
+    keywords: ['codex', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
+    id: 'personal-claude-approval',
+    title: 'New Claude chats',
+    section: 'account-preferences',
+    keywords: ['claude', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
+    id: 'personal-muse-approval',
+    title: 'New Muse chats',
+    section: 'account-preferences',
+    keywords: ['muse', 'approval', 'full access', 'personal', 'default'],
+  },
+
   {
     id: 'desktop-app-updates',
     title: 'Desktop app updates',
@@ -202,6 +235,8 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Enable developer tools',
     section: 'developer-tools',
     keywords: ['developer', 'logs', 'telemetry', 'debug', 'advanced'],
+
+    configKeys: ['developerToolsEnabled'],
   },
   {
     id: 'shared-answers',
@@ -221,6 +256,13 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Device hosts',
     section: 'device-hosts',
     keywords: ['ssh remote simulator emulator'],
+    conditional: 'operator',
+  },
+  {
+    id: 'people',
+    title: 'People',
+    section: 'people',
+    keywords: ['groups admin member tokens access people personal'],
     conditional: 'operator',
   },
   {
@@ -296,13 +338,59 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'usage-telemetry',
     title: 'Usage telemetry',
     section: 'telemetry',
-    configKeys: ['telemetryEnabled'],
+    configKeys: ['telemetryTier'],
   },
   {
     id: 'telemetry-destination',
     title: 'Telemetry destination',
     section: 'telemetry',
     keywords: ['endpoint', 'where telemetry goes', 'otel'],
+  },
+  {
+    id: 'product-telemetry-delivery',
+    title: 'Product delivery',
+    section: 'telemetry',
+    keywords: [
+      'receiver',
+      'acknowledgement',
+      'queue',
+      'dropped',
+      'connection check',
+    ],
+  },
+  {
+    id: 'productTelemetryEndpoint',
+    title: 'Product receiver address',
+    section: 'telemetry',
+    configKeys: ['productTelemetryEndpoint'],
+    keywords: ['product', 'receiver', 'destination', 'endpoint'],
+  },
+  {
+    id: 'productTelemetryKeyRef',
+    title: 'Product receiver key reference',
+    section: 'telemetry',
+    configKeys: ['productTelemetryKeyRef'],
+    keywords: ['receiver', 'secret binding', 'credential', 'key'],
+  },
+  {
+    id: 'otel-delivery',
+    title: 'Metrics and traces',
+    section: 'telemetry',
+    keywords: ['collector', 'otel', 'export', 'connection check'],
+  },
+  {
+    id: 'otelTelemetryEndpoint',
+    title: 'Collector address',
+    section: 'telemetry',
+    configKeys: ['otelTelemetryEndpoint'],
+    keywords: ['collector', 'OTLP', 'destination', 'restart'],
+  },
+  {
+    id: 'otelTelemetryKeyRef',
+    title: 'Collector key reference',
+    section: 'telemetry',
+    configKeys: ['otelTelemetryKeyRef'],
+    keywords: ['collector', 'secret binding', 'credential', 'restart'],
   },
   {
     id: 'diagnostics-bundle',
@@ -393,6 +481,24 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Resume after usage limits',
     section: 'agent-runs',
     configKeys: ['usageLimitAutoResume'],
+  },
+  {
+    id: 'review-guides',
+    title: 'Review guides',
+    section: 'agent-runs',
+    configKeys: ['reviewGuidesEnabled'],
+  },
+  {
+    id: 'review-guide-model',
+    title: 'Review guide model',
+    section: 'agent-runs',
+    configKeys: ['reviewGuideModel'],
+  },
+  {
+    id: 'review-guide-instructions',
+    title: 'Review guide instructions',
+    section: 'agent-runs',
+    configKeys: ['reviewGuideInstructions'],
   },
   // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
   // These two MOVED here from 'appearance'. Their ids are unchanged, so every
@@ -500,13 +606,6 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
   {
-    id: 'sidebar-sections',
-    title: 'Sidebar sections',
-    section: 'appearance',
-    keywords: ['open chats', 'drafts', 'sidebar', 'hide', 'remove'],
-    configKeys: ['sidebarSections'],
-  },
-  {
     id: 'haptic-feedback',
     title: 'Haptic feedback',
     section: 'appearance',
@@ -571,6 +670,8 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'mobile-pairing',
     title: 'Device pairing',
     section: 'pairing',
+    // #3557: a person's own access tokens render in this section.
+    searchKeywords: ['access tokens', 'personal access tokens'],
     configKeys: [],
   },
   {
@@ -596,6 +697,8 @@ const SETTINGS_MESSAGES = {
   paletteGroup: 'Settings',
   scopeStation: 'Saved to this Station.',
   scopeDefaults: 'Saved as Station defaults.',
+  scopeAccount:
+    'Saved to your account on this Station when signed in; otherwise saved on this device.',
   scopeDevice: 'Saved to this device.',
   scopeMixed: 'Exports and imports include this Station and this device.',
   scopeTemporary: 'Available only for this browser session.',
@@ -732,6 +835,8 @@ function scopeForEntry(
   section: SettingsSectionId,
   configKeys: readonly string[] | undefined,
 ): NonNullable<SettingsCatalogEntry['scope']> {
+  if (section === 'account-preferences' || id === 'smooth-answer-reveal')
+    return 'account';
   const override = SETTING_SCOPE_OVERRIDES[id];
   if (override) return override;
   const declaredKey = configKeys?.[0];

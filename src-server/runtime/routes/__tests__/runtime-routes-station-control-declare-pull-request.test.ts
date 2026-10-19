@@ -12,6 +12,7 @@
  */
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import { MockLanguageModelV3 } from 'ai/test';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -21,12 +22,17 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
 import { StationControlPullRequestUnavailableError } from '../../../services/orchestration/station-control-pull-request-declarations.js';
+import { guideFixture } from '../../../services/pull-requests/__tests__/guide-fixture.js';
+import { GitHubPullRequestProvider } from '../../../services/pull-requests/github-pull-request-provider.js';
+import { PullRequestRepositoryContextResolver } from '../../../services/pull-requests/pull-request-repository-context-resolver.js';
+import { PullRequestReviewGuideStore } from '../../../services/pull-requests/pull-request-review-guide-store.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { VoltAgentFramework } from '../../frameworks/voltagent-adapter.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpHeaderAuth,
@@ -106,7 +112,7 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
+  async function setup(guideEnabled = false, framework?: unknown) {
     const homeDir = makeTempDir('station-declare-pr-route-');
     const service = new NotificationService(new EventBus(), homeDir, 999_999);
     closers.push(() => service.shutdown());
@@ -121,6 +127,10 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
       app,
       port: 4321,
       appConfig: {},
+      getLiveAppConfig: () => ({
+        reviewGuidesEnabled: guideEnabled,
+        structureModel: 'model',
+      }),
       configLoader: {
         getProjectHomeDir: () => homeDir,
         loadAppConfig: () => ({}),
@@ -206,6 +216,7 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         devicePairing: deepStub({}),
       }),
     });
+    if (framework) Reflect.set(context as object, 'framework', framework);
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
     const result = configureRuntimeRoutes(
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
@@ -222,7 +233,7 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
     closers.unshift(
       () => new Promise<void>((resolve) => server.close(() => resolve())),
     );
-    return { base: `http://127.0.0.1:${await listening}` };
+    return { base: `http://127.0.0.1:${await listening}`, homeDir };
   }
 
   const internal = (extra: Record<string, string> = {}) => ({
@@ -264,8 +275,246 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
     return { status: response.status, json };
   }
 
-  const ASSURANCE = 'station_control_assurance_insufficient';
   const ROLE = 'station_control_role_required';
+
+  test.each(['generic-last-error', 'budget-exhaustion'] as const)(
+    'bound operator generates a guide and preserves the first length failure before %s',
+    async (retryFailure) => {
+      const f = await guideFixture(makeTempDir);
+      const output = {
+        stops: [
+          {
+            title: 'Tour',
+            summary: '',
+            attention: null,
+            excerpts: [] as Array<{
+              path: string;
+              side: string;
+              start: number;
+              end: number;
+              caption: string;
+            }>,
+            files: [],
+            notes: [],
+            questions: [],
+          },
+        ],
+      };
+      const budget = new AbortController();
+      let timeoutOverride: ReturnType<typeof vi.spyOn> | undefined;
+      let lengthFailureAttempts = 0;
+      const model = new MockLanguageModelV3({
+        doGenerate: async () => {
+          if (output.stops[0]!.excerpts.length && ++lengthFailureAttempts > 1) {
+            if (retryFailure === 'budget-exhaustion') budget.abort();
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    stops: [
+                      {
+                        ...output.stops[0],
+                        excerpts: [
+                          {
+                            path: 'a.ts',
+                            side: 'new',
+                            start: 900,
+                            end: 900,
+                            caption: 'Invalid anchor',
+                          },
+                        ],
+                      },
+                    ],
+                  }),
+                },
+              ],
+              finishReason: { unified: 'stop', raw: 'stop' },
+              usage: {
+                inputTokens: {
+                  total: 1,
+                  noCache: 1,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                },
+                outputTokens: { total: 1, text: 1, reasoning: 0 },
+              },
+              warnings: [],
+            };
+          }
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(output),
+              },
+            ],
+            finishReason: { unified: 'stop', raw: 'stop' },
+            usage: {
+              inputTokens: {
+                total: 1,
+                noCache: 1,
+                cacheRead: 0,
+                cacheWrite: 0,
+              },
+              outputTokens: { total: 1, text: 1, reasoning: 0 },
+            },
+            warnings: [],
+          };
+        },
+      });
+      const framework = new VoltAgentFramework();
+      vi.spyOn(framework, 'createModel').mockResolvedValue(model);
+      const { base, homeDir } = await setup(true, framework);
+      const repo = {
+        ...f.context,
+        repository: {
+          owner: 'owner',
+          name: 'repo',
+          remote: 'https://github.com/owner/repo.git',
+        },
+      };
+      const resolve = vi
+        .spyOn(PullRequestRepositoryContextResolver.prototype, 'resolve')
+        .mockResolvedValue({ available: true, context: repo });
+      const snapshot = vi
+        .spyOn(GitHubPullRequestProvider.prototype, 'getReviewSnapshot')
+        .mockResolvedValue({
+          available: true,
+          data: {
+            ...f.snapshot,
+            pullRequest: {
+              ...f.snapshot.pullRequest,
+              repository: { owner: 'owner', name: 'repo' },
+              ref: '42',
+              url: 'https://github.com/owner/repo/pull/42',
+            },
+          },
+          effectiveCapabilities: {
+            list: true,
+            detail: true,
+            open: false,
+            comment: false,
+            approve: false,
+            merge: false,
+            autoMerge: false,
+          },
+          effectiveMergeMethods: [],
+          mergeMethodsSource: 'provider-default',
+        });
+      try {
+        const response = await fetch(
+          `${base}/api/pull-requests/github/github.com/owner/repo/42/guide?project=project-a`,
+          { method: 'POST', headers: as('bound', 'op-caller-a'), body: '{}' },
+        );
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          success: true,
+          data: { enabled: true },
+        });
+        const identity = {
+          provider: 'github',
+          host: 'github.com',
+          repository: { owner: 'owner', name: 'repo' },
+          ref: '42',
+        };
+        const store = new PullRequestReviewGuideStore(homeDir);
+        await vi.waitFor(
+          () =>
+            expect(
+              store.read(identity, f.snapshot.headSha)?.stops[0]?.title,
+            ).toBe('Tour'),
+          { timeout: 15000 },
+        );
+        expect(model.doGenerateCalls).toHaveLength(1);
+        expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
+          type: 'json',
+        });
+        expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(16000);
+        expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
+          schema: {
+            properties: {
+              stops: {
+                minItems: 1,
+                maxItems: 8,
+                items: {
+                  properties: {
+                    excerpts: {
+                      maxItems: 6,
+                      items: {
+                        description:
+                          expect.stringContaining('25 inclusive lines'),
+                        properties: {
+                          end: {
+                            description: expect.stringContaining('start + 24'),
+                            maximum: 10000000,
+                          },
+                        },
+                      },
+                    },
+                    notes: { maxItems: 3 },
+                    questions: { maxItems: 2 },
+                    files: { maxItems: 500 },
+                  },
+                },
+              },
+            },
+          },
+        });
+        const denied = await fetch(
+          `${base}/api/pull-requests/github/github.com/owner/repo/42/guide?project=project-a`,
+          {
+            method: 'POST',
+            headers: as('bearer-exposed', 'op-caller-a'),
+            body: '{}',
+          },
+        );
+        expect(denied.status).toBe(403);
+        expect(model.doGenerateCalls).toHaveLength(1);
+        output.stops[0]!.excerpts = [
+          { path: 'a.ts', side: 'new', start: 1, end: 36, caption: 'Too long' },
+        ];
+        if (retryFailure === 'budget-exhaustion')
+          timeoutOverride = vi
+            .spyOn(AbortSignal, 'timeout')
+            .mockReturnValue(budget.signal);
+        const rewrite = await fetch(
+          `${base}/api/pull-requests/github/github.com/owner/repo/42/guide?project=project-a`,
+          {
+            method: 'POST',
+            headers: as('bound', 'op-caller-a'),
+            body: '{"force":true}',
+          },
+        );
+        expect(rewrite.status).toBe(200);
+        await vi.waitFor(
+          async () => {
+            const status = await fetch(
+              `${base}/api/pull-requests/github/github.com/owner/repo/42/guide?project=project-a&status=1`,
+              { headers: as('bound', 'op-caller-a') },
+            );
+            expect(await status.json()).toMatchObject({
+              data: {
+                run: {
+                  state: 'Failed',
+                  detail:
+                    'The model returned an excerpt exceeding 25 lines. Rewrite the guide using shorter excerpts.',
+                },
+              },
+            });
+          },
+          { timeout: 15000 },
+        );
+        expect(lengthFailureAttempts).toBe(1);
+        expect(model.doGenerateCalls).toHaveLength(2);
+        expect(budget.signal.aborted).toBe(false);
+      } finally {
+        timeoutOverride?.mockRestore();
+        snapshot.mockRestore();
+        resolve.mockRestore();
+      }
+    },
+  );
 
   test('hands the verified caller’s own session and the parsed identity to the declaration', async () => {
     const { base } = await setup();
@@ -346,13 +595,13 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         'bearer-exposed, unconfined',
         'bearer-exposed',
         'host-caller-a',
-        ASSURANCE,
+        'station_control_out_of_scope:host',
       ],
       [
         'delegated-custody, unconfined',
         'delegated-custody',
         'host-caller-a',
-        ASSURANCE,
+        'station_control_out_of_scope:host',
       ],
     ])('%s', async (_label, channel, session, expected) => {
       const { base } = await setup();
@@ -363,7 +612,11 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         expect(support.declared).toHaveLength(1);
       } else {
         expect(response.status).toBe(403);
-        expect(response.json.code).toBe(expected);
+        expect(
+          response.json.reason
+            ? `${response.json.code}:${response.json.reason}`
+            : response.json.code,
+        ).toBe(expected);
         expect(support.declared).toEqual([]);
       }
     });
@@ -377,7 +630,10 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         IDENTITY,
       );
       expect(notBound.status).toBe(403);
-      expect([ASSURANCE, ROLE]).toContain(notBound.json.code);
+      expect([notBound.json.code, notBound.json.reason]).toEqual([
+        'station_control_out_of_scope',
+        'target-unavailable',
+      ]);
       expect(support.declared).toEqual([]);
     });
 

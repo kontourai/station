@@ -94,6 +94,18 @@ describe('revocation provenance', () => {
       describeDeviceRevocation(
         device({
           revokedAt: NOW - HOUR,
+          revocation: {
+            state: 'recorded',
+            actor: 'device-access',
+            reason: 'owner-request',
+          },
+        }),
+      ),
+    ).toBe('Revoked by a device administrator · Owner request');
+    expect(
+      describeDeviceRevocation(
+        device({
+          revokedAt: NOW - HOUR,
           revocation: { state: 'unobserved-before-revocation-provenance' },
         }),
       ),
@@ -243,6 +255,7 @@ describe('describeDeviceScope', () => {
       ),
     ).toBe('Custom access');
     const fullAccessScope = [
+      'access:devices',
       'relay:manage',
       'approval:full-access',
       'coding:exec',

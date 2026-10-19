@@ -83,10 +83,12 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
 > = {
   auto: {
     codex:
-      'Agent asks at its own discretion; file writes sandboxed to the workspace.',
+      "Agent requests approval at its own discretion; Codex's configured reviewer may approve sandbox escalations automatically. File writes stay sandboxed to the workspace.",
     claude: 'File edits auto-approved; other actions still ask.',
   },
   ask: {
+    codex:
+      'Codex asks about untrusted commands; its configured reviewer may approve sandbox escalations automatically.',
     // #1545: Station imposes no approval floor over Claude's own permission
     // flow in this mode, so the copy has to name whose rules can skip an
     // approval. It says "and this workspace's" because Station sets no
@@ -147,6 +149,7 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 type ApprovalModeSource =
   | 'session override'
   | 'agent default'
+  | 'account default'
   | 'station default'
   | 'adapter default';
 
@@ -176,12 +179,14 @@ export function resolveEffectiveApprovalMode({
   engineConnectionId,
   sessionOverride,
   agentDefault,
+  personalDefault,
   stationDefault,
 }: {
   engineConnectionId?: string | null;
   sessionOverride?: unknown;
   /** The session's Agent's own default (`execution.approvalMode`). */
   agentDefault?: unknown;
+  personalDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
    * engine whose adapter reads the knob at all — passing it for any other
@@ -211,6 +216,18 @@ export function resolveEffectiveApprovalMode({
       mode: agentDefaultMode,
       label: `${approvalModeLabel(agentDefaultMode)} (agent default)`,
       source: 'agent default',
+    };
+  }
+
+  if (
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(personalDefault) &&
+    personalDefault !== 'connection-default'
+  ) {
+    return {
+      mode: personalDefault,
+      label: `${approvalModeLabel(personalDefault)} (your default)`,
+      source: 'account default',
     };
   }
 
@@ -287,6 +304,7 @@ export interface SessionApprovalOverride {
 export interface ApprovalPostureState {
   /** A pick the server has not received yet. A Default pick is a decision too. */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /** The latest recorded decision this client has folded. */
   approvalPosture?: ApprovalMode;
   /** Its server global sequence; absent when only this client's send vouches for it. */

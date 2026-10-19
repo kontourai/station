@@ -1,0 +1,21 @@
+{
+  "revision": "b3de88f08b9e6fc8ac276178a4cd7e468926fc70",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed shared inbox anatomy against F3: Earlier now preserves the current chat or orchestration thread beyond the page, using the same identity as aria-current. Row content, actions and touch chrome remain unchanged. Mounted desktop/mobile tests cover both identities; no new rendering or physical-device claim.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Re-reviewed SplitPaneLayout list/detail semantics after F1. Replaced the Activity-only listOutro slot with a section footer carrying a stable id. It renders at the section boundary in the same keyed child list, preserving paging focus. Existing loading/empty/error guidance remains accurate; mounted Activity and SplitPaneLayout tests passed.","inputs":["docs/design/shell-skeletons.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Re-reviewed Connections consumers against the F1 section-footer change. They supply no sectionFooter, and list/readiness/detail/check controls retain their DOM and behavior. Existing prose remains accurate; no new connection/provider evidence.","inputs":["docs/guides/connections.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Re-reviewed focus and shared-surface claims against F1/F3. Section footers retain a stable key across page growth; current Earlier rows remain mounted in both inbox hosts. The existing Button styles and target sizes are unchanged. Mounted tests preserve paging focus; this round adds no geometry, theme or device proof.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Re-reviewed Connections walkthrough claims against replacement of the Activity-only listOutro with per-section footers. Connections omits the footer, selected-row CSS and capture bytes are unchanged, and historical sample-data limits remain accurate. No screenshot comparison evidence is claimed for Activity.","inputs":["docs/learn/walkthroughs.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Re-reviewed UI connection-check and evidence-limit claims against F1. Connections has no section footer and the smoke path is unchanged. Existing source-backed explanation remains accurate; no live-provider or smoke execution claim.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed Activity/inbox reopening claims against F1/F2/F3/F6. Earlier paging stays before From other apps; selected deep links and current inbox identities remain visible beyond the page; empty-result wording follows the same deferred query as results. Existing navigation/opening guidance remains accurate. Mounted regressions cover list ordering, deep links and both inbox hosts.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Re-reviewed the qualified historical Connections capture against F1 section-footer placement. Connections supplies no footer; selected-row styling and the captured controls are unchanged. Retains the existing sample-data and historical-chrome qualifications, without new capture or provider proof.","inputs":["docs/learn/media/connections-models.png","src-ui/src/components/SplitPaneLayout.tsx"]}
+  ]
+}

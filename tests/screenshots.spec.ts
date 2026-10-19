@@ -3,9 +3,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Page, type Route } from '@playwright/test';
+import { buildLongSessionTurns } from './fixtures/long-session';
 import { contrastRatio } from './helpers/color-contrast';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
@@ -112,13 +114,17 @@ async function seedGalleryConnectionProfile(page: Page): Promise<void> {
   );
 }
 
-function fulfillGalleryStationHandshake(route: Route): Promise<void> {
+function fulfillGalleryStationHandshake(
+  route: Route,
+  boundedHistory = false,
+): Promise<void> {
   return route.fulfill({
     json: {
       schemaVersion: 1,
       environmentId: GALLERY_ENVIRONMENT_ID,
       authentication: { scheme: 'bearer', protocolVersion: 1 },
       transports: { http: 1, sse: 1, websocket: 1 },
+      ...(boundedHistory ? { capabilities: { sessionEventWindow: true } } : {}),
       compatibility: {
         serverVersion: '0.0.0-screenshot-gallery',
         protocolVersion: 1,
@@ -129,7 +135,7 @@ function fulfillGalleryStationHandshake(route: Route): Promise<void> {
           environmentProof: 1,
         },
       },
-    },
+    } satisfies PublicStationHandshake,
   });
 }
 
@@ -156,6 +162,23 @@ async function fulfillGallerySystemStatus(route: Route): Promise<void> {
       devicePresentation: {
         ...status.devicePresentation,
         hostName: 'Gallery host',
+      },
+    },
+  });
+}
+
+async function fulfillGalleryToolAccess(route: Route): Promise<void> {
+  const response = await route.fetch();
+  const access = await response.json();
+  if (!response.ok() || !access.success || !access.data?.station?.name)
+    throw new Error('Gallery requires the live tool-access projection.');
+  await route.fulfill({
+    response,
+    json: {
+      ...access,
+      data: {
+        ...access.data,
+        station: { ...access.data.station, name: 'Gallery host' },
       },
     },
   });
@@ -1027,7 +1050,7 @@ function seedActiveChatSession(
  * `fulfillSessionsFilteredEmptyFixture`'s doc comment for the established
  * per-screen `page.route`-override-then-unroute idiom this generalizes).
  * Every screen below that registers a route MUST call the returned cleanup
- * in `afterGoto`'s `finally`, or its fixture — a project list, a durable
+ * in `cleanup` or `afterGoto`'s `finally`, or its fixture — a project list, a durable
  * session — leaks into every screen captured after it for the rest of the
  * run (a stray "Demo Project" can survive three screens later
  * and change Home's guidance-card content under an unrelated screen name).
@@ -1074,6 +1097,312 @@ function orchestrationSessionFixture(session: {
         ],
       },
     });
+}
+
+/** Real ChatDock wiring: failed reads recover once, with pending responses held. */
+async function verifyConversationRecovery(page: Page): Promise<void> {
+  const testInfo = test.info();
+  const width = page.viewportSize()!.width;
+  const resync = page.getByRole('button', {
+    name: 'Status unavailable — resync this conversation',
+    exact: true,
+  });
+  const box = await resync.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+  if (width === 390) expect(box!.height).toBeGreaterThanOrEqual(44);
+  await page.screenshot({
+    path: join(GALLERY_DIR, `freshness-failed-${width}.png`),
+    animations: 'disabled',
+  });
+  if (width > 600) {
+    const row = page
+      .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+      .filter({ hasText: 'Mismatch demo chat' });
+    await expect(row.getByTestId('inbox-row-status')).toContainText(
+      'Last known:',
+    );
+    await expect(row.locator('.inbox-row__status-glyph')).toHaveCSS(
+      'animation-name',
+      'none',
+    );
+    await expect(row.locator('.inbox-row__elapsed')).toHaveCount(0);
+  } else {
+    await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+    const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+    await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
+    await expect(picker.getByTestId('inbox-row-status')).toContainText(
+      'Last known:',
+    );
+    await page.screenshot({
+      path: join(GALLERY_DIR, `freshness-failed-picker-${width}.png`),
+      animations: 'disabled',
+    });
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeHidden();
+  }
+  await mockRuntimeConversation(page, {
+    id: 'gallery-mismatch-conversation',
+    agentSlug: 'demo-agent',
+    title: 'Mismatch demo chat',
+    provider: 'claude',
+    model: 'test-model',
+    projectSlug: 'project-b',
+    canContinue: true,
+    turns: () =>
+      buildLongSessionTurns({
+        threadId: 'gallery-mismatch-conversation',
+        provider: 'claude',
+        turnCount: 1,
+        replyText: () => 'Recovered conversation transcript',
+      }),
+  });
+  // This synthetic conversation is absent from the real server's snapshot.
+  // Keep its SSE transport open during recovery; the HTTP reads below still
+  // pass through the real SDK and ChatDock owners to explicit route fixtures.
+  await page.evaluate(() => {
+    const scope = window as Window & { __recoveryFetch?: typeof fetch };
+    scope.__recoveryFetch = window.fetch;
+    const original = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url, location.href).pathname !== '/api/orchestration/events')
+        return original(input, init);
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            init?.signal?.addEventListener('abort', () => controller.close(), {
+              once: true,
+            });
+          },
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      );
+    };
+  });
+  try {
+    const removeHandshake = await withRoute(
+      page,
+      '**/.well-known/station/v1',
+      (route) => fulfillGalleryStationHandshake(route, true),
+    );
+    let historyFailed = true;
+    let historyReads = 0;
+    let releaseHistory!: () => void;
+    const historyPending = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    const removeHistory = await withRoute(
+      page,
+      '**/api/orchestration/conversations/gallery-mismatch-conversation/event-window**',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        historyReads++;
+        if (historyFailed) {
+          await route.fulfill({
+            status: 503,
+            json: {
+              success: false,
+              error: 'Recovery fixture history unavailable',
+            },
+          });
+          return;
+        }
+        await historyPending;
+        await route.fallback();
+      },
+    );
+    let releaseOpen!: () => void;
+    const openPending = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    let openReads = 0;
+    const removeOpen = await withRoute(
+      page,
+      '**/api/conversations/gallery-mismatch-conversation/open',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        openReads++;
+        await openPending;
+        await route.fallback();
+      },
+    );
+    try {
+      await resync.click();
+      const pending = page.getByRole('button', {
+        name: 'Resyncing conversation — resync this conversation',
+        exact: true,
+      });
+      await expect(pending).toBeDisabled();
+      await expect(pending).toHaveAttribute('aria-busy', 'true');
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Resyncing conversation' }),
+      ).toBeAttached();
+      await expect.poll(() => openReads).toBe(1);
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+      expect(openReads).toBe(1);
+      await page.screenshot({
+        path: testInfo.outputPath(`resync-pending-${width}.png`),
+      });
+      releaseOpen();
+      await expect(
+        page.getByText(
+          "Station couldn't confirm Mismatch demo chat can continue.",
+          { exact: true },
+        ),
+      ).toBeHidden();
+      await expect(pending).toBeHidden();
+      expect(openReads).toBe(1);
+      await expect(
+        page.getByText('Recovery fixture history unavailable', {
+          exact: false,
+        }),
+      ).toBeVisible({ timeout: 15_000 });
+      const failedHistoryReads = historyReads;
+      expect(failedHistoryReads).toBeGreaterThan(0);
+      historyFailed = false;
+      await resync.click();
+      await expect(pending).toBeDisabled();
+      await expect.poll(() => historyReads - failedHistoryReads).toBe(1);
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+      expect(historyReads - failedHistoryReads).toBe(1);
+      releaseHistory();
+      await expect(
+        page.getByText('Recovered conversation transcript', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('Recovery fixture history unavailable', {
+          exact: false,
+        }),
+      ).toBeHidden();
+      await expect(resync).toBeHidden();
+      await expect(
+        page.getByRole('group', { name: 'Message composer', exact: true }),
+      ).toBeFocused();
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Conversation resynced.' }),
+      ).toBeAttached();
+      await page.screenshot({
+        path: testInfo.outputPath(`resync-recovered-${width}.png`),
+      });
+      // A successful history read cannot clear the independently failed inventory.
+      if (width > 600) {
+        const row = page
+          .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+          .filter({ hasText: 'Mismatch demo chat' });
+        await expect(row.getByTestId('inbox-row-status')).toContainText(
+          'Last known:',
+        );
+      }
+      await page.screenshot({
+        path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+        animations: 'disabled',
+      });
+      if (width === 390) {
+        await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+        const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+        await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
+        await expect(picker.getByTestId('inbox-row-status')).not.toContainText(
+          'Last known:',
+        );
+        await page.screenshot({
+          path: join(GALLERY_DIR, `freshness-recovered-picker-${width}.png`),
+          animations: 'disabled',
+        });
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+      }
+      expect(historyReads - failedHistoryReads).toBe(1);
+      console.log('HISTORY_RECOVERY_REQUEST_COUNTS', {
+        width,
+        failedHistoryReads,
+        replacementReads: historyReads - failedHistoryReads,
+      });
+    } finally {
+      releaseOpen();
+      releaseHistory();
+      await removeOpen();
+      await removeHistory();
+      await removeHandshake();
+    }
+    if (width > 600) {
+      let releaseInventory!: () => void;
+      const inventoryPending = new Promise<void>((resolve) => {
+        releaseInventory = resolve;
+      });
+      let inventoryReads = 0;
+      const removeInventory = await withRoute(
+        page,
+        '**/api/conversations**',
+        async (route) => {
+          if (new URL(route.request().url()).pathname !== '/api/conversations')
+            return route.fallback();
+          if (route.request().method() !== 'GET')
+            return rejectUnexpectedFixtureRequest(route);
+          inventoryReads++;
+          await inventoryPending;
+          await route.fulfill({
+            json: { success: true, data: { items: [], hasMore: false } },
+          });
+        },
+      );
+      try {
+        await expect(
+          page.getByText("Couldn't refresh. Showing the last known list."),
+        ).toBeVisible();
+        await page
+          .getByRole('button', { name: 'Refresh inbox', exact: true })
+          .click();
+        const refreshing = page.getByRole('button', {
+          name: 'Refreshing inbox',
+          exact: true,
+        });
+        await expect(refreshing).toBeDisabled();
+        await expect.poll(() => inventoryReads).toBe(1);
+        for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+        expect(inventoryReads).toBe(1);
+        releaseInventory();
+        await expect(
+          page.getByText("Couldn't refresh. Showing the last known list."),
+        ).toBeHidden();
+        await expect(
+          page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+        ).toBeEnabled();
+        const row = page
+          .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+          .filter({ hasText: 'Mismatch demo chat' });
+        await expect(row.getByTestId('inbox-row-status')).not.toContainText(
+          'Last known:',
+        );
+        await page.screenshot({
+          path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+          animations: 'disabled',
+        });
+        expect(inventoryReads).toBe(1);
+        console.log('INBOX_RECOVERY_REQUEST_COUNTS', {
+          inventoryReads,
+          pendingActivations: 6,
+        });
+      } finally {
+        releaseInventory();
+        await removeInventory();
+      }
+    }
+    console.log('RECOVERY_REQUEST_COUNTS', {
+      width,
+      openReads,
+      pendingActivations: 6,
+    });
+  } finally {
+    await page.evaluate(() => {
+      const scope = window as Window & { __recoveryFetch?: typeof fetch };
+      if (scope.__recoveryFetch) window.fetch = scope.__recoveryFetch;
+      delete scope.__recoveryFetch;
+    });
+  }
 }
 
 type GalleryProjectFixture = {
@@ -1126,18 +1455,10 @@ function projectDetailFixture(
     });
 }
 
-/**
- * `overlay-dock-project-mismatch`'s hooks, factored out (matching
- * `connectionsHubBadgeSettleHooks()`'s established shape above) because
- * every route registered in `beforeGoto` (needed BEFORE `page.goto` — these
- * queries fire on first render) must be unregistered again in `afterGoto`,
- * and a plain object literal's two callbacks cannot share the `withRoute`
- * cleanup closures any other way.
- */
-function overlayDockProjectMismatchHooks(): Pick<
-  Screen,
-  'beforeGoto' | 'afterGoto'
-> {
+/** Keep the selected Project fixture available through both captures. */
+function overlayDockProjectMismatchHooks(
+  resyncOnly = false,
+): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
     beforeGoto: async (page) => {
@@ -1184,6 +1505,11 @@ function overlayDockProjectMismatchHooks(): Pick<
         ),
         await withRoute(
           page,
+          '**/api/projects/project-a',
+          projectDetailFixture({ slug: 'project-a', name: 'Project A' }),
+        ),
+        await withRoute(
+          page,
           '**/api/projects/project-b',
           projectDetailFixture({
             slug: 'project-b',
@@ -1192,87 +1518,133 @@ function overlayDockProjectMismatchHooks(): Pick<
           }),
         ),
       ];
+      if (resyncOnly) {
+        cleanups.push(
+          await withRoute(page, '**/api/conversations**', async (route) => {
+            if (
+              new URL(route.request().url()).pathname !== '/api/conversations'
+            ) {
+              await route.fallback();
+              return;
+            }
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            await route.fulfill({
+              status: 503,
+              json: { success: false, error: 'temporarily_unavailable' },
+            });
+          }),
+        );
+      }
     },
     afterGoto: async (page) => {
-      try {
-        await assertNoStrayProjectModal(page);
-        // The dock's own inbox "ACTIVE NOW" row resolves this fixture
-        // session's title asynchronously (a live query racing the seeded
-        // sessionStorage title) — waiting for its settled text here, before
-        // anything else, is what makes the eventual shot deterministic
-        // (the row's transient intermediate text otherwise produces a
-        // real, reproducible ~1939-pixel diff between two otherwise
-        // byte-identical captures).
-        await expect(
-          page.locator('.chat-dock-inbox__item').first(),
-        ).toContainText('Mismatch demo chat', { timeout: 10_000 });
-        // The active session (project-b) renders first with no binding
-        // bound yet (archive#4525: the badge no longer follows the active
-        // session at all). Binding to Project A through the real picker
-        // interaction is what produces the mismatch, exactly as a user
-        // reaching this state would.
-        //
-        // #1552 D3 dropped the visible "No project" label — the unbound chip is
-        // the folder glyph alone, named for what pressing it does — so the
-        // unbound state is the accessible NAME now, and the empty text is
-        // asserted beside it so this cannot pass on a chip that renders nothing.
-        const badge = page.locator('.chat-dock__project-badge');
-        await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
-          timeout: 10_000,
-        });
-        await expect(badge).toHaveText('');
-        await badge.click();
-        await expect(
-          page.getByRole('dialog', { name: 'Projects' }),
-        ).toBeVisible({ timeout: 10_000 });
-        await page.getByRole('button', { name: 'Switch to Project A' }).click();
-        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
-          { timeout: 10_000 },
-        );
-        // The badge now names the BOUND project (by design it never
-        // follows the active session) — while the facts
-        // row leads with the session's own, muted, differing project name.
-        // Scoped to the badge's own class: the project sidebar (seeded
-        // from the same `/api/projects` mock) also renders a same-named
-        // button.
-        await expect(
-          page.locator('.chat-dock__project-badge', { hasText: 'Project A' }),
-        ).toBeVisible({ timeout: 10_000 });
-        await expect(
-          page.locator('.chat-dock__project-session-name'),
-        ).toBeVisible({ timeout: 10_000 });
+      await assertNoStrayProjectModal(page);
+      if (resyncOnly) {
         await expect(
           page.getByRole('button', {
-            name: 'Status unavailable — repair the connection',
+            name: 'Status unavailable — resync this conversation',
             exact: true,
           }),
-        ).toBeVisible({ timeout: 10_000 });
-        await expect
-          .poll(() =>
-            page
-              .getByRole('button', {
-                name: 'Status unavailable — repair the connection',
-                exact: true,
-              })
-              .evaluate(
-                (pill) =>
-                  pill
-                    .getAnimations({ subtree: true })
-                    .filter(
-                      (animation) =>
-                        animation.playState === 'running' &&
-                        animation.effect?.getComputedTiming().iterations !==
-                          Infinity,
-                    ).length,
-              ),
-          )
-          .toBe(0);
-      } finally {
-        // See `withRoute`'s doc comment: every route registered above must
-        // be unregistered again, or its fixture leaks into every screen
-        // captured after this one for the rest of the run.
-        for (const cleanup of cleanups) await cleanup();
+        ).toBeVisible();
+        if ((page.viewportSize()?.width ?? 0) > 600) {
+          await expect(
+            page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText("Couldn't refresh. Showing the last known list."),
+          ).toBeVisible({ timeout: 15_000 });
+        }
+        return;
       }
+      // The dock's own inbox "ACTIVE NOW" row resolves this fixture
+      // session's title asynchronously (a live query racing the seeded
+      // sessionStorage title) — waiting for its settled text here, before
+      // anything else, is what makes the eventual shot deterministic
+      // (the row's transient intermediate text otherwise produces a
+      // real, reproducible ~1939-pixel diff between two otherwise
+      // byte-identical captures).
+      await expect(
+        page.locator('.chat-dock-inbox__item').first(),
+      ).toContainText('Mismatch demo chat', { timeout: 10_000 });
+      // The active session (project-b) renders first with no binding
+      // bound yet (archive#4525: the badge no longer follows the active
+      // session at all). Binding to Project A through the real picker
+      // interaction is what produces the mismatch, exactly as a user
+      // reaching this state would.
+      //
+      // #1552 D3 dropped the visible "No project" label — the unbound chip is
+      // the folder glyph alone, named for what pressing it does — so the
+      // unbound state is the accessible NAME now, and the empty text is
+      // asserted beside it so this cannot pass on a chip that renders nothing.
+      const badge = page.locator('.chat-dock__project-badge');
+      await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
+        timeout: 10_000,
+      });
+      await expect(badge).toHaveText('');
+      await badge.click();
+      await expect(page.getByRole('dialog', { name: 'Projects' })).toBeVisible({
+        timeout: 10_000,
+      });
+      const projectRead = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/projects/project-a',
+      );
+      await page.getByRole('button', { name: 'Switch to Project A' }).click();
+      expect(
+        (await projectRead).status(),
+        'selected Project detail must be available',
+      ).toBe(200);
+      await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden({
+        timeout: 10_000,
+      });
+      // The badge now names the BOUND project (by design it never
+      // follows the active session) — while the facts
+      // row leads with the session's own, muted, differing project name.
+      // Scoped to the badge's own class: the project sidebar (seeded
+      // from the same `/api/projects` mock) also renders a same-named
+      // button.
+      await expect(
+        page.locator('.chat-dock__project-badge', { hasText: 'Project A' }),
+      ).toBeVisible({ timeout: 10_000 });
+      await expect(
+        page.locator('.chat-dock__project-session-name'),
+      ).toBeVisible({ timeout: 10_000 });
+      await expect(
+        page.getByRole('button', {
+          name: 'Status unavailable — resync this conversation',
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 10_000 });
+      await expect
+        .poll(() =>
+          page
+            .getByRole('button', {
+              name: 'Status unavailable — resync this conversation',
+              exact: true,
+            })
+            .evaluate(
+              (pill) =>
+                pill
+                  .getAnimations({ subtree: true })
+                  .filter(
+                    (animation) =>
+                      animation.playState === 'running' &&
+                      animation.effect?.getComputedTiming().iterations !==
+                        Infinity,
+                  ).length,
+            ),
+        )
+        .toBe(0);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollHeight),
+        'settled conversation status must not extend the document',
+      ).toBe(page.viewportSize()?.height);
+    },
+    cleanup: async () => {
+      // Polling must see the scenario's fixtures until its image and recovery
+      // checks finish; removing them in afterGoto races the screenshot.
+      for (const cleanup of cleanups) await cleanup();
+      cleanups = [];
     },
   };
 }
@@ -1330,6 +1702,8 @@ interface Screen {
    * be captured as the wrong tile).
    */
   afterGoto?: (page: Page) => Promise<void>;
+  /** Release screen fixtures after capture and interaction checks, even on failure. */
+  cleanup?: () => Promise<void>;
   /**
    * This screen deliberately captures a loading skeleton (@kontourai/ui's
    * `.skeleton`) itself — opt out of the universal
@@ -1338,7 +1712,117 @@ interface Screen {
   expectSkeleton?: boolean;
 }
 
+function telemetryConsentScreens(): Screen[] {
+  return [DESKTOP, MOBILE].flatMap((viewport) =>
+    (['settings-dnt', 'pending-full', 'dialog-dnt'] as const).map((mode) => {
+      const pending = mode === 'pending-full';
+      const dialogVisible = mode !== 'settings-dnt';
+      const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
+      let ownPage: Page;
+      const device = viewport === MOBILE ? 'mobile' : 'desktop';
+      return {
+        name: `telemetry-${mode}-${device}`,
+        title: `Telemetry — ${mode} (${device})`,
+        path: '/settings?view=telemetry',
+        viewport,
+        beforeGoto: async (page) => {
+          ownPage = page;
+          const configPattern = /\/config\/app(?:\?.*)?$/;
+          const disclosurePattern = /\/api\/usage-telemetry\/disclosure$/;
+          const configHandler = async (route: Route) => {
+            const response = await route.fetch();
+            const body = await response.json();
+            body.data.telemetryTier = { kontour: 'off', operator: 'full' };
+            delete body.data.telemetryEnabled;
+            // This fixture represents an upgraded home, outside guided setup.
+            delete body.data.firstRun;
+            await route.fulfill({ response, json: body });
+          };
+          const disclosureHandler = async (route: Route) => {
+            const response = await route.fetch();
+            const body = await response.json();
+            body.data.acknowledged = !dialogVisible;
+            body.data.telemetryEnabled = false;
+            body.data.endpointConfigured = pending || mode === 'dialog-dnt';
+            body.data.publishers = {
+              kontour: {
+                tier: 'off',
+                reason: pending ? 'user' : 'DNT',
+                userChoice: 'off',
+                source: 'config',
+              },
+              operator: {
+                tier: pending ? 'lite' : 'off',
+                reason: pending ? 'disclosure' : 'DNT',
+                userChoice: 'full',
+                source: 'config',
+              },
+            };
+            await route.fulfill({ response, json: body });
+          };
+          routes.push(
+            [configPattern, configHandler],
+            [disclosurePattern, disclosureHandler],
+          );
+          for (const [pattern, handler] of routes)
+            await page.route(pattern, handler);
+          await page.addInitScript(() => {
+            localStorage.removeItem(
+              'station.usage-telemetry-disclosure.snoozed',
+            );
+          });
+        },
+        afterGoto: async (page) => {
+          if (dialogVisible) {
+            const dialog = page.getByRole('dialog', {
+              name: 'What Station sends',
+            });
+            await expect(dialog).toBeVisible();
+            await expect(
+              dialog.getByRole('button', {
+                name: pending
+                  ? 'Turn off usage telemetry'
+                  : 'Save operator choice as Full',
+              }),
+            ).toBeVisible();
+            if (!pending) {
+              for (const tier of ['Off', 'Lite', 'Full'])
+                await expect(
+                  dialog.getByRole('radio', { name: tier, exact: true }),
+                ).toBeVisible();
+            }
+            await expect(
+              dialog
+                .getByText(
+                  pending
+                    ? /Your saved operator choice is Full, awaiting acknowledgement/
+                    : /DO_NOT_TRACK is active: nothing is sent/,
+                )
+                .first(),
+            ).toBeVisible();
+          } else {
+            const control = page.getByRole('combobox', {
+              name: 'Operator telemetry',
+            });
+            await control.scrollIntoViewIfNeeded();
+            await expect(control).toHaveValue('full');
+            await expect(
+              page.getByText(/Effective: Off — DO_NOT_TRACK is active/).first(),
+            ).toBeVisible();
+          }
+        },
+        cleanup: async () => {
+          // Each route belongs only to this gallery state.
+          for (const [pattern, handler] of routes)
+            await ownPage.unroute(pattern, handler);
+        },
+      } satisfies Screen;
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...telemetryConsentScreens(),
   {
     name: 'mobile-activity-compact',
     title: 'Mobile — Activity opened over Chat (#2549)',
@@ -1347,7 +1831,7 @@ const SCREENS: Screen[] = [
     waitFor: '.activity-filters, .split-pane__list',
     afterGoto: async (page) => {
       for (const control of [
-        page.getByRole('button', { name: 'New task', exact: true }),
+        page.getByRole('button', { name: 'New Task', exact: true }),
       ]) {
         await expect(control).toBeVisible();
         expect(
@@ -1616,7 +2100,17 @@ const SCREENS: Screen[] = [
       }
     },
   },
-  { name: 'profile', title: 'Profile', path: '/profile', viewport: DESKTOP },
+  {
+    name: 'profile',
+    title: 'Profile',
+    path: '/profile',
+    viewport: DESKTOP,
+    afterGoto: async (page) => {
+      await expect(
+        page.getByRole('region', { name: 'My access', exact: true }),
+      ).toContainText('Operator on Gallery host');
+    },
+  },
   {
     name: 'settings',
     title: 'Settings',
@@ -2449,6 +2943,18 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
     ...overlayDockProjectMismatchHooks(),
   },
+  ...(
+    [
+      ['desktop-conversation-resync', DESKTOP],
+      ['mobile-conversation-resync', MOBILE],
+    ] as const
+  ).map(([name, viewport]) => ({
+    name,
+    title: `${name.startsWith('mobile') ? 'Mobile' : 'Desktop'} — Conversation status unavailable`,
+    path: '/?dock=open&chat=gallery-mismatch-conversation',
+    viewport,
+    ...overlayDockProjectMismatchHooks(true),
+  })),
   {
     name: 'overlay-project-switcher-populated',
     title: 'Overlay — Project switcher sheet with a real project row',
@@ -2672,6 +3178,60 @@ const SCREENS: Screen[] = [
   })(),
 ];
 
+async function statusRasterState(page: Page) {
+  return page
+    .getByRole('button', {
+      name: 'Status unavailable — resync this conversation',
+      exact: true,
+    })
+    .locator('..')
+    .evaluate((host) => {
+      const svg = host.querySelector('.live-status-glyph svg');
+      if (!(svg instanceof SVGSVGElement))
+        throw new Error('Mismatch status warning SVG is missing');
+      const matrix = svg.getScreenCTM();
+      if (!matrix) throw new Error('Mismatch status SVG has no screen matrix');
+      const rect = svg.getBoundingClientRect();
+      return {
+        devicePixelRatio,
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        matrix: [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f],
+        strokeWidth: getComputedStyle(svg).strokeWidth,
+        color: getComputedStyle(svg).color,
+        ancestors: [
+          host,
+          ...host.querySelectorAll('button, .chat-status-pill__body'),
+        ]
+          .slice(0, 8)
+          .map((element) => {
+            const style = getComputedStyle(element);
+            return {
+              className: element.className,
+              transform: style.transform,
+              opacity: style.opacity,
+              willChange: style.willChange,
+            };
+          }),
+        animations: host
+          .getAnimations({ subtree: true })
+          .slice(0, 16)
+          .map((animation) => {
+            const timing = animation.effect?.getComputedTiming();
+            return {
+              playState: animation.playState,
+              pending: animation.pending,
+              fill: timing?.fill,
+              progress: timing?.progress,
+              iterations:
+                timing?.iterations === Infinity
+                  ? 'infinite'
+                  : timing?.iterations,
+            };
+          }),
+      };
+    });
+}
+
 interface Shot {
   screen: Screen;
   file: string;
@@ -2679,6 +3239,13 @@ interface Shot {
   error?: string;
   sha256?: string;
   controls?: Array<{ label: string; disabled: boolean }>;
+  rasterDiagnostic?: {
+    before: Awaited<ReturnType<typeof statusRasterState>>;
+    after: Awaited<ReturnType<typeof statusRasterState>>;
+    retiredCount: number;
+    file: string;
+    sha256: string;
+  };
   layout?: {
     appMainScrollTop: number;
     appMainScrollHeight: number;
@@ -2827,9 +3394,12 @@ test('build gallery — capture key screens', async ({ page }) => {
     if (typeof indexedDB !== 'undefined')
       indexedDB.deleteDatabase('station-query-cache');
   });
-  await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
+  await page.route('**/.well-known/station/v1', (route) =>
+    fulfillGalleryStationHandshake(route),
+  );
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
   await page.route('**/api/system/status', fulfillGallerySystemStatus);
+  await page.route('**/api/tool-library/access', fulfillGalleryToolAccess);
 
   // station#531: a fresh temp-home seeds this same built-in vector connection,
   // but gives it `<run-specific-home>/vectordb`. Seed the established
@@ -2942,6 +3512,7 @@ test('build gallery — capture key screens', async ({ page }) => {
     for (const screen of selectedScreens) {
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
+      let rasterDiagnostic: Shot['rasterDiagnostic'];
       try {
         await page.setViewportSize(screen.viewport);
         await page.emulateMedia({
@@ -3051,6 +3622,53 @@ test('build gallery — capture key screens', async ({ page }) => {
               // in-flight transition from being mid-frame at capture time.
               animations: 'disabled',
             });
+            if (screen.name === 'overlay-dock-project-mismatch') {
+              const before = await statusRasterState(page);
+              const retiredCount = await page
+                .getByRole('button', {
+                  name: 'Status unavailable — resync this conversation',
+                  exact: true,
+                })
+                .locator('..')
+                .evaluate((host) => {
+                  const finished = host
+                    .getAnimations({ subtree: true })
+                    .filter((animation) => {
+                      const timing = animation.effect?.getComputedTiming();
+                      return (
+                        animation.playState === 'finished' &&
+                        timing?.iterations !== Infinity &&
+                        (timing?.fill === 'both' || timing?.fill === 'forwards')
+                      );
+                    });
+                  for (const animation of finished) animation.cancel();
+                  return finished.length;
+                });
+              await page.evaluate(
+                () =>
+                  new Promise<void>((resolveFrame) =>
+                    requestAnimationFrame(() =>
+                      requestAnimationFrame(() => resolveFrame()),
+                    ),
+                  ),
+              );
+              const after = await statusRasterState(page);
+              const diagnosticFile = `${screen.name}.retired-effects-diagnostic.png`;
+              await page.screenshot({
+                path: join(GALLERY_DIR, diagnosticFile),
+                fullPage: true,
+                animations: 'disabled',
+              });
+              rasterDiagnostic = {
+                before,
+                after,
+                retiredCount,
+                file: diagnosticFile,
+                sha256: createHash('sha256')
+                  .update(readFileSync(join(GALLERY_DIR, diagnosticFile)))
+                  .digest('hex'),
+              };
+            }
           },
         });
         const controls = await page
@@ -3086,12 +3704,19 @@ test('build gallery — capture key screens', async ({ page }) => {
                   element.getAttribute('aria-disabled') === 'true',
               })),
           );
+        if (
+          screen.name === 'desktop-conversation-resync' ||
+          screen.name === 'mobile-conversation-resync'
+        ) {
+          await verifyConversationRecovery(page);
+        }
         shots.push({
           screen,
           file,
           ok: true,
           controls,
           layout,
+          rasterDiagnostic,
           sha256: createHash('sha256')
             .update(readFileSync(join(GALLERY_DIR, file)))
             .digest('hex'),
@@ -3113,6 +3738,8 @@ test('build gallery — capture key screens', async ({ page }) => {
           ok: false,
           error: error instanceof Error ? error.message : String(error),
         });
+      } finally {
+        await screen.cleanup?.();
       }
     }
   } finally {
@@ -3139,7 +3766,16 @@ test('build gallery — capture key screens', async ({ page }) => {
           // gallery for full coverage.
           selection: requestedScreens,
           screens: shots.map(
-            ({ file, ok, screen, error, sha256, controls, layout }) => ({
+            ({
+              file,
+              ok,
+              screen,
+              error,
+              sha256,
+              controls,
+              layout,
+              rasterDiagnostic,
+            }) => ({
               file,
               ok,
               name: screen.name,
@@ -3147,6 +3783,7 @@ test('build gallery — capture key screens', async ({ page }) => {
               sha256,
               controls,
               layout,
+              rasterDiagnostic,
             }),
           ),
         },
@@ -3160,4 +3797,26 @@ test('build gallery — capture key screens', async ({ page }) => {
   expect(ok, 'every selected gallery screen should render').toBe(
     selectedScreens.length,
   );
+  if (
+    selectedScreens.some(
+      (screen) => screen.name === 'overlay-dock-project-mismatch',
+    )
+  ) {
+    const diagnostic = shots.find(
+      (shot) => shot.screen.name === 'overlay-dock-project-mismatch',
+    )?.rasterDiagnostic;
+    expect(
+      diagnostic,
+      'settled status motion should be observed',
+    ).toBeDefined();
+    expect(
+      diagnostic?.retiredCount,
+      'completed status entry/morph effects must release their fill',
+    ).toBe(0);
+    const body = diagnostic?.before.ancestors.find(
+      (ancestor) => ancestor.className === 'chat-status-pill__body',
+    );
+    expect(body?.transform).toBe('none');
+    expect(body?.opacity).toBe('1');
+  }
 });

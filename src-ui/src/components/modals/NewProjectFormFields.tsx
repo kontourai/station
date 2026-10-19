@@ -30,7 +30,7 @@ export function NewProjectDirectoryField({
       <section className="new-project-modal__panel new-project-modal__panel--featured">
         <div className="editor-field">
           <label className="editor-label" htmlFor="new-project-directory">
-            Working Directory <span className="editor-hint"> optional</span>
+            Project folder <span className="editor-hint"> optional</span>
           </label>
           <PathAutocomplete
             id="new-project-directory"
@@ -94,7 +94,7 @@ export function NewProjectIdentityField({
   return (
     <div className="editor-field">
       <label className="editor-label" htmlFor="new-project-name">
-        Project identity
+        Project name
       </label>
       <div className="new-project-modal__identity-row">
         <button

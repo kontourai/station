@@ -1,0 +1,47 @@
+{
+  "revision": "2a759f70a8052500abd01072b1ebb2e80bef1fa8",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked against this change: scripts/actionlint-gate.mjs only adds the reviewed kontourai/.github docs-gate.yml@091ffab call, admits .github/workflows/docs-kit.yml as a base-controlled PR workflow, and accepts only that exact call shape. This document makes no claim about the base-controlled workflow list, reviewed remote workflows or docs-kit, so it remains accurate.","inputs":["docs/guides/delegation-attempt-claims.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Checked against this change: scripts/actionlint-gate.mjs only adds the reviewed kontourai/.github docs-gate.yml@091ffab call, admits .github/workflows/docs-kit.yml as a base-controlled PR workflow, and accepts only that exact call shape. This document makes no claim about the base-controlled workflow list, reviewed remote workflows or docs-kit, so it remains accurate.","inputs":["docs/guides/dependency-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked against this change: scripts/actionlint-gate.mjs only adds the reviewed kontourai/.github docs-gate.yml@091ffab call, admits .github/workflows/docs-kit.yml as a base-controlled PR workflow, and accepts only that exact call shape. This document makes no claim about the base-controlled workflow list, reviewed remote workflows or docs-kit, so it remains accurate.","inputs":["docs/guides/home-transfer-controller.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked against this change: scripts/actionlint-gate.mjs only adds the reviewed kontourai/.github docs-gate.yml@091ffab call, admits .github/workflows/docs-kit.yml as a base-controlled PR workflow, and accepts only that exact call shape. This document makes no claim about the base-controlled workflow list, reviewed remote workflows or docs-kit, so it remains accurate.","inputs":["docs/guides/private-runner-partition.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked against this change: scripts/actionlint-gate.mjs only adds the reviewed kontourai/.github docs-gate.yml@091ffab call, admits .github/workflows/docs-kit.yml as a base-controlled PR workflow, and accepts only that exact call shape. This document makes no claim about the base-controlled workflow list, reviewed remote workflows or docs-kit, so it remains accurate.","inputs":["docs/guides/product-law-authoring.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Checked against this change: scripts/actionlint-gate.mjs only adds the reviewed kontourai/.github docs-gate.yml@091ffab call, admits .github/workflows/docs-kit.yml as a base-controlled PR workflow, and accepts only that exact call shape. This document makes no claim about the base-controlled workflow list, reviewed remote workflows or docs-kit, so it remains accurate.","inputs":["docs/guides/releasing.md","scripts/__tests__/actionlint-gate.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked against this change: scripts/actionlint-gate.mjs only adds the reviewed kontourai/.github docs-gate.yml@091ffab call, admits .github/workflows/docs-kit.yml as a base-controlled PR workflow, and accepts only that exact call shape. This document makes no claim about the base-controlled workflow list, reviewed remote workflows or docs-kit, so it remains accurate.","inputs":["docs/guides/repository-layout.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked against this change: scripts/actionlint-gate.mjs only adds the reviewed kontourai/.github docs-gate.yml@091ffab call, admits .github/workflows/docs-kit.yml as a base-controlled PR workflow, and accepts only that exact call shape. This document makes no claim about the base-controlled workflow list, reviewed remote workflows or docs-kit, so it remains accurate.","inputs":["docs/guides/work-board-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked against this change: scripts/actionlint-gate.mjs only adds the reviewed kontourai/.github docs-gate.yml@091ffab call, admits .github/workflows/docs-kit.yml as a base-controlled PR workflow, and accepts only that exact call shape. This document makes no claim about the base-controlled workflow list, reviewed remote workflows or docs-kit, so it remains accurate.","inputs":["docs/guides/workspace-packages.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":".veritas/README.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":[".veritas/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/README.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/development.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Only the docs-kit sentence of documentation.md and the docs-kit.yml row of testing.md changed. This document cites those guides for sections that did not change, so its claims remain accurate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Updated the docs-kit.yml inventory row to PR: Docs kit with PR events, merge queue, main pushes and manual dispatch, matching the workflow triggers. Checked that the pull_request_target and merge-queue paragraphs (Windows floor, iOS) are unaffected by the actionlint-gate.mjs docs-gate admission, and that ci-workflow-contract.test.ts drops docs-kit.yml from the push-only list because it now has a pull_request_target trigger.","inputs":["docs/guides/testing.md","docs/guides/documentation.md","scripts/__tests__/ci-workflow-contract.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Replaced the claim that the docs-kit CI gate runs only after merge: docs-kit.yml (PR: Docs kit) now calls the org docs gate on pull_request_target, merge_group, main pushes and dispatch, as an advisory, non-required check. Checked against docs-kit.yml, the actionlint-gate.mjs exact-call admission and the ruleset's required checks (unchanged).","inputs":["docs/guides/documentation.md",".github/workflows/docs-kit.yml"]}
+  ]
+}

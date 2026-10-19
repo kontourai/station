@@ -68,7 +68,17 @@
 
     "src-ui/src/main.tsx",
 
-    "src-server/providers/sessions/grok-session-source.ts"
+    "src-server/providers/sessions/grok-session-source.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-server/domain/settings-environment.ts",
+
+    "src-server/domain/telemetry-bootstrap-config.ts",
+
+    "src-server/domain/telemetry-build-constants.ts",
+
+    "esbuild.config.mjs"
   ],
 
   "checks": [

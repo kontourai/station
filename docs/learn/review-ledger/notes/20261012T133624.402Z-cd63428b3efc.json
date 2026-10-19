@@ -1,0 +1,7 @@
+{
+  "revision": "16f89f242108bc8515bc1faaac6d1bd2f3843a4a",
+
+  "notes": [
+    {"path":"docs/guides/store-listing.md","note":"#187 accepted-release record review (branch fix/update-key-pin-187, merged with main 154624a872). install.sh now carries a generated ACCEPTED RELEASE PROGRAM block (packages/shared/src/accepted-release.mjs) plus check_accepted_release/record_accepted_release and a nothing-to-do seed; the installer refuses a public manifest older than the install root's .station-release-accepted.json unless STATION_VERSION + STATION_INSTALL_ALLOW_ROLLBACK=1. The store-listing draft concerns store copy and captures; no installer claim, so nothing changed.","inputs":["docs/guides/store-listing.md","install.sh"]}
+  ]
+}

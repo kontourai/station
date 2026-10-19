@@ -1,7 +1,7 @@
 name: "Nightly: Native cohort"
 
 # Phase two of the native cohort. The caller supplies the already source-gated
-# revision, the exact-SHA full-regression result, and the identity that
+# revision, the exact-SHA source-gate result, and the identity that
 # `nightly-native-stage.yml` reserved while it built the staged artifacts in
 # the same run. This workflow is the only native publisher: it admits the
 # staged bytes, creates the promotion fence, publishes each provider
@@ -37,7 +37,7 @@ jobs:
   admit-cohort:
     name: Admit staged bytes
     # The caller admits this workflow only after `nightly-native-stage.yml`
-    # and the exact-SHA full-regression receipt both succeeded; the staged
+    # and the exact-SHA source gate both succeeded; the staged
     # artifacts are read back from this run by name below.
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' }}
     runs-on: ubuntu-22.04
@@ -52,20 +52,20 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - name: Admit only byte-for-byte staged assets
         run: |
           node scripts/release-cohort-workflow.mjs artifact-input artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg windows=station-nightly-desktop-windows-x86_64-setup.exe=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe windows=station-nightly-desktop-windows-x86_64-setup.exe.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe.sig windows=windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json
           node scripts/release-cohort.mjs admit cohort/cohort-plan.json artifacts.json cohort/android-stage-receipt.json cohort/macos-stage-receipt.json cohort/windows-stage-receipt.json > cohort-admission.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-cohort-admission-${{ github.run_id }}
           path: |
@@ -85,13 +85,13 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - name: Construct, create, and exactly read back the promotion fence
         env:
@@ -120,7 +120,7 @@ jobs:
           status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
           test "$status" = 200
           node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: nightly-cohort-promotion-fence-${{ github.run_id }}
@@ -146,13 +146,13 @@ jobs:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - name: Fail closed before Play promotion
@@ -189,7 +189,7 @@ jobs:
           node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
 
 
-      - name: Recheck source qualification, cadence and published ancestry under the delivery lock
+      - name: Recheck source gate, cadence and published ancestry under the delivery lock
         id: publisher
         env:
           GH_TOKEN: ${{ github.token }}
@@ -228,7 +228,7 @@ jobs:
           node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > promotion-state.json
           node scripts/release-cohort-workflow.mjs unknown-claim android-unknown-claim.json cohort/cohort-plan.json android "run:$GITHUB_RUN_ID:play-upload-or-query"
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json android-unknown-claim.json > promotion-android-state.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: nightly-cohort-android-state-${{ github.run_id }}
@@ -251,7 +251,7 @@ jobs:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Re-verify the live promotion fence immediately before macOS publication
         env:
@@ -267,7 +267,7 @@ jobs:
           status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
           test "$status" = 200
           node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
-      - name: Recheck source qualification, cadence and published ancestry under the delivery lock
+      - name: Recheck source gate, cadence and published ancestry under the delivery lock
         id: publisher
         env:
           GH_TOKEN: ${{ github.token }}
@@ -315,7 +315,7 @@ jobs:
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json windows-unknown-claim.json > promotion-windows-state.json
           node scripts/release-cohort.mjs group-desktop-states promotion-macos-state.json promotion-windows-state.json > promotion-desktop-state.pending.json
           mv promotion-desktop-state.pending.json promotion-desktop-state.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: nightly-cohort-macos-state-${{ github.run_id }}
@@ -379,15 +379,15 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with: { distribution: temurin, java-version: 17 }
       - run: npm run dependencies:ci
       - name: Resolve protected verifier paths
@@ -448,7 +448,7 @@ jobs:
           node scripts/release-cohort-workflow.mjs assert-final final-cohort-receipt.json "${{ inputs.source_sha }}"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: final-cohort-receipt.json }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-cohort-final-${{ github.run_id }}
           path: final-cohort-receipt.json
@@ -457,7 +457,7 @@ jobs:
       - name: Retain finalization diagnostics on a verifier failure
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-cohort-finalization-diagnostics-${{ github.run_id }}
           path: |
@@ -493,23 +493,23 @@ jobs:
           # out at full depth.
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-cohort-final-${{ github.run_id }}
           path: cohort
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-cohort-plan-${{ github.run_id }}
           path: cohort
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-cohort-admission-${{ github.run_id }}
           path: cohort
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-cohort-android-${{ github.run_id }}
           path: cohort
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-cohort-macos-${{ github.run_id }}
           path: cohort
@@ -519,7 +519,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh attestation verify cohort/final-cohort-receipt.json --repo "$GITHUB_REPOSITORY" --source-ref refs/heads/main --source-digest "${{ inputs.source_sha }}" --cert-identity "https://github.com/${{ github.repository }}/.github/workflows/nightly-native-cohort.yml@refs/heads/main" --cert-oidc-issuer https://token.actions.githubusercontent.com --deny-self-hosted-runners
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: ledger_token
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
@@ -614,9 +614,9 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc }
       - id: clear_promotion_fence
         name: Remove the exact promotion fence at the end of the run that created it
@@ -663,10 +663,10 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc }
       - name: Construct content-bound incomplete-cohort receipt
         env:
@@ -676,7 +676,7 @@ jobs:
         run: |
           printf '%s\n' "$JOB_RESULTS" > recovery-job-results.json
           node scripts/release-cohort-workflow.mjs recovery-receipt native-cohort-recovery.json "$SOURCE_SHA" "$GITHUB_RUN_ID" cohort/cohort-plan.json recovery-job-results.json cohort/cohort-admission.json cohort/verification-candidate.json cohort/play-observation.json cohort/github-release-observation.json cohort/promotion-android-state.json cohort/promotion-desktop-state.json cohort/promotion-desktop-state.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: nightly-cohort-recovery-${{ github.run_id }}

@@ -1,0 +1,7 @@
+{
+  "revision": "60319c850018bba675759013b776e5edb2d286ae",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reversed the #3556 sentence that blocked rows show no model control: AgentPickerRow now keeps the Model trigger on rows that cannot start so a pre-repair Model choice carries through setup return (NewChatModalSetupReturn, NewChatSetupAdmission.query). Rest of the Agent list paragraph unchanged and accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/AgentPickerRow.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "af5040f984bc9cc07344101c56dbcbcac7bf0639",
+
+  "notes": [
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Correction to the previous note: this guide's CLI claims are `station plugin ...` and `station plugin experience review` (with and without a receipt), not skill commands. The help.ts change only adds [--scope=<scope,…>] to the `station environment access approve` usage line; no plugin help entry changed, so the guide stays accurate.","inputs":["docs/guides/authoring-skill-experiences.md"]}
+  ]
+}

@@ -70,6 +70,77 @@ describe('createStagedPreToolPolicyEvaluator', () => {
     ).resolves.toEqual({ behavior: 'ask' });
   });
 
+  test('explicit Ask me takes precedence over automatic, guardian and unattended allows', async () => {
+    const evaluator = createEvaluator({
+      spec: { name: 'Reviewer', tools: { askBeforeUse: ['repo_write'] } },
+      isGranted: () => true,
+      isUnattendedGranted: () => true,
+      approvalGuardian: {
+        isEnabled: () => true,
+        reviewToolCall: async () => ({ decision: 'allow' }),
+      },
+    });
+    const write = { ...tool, toolName: 'repo_write' };
+    await expect(
+      evaluator(write, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: true,
+      }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    await expect(
+      evaluator(write, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: false,
+      }),
+    ).resolves.toMatchObject({ behavior: 'deny' });
+    await expect(
+      evaluator(write, invocation, { interaction: 'external' }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+  });
+
+  test('future source actions ask while an exact reviewed read keeps its grant', async () => {
+    const evaluator = createEvaluator({
+      spec: {
+        name: 'Reviewer',
+        tools: { autoApprove: ['repo_read'], askBeforeUse: ['repo_*'] },
+      },
+      isGranted: () => true,
+    });
+    await expect(
+      evaluator({ ...tool, toolName: 'repo_read' }, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: true,
+      }),
+    ).resolves.toEqual({ behavior: 'allow', toolGrant: true });
+    await expect(
+      evaluator({ ...tool, toolName: 'repo_new_action' }, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: true,
+      }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+  });
+
+  test('explicit Ask me still respects an enforce-mode guardian denial', async () => {
+    const evaluator = createEvaluator({
+      spec: { name: 'Reviewer', tools: { askBeforeUse: ['repo_write'] } },
+      approvalGuardian: {
+        isEnabled: () => true,
+        getMode: () => 'enforce',
+        isEnforcing: () => true,
+        reviewToolCall: async () => ({
+          decision: 'deny',
+          reason: 'Blocked action',
+        }),
+      },
+    });
+    await expect(
+      evaluator({ ...tool, toolName: 'repo_write' }, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: true,
+      }),
+    ).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
   test('matches a raw MCP name against delegated-tool restrictions', async () => {
     const evaluator = createEvaluator();
 

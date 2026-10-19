@@ -23,6 +23,7 @@ const loadChatDockMobileOverflowSheet = () =>
   }));
 
 export interface ChatDockMobileOverflowActions {
+  onTurnIntoTask?: () => void;
   onOpenConversation: () => void;
   onToggleHistory: () => void;
   onOpenChatSettings: () => void;
@@ -67,6 +68,16 @@ export interface ChatDockMobileOverflowActions {
    */
   onOpenBackgroundTasks?: () => void;
   backgroundTasksRunningCount?: number;
+  /**
+   * The session context sheet (the desktop card's rows). A row of this sheet
+   * rather than a third control in the bar: the bar's edge reserve holds two
+   * 44px controls beside the chat title, and a third wrapped the header onto
+   * a second line. `returnFocus` is the ⋯ trigger, so closing the context
+   * sheet lands where the reader started. Absent: no row.
+   */
+  onOpenSessionContext?: (returnFocus: HTMLElement | null) => void;
+  /** The chat's ladder line, named on the row ("This chat — Running"). */
+  sessionContextStatus?: string;
 }
 
 export interface ChatDockMobileProjectSwitcher {
@@ -90,7 +101,6 @@ interface ChatDockMobileHeaderProps {
   routeLabel?: string;
   sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
-  branchLabel: string | null;
   projectScope?: { name: string; onClear: () => void };
   projectSwitcher: ChatDockMobileProjectSwitcher | null;
   activeCount: number;
@@ -113,7 +123,6 @@ export function ChatDockMobileHeader({
   routeLabel,
   sessionProjectMismatchLabel,
   agentIdentity,
-  branchLabel,
   projectScope,
   projectSwitcher,
   activeCount,
@@ -311,7 +320,6 @@ export function ChatDockMobileHeader({
             projectScope,
             showConnection,
             onNewChat,
-            branchLabel,
             returnFocusTarget: chatActionsTriggerRef.current,
             onClose: () => setIsOverflowOpen(false),
           }}

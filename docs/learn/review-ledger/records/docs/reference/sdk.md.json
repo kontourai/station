@@ -40,8 +40,6 @@
 
     "packages/contracts/src/usage-rollup.ts",
 
-    "packages/sdk/package.json",
-
     "packages/sdk/src/__tests__/application-session-native.test.ts",
 
     "packages/sdk/src/__tests__/client-fetchers-envelope-a3a.test.ts",
@@ -281,8 +279,6 @@
     "packages/shared/src/skill-experience-reader.ts",
 
     "packages/shared/src/station-home-archive.ts",
-
-    "pnpm-lock.yaml",
 
     "src-desktop/src/native_account_operations.rs",
 
@@ -588,7 +584,101 @@
 
     "packages/sdk/src/query-domains/resourcePosture.ts",
 
-    "packages/sdk/src/query-domains/insightsResponse.ts"
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
+    "packages/sdk/src/query-domains/secret-bindings.ts",
+
+    "packages/sdk/src/__tests__/publicBarrel.test.ts",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
+
+    "packages/sdk/src/query-domains/insightsResponse.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
+
+    "packages/sdk/src/client/usage-export.ts",
+
+    "packages/sdk/src/query-domains/usageExport.ts",
+
+    "packages/sdk/src/__tests__/usage-export-client.test.ts",
+
+    "packages/sdk/src/__tests__/usage-export-query.test.tsx",
+
+    "packages/sdk/src/__tests__/usage-export.fixture.ts",
+
+    "packages/sdk/package.json#/name",
+
+    "packages/sdk/package.json#/exports",
+
+    "packages/sdk/package.json#/files",
+
+    "packages/sdk/package.json#/main",
+
+    "packages/sdk/package.json#/types",
+
+    "packages/sdk/package.json#/peerDependencies",
+
+    "packages/sdk/package.json#/scripts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/sdk/src/client/http.ts",
+
+    "packages/contracts/src/personal-board.ts",
+
+    "packages/sdk/src/personal-board.ts",
+
+    "packages/sdk/src/client/personal-boards.ts",
+
+    "packages/sdk/src/query-domains/personalBoards.ts",
+
+    "packages/contracts/src/tool.ts",
+
+    "packages/sdk/src/query-domains/catalog.ts",
+
+    "src-server/services/plugins/integration-origin.ts",
+
+    "packages/sdk/package.json",
+
+    "packages/sdk/src/tool-library.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-ui/src/views/agent-editor/ToolLibraryContext.tsx",
+
+    "src-ui/src/views/account/GuestDeviceOnboarding.tsx",
+
+    "src-ui/src/views/project-page/MemberProjectPage.tsx",
+
+    "packages/sdk/src/__tests__/client-execution.test.ts",
+
+    "packages/contracts/src/provider-failure.ts",
+
+    "scripts/__tests__/provider-failure-inventory.test.ts",
+
+    "src-server/routes/orchestration/__tests__/provider-failure-projection.routes.test.ts",
+
+    "src-server/providers/model-provider-failure.ts",
+
+    "src-server/runtime/conversation/stream-orchestrator.ts",
+
+    "src-ui/src/lib/attachment-staging-queue.ts",
+
+    "packages/sdk/src/query-domains/sessionStructuralSharing.ts",
+
+    "packages/sdk/src/__tests__/session-structural-sharing.test.tsx",
+
+    "packages/sdk/src/client/delegations.ts",
+
+    "packages/contracts/src/attachment-staging.ts",
+
+    "src-server/routes/orchestration/attachment-staging.ts",
+
+    "packages/shared/src/delegation-files.ts"
   ],
 
   "checks": [

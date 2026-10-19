@@ -1,3 +1,4 @@
+import { CONTINUATION_WORKSPACE_REFUSAL_CODES } from '@kontourai/station-contracts/execution-target';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { PendingMessageMetadata } from '../../contexts/active-chats-state';
 import { useQueuedMessages } from '../../hooks/useQueuedMessages';
@@ -139,7 +140,7 @@ export function QueuedMessages({
                 onClick={onRetry}
                 className="queued-message__btn"
                 aria-label={
-                  failure.code === 'continuation_workspace_unbound'
+                  failure.code === CONTINUATION_WORKSPACE_REFUSAL_CODES[6]
                     ? 'Send the queued message to this conversation as it is'
                     : 'Retry the queued message'
                 }
@@ -147,7 +148,7 @@ export function QueuedMessages({
                 {/* The label names what the action DOES. A plain "Retry" on an
                   unbound-workspace refusal would resubmit the same workspace
                   and reproduce the same refusal (UX audit T3 review). */}
-                {failure.code === 'continuation_workspace_unbound'
+                {failure.code === CONTINUATION_WORKSPACE_REFUSAL_CODES[6]
                   ? 'Continue as is'
                   : 'Retry'}
               </button>
@@ -192,7 +193,8 @@ export function QueuedMessages({
                 ) : (
                   <>
                     <span className="queued-message__text" title={msg}>
-                      {msg}
+                      {/* Clamped to two lines; Edit opens the full text. */}
+                      <span className="queued-message__body">{msg}</span>
                       <span className="queued-message__status">
                         {metadata?.[idx]?.delivery
                           ? metadata[idx].delivery === 'steering'

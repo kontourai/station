@@ -1,8 +1,14 @@
 import { lazy, Suspense } from 'react';
+import type { BackgroundTaskNotice } from '../../contexts/active-chats-state';
 import type { FullAccessRefusalNotice } from '../../utils/approvalMode';
 import { Skeleton } from '../state';
+import { BackgroundTaskNoticeCard } from './BackgroundTaskNoticeCard';
 import { FullAccessRefusalCard } from './FullAccessRefusalCard';
 import { LazyMarkdown } from './LazyMarkdown';
+import {
+  UnconfirmedDiscardConfirm,
+  useUnconfirmedDiscardDisclosure,
+} from './UnconfirmedDiscardConfirm';
 
 // DOMPurify is ~118 KB of source and only the rare `contentType: 'html'`
 // ephemeral message needs it, so the sanitizing renderer loads on demand.
@@ -13,6 +19,8 @@ const SanitizedHtml = lazy(() =>
 interface EphemeralAction {
   label: string;
   handler: () => void;
+  /** Ask first, with the risk stated (`UnconfirmedDiscardConfirm`). */
+  confirm?: 'unconfirmed-discard';
 }
 
 interface EphemeralMsg {
@@ -23,6 +31,7 @@ interface EphemeralMsg {
   contentParts?: { type: string; content?: string }[];
   /** #1796: rendered as a structured card, never as Markdown. */
   fullAccessRefusal?: FullAccessRefusalNotice;
+  backgroundTaskNotice?: BackgroundTaskNotice;
 }
 
 interface EphemeralMessageProps {
@@ -98,12 +107,16 @@ export function EphemeralMessage({
     msg.content ||
     '';
 
+  // A task settle is one status line; the default notice padding would make
+  // it as tall as the multi-paragraph notices this card replaced.
+  const compact = Boolean(msg.backgroundTaskNotice);
+
   return (
     <div
       key={messageId}
       className={`message system ephemeral-message ${isRemoving ? 'removing' : ''}`}
       style={{
-        padding: '12px 40px 12px 12px',
+        padding: compact ? '6px 40px 6px 12px' : '12px 40px 12px 12px',
         background: 'var(--bg-secondary)',
         border: '1px solid var(--border-primary)',
         borderRadius: '6px',
@@ -124,7 +137,7 @@ export function EphemeralMessage({
         onClick={onDismiss}
         style={{
           position: 'absolute',
-          top: '8px',
+          top: compact ? '2px' : '8px',
           right: '8px',
           background: 'none',
           border: 'none',
@@ -141,6 +154,8 @@ export function EphemeralMessage({
       </button>
       {msg.fullAccessRefusal ? (
         <FullAccessRefusalCard notice={msg.fullAccessRefusal} />
+      ) : msg.backgroundTaskNotice ? (
+        <BackgroundTaskNoticeCard notice={msg.backgroundTaskNotice} />
       ) : msg.contentType === 'html' ? (
         <Suspense fallback={<Skeleton variant="line" />}>
           <SanitizedHtml html={msg.content} />
@@ -152,7 +167,10 @@ export function EphemeralMessage({
           {textContent}
         </LazyMarkdown>
       )}
-      {msg.action && onAction && (
+      {msg.action && onAction && msg.action.confirm ? (
+        <ConfirmedAction label={msg.action.label} onConfirm={onAction} />
+      ) : null}
+      {msg.action && onAction && !msg.action.confirm && (
         <button
           type="button"
           className="ephemeral-message__action"
@@ -173,5 +191,49 @@ export function EphemeralMessage({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * An action that runs only after the shared confirmation (#3596). Its button
+ * stays put while the confirmation is open below it.
+ */
+function ConfirmedAction({
+  label,
+  onConfirm,
+}: {
+  label: string;
+  onConfirm: () => void;
+}) {
+  const disclosure = useUnconfirmedDiscardDisclosure();
+  return (
+    <>
+      <button
+        type="button"
+        className="ephemeral-message__action"
+        {...disclosure.triggerProps}
+        style={{
+          marginTop: '12px',
+          padding: '8px 16px',
+          borderRadius: '6px',
+          border: 'none',
+          background: 'var(--color-primary)',
+          color: 'white',
+          cursor: 'pointer',
+          fontSize: '13px',
+          fontWeight: 500,
+        }}
+      >
+        {label}
+      </button>
+      {disclosure.open ? (
+        <div className="ephemeral-message__confirm">
+          <UnconfirmedDiscardConfirm
+            {...disclosure.confirmProps}
+            onConfirm={onConfirm}
+          />
+        </div>
+      ) : null}
+    </>
   );
 }

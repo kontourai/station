@@ -15,6 +15,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type {
+  LayoutConfig,
   LayoutOwner,
   LayoutReadView,
 } from '@kontourai/station-contracts/layout';
@@ -27,15 +28,27 @@ import {
 } from '../../domain/project-file-transactions.js';
 import { assertSafeLayoutPathSegment } from '../../domain/storage-adapter.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
+import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { resolveLayoutPaneReferences } from '../../services/layouts/layout-pane-reference.js';
 import {
+  BoardRevisionConflict,
+  PersonalBoardAuthoring,
+} from '../../services/layouts/personal-board-authoring.js';
+import {
   type OwnedLayoutStore,
+  PersonalBoardAuthoringRequired,
+  PersonalBoardMoveConflict,
   PersonalLayoutConflictError,
   PersonalLayoutService,
   ProjectLayoutRefusedError,
   personalLayoutOwner,
 } from '../../services/layouts/personal-layout-service.js';
+import {
+  personalBoardDismissSchema,
+  personalBoardProposalSchema,
+  personalBoardSaveSchema,
+} from '../schemas/schema-definitions/personal-board.js';
 import {
   errorMessage,
   getBody,
@@ -173,6 +186,7 @@ export function createPersonalLayoutRoutes(
     listAgents: deps.listAgents,
     resolveWorkspacePath: deps.resolveWorkspacePath,
   });
+  const authoring = new PersonalBoardAuthoring(store);
   /**
    * Resolves the caller once, ahead of the handler, and is the ONE place an
    * unresolvable caller is turned into a response. Every handler below reads
@@ -196,6 +210,71 @@ export function createPersonalLayoutRoutes(
       return handle(c, owner);
     };
 
+  const boardAction = async (
+    c: Context,
+    operation: () => unknown | Promise<unknown>,
+  ) => {
+    try {
+      return c.json({ success: true, data: await operation() });
+    } catch (error) {
+      if (error instanceof BoardRevisionConflict)
+        return c.json({ success: false, error: errorMessage(error) }, 409);
+      if (error instanceof FileStorageNotFoundError) return noSuchBoard(c);
+      throw error;
+    }
+  };
+  app.get(
+    '/boards/:layoutSlug',
+    withOwner((c, owner) => {
+      const slug = addressableSlug(c);
+      return slug === undefined
+        ? noSuchBoard(c)
+        : boardAction(c, () => authoring.get(owner, slug));
+    }),
+  );
+  app.post(
+    '/boards/:layoutSlug/proposal',
+    validate(personalBoardProposalSchema),
+    withOwner((c, owner) => {
+      const slug = addressableSlug(c);
+      return slug === undefined
+        ? noSuchBoard(c)
+        : boardAction(c, () => authoring.propose(owner, slug, getBody(c)));
+    }),
+  );
+  app.put(
+    '/boards/:layoutSlug',
+    validate(personalBoardSaveSchema),
+    withOwner((c, owner) => {
+      if (requestMayBeAnAgent(c.req.raw))
+        return c.json(
+          { success: false, error: 'Review and save this Board in Station.' },
+          403,
+        );
+      const slug = addressableSlug(c);
+      return slug === undefined
+        ? noSuchBoard(c)
+        : boardAction(c, () => authoring.save(owner, slug, getBody(c)));
+    }),
+  );
+  app.delete(
+    '/boards/:layoutSlug/proposal',
+    validate(personalBoardDismissSchema),
+    withOwner((c, owner) => {
+      if (requestMayBeAnAgent(c.req.raw))
+        return c.json(
+          { success: false, error: 'Dismiss this proposal in Station.' },
+          403,
+        );
+      const slug = addressableSlug(c);
+      return slug === undefined
+        ? noSuchBoard(c)
+        : boardAction(c, () =>
+            authoring.dismiss(owner, slug, getBody(c).revision),
+          );
+    }),
+  );
+
   app.get(
     '/layouts',
     withOwner((c, owner) => {
@@ -208,6 +287,18 @@ export function createPersonalLayoutRoutes(
     validate(personalLayoutCreateSchema),
     withOwner(async (c, owner) => {
       const body = getBody(c);
+      if (
+        body.config &&
+        ('dashboard' in body.config || 'dashboardProposal' in body.config)
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'Use the Board editor or proposal API to author a dashboard.',
+          },
+          400,
+        );
       try {
         assertSafeLayoutPathSegment('layout slug', body.slug);
       } catch (error) {
@@ -270,7 +361,30 @@ export function createPersonalLayoutRoutes(
       // tolerates the key for that reason alone and it is dropped here,
       // rather than spread into the record by `service.update`.
       const { paneReferences: _paneReferences, ...patch } = getBody(c);
-      const updated = await service.update(owner, layoutSlug, patch);
+      const saved = service.get(owner, layoutSlug);
+      if (
+        patch.config &&
+        (saved?.config.dashboard ||
+          saved?.config.dashboardProposal ||
+          'dashboard' in patch.config ||
+          'dashboardProposal' in patch.config)
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'Use the Board editor or proposal API to author a dashboard.',
+          },
+          400,
+        );
+      let updated: LayoutConfig | undefined;
+      try {
+        updated = await service.update(owner, layoutSlug, patch);
+      } catch (error) {
+        if (error instanceof PersonalBoardAuthoringRequired)
+          return c.json({ success: false, error: errorMessage(error) }, 400);
+        throw error;
+      }
       if (updated === undefined) return noSuchBoard(c);
       // The write answers with the same verdict the read does. Without it a
       // client rendering from this response falls back to the false "not
@@ -330,6 +444,17 @@ export function createPersonalLayoutRoutes(
       const layoutSlug = addressableSlug(c);
       if (layoutSlug === undefined) return noSuchBoard(c);
       const { projectSlug } = getBody(c);
+      if (
+        service.get(owner, layoutSlug)?.config.dashboardProposal !== undefined
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'Apply or dismiss the Board proposal before moving it to a Project.',
+          },
+          409,
+        );
       try {
         assertSafeLayoutPathSegment('project slug', projectSlug);
       } catch (error) {
@@ -348,6 +473,17 @@ export function createPersonalLayoutRoutes(
         // verbatim — same status, same message, same diagnostics the project
         // route would have answered — because it IS that route's refusal,
         // produced by the function both call (#2062 review BLOCKING-2).
+        if (error instanceof PersonalLayoutConflictError)
+          return c.json(
+            {
+              success: false,
+              error:
+                'Apply or dismiss the Board proposal before moving it to a Project.',
+            },
+            409,
+          );
+        if (error instanceof PersonalBoardMoveConflict)
+          return c.json({ success: false, error: errorMessage(error) }, 409);
         if (error instanceof ProjectLayoutRefusedError) {
           return c.json(error.body, 400);
         }

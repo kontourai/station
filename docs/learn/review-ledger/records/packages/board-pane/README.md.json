@@ -10,15 +10,31 @@
   "limits": "Boundary tests prove package import/shape rules, not absence of behavioral drift. No real Board execution, consent/provider operation, responsive visual/physical device proof or npm publication.",
 
   "sources": [
-    "packages/board-pane/package.json",
-
     "packages/board-pane/src/ConsoleBoardPane.tsx",
 
     "packages/board-pane/src/index.ts",
 
     "packages/board-pane/src/workspace-board-pane.ts",
 
-    "src-ui/src/views/board/BoardWorkspacePane.tsx"
+    "src-ui/src/views/board/BoardWorkspacePane.tsx",
+
+    "packages/board-pane/package.json#/name",
+
+    "packages/board-pane/package.json#/private",
+
+    "packages/board-pane/package.json#/exports",
+
+    "packages/board-pane/package.json#/files",
+
+    "packages/board-pane/package.json#/main",
+
+    "packages/board-pane/package.json#/types",
+
+    "packages/board-pane/package.json#/sideEffects",
+
+    "packages/board-pane/package.json#/publishConfig",
+
+    "packages/board-pane/package.json#/dependencies/@kontourai~1console-ui"
   ],
 
   "checks": [

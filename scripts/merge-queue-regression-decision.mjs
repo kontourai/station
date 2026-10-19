@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 /**
  * Decides whether a merge-queue candidate needs the hosted full regression
- * (merge-queue-regression.yml, the required `Merge-queue regression` check).
+ * (ci.yml, the required `Merge-queue regression` check).
  *
- * fast-checks runs only the affected tests its plan selects. When the plan
- * defers to a lane, `prepareChangedSelection` drops related discovery and
- * runs no explicit test above 32, so the suites a shared-package or
- * manifest change breaks never run before merge (#3200, #3251, #3114,
- * #3170, #3201). A path an impact edge marks `mergeQueueRegression` leaves
- * its consumers to the queue on purpose. Either way the candidate runs the
- * full regression; otherwise the queue keeps the fast path.
+ * Hosted fast-checks keeps concrete mapped tests even when another path
+ * defers broader coverage. Those tests provide early failures; passing them
+ * does not discharge a deferred ci-fast/test-full obligation. A path marked
+ * `mergeQueueRegression` also leaves its consumers to the queue on purpose.
+ * Either obligation requires full regression; otherwise the queue keeps the
+ * fast path. Local bounded feedback retains its separate selection limits.
  *
  * Fail-closed: a missing, unreadable, invalid or foreign plan decides `full`,
  * never `fast`. Node alone; no dependencies, so it decides even when the
@@ -31,7 +30,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 export const MERGE_QUEUE_REGRESSION_CHECK = 'Merge-queue regression';
 export const FAST_PATH_SUMMARY = 'no deferred lane: fast path';
 /**
- * The deferred lanes whose dropped tests the full regression stands in for.
+ * The deferred lanes whose broader obligations require full regression.
  * Narrower lanes (an E2E or packaging leg) are not re-run here: the owner
  * chose this scope to keep the queue under the shared runner cap (#3149).
  */

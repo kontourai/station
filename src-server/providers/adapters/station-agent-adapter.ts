@@ -3,14 +3,16 @@ import type { AgentDelegationContext } from '@kontourai/station-contracts/agent'
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   InputRequestContent,
   InputRequestResponse,
 } from '@kontourai/station-contracts/input-request';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   type ApprovalStatus,
-  type CanonicalRuntimeEvent,
+  type ProviderRuntimeEvent as CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { readWithStallWatchdog } from '@kontourai/station-contracts/stall-watchdog';
@@ -87,6 +89,7 @@ import {
   modelProviderFailureMessage,
   modelProviderHttpStatus,
 } from '../model-provider-failure.js';
+import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
@@ -791,6 +794,15 @@ export function mapStationAgentStreamEvent(options: {
     publish({
       ...base,
       method: 'runtime.error',
+      ...providerFailure(
+        inferredCredentials || httpStatus === 401 || httpStatus === 403
+          ? 'auth'
+          : httpStatus === 429
+            ? event.failureKind === 'quota_exhausted'
+              ? 'quota_exhausted'
+              : 'rate_limited'
+            : 'provider_error',
+      ),
       severity: 'error',
       message: inferredCredentials
         ? MODEL_PROVIDER_CREDENTIALS_REJECTED
@@ -799,11 +811,16 @@ export function mapStationAgentStreamEvent(options: {
             // (`outwardTurnFailureText`), so a reloaded chat's projected
             // runtime error and marker de-duplicate to one card.
             outwardTransportError('sse')
-          : modelProviderFailureMessage(httpStatus),
+          : modelProviderFailureMessage(
+              httpStatus,
+              event.failureKind === 'quota_exhausted'
+                ? 'quota_exhausted'
+                : undefined,
+            ),
       code: 'station_agent_turn_failed',
       retriable: true,
       ...(httpStatus !== undefined ? { details: { httpStatus } } : {}),
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     return { failed: true };
   }
   return {};
@@ -837,6 +854,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       'interrupt',
       'resume',
     ],
+    durability: STATION_ENGINE_DURABILITY,
     continuity: { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
     builtin: true,
     engineId: engineId('station'),
@@ -963,6 +981,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (record.activeController && !record.activeController.signal.aborted) {
       throw new SendTurnRefusedError(
         `Station agent task is already running: ${input.threadId}`,
+        'busy',
       );
     }
     // A start/resume override is accepted into the adapter-owned session.
@@ -1584,11 +1603,12 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       turnId,
       createdAt: this.now().toISOString(),
       method: 'runtime.error',
+      ...providerFailure('provider_error'),
       severity: 'error',
       message: turnRejectionMessage(reason),
       code: 'station_agent_turn_unavailable',
       retriable: true,
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     this.updateSession(record, 'error');
     this.publishState(record, 'running', 'errored');
     finishNativeKnowledgeTurn(record.session.threadId, turnId);

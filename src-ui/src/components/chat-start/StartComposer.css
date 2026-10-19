@@ -1,8 +1,8 @@
 /* The start composer (Home, inline, and the dock's draft). No viewport
    query: the bar is one flex line that wraps. On a desktop the chips and
-   [⋯ Start] share one line. When they do not fit (a phone), the chips keep
-   row one, on one line, each shrinking to an ellipsis, and [⋯ … Start]
-   takes row two. Every target is 44px. */
+   [attach mic ⋯ Start] share one line. When they do not fit (a phone), the
+   chips keep row one, on one line, each shrinking to an ellipsis, and
+   [attach mic ⋯ … Start] takes row two. Every target is 44px. */
 .start-composer {
   display: flex;
   flex-direction: column;
@@ -81,6 +81,19 @@
 }
 .start-composer--compact .start-composer__input {
   min-height: 44px;
+}
+/* Touch: the box's focus border is the field's focus ring. A touch focus
+   matches :focus-visible on a text field, so the inner outline drew a second,
+   square ring inside the rounded one. The resize grip is too small to drag
+   with a finger; a long draft scrolls inside the field instead. */
+.start-composer[data-coarse-pointer]
+  .start-composer__box
+  .start-composer__input:focus-visible {
+  /* Match the global focus rule's priority; the box keeps its focus border. */
+  outline: none !important;
+}
+.start-composer[data-coarse-pointer] .start-composer__input {
+  resize: none;
 }
 .start-composer__bar {
   display: flex;
@@ -165,6 +178,23 @@
 .start-composer__start {
   min-height: 44px;
 }
+/* A failed read or start under the composer: the warning tone, with its
+   retry on the same line when one fits. The attribute outranks the start
+   dialog's muted `.chat-start__body p`. */
+.start-composer__alert[role="alert"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  margin: 0;
+  color: var(--warning-text);
+  font-size: var(--k-text-sm);
+}
+.start-composer__alert .button--link {
+  min-height: 44px;
+  /* Flush with the sentence: the link's own padding read as an indent. */
+  padding-inline: 0;
+}
 .start-composer__note {
   margin: 0;
   color: var(--k-text-muted);
@@ -210,12 +240,18 @@
    list, on top of the shared composer popover shell. */
 .start-menu__panel {
   --composer-popover-width: 440px;
+  /* One inset for every left and right edge in the menu (header, filter,
+     group labels, rows, the Model column), so they line up. */
+  --start-menu-inset: var(--k-space-3);
   display: flex;
   flex-direction: column;
   max-height: min(70dvh, 560px);
 }
+.composer-popover-panel.start-menu__panel {
+  --responsive-header-padding: var(--start-menu-inset);
+}
 .start-menu__search {
-  margin: var(--k-space-2) var(--k-space-3);
+  margin: var(--k-space-2) var(--start-menu-inset);
   min-height: 44px;
 }
 .start-menu__list {
@@ -227,7 +263,7 @@
   padding-bottom: var(--k-space-2);
 }
 .start-menu__hint {
-  margin: var(--k-space-2) var(--k-space-3);
+  margin: var(--k-space-2) var(--start-menu-inset);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
@@ -251,10 +287,63 @@
   width: auto;
   box-sizing: border-box;
 }
+/* Attach, dictate and the overflow, together at the start of the actions. */
+.start-composer__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.start-composer__tools:empty {
+  display: none;
+}
+.start-composer__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.start-composer__tool:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.start-composer__tools .voice-orb {
+  --vo-size: 44px;
+}
+.start-composer__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.start-composer__file {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  padding-left: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  font-size: var(--k-text-sm);
+}
+.start-composer__file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* The overflow beside Start: a 44px square drawn like the chips, not the
    quiet bordered glyph the shared trigger is elsewhere (which read as
    disabled here). */
-.start-composer__actions > .start-composer__more {
+.start-composer__tools > .start-composer__more {
   width: 44px;
   height: 44px;
   border-color: var(--border-primary);
@@ -298,7 +387,28 @@
 }
 .start-menu__list .new-chat-modal__agent-side {
   flex-wrap: nowrap;
-  padding: 6px 12px 6px 4px;
+  padding: var(--k-space-1) var(--start-menu-inset) var(--k-space-1)
+    var(--k-space-1);
+}
+/* The model name is the column's text, so its right edge, not its 10px
+   button padding, meets the inset the header's close button ends on. */
+.start-menu__list .new-chat-modal__agent-side .new-chat-modal__model-trigger {
+  margin-right: calc(-1 * var(--k-space-2));
+  padding-inline: var(--k-space-2);
+}
+.start-menu__list .new-chat-modal__group-label,
+.start-menu__list .new-chat-modal__compat-warning {
+  padding-inline: var(--start-menu-inset);
+}
+.start-menu__list .new-chat-modal__dropdown-item {
+  padding-inline: var(--start-menu-inset);
+}
+/* Loading, empty and error states are boxes of their own: inset them like
+   the filter above, or the docked phone sheet runs them into its edges. */
+.start-menu__list > .error-state,
+.start-menu__list > .empty,
+.start-menu__list > .skeleton-list {
+  margin-inline: var(--start-menu-inset);
 }
 .start-menu__list .new-chat-modal__agent-side .button--link {
   min-height: 44px;
@@ -345,14 +455,38 @@
   color: var(--k-text-muted);
 }
 .start-menu__list .new-chat-modal__agent {
-  padding: var(--k-space-3);
+  padding: var(--k-space-3) var(--start-menu-inset);
 }
+/* Under the name, not the avatar: a 24px avatar plus the header's 8px gap. */
 .new-chat-modal__agent-purpose {
   display: -webkit-box;
+  padding-left: 32px;
   overflow: hidden;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   margin-top: var(--k-space-1);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
+}
+
+/* As a sheet (the dialog surface's phone presentation) a chip menu docks to
+   the bottom and side edges like a native sheet: the shared surface's 8px
+   float left a strip of page under it. The side safe-area insets stay (a notch
+   or cutout); the home-indicator inset moves into the list's own padding so
+   the last row scrolls clear of it. The modal scrim replaces the shared
+   popover scrim (black at 32%), which barely separated the sheet from a dark
+   page. Declared after the base menu rules so it wins at equal specificity. */
+.composer-popover-overlay.start-menu__overlay[data-sheet] {
+  padding: var(--safe-top, 0px) var(--safe-right, 0px) 0 var(--safe-left, 0px);
+  background: var(--overlay-modal);
+}
+.start-menu__overlay[data-sheet] .composer-popover-panel.start-menu__panel {
+  --start-menu-inset: var(--k-space-4);
+  /* Docked means edge to edge: the shared sheet panel caps at 720px. */
+  width: 100% !important;
+  border-width: 1px 0 0;
+  border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
+}
+.start-menu__overlay[data-sheet] .start-menu__list {
+  padding-bottom: max(var(--k-space-2), var(--safe-bottom, 0px));
 }

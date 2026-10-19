@@ -1,0 +1,7 @@
+{
+  "revision": "b945e70503af7df8e25a8458ac1237207c4970c3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed committed formatting-only continuation of fe76e091bd4: the Vitest task.timeout budget, watchdog distinction, both-writer persistence and production owners are unchanged; only callback destructuring formatting changed. Root executed prior-watchdog delayed IPC control red, repaired control green, synchronous-driver mutation red, exact restore green; server-tests typecheck passed at fe76. JsonFileMutationAuthority remains accurate. No product, shared deadline or gate configuration changed; hosted and broader qualification remain separate.","inputs":["docs/architecture/module-map.md","src-server/domain/__tests__/config-loader-storage.process.test.ts"]}
+  ]
+}

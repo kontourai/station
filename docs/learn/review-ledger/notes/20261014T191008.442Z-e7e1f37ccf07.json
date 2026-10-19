@@ -1,0 +1,7 @@
+{
+  "revision": "3d96ef1053aec36aeae3167b317486c2e4975afd",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Re-read the Transcript layout tracing section after the review round: the stability spec now waits on the dock's loading announcement emptying and the composer placeholder, and adds a long-load row inset check; the sampler records the announcement text. The section's description of the journey, sampling and attachments, and its run command, remain accurate. No prose change needed.","inputs":["docs/guides/development.md","tests/transcript-load-stability.spec.ts"]}
+  ]
+}

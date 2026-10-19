@@ -755,3 +755,43 @@ test("a dismissed hand-off returns the dock's edited draft", async () => {
     'First words, then more',
   );
 });
+
+test('a Personal Board draft opens one projectless chat picker and stays unsent after Agent selection', async () => {
+  renderDockedPane();
+  let claimed = false;
+  act(() => {
+    claimed = requestProjectChat({
+      projectSlug: null,
+      source: 'personal-board',
+      composerDraft: {
+        ...draft,
+        message: 'Use propose_personal_board for /boards/daily.',
+      },
+    });
+  });
+  expect(claimed).toBe(true);
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  const props = pickerProps.at(-1)!;
+  expect(props.activeProjectSlug).toBeNull();
+  expect(props.draftContext.items[0].messageLine).toBe(
+    'Use propose_personal_board for /boards/daily.',
+  );
+  expect(createChatSession).not.toHaveBeenCalled();
+  expect(sendMessage).not.toHaveBeenCalled();
+  act(() =>
+    props.onSelect(
+      { slug: 'assistant', name: 'Assistant' },
+      undefined,
+      undefined,
+      props.draftContext.items[0].messageLine,
+    ),
+  );
+  expect(createChatSession).toHaveBeenCalled();
+  expect(updateChat).toHaveBeenCalledWith(
+    'new-session',
+    expect.objectContaining({
+      input: 'Use propose_personal_board for /boards/daily.',
+    }),
+  );
+  expect(sendMessage).not.toHaveBeenCalled();
+});

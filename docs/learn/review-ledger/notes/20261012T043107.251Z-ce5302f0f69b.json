@@ -1,0 +1,7 @@
+{
+  "revision": "664bc9e309911d3646ad2b017cd76f6af6acd6b7",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"Delta review for #2675 fix round: lookupWindowsProcessImageIdentity now prints the image as Base64 of UTF-8 and reads the start time through the birth probe's shared statements; the birth probe's command text is byte-identical. This document makes no claim about the CLI lifecycle fingerprint, so no prose change.","inputs":["docs/design/instance-registry.md","packages/cli/src/commands/lifecycle.ts","packages/shared/src/process-identity.mjs"]}
+  ]
+}

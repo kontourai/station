@@ -1,7 +1,16 @@
+import {
+  approvalRefusalRemedy,
+  defaultKeptScope,
+  elevatedLabels,
+  keptScopeForApproval,
+  RequestedScopeChecklist,
+  requestedScopeTokens,
+} from '@kontourai/station-connect';
 import type {
   AttentionPeerRequestReference,
   AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
+import type { PairingScope } from '@kontourai/station-contracts/environment-security';
 import type {
   ApprovalAttentionItem,
   AttentionItem,
@@ -26,11 +35,13 @@ import {
   useDismissNotificationMutation,
   useNotificationActionMutation,
   useQueryClient,
+  useSystemStatusForApiBaseQuery,
 } from '@kontourai/station-sdk';
 import {
   continueDelegatedTask,
   respondToDelegatedTaskRequest,
 } from '@kontourai/station-sdk/client';
+import { operatorCliCommand } from '@kontourai/station-shared/ports';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import {
@@ -54,6 +65,8 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
+import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonList } from '../state';
 import './AttentionCard.css';
@@ -115,14 +128,16 @@ export function AttentionCard({
           {formatNotificationTime(item.updatedAt)}
         </time>
       </header>
-      <AttentionAction item={item} />
-      {/* #1536 D8: a standing notice is not dismissible — acknowledging the
+      <div className="attention-item__footer">
+        <AttentionAction item={item} />
+        {/* #1536 D8: a standing notice is not dismissible — acknowledging the
           only row that says why chat cannot start would leave the inbox
           claiming nothing needs you while it still does. One predicate, shared
           with "Dismiss all" and with the server's own refusal. */}
-      {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
-        <DismissAttentionItem item={item} />
-      )}
+        {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
+          <DismissAttentionItem item={item} />
+        )}
+      </div>
     </article>
   );
 }
@@ -156,12 +171,27 @@ function SessionFailedDetail({ item }: { item: SessionFailedAttentionItem }) {
   );
 }
 
+const loadToolRequestPanel = () =>
+  import('../profile/ToolRequestsPanel').then((module) => ({
+    default: module.ToolRequestsPanel,
+  }));
+
 function AttentionAction({ item }: { item: AttentionItem }) {
   // A task running on a paired Station: its thread id here names only the
   // local lifecycle record, so a reply or request inspection would address
   // nothing. Same rule, and same note, as the Activity detail's peer branch.
   if (isPeerHostedAttentionItem(item)) return <PeerHostedAction item={item} />;
   switch (item.kind) {
+    case 'tool-request':
+      return (
+        <StationToolLibraryProvider>
+          <LazyBoundary
+            load={loadToolRequestPanel}
+            componentProps={{ requestId: item.source.requestId }}
+            pending={<SkeletonList count={1} />}
+          />
+        </StationToolLibraryProvider>
+      );
     case 'approval':
       return item.requestReference ? (
         <ExactRequestAction
@@ -286,6 +316,21 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
   const confirmMutation = useConfirmDevicePairingRequestMutation();
   const denyMutation = useDenyDevicePairingRequestMutation();
   const busy = confirmMutation.isPending || denyMutation.isPending;
+  // The approve command names this Station's own CLI, read from its build.
+  const { apiBase } = useApiBase();
+  const operatorCli = operatorCliCommand(
+    useSystemStatusForApiBaseQuery(apiBase).data?.build?.channel,
+  );
+  // What the approver keeps of what the device asked for; all of it unless
+  // limited. An older Station sends no requested scope: no list, and
+  // Approve keeps whatever the request carries.
+  const requestedScope = item.requestedScope ?? '';
+  const [kept, setKept] = useState<ReadonlySet<PairingScope>>(() =>
+    defaultKeptScope(requestedScope),
+  );
+  // The card only says a device is asking; the details and the decision
+  // open in a dialog.
+  const [reviewing, setReviewing] = useState(false);
   // #765 D5 live verification: `access:approve` is operator-promotion-only,
   // so a paired browser session can read this item but the pairing routes
   // answer its approve/deny with 401 `authentication_required` — the buttons
@@ -298,40 +343,99 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         className="attention-item__detail"
         data-testid="attention-pairing-remedy"
       >
-        {pairingApprovalRemedy(item)}
+        {pairingApprovalRemedy(item, operatorCli, kept)}
       </div>
     );
   }
+  const decision = (
+    <div className="attention-item__actions">
+      <button
+        type="button"
+        className="attention-item__action attention-item__action--primary"
+        disabled={busy}
+        onClick={() => {
+          const scope = requestedScope
+            ? keptScopeForApproval(requestedScope, kept)
+            : undefined;
+          confirmMutation.mutate(
+            scope === undefined
+              ? item.source.requestId
+              : { requestId: item.source.requestId, scope },
+            // Decided: close rather than offer the same decision again
+            // until the item refreshes away.
+            { onSuccess: () => setReviewing(false) },
+          );
+        }}
+      >
+        Approve
+      </button>
+      <button
+        type="button"
+        className="attention-item__action attention-item__action--danger"
+        disabled={busy}
+        onClick={() =>
+          denyMutation.mutate(item.source.requestId, {
+            onSuccess: () => setReviewing(false),
+          })
+        }
+      >
+        Deny
+      </button>
+    </div>
+  );
   return (
     <>
       <div className="attention-item__actions">
         <button
           type="button"
           className="attention-item__action attention-item__action--primary"
-          disabled={busy}
-          onClick={() => confirmMutation.mutate(item.source.requestId)}
+          onClick={() => setReviewing(true)}
         >
-          Approve
-        </button>
-        <button
-          type="button"
-          className="attention-item__action attention-item__action--danger"
-          disabled={busy}
-          onClick={() => denyMutation.mutate(item.source.requestId)}
-        >
-          Deny
+          Review
         </button>
       </div>
-      <MutationError
-        error={describePairingActionError(
-          confirmMutation.error,
-          item,
-          'approve',
-        )}
-      />
-      <MutationError
-        error={describePairingActionError(denyMutation.error, item, 'deny')}
-      />
+      {reviewing && (
+        <Dialog
+          title={`${item.deviceName} is asking to pair`}
+          closeLabel="Close pairing request"
+          // Not closable while a decision is in flight, so its outcome shows.
+          dismissible={!busy}
+          hideClose={busy}
+          onClose={() => setReviewing(false)}
+          footer={decision}
+        >
+          {requestedScope ? (
+            <RequestedScopeChecklist
+              deviceName={item.deviceName}
+              requestedScope={requestedScope}
+              kept={kept}
+              onChange={setKept}
+              disabled={busy}
+            />
+          ) : (
+            <p className="attention-item__detail">{item.body}</p>
+          )}
+          <MutationError
+            error={describePairingActionError(
+              confirmMutation.error,
+              item,
+              'approve',
+              operatorCli,
+              // What the refused approval sent, not the boxes as they are now.
+              submittedKept(confirmMutation.variables, requestedScope) ?? kept,
+            )}
+          />
+          <MutationError
+            error={describePairingActionError(
+              denyMutation.error,
+              item,
+              'deny',
+              operatorCli,
+              kept,
+            )}
+          />
+        </Dialog>
+      )}
     </>
   );
 }
@@ -341,8 +445,38 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
  * and the 403 error path print, because it is the same fact arriving earlier
  * — before a doomed request instead of after one.
  */
-function pairingApprovalRemedy(item: DevicePairingAttentionItem): string {
-  return `Approving “${item.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${item.source.requestId} --force`;
+function pairingApprovalRemedy(
+  item: DevicePairingAttentionItem,
+  operatorCli: string,
+  kept: ReadonlySet<PairingScope>,
+  /** The elevated permissions a refused approval kept, by label. */
+  keptElevated: readonly string[] = [],
+): string {
+  return approvalRefusalRemedy({
+    deviceName: item.deviceName,
+    requestId: item.source.requestId,
+    operatorCli,
+    // The printed command grants exactly what this card would have kept.
+    keptScope: item.requestedScope
+      ? keptScopeForApproval(item.requestedScope, kept)
+      : undefined,
+    keptElevated,
+  });
+}
+
+/** The scope an approval mutation sent: all requested for a bodyless one. */
+function submittedKept(
+  variables: string | { requestId: string; scope?: string } | undefined,
+  requestedScope: string,
+): ReadonlySet<PairingScope> | undefined {
+  if (variables === undefined || !requestedScope) return undefined;
+  return new Set(
+    requestedScopeTokens(
+      typeof variables === 'string'
+        ? requestedScope
+        : (variables.scope ?? requestedScope),
+    ),
+  );
 }
 
 /**
@@ -356,6 +490,8 @@ function describePairingActionError(
   error: unknown,
   item: DevicePairingAttentionItem,
   action: 'approve' | 'deny',
+  operatorCli: string,
+  kept: ReadonlySet<PairingScope>,
 ): unknown {
   if (error == null) return null;
   if (!(error instanceof DevicePairingRequestActionError)) return error;
@@ -365,7 +501,9 @@ function describePairingActionError(
     );
   }
   if (error.status === 403 && action === 'approve') {
-    return new Error(pairingApprovalRemedy(item));
+    return new Error(
+      pairingApprovalRemedy(item, operatorCli, kept, elevatedLabels(kept)),
+    );
   }
   if (error.status === 404 || error.status === 410) {
     return new Error(

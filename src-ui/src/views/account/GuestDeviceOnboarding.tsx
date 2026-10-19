@@ -10,7 +10,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { LazyBoundary } from '../../components/LazyBoundary';
+import { MyAccessPanel } from '../../components/profile/MyAccessPanel';
 import { Empty, SkeletonList } from '../../components/state';
+import { ToolLibraryClientContext } from '../agent-editor/ToolLibraryContext';
+import { ProjectAgentsPanel } from '../project-settings/ProjectAgentsPanel';
 import {
   classifyGuestReadFailure,
   GuestAccountRequired,
@@ -272,6 +275,19 @@ export function GuestDeviceOnboarding({
           aria-label={`${detail.data.name} details`}
         >
           <h3>{detail.data.name}</h3>
+          <ToolLibraryClientContext.Provider
+            value={{
+              apiBase,
+              principalId,
+              options: { authentication: 'omit' },
+            }}
+          >
+            <details>
+              <summary>My access</summary>
+              <MyAccessPanel />
+            </details>
+            <ProjectAgentsPanel project={detail.data} />
+          </ToolLibraryClientContext.Provider>
           {detail.data.description && <p>{detail.data.description}</p>}
           <p>
             Shared work is view-only here. People and invitation management

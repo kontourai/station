@@ -188,7 +188,6 @@ function Thread({
         attachments={[]}
         textareaRef={{ current: null }}
         disabled={false}
-        isSending={chat.status === 'sending'}
         turnInFlight={isTurnInFlight(chat)}
         stopPending={!!chat.stopPending}
         modelSupportsAttachments={false}

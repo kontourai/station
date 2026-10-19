@@ -31,6 +31,47 @@ describe('handleOrchestrationEvent — station#1301 slice 1 ingest seam', () => 
     _resetOutboundQueueStorage();
   });
 
+  test('a resolved request releases its decision even after its chat was closed', async () => {
+    const {
+      answerOrchestrationRequest,
+      forgetApprovalAnswer,
+      readApprovalAnswerState,
+    } = await import('../answerRequest');
+    const reference = {
+      apiBase: 'http://api',
+      threadId: 'task:delegate-untracked',
+      requestId: 'closed-chat-approval',
+      requestEventId: 'opened-approval',
+    };
+    const transport = vi
+      .spyOn(
+        await import('@kontourai/station-sdk'),
+        'resolveOrchestrationRequest',
+      )
+      .mockResolvedValue(undefined);
+    try {
+      await answerOrchestrationRequest(reference.apiBase, {
+        ...reference,
+        decision: 'accept',
+      });
+      expect(readApprovalAnswerState(reference)?.phase).toBe('sent');
+      handleOrchestrationEvent(reference.apiBase, {
+        provider: 'claude',
+        threadId: reference.threadId,
+        createdAt: '2026-10-14T00:00:00.000Z',
+        method: 'request.resolved',
+        requestId: reference.requestId,
+        status: 'approved',
+      });
+      await vi.waitFor(() =>
+        expect(readApprovalAnswerState(reference)).toBeNull(),
+      );
+    } finally {
+      transport.mockRestore();
+      forgetApprovalAnswer(reference.threadId, reference.requestId);
+    }
+  });
+
   test('ingests a delegate-thread event into backgroundTasksStore even though the thread is never a tracked chat (the #1301 §1.3 "precise missing projection")', () => {
     expect(
       activeChatsStore.getSnapshot()['task:delegate-untracked'],

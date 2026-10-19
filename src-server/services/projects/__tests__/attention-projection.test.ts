@@ -2625,6 +2625,8 @@ describe('device pairing requests need attention (#765 D5)', () => {
         createdAt: new Date(requestNow - 1_000).toISOString(),
         updatedAt: new Date(requestNow - 1_000).toISOString(),
         deviceName: 'Test Phone',
+        // What it asks for, so the review dialog can show and limit it.
+        requestedScope: 'orchestration:read',
         // No viewer capability supplied — an unknown caller fails closed:
         // the projection must never claim decidability nothing derived.
         viewerCanDecide: false,

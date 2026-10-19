@@ -1,5 +1,14 @@
+import {
+  PROVIDER_FAILURE_RETRYABLE,
+  type ProviderFailure,
+  SESSION_START_INDETERMINATE_CODE,
+} from '@kontourai/station-contracts/provider-failure';
+
+export { SESSION_START_INDETERMINATE_CODE } from '@kontourai/station-contracts/provider-failure';
+
 import { randomUUID } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import type {
   RecoveryLedgerProcessIdentity,
   RecoveryOwner,
@@ -45,7 +54,7 @@ export function isProviderTurnBoundary(record: {
   return record.boundaryId.startsWith(PROVIDER_TURN_BOUNDARY_PREFIX);
 }
 
-type SessionTurnBoundaryTransition =
+export type SessionTurnBoundaryTransition =
   | { kind: 'applied' }
   | { kind: 'busy' }
   | { kind: 'ambiguous' }
@@ -76,6 +85,8 @@ export interface SessionTurnBoundaryCoordinator {
     providerTurnId?: string;
     sessionTerminal: boolean;
     terminalCreatedAt: string;
+    /** Session terminals use their persisted sequence; turn terminals retain timestamp ordering. */
+    terminalEventId?: string;
   }): SessionTurnBoundaryTransition;
   hasPossibleEffect(threadId: string): boolean;
   active(): SessionTurnBoundaryRecord[];
@@ -133,6 +144,13 @@ export interface SessionStartBoundaryClaim {
   started(): SessionTurnBoundaryTransition;
   notInvoked(): SessionTurnBoundaryTransition;
   indeterminate(now: string): SessionTurnBoundaryTransition;
+  /**
+   * The provider was invoked and DEFINITIVELY refused (a
+   * `SessionStartRefusedError`): release the boundary instead of leaving it
+   * `indeterminate`. Optional so a claim that cannot tell the difference stays
+   * conservative: anything but `applied` is recorded as an indeterminate start.
+   */
+  refused?(): SessionTurnBoundaryTransition;
 }
 
 /** Terminate an engine message so the explanation that follows reads as its own sentence. */
@@ -142,8 +160,15 @@ function sentence(message: string): string {
   return /[.!?]$/.test(trimmed) ? `${trimmed} ` : `${trimmed}. `;
 }
 
-export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
-export class SessionStartIndeterminateError extends Error {
+export class SessionStartIndeterminateError
+  extends Error
+  implements ProviderFailure
+{
+  readonly kind = 'indeterminate';
+  readonly failurePhase = 'indeterminate';
+  get retryable(): boolean {
+    return PROVIDER_FAILURE_RETRYABLE[this.kind];
+  }
   readonly code = SESSION_START_INDETERMINATE_CODE;
   constructor(cause?: unknown, reportedMessage?: string) {
     super(
@@ -185,6 +210,14 @@ export async function runSessionStartWithBoundary<T>(
   try {
     result = await invoke();
   } catch (error) {
+    // A definitive refusal settles the start: the thread is not fenced behind
+    // an inspection that has nothing to find. Anything the claim cannot confirm
+    // releasing stays the conservative indeterminate start.
+    if (
+      error instanceof SessionStartRefusedError &&
+      owned.claim.refused?.().kind === 'applied'
+    )
+      throw error;
     owned.claim.indeterminate(new Date().toISOString());
     throw new SessionStartIndeterminateError(error);
   }
@@ -241,16 +274,24 @@ export interface SessionTurnBoundaryAuthority {
   ): { kind: 'available'; active: boolean } | { kind: 'unavailable' };
   observe(event: CanonicalRuntimeEvent): SessionTurnBoundaryTransition;
   /**
-   * #2324: the durable row for a turn the engine opened on its own, recorded
-   * before its `turn.started` is persisted. Retired by that turn's terminal
-   * like any accepted turn; left behind by a crash, it is closed at the next
-   * boot with the interrupted-turn banner a user turn gets.
+   * #2324: the durable row for a turn the engine opened on its own. Retired
+   * by that turn's terminal like any accepted turn; left behind by a crash,
+   * it is closed at the next boot with the interrupted-turn banner a user
+   * turn gets.
+   *
+   * #3561: two steps, so the caller writes the row inside the append of the
+   * turn's `turn.started` and it commits or rolls back with that event.
+   * Preparing retries pending transitions, which open transactions of their
+   * own, so it runs BEFORE that append; `record` writes only the row and
+   * joins the caller's open transaction. `record` reports a row it could not
+   * write as `unavailable`, and throws only when the caller's transaction
+   * itself was rolled back.
    */
-  recordProviderTurn(
+  prepareProviderTurn(
     threadId: string,
     providerTurnId: string,
     now: string,
-  ): SessionTurnBoundaryTransition;
+  ): { record(): SessionTurnBoundaryTransition };
   /**
    * archive#4080: `reconcile`'s existing dead-owner sweep already
    * flips a dead `invoking` owner to `indeterminate` — this surfaces THAT
@@ -302,6 +343,33 @@ export function createSessionTurnBoundaryAuthority(options: {
       const result = operation();
       if (result.kind !== 'unavailable') pendingTransitions.delete(boundaryId);
     }
+  };
+  const prepareProviderTurn = (
+    threadId: string,
+    providerTurnId: string,
+    now: string,
+  ): { record(): SessionTurnBoundaryTransition } => {
+    retryPendingTransitions();
+    return {
+      // Not caught (#3561 review F1): inside a caller's append, a throw here
+      // means the caller's transaction is gone, and the caller must fail. A
+      // lost row alone is reported as `unavailable` by the coordinator.
+      record: () =>
+        options.coordinator.recordAccepted({
+          boundaryId: `${PROVIDER_TURN_BOUNDARY_PREFIX}${randomUUID()}`,
+          threadId,
+          state: 'accepted',
+          providerTurnId,
+          ownerId: options.owner.id,
+          ownerPid: options.owner.pid,
+          ...(options.owner.identityKind === 'exact'
+            ? { ownerBirth: options.owner.birth }
+            : {}),
+          ownerIdentityKind: options.owner.identityKind,
+          createdAt: now,
+          updatedAt: now,
+        }),
+    };
   };
   const reconcileDeadOwners = (
     now: string,
@@ -395,7 +463,12 @@ export function createSessionTurnBoundaryAuthority(options: {
     const boundaryId = record.boundaryId;
     let attempted = false;
     let invoked = false;
-    let terminal: 'started' | 'not-invoked' | 'indeterminate' | undefined;
+    let terminal:
+      | 'started'
+      | 'not-invoked'
+      | 'indeterminate'
+      | 'refused'
+      | undefined;
     const remove = (from: BoundaryState[]) =>
       retainUntilApplied(boundaryId, () =>
         options.coordinator.remove({
@@ -435,6 +508,14 @@ export function createSessionTurnBoundaryAuthority(options: {
             return { kind: 'stale' } as const;
           terminal = 'not-invoked';
           return remove(['prepared']);
+        },
+        refused() {
+          if (!invoked || terminal) return { kind: 'stale' } as const;
+          // Terminal only once released: an unconfirmed release must still be
+          // free to become the indeterminate start the caller falls back to.
+          const released = remove(['invoking']);
+          if (released.kind === 'applied') terminal = 'refused';
+          return released;
         },
         indeterminate(at: string) {
           if (terminal && terminal !== 'indeterminate')
@@ -732,7 +813,7 @@ export function createSessionTurnBoundaryAuthority(options: {
     },
     hasPossibleEffect(threadId) {
       try {
-        retryPendingTransitions();
+        // Polling is read-only; unresolved intents retry on the next writer.
         return {
           kind: 'available',
           active: options.coordinator.hasPossibleEffect(threadId),
@@ -780,29 +861,10 @@ export function createSessionTurnBoundaryAuthority(options: {
           event.method === 'session.exited' ||
           (event.method === 'runtime.error' && typeof turnId !== 'string'),
         terminalCreatedAt: event.createdAt,
+        terminalEventId: event.eventId,
       });
     },
-    recordProviderTurn(threadId, providerTurnId, now) {
-      retryPendingTransitions();
-      try {
-        return options.coordinator.recordAccepted({
-          boundaryId: `${PROVIDER_TURN_BOUNDARY_PREFIX}${randomUUID()}`,
-          threadId,
-          state: 'accepted',
-          providerTurnId,
-          ownerId: options.owner.id,
-          ownerPid: options.owner.pid,
-          ...(options.owner.identityKind === 'exact'
-            ? { ownerBirth: options.owner.birth }
-            : {}),
-          ownerIdentityKind: options.owner.identityKind,
-          createdAt: now,
-          updatedAt: now,
-        });
-      } catch {
-        return { kind: 'unavailable' };
-      }
-    },
+    prepareProviderTurn,
     reconcile(now) {
       retryPendingTransitions();
       const result = reconcileDeadOwners(now);

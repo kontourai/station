@@ -97,7 +97,7 @@ if printf '%s\n' "${push_ref_lines[@]}" | node scripts/prepush-pure-merge.mjs "$
 fi
 
 if [[ "$pure_merge_of_main" -eq 1 ]]; then
-  echo "[station pre-push] skipped for a pure merge of main: transfer budgets, static gates, SDK barrel, Veritas readiness, typecheck"
+  echo "[station pre-push] skipped for a pure merge of main: transfer budgets, static gates, SDK barrel"
 else
 echo "[station pre-push] orchestration transfer budgets"
 node scripts/check-prepush-orchestration-transfer.mjs
@@ -134,37 +134,10 @@ node scripts/check-prepush-static-gates.mjs
 echo "[station pre-push] SDK public barrel"
 node scripts/check-prepush-sdk-barrel.mjs
 
-# ~15s on an idle host, ~35s typical, 75s here at load 48. This is the most
-# expensive UNCONDITIONAL step in the hook, and it earns that because until
-# 2026-09-14 nothing ran it at all: not ci:fast, not this hook, and not
-# full:regression either, while every AGENTS.md in the repo tells contributors
-# to run `veritas readiness` and address any FAIL lines. It cannot be scoped
-# by path the way the steps above are — its evidence-checks execute
-# repository-wide commands, and its artifact and instruction-file rules read
-# repository state rather than a diff — so "which paths did this push touch"
-# does not predict its verdict.
-#
-# It runs after `proof:repo-governance` and not before, because it re-executes
-# that proof as a routed evidence-check: when the proof is what broke, the
-# step above has already said so in four seconds under its own name.
-echo "[station pre-push] Veritas readiness"
-npm run --silent veritas:readiness
+# Required hosted fast-checks-statics owns repository-wide Veritas readiness
+# and every typecheck lane through FAST_STATIC_COMMANDS in run-ci-fast.mjs.
+# Keep local checks cheap or scoped to the distinct transfer/static/SDK contracts.
 
-# ~50-90s (51s wall measured here end to end, preconditions included, with
-# the lanes run concurrently; station#4273 recorded 82s for the
-# aggregate alone), and
-# only when this push changes something a tsc project reads — a .ts/.tsx/
-# .mts/.cts source, any tsconfig, a manifest, or a patch. Everything else in
-# this hook is seconds-scale; this one is not, which is why it is the only
-# step here gated on its inputs for cost rather than for relevance. A
-# docs-only, workflow-only or .mjs-only push pays nothing.
-#
-# `ci:fast` already runs the same aggregate on every pull request, so this
-# does not close a merge gap — it moves the finding to the author, before the
-# push, instead of a CI cycle later where an intervening merge-queue candidate
-# inherits the red.
-echo "[station pre-push] typecheck (scoped to TypeScript inputs)"
-node scripts/check-prepush-typecheck.mjs
 fi
 
 # Instant. The ref lines were collected during the deletion-skipping loop

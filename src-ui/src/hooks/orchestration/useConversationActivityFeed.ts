@@ -2,6 +2,7 @@ import type {
   ConversationListItem,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 
@@ -25,6 +26,7 @@ export function useConversationActivityFeed(input: {
   conversations: readonly ConversationListItem[] | undefined;
   conversationsFetchedAfterMount: boolean;
 }): void {
+  const client = useQueryClient();
   const {
     sessions,
     sessionsFetchedAfterMount,
@@ -33,14 +35,33 @@ export function useConversationActivityFeed(input: {
   } = input;
   useEffect(() => {
     if (!sessionsFetchedAfterMount) return;
+    const current = new Set(
+      client
+        .getQueriesData<readonly OrchestrationSessionSummary[]>({
+          queryKey: ['orchestration-sessions'],
+        })
+        .flatMap(([, data]) => data ?? []),
+    );
     for (const session of sessions) {
-      activeChatsStore.applyConversationActivity(session.conversationActivity);
+      if (current.has(session))
+        activeChatsStore.applyConversationActivity(
+          session.conversationActivity,
+        );
     }
-  }, [sessions, sessionsFetchedAfterMount]);
+  }, [client, sessions, sessionsFetchedAfterMount]);
   useEffect(() => {
     if (!conversationsFetchedAfterMount) return;
+    // A render/effect queued before reset must not feed a retired cache page.
+    const current = new Set(
+      client
+        .getQueriesData<{ pages: { items: ConversationListItem[] }[] }>({
+          queryKey: ['conversation-inventory'],
+        })
+        .flatMap(([, data]) => data?.pages.flatMap((page) => page.items) ?? []),
+    );
     for (const conversation of conversations ?? []) {
-      activeChatsStore.applyConversationActivity(conversation.activity);
+      if (current.has(conversation))
+        activeChatsStore.applyConversationActivity(conversation.activity);
     }
-  }, [conversations, conversationsFetchedAfterMount]);
+  }, [client, conversations, conversationsFetchedAfterMount]);
 }

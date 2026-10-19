@@ -10,16 +10,14 @@
  *   station environment access remove <device> [--force]
  *
  * Everything here speaks to Station through a {@link DeviceAccessOperatorChannel}
- * and never learns how the operator was authenticated. Today the only channel
- * is the Station host's own (`openLocalOperatorChannel` in environment.ts:
- * loopback proof, then the home's operator credential), so a paired remote
- * CLI cannot reach these verbs. A later remote operator session would supply
- * a different channel and reuse this module unchanged.
+ * without owning authentication. environment.ts selects the proved local
+ * operator channel or a paired principal explicitly granted access:devices.
+ * The server authorizes the selected principal on every request.
  *
  * The routes are the existing ones: `GET /api/pairing/devices`,
  * `POST /api/pairing/devices/:id/scope`, `DELETE /api/pairing/devices/:id`
  * (revoke) and `DELETE /api/pairing/devices/:id/record` (remove a revoked
- * record), all operator only. A scope change is
+ * record). A scope change is
  * computed from the device's current scope and sent with `expectedScope`, so
  * a change another operator made meanwhile is refused, not overwritten.
  */
@@ -278,12 +276,31 @@ export async function runDeviceScopeCommand(
     throw new Error(
       `Device ${label(device)} holds a scope this CLI cannot read (${terminalSafeText(device.scope).slice(0, 256)}). Update the CLI, or change it in Station.`,
     );
-  const next = nextDeviceScope(current, args.change);
+  const requested = nextDeviceScope(current, args.change);
+  // A scope no device can be granted (`access:manage`, which older Stations
+  // gave every device by default) cannot survive a rewrite: Station refuses
+  // to store it again. So any real change drops it, and says so, exactly as
+  // the desktop app's access editor does. A change that asks for nothing new
+  // leaves the device alone.
+  const legacy = current.filter((token) => !isPairingScopeGrantable(token));
+  const changes =
+    requested.length !== current.length ||
+    requested.some((token) => !current.includes(token));
+  const next = changes
+    ? requested.filter((token) => isPairingScopeGrantable(token))
+    : requested;
   const before = current.join(' ');
   const after = next.join(' ');
   write(`Device ${label(device)} on ${channel.target}`);
   write(`  before: ${before}`);
   write(`  after:  ${after || '(none)'}`);
+  const dropped = changes
+    ? legacy.filter((token) => requested.includes(token))
+    : [];
+  if (dropped.length > 0)
+    write(
+      `  Also removes ${dropped.join(', ')}: an older Station version gave it to every device by default, and no device can be granted it again.`,
+    );
   if (next.length === 0)
     throw new Error(
       'A device must keep at least one scope. To remove its access entirely, revoke it in Station.',
@@ -327,7 +344,7 @@ export async function runDeviceScopeCommand(
   } catch (error) {
     if ((error as { code?: unknown }).code === 'scope_not_grantable')
       throw new Error(
-        `Device ${label(device)} still holds a scope that cannot be granted to a device (access:manage, from an older default grant), so Station will not rewrite its access with it kept. Remove it in the same change, e.g. --set=<the scopes it should keep>, or remove it first with --remove=access:manage.`,
+        `Station refused to keep a scope on ${label(device)} that no device can be granted. Run \`environment access devices\` to see its current access, then repeat this change.`,
       );
     if ((error as { code?: unknown }).code === 'scope_changed')
       throw new Error(

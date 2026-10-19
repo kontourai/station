@@ -16,6 +16,12 @@
 
     "packages/contracts/package.json",
 
+    "packages/contracts/package.json#/exports",
+
+    "packages/contracts/package.json#/files",
+
+    "packages/contracts/package.json#/name",
+
     "packages/contracts/src/__tests__/learning-review.test.ts",
 
     "packages/contracts/src/agent.ts",
@@ -29,6 +35,10 @@
     "packages/contracts/src/conversation-pull-request-links.ts",
 
     "packages/contracts/src/deployment-authentication.ts",
+
+    "packages/contracts/src/enriched-agent.ts",
+
+    "packages/contracts/src/environment-security.ts",
 
     "packages/contracts/src/harness-questions.ts",
 
@@ -52,11 +62,17 @@
 
     "packages/contracts/src/plugin.ts",
 
+    "packages/contracts/src/product-telemetry.ts",
+
     "packages/contracts/src/project-membership.ts",
+
+    "packages/contracts/src/provider.ts",
 
     "packages/contracts/src/pull-request-provider.ts",
 
     "packages/contracts/src/relay-enrollment.ts",
+
+    "packages/contracts/src/relay-management.ts",
 
     "packages/contracts/src/runtime-events.ts",
 
@@ -64,25 +80,47 @@
 
     "packages/contracts/src/scheduler.ts",
 
+    "packages/contracts/src/secret-binding.ts",
+
     "packages/contracts/src/skill-experience.ts",
 
     "packages/contracts/src/system-status.ts",
 
     "packages/contracts/src/task-room-work.ts",
 
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
     "packages/contracts/src/turn-stall-window.ts",
+
+    "packages/contracts/src/usage-export.ts",
 
     "packages/contracts/src/usage-rollup.ts",
 
+    "packages/contracts/src/usage-stats.ts",
+
     "packages/sdk/src/mobile-device.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link",
 
     "packages/shared/src/index.ts",
 
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/src/product-telemetry.ts",
+
     "src-desktop/src/native_relay_link_intake.rs",
+
+    "src-server/analytics/__tests__/usage-observation-projection.test.ts",
 
     "src-server/analytics/usage-rollup-service.ts",
 
     "src-server/knowledge-store/knowledge-record-observation.ts",
+
+    "src-server/providers/__tests__/engine-durability-profile.test.ts",
+
+    "src-server/providers/adapter-shape.ts",
 
     "src-server/providers/adapters/acp-adapter.ts",
 
@@ -92,7 +130,11 @@
 
     "src-server/providers/adapters/muse-serve-session.ts",
 
+    "src-server/providers/adapters/native-resume-binding.ts",
+
     "src-server/providers/provider-plan-quota.ts",
+
+    "src-server/routes/chat/conversation-reference-read.ts",
 
     "src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts",
 
@@ -110,9 +152,15 @@
 
     "src-server/routes/system/system-status-routes.ts",
 
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
     "src-server/runtime/bootstrap/station-runtime.ts",
 
     "src-server/runtime/conversation/conversation-stats-view.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts",
 
     "src-server/services/connections/__tests__/engine-account-history.test.ts",
 
@@ -125,6 +173,10 @@
     "src-server/services/identity/relay-enrollment-service.ts",
 
     "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
+
+    "src-server/services/orchestration/delta-coalescer.ts",
+
+    "src-server/services/orchestration/native-session-ownership.ts",
 
     "src-server/services/orchestration/orchestration-service.ts",
 
@@ -144,37 +196,41 @@
 
     "src-server/tools/station-control-delegation.ts",
 
+    "src-ui/src/components/acp-connections/EngineCapabilitySummary.tsx",
+
+    "src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx",
+
     "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
 
-    "packages/contracts/src/relay-management.ts",
+    "packages/contracts/src/workspace-isolation.ts",
 
-    "packages/contracts/src/environment-security.ts",
+    "src-server/services/projects/worktree-provisioning-service.ts",
 
-    "packages/shared/src/native-relay-link.ts",
+    "packages/contracts/src/execution-confinement.ts",
 
-    "packages/shared/package.json#/exports/.~1native-relay-link",
+    "packages/contracts/src/provider-failure.ts",
 
-    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+    "src-server/providers/provider-failure.ts",
 
-    "src-server/security/pairing-route-scopes.ts",
+    "scripts/__tests__/provider-failure-inventory.test.ts",
 
-    "src-server/security/relay-management-authority.ts",
+    "src-server/routes/orchestration/__tests__/provider-failure-projection.routes.test.ts",
 
-    "packages/contracts/src/usage-stats.ts",
+    "src-server/providers/model-provider-failure.ts",
 
-    "src-server/analytics/__tests__/usage-observation-projection.test.ts",
+    "src-server/runtime/conversation/stream-orchestrator.ts",
 
-    "packages/contracts/src/provider.ts",
+    "packages/contracts/src/__tests__/provider-failure.test.ts",
 
-    "src-server/services/orchestration/native-session-ownership.ts",
+    "src-server/providers/__tests__/station-agent-adapter.test.ts",
 
-    "src-server/providers/adapters/native-resume-binding.ts",
+    "src-ui/src/utils/chatErrorTranslation.ts",
 
-    "src-server/routes/chat/conversation-reference-read.ts",
+    "packages/contracts/src/attachment-staging.ts",
 
-    "packages/contracts/src/enriched-agent.ts",
+    "packages/shared/src/delegation-files.ts",
 
-    "packages/contracts/src/product-telemetry.ts"
+    "src-server/services/orchestration/attachment-staging-service.ts"
   ],
 
   "checks": [

@@ -5,6 +5,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import ImportedConversationPane from '../components/chat-dock/ImportedConversationPane';
+import {
+  handOffAttachedContinuation,
+  takeAttachedContinuationHandoff,
+} from '../lib/attached-continuation-handoff';
 
 const query = vi.hoisted(() => vi.fn());
 const sendMessage = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -80,6 +84,18 @@ function setup(
   return { ...view, onContinueInDock };
 }
 describe('imported conversation in the dock', () => {
+  test('closing the pane drops a hand-off it never took (#3552)', () => {
+    handOffAttachedContinuation({ threadId: 'source', draft: 'stale' });
+    const view = setup();
+    view.unmount();
+    expect(takeAttachedContinuationHandoff('source')).toBeNull();
+  });
+  test('closing the pane leaves another conversation’s hand-off alone', () => {
+    handOffAttachedContinuation({ threadId: 'other', draft: 'keep' });
+    const view = setup();
+    view.unmount();
+    expect(takeAttachedContinuationHandoff('other')).toBe('keep');
+  });
   test('renders inline without opening a dialog or continuing automatically', () => {
     const { onContinueInDock } = setup();
     expect(screen.getByRole('region', { name: 'Conversation' })).toBeTruthy();

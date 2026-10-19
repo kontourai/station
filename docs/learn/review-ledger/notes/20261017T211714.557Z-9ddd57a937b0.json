@@ -1,0 +1,43 @@
+{
+  "revision": "a5ad81a2144a03a71ec0c97a0bc0c83b82747070",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the bounded snapshotEvent delta and MCP host path. It preserves complete successful MCP envelopes within the existing per-event/window budgets for transcript rendering. EventStore transaction, lineage, admission, recovery, artifact and package-journal owners are unchanged. Transport/CSP limits remain accurate; transcript preview scope is recorded in the linked host design.","inputs":["docs/architecture/module-map.md","docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed ToolCallDisplay delta: the saved-result app preview is added after the ordinary tool row. Approval controls, session grants, request identities and denial labels are unchanged. Preview frames refuse actions and cannot submit an approval or message.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed EventStore snapshot delta against evidence ownership claims: only successful bounded MCP tool results retain their object shape for transcript display. It changes no receipt, Flow gate, exception authority, revision or readiness assertion.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed EventStore snapshot delta against operations vocabulary and lifecycle ownership: presentation retains bounded MCP results without executing tools. Package, installation, restart, environment and evidence ownership are unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Reviewed MCPToolUIFrame delta against integration and bridge boundaries. Existing pane calls and Basis continuations retain their policies; transcript previews supply a recorded result and advertise no resource/tool/link capability. No Skill activation, package ownership or general session interaction authority is added.","inputs":["docs/contexts/extension-ecosystem/CONTEXT.md","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed both transcript renderers: MCP app candidates now render outside collapsed tool batches. Declarative UIBlock ingestion, instance identity and action/submit authority are unchanged; the MCP sandbox remains separate. The linked host design documents preview-only MCP behavior.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/StreamingMessage.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed splitToolCallRuns, foldTurnWork and both transcript renderer branches with new tests. Updated mobile folding prose to exempt MCP preview candidates. Ordinary batching, pending approval rows, narration, composer sending and input ownership are unchanged.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts","src-ui/src/components/chat/message-bubble/MessageContent.tsx","src-ui/src/components/chat/tool-call-runs.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed snapshotEvent delta against ledger extraction claims. Bounded MCP result presentation changes no ledger Interface, table migration, command receipt atomicity, recovery transition or session authority.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed snapshotEvent delta against task-room history claims. It affects orchestration event-window presentation only; project-room snapshot/cursor/retention, conflict and rollback rules are unchanged.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed snapshotEvent delta against revision evidence ownership. Retaining a bounded MCP result for chat does not alter working-state snapshots, revision hashes, attestations, import limits or evidence publication.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Reviewed snapshotEvent delta against shared-state contract. Orchestration tool-result presentation changes no durable operation, canonical snapshot, revision digest, rejected operation or restore behavior.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed EventStore snapshot delta against Monitoring read/diagnostic claims. Complete successful bounded MCP envelopes can now remain structured in windows; per-event and window budgets remain. Run, usage and artifact accounting are unchanged; the current host design owns transcript preview scope.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed MCP Apps section and frame changes. Catalog-declared resource loading, visibility, separate origin, resource-only policy and pane approval behavior remain accurate. Transcript preview adds no plugin manifest field or action authority and does not use the embedded tool-invocation fallback.","inputs":["docs/guides/plugins.md","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed snapshotEvent delta against configuration and attachment bounds. No config key/default, attachment reference/retention or byte budget changes. Complete bounded MCP tool envelopes remain display data, with oversize results retaining existing elision.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed frame and host-design delta against SDK and Basis descriptions. No SDK exports, request shapes, private Basis continuation capability or pane scope changes. Preview-only transcript rendering is internal UI composition, not a new SDK action grant.","inputs":["docs/reference/sdk.md","docs/design/mcp-ui-host.md","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed MCP host-design/frame changes against shared facade, CSP and runtime projection claims. No shared API or parser changes; the existing projector already carries complete object output when the window retains it. Browser containment caveats and public contract ownership remain accurate.","inputs":["docs/reference/shared.md","docs/design/mcp-ui-host.md","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed MCP tools, rendered-resource and plugin pane topics against frame delta. Their existing catalog, authorization, resource-policy and sandbox claims remain accurate; this slice adds preview-only transcript composition without new tool/SDK/manifest authority. Linked host design owns engine/result limitations; canonical shipped prose needs no change.","inputs":["docs/reference/station-docs.md","docs/design/mcp-ui-host.md","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Reviewed unchanged basisReadSession branches alongside transcriptResult branch. Transcript previews cannot enter private Basis open/page/dispose or use its tool capability. Task identity, caller scope, rotating continuation and teardown/expiry remain unchanged.","inputs":["docs/reference/task-basis-mcp-app.md","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed demo server registration and static resource plus existing host path. Layout setup, real resource reads, web/native limitation, static HTML and pane policy examples remain accurate. The screenshot uses this real server with a seeded durable transcript; no real provider execution is claimed.","inputs":["examples/mcp-ui-demo/README.md","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]}
+  ]
+}

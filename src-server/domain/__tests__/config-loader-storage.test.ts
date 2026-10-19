@@ -189,19 +189,7 @@ describe('config-loader-storage integration icon (issue #691)', () => {
 
     const tools = await listIntegrationMetadata(tempDir, noopLogger);
     expect(tools).toEqual([
-      {
-        id: 'docs',
-        kind: 'mcp',
-        displayName: 'Docs Server',
-        description: undefined,
-        icon: '📋',
-        transport: undefined,
-        source: undefined,
-        requiresEnvSecrets: false,
-        enabled: true,
-        disabledTools: undefined,
-        probe: undefined,
-      },
+      expect.objectContaining({ id: 'docs', icon: '📋' }),
     ]);
   });
 

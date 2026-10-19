@@ -6,7 +6,14 @@ import {
   useRenameCodingFileMutation,
 } from '@kontourai/station-sdk';
 import { previewProjectWorkspaceFile } from '@kontourai/station-sdk/workspace-file-preview';
-import { useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { copyToClipboard } from '../../lib/clipboard';
 import { useCodingFilesContext } from '../../providers/context/CodingFilesContextProvider';
@@ -25,6 +32,8 @@ import {
 } from './FileTreeContextMenu';
 import { filterTree } from './fileTreeFilter';
 
+const EMPTY_TREE: FileEntry[] = [];
+
 /** Parent directory of a workspace-relative path ('' for a top-level entry). */
 function parentDir(path: string): string {
   const i = path.lastIndexOf('/');
@@ -37,7 +46,7 @@ type PromptState = {
   entry: FileEntry | null;
 };
 
-function FileTreeNode({
+const FileTreeNode = memo(function FileTreeNodeView({
   entry,
   projectSlug,
   depth,
@@ -148,7 +157,7 @@ function FileTreeNode({
       )}
     </button>
   );
-}
+});
 
 export function FileTreePanel({
   projectSlug,
@@ -168,7 +177,7 @@ export function FileTreePanel({
     [projectSlug, workingDir],
   );
   const {
-    data: tree = [],
+    data: tree = EMPTY_TREE,
     isLoading: loading,
     error: queryError,
   } = useCodingFilesQuery(location, apiBase);
@@ -183,24 +192,35 @@ export function FileTreePanel({
     removeFile,
     removeFilesAtPath,
   } = useCodingFilesContext();
-  const attachedPaths = new Set(
-    attachedFiles
-      .filter((file) => file.projectSlug === projectSlug)
-      .map((file) => file.path),
+  const attachedPaths = useMemo(
+    () =>
+      new Set(
+        attachedFiles
+          .filter((file) => file.projectSlug === projectSlug)
+          .map((file) => file.path),
+      ),
+    [attachedFiles, projectSlug],
   );
 
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FileEntry | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { tree: visibleTree, expanded } = filterTree(tree, search);
-  const revealedDirectories = new Set(expanded);
-  for (let cursor = selectedPath?.lastIndexOf('/') ?? -1; cursor > 0; ) {
-    revealedDirectories.add(selectedPath!.slice(0, cursor));
-    cursor = selectedPath!.lastIndexOf('/', cursor - 1);
-  }
+  const { tree: visibleTree, expanded } = useMemo(
+    () => filterTree(tree, deferredSearch),
+    [tree, deferredSearch],
+  );
+  const revealedDirectories = useMemo(() => {
+    const directories = new Set(expanded);
+    for (let cursor = selectedPath?.lastIndexOf('/') ?? -1; cursor > 0; ) {
+      directories.add(selectedPath!.slice(0, cursor));
+      cursor = selectedPath!.lastIndexOf('/', cursor - 1);
+    }
+    return directories;
+  }, [expanded, selectedPath]);
 
   const loadError = queryError?.message ?? null;
   const opError =
@@ -210,8 +230,10 @@ export function FileTreePanel({
     deleteMut.error?.message ??
     null;
 
-  const openMenu = (entry: FileEntry | null, x: number, y: number) =>
-    setMenu({ entry, x, y });
+  const openMenu = useCallback(
+    (entry: FileEntry | null, x: number, y: number) => setMenu({ entry, x, y }),
+    [],
+  );
 
   // Attach a file's current content to the chat context provider.
   const addToChat = async (entry: FileEntry) => {
@@ -430,7 +452,7 @@ export function FileTreePanel({
           tree.length > 0 &&
           visibleTree.length === 0 && (
             <div className="file-tree-panel__hint">
-              No files match “{search}”
+              No files match “{deferredSearch}”
             </div>
           )}
         {visibleTree.map((entry) => (

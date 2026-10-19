@@ -1,0 +1,7 @@
+{
+  "revision": "b2274ad211de833226e73f8b8c5a4b4a375944a8",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Delta review for #2675: docs/guides/testing.md now names the real-process Windows identity probe in the Windows portable floor, test:windows:portable runs that file, and the resource manifest classifies it as process-heavy. This document's routing and rules are unaffected.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

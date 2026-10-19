@@ -1,0 +1,73 @@
+{
+  "path": "docs/user/personal-boards.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Traced personal ownership, templates and visual editing, live source queries, projectless chat draft handoff, proposed versus published content, whole-record revision checks, rename and promotion, retained Layout tabs and narrow rendering.",
+
+  "limits": "Controlled API and mounted UI/browser journeys. External model-generated authoring, physical devices and multi-process coordination are not qualified by these results.",
+
+  "sources": [
+    "packages/contracts/src/personal-board.ts",
+
+    "packages/sdk/src/personal-board.ts",
+
+    "packages/sdk/src/client/personal-boards.ts",
+
+    "packages/sdk/src/query-domains/personalBoards.ts",
+
+    "src-server/routes/me/personal-layouts.ts",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "src-server/services/layouts/personal-layout-service.ts",
+
+    "src-server/services/layouts/personal-layout-operation.ts",
+
+    "src-server/tools/station-control-personal-board-tools.ts",
+
+    "src-server/tools/station-control-policy.ts",
+
+    "src-ui/src/views/PersonalBoardView.tsx",
+
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
+
+    "src-ui/src/views/personal-board/board-templates.ts",
+
+    "src-ui/src/views/personal-board/PersonalBoardDashboard.tsx",
+
+    "src-ui/src/views/personal-board/PersonalBoardSections.tsx",
+
+    "src-ui/src/components/chat-dock/composerDraftRequest.ts",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
+
+    "src-ui/src/layouts/index.tsx",
+
+    "src-ui/src/views/layout-workspace-shape.ts",
+
+    "tests/personal-board-authoring.spec.ts",
+
+    "src-ui/src/views/personal-board/PersonalBoard.css",
+
+    "src-ui/src/views/personal-board/BoardEditor.tsx",
+
+    "src-ui/src/views/personal-board/BoardSetup.tsx",
+
+    "src-server/security/coding-authority.ts",
+
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx",
+
+    "src-server/services/plugins/tool-library-catalog.ts",
+
+    "src-server/services/plugins/tool-library-service.ts"
+  ],
+
+  "checks": [
+    "Owner-boundary route tests cover identity isolation, saved/proposed separation, stale writes, rename, legacy tabs and serialized promotion. Mounted chat-pane tests cover an unsent projectless composer draft. Desktop1280 and phone390 browser journeys passed template/edit/preview/save/reload, real Task visibility, arriving proposal/Apply and chat picker. Final exact-revision gates remain separately recorded."
+  ]
+}

@@ -18,7 +18,35 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
   `@kontourai/station-shared/parsers`, `/build` and `/git`.
 - Server-only provider interfaces do not belong here. Keep those in `src-server/providers/provider-interfaces.ts` or `src-server/providers/llm/model-provider-types.ts`.
 
+`ToolCompletedEvent.mcpAppResourceUri` is an optional Station-owned completion
+stamp from an already-open or shipped in-process MCP tool-definition catalog. EventStore replaces
+incoming claims, and uses it only to retain bounded App envelopes in history
+windows. It grants no resource or execution authority. Older readers ignore the
+field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).
+
+### Delegation file refusals
+
+`@kontourai/station-contracts/attachment-staging` owns
+`DelegationFileRefusalCode`, the closed `delegation_files_*` vocabulary.
+`@kontourai/station-shared/delegation-files` supplies the runtime refusal class
+and batch name/size/data validation used by CLI preflight and the server
+materializer. Existing staging owner/tenant identity, grants and `stage_*` codes
+remain unchanged. The [CLI](cli.md#delegate) and [SDK](sdk.md#delegatetaskapibase-input-options-with-files)
+references describe cleanup and uncertain delivery outcomes.
+
 ## Modules
+
+The authored `@kontourai/station-contracts/usage-export` module defines the
+individual/personal-account request and retained-observation page, including
+UTC window, stream epoch, fixed high watermark and unknown history coverage.
+It neither describes an analytics authorization credential nor proves a
+durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
+for current implementation and unexecuted acceptance limits.
+
+The `@kontourai/station-contracts/html-reply` subpath defines prepared page
+bytes, publication references, byte/height limits and theme variable names for
+[visual replies](../user/html-replies.md). It grants no publication or
+conversation access. Filesystem preparation stays in the server.
 
 | Module | Owns |
 |---|---|
@@ -28,8 +56,11 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
-| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` revocation provenance. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
+| `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, ACP header and instance telemetry destination grants; raw material is server-only |
+| `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; collector acceptance does not prove downstream storage |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
 | `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb. Shapes only: the server validates and stores them, and no route, intake or dispatch consumes them yet |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
@@ -48,9 +79,11 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
+| `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`; see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
+| `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
-| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
-| `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0, removed in 0.10.0: the pre-#3390 harness questionnaire and answer shapes, kept for stored events and `answers` callers |
+| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). The resolution receipt's optional `confinement` is the started session's recorded confinement, attached after the start |
+| `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0; retained in 0.10.0 for stored events and legacy `answers` callers. Use the `input-request` shapes for new callers |
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
@@ -58,6 +91,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
+| `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
@@ -74,6 +108,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, and update-provenance issue codes |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
+| `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
@@ -110,6 +145,10 @@ See the [provider contract](../../packages/contracts/src/provider.ts),
 [foreground caller](../../src-server/services/execution-target/execution-target-execution.ts),
 [Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts), and
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts).
+
+Session inventory preserves Surface's `not-chosen` reviewed-source state and
+`reviewed-source-review-not-chosen` gap when a review selected another candidate.
+The row remains `contributed-to`; that state does not establish support for the answer.
 
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
@@ -152,10 +191,193 @@ updates liveness without advancing the event replay cursor.
 running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
 
+## Engine-neutral failures
+
+`@kontourai/station-contracts/provider-failure` owns the closed
+`ProviderFailureKind`, `PROVIDER_FAILURE_RETRYABLE` and diagnostic-code mapping.
+Server `runtime.error` constructors explicitly satisfy `ProviderRuntimeErrorEvent`
+or its emitter-body type. Both require `kind`, computed `retryable` and `failurePhase`. Stored events and
+third-party plugins can predate these additive fields; missing means unknown.
+`SendTurnRefusedError` and pre-effect server refusals require an explicit kind, and `SessionStartRefusedError`
+requires a mapped code. Their inherited getters compute eligibility from the
+same constants; subclasses cannot omit the required constructor input.
+
+`failurePhase: refused` promises no provider-visible effect. `failed` means
+work may already have run and spent resources. `indeterminate` means invocation
+may have happened and its outcome is unknown. A new send blocked by custody of a
+previous process is instead a refused `conflict`: that new send did not run.
+`retryable` describes whether
+the same input is eligible for a later caller-requested attempt; it never
+instructs clients to replay a failed or indeterminate action automatically.
+`retryAfter`, when known, is an ISO timestamp. Account quota failures carry
+`quota_exhausted` and a reported reset time when available; eligibility remains
+false until that condition changes. Generic failures stay `provider_error`
+unless structured engine evidence supports a narrower kind.
+
+The fixed retryable kinds are `busy` (wait for the competing operation),
+`rate_limited` (respect the reported delay), `timeout`, `engine_crashed` and
+`unavailable` (session startup failed; a manual attempt may start it again).
+All other kinds are non-retryable: `auth`, `quota_exhausted`,
+`model_unavailable`, `provider_error`, `cancelled`, `input_unsupported`,
+`session_gone`, `permission_denied`, `conflict`, `indeterminate` and `warning`.
+
+The existing `retriable` event field retains its separate meaning. In
+particular, Codex can report that it will continue the same turn; changing it
+would change terminal-event folding. Warning-only diagnostics use `warning`, with `retryable: false`. Approval
+expiry, lingering-child reaping and serve fallback describe observations or
+partial/background work; they do not fail or replay the completed turn. Generic engine codes
+can carry a more specific kind when structured quota details establish it.
+No existing diagnostic code is renamed or removed.
+
+| Diagnostic code | Kind | Retryable |
+| --- | --- | --- |
+| `delegation_files_unsupported` | `input_unsupported` | `false` |
+| `delegation_files_duplicate_name` | `input_unsupported` | `false` |
+| `delegation_files_count` | `input_unsupported` | `false` |
+| `delegation_files_size` | `input_unsupported` | `false` |
+| `delegation_files_invalid_name` | `input_unsupported` | `false` |
+| `delegation_files_invalid_data` | `input_unsupported` | `false` |
+| `delegation_files_ref_invalid` | `input_unsupported` | `false` |
+| `delegation_files_unavailable` | `unavailable` | `true` |
+| `delegation_files_start_refused` | `provider_error` | `false` |
+| `delegation_files_turn_refused` | `provider_error` | `false` |
+| `delegation_files_outcome_unknown` | `indeterminate` | `false` |
+| `delegation_files_cleanup_failed` | `provider_error` | `false` |
+| `stage_not_found` | `input_unsupported` | `false` |
+| `stage_expired` | `input_unsupported` | `false` |
+| `stage_forbidden` | `permission_denied` | `false` |
+| `stage_grant_invalid` | `permission_denied` | `false` |
+| `stage_cancelled` | `cancelled` | `false` |
+| `stage_incomplete` | `input_unsupported` | `false` |
+| `stage_invalid_upload` | `input_unsupported` | `false` |
+| `stage_capacity` | `busy` | `true` |
+| `foreground_invocation_unavailable` | `conflict` | `false` |
+| `delegation_attempt_capacity` | `busy` | `true` |
+| `continuation_place_refused` | `input_unsupported` | `false` |
+| `adoption_continuation_in_progress` | `busy` | `true` |
+| `approval-escalation-requires-restart` | `warning` | `false` |
+| `approval-full-access-not-granted` | `permission_denied` | `false` |
+| `attachment_input_unsupported` | `input_unsupported` | `false` |
+| `authentication_rate_limited` | `rate_limited` | `true` |
+| `client_protocol_invalid` | `input_unsupported` | `false` |
+| `client_protocol_unsupported` | `input_unsupported` | `false` |
+| `client_turn_in_flight` | `busy` | `true` |
+| `client_turn_input_conflict` | `conflict` | `false` |
+| `client_turn_input_unsupported` | `input_unsupported` | `false` |
+| `confined_full_access_unavailable` | `permission_denied` | `false` |
+| `confinement_mechanism_unavailable` | `permission_denied` | `false` |
+| `confinement_not_observed` | `permission_denied` | `false` |
+| `confinement_workspace_incompatible` | `permission_denied` | `false` |
+| `continuation_engine_not_ready` | `unavailable` | `true` |
+| `continuation_workspace_corrupt_worktree_binding` | `input_unsupported` | `false` |
+| `continuation_workspace_different_project` | `input_unsupported` | `false` |
+| `continuation_workspace_direct_mismatch` | `input_unsupported` | `false` |
+| `continuation_workspace_project_context_missing` | `input_unsupported` | `false` |
+| `continuation_workspace_unbound` | `input_unsupported` | `false` |
+| `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
+| `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `engine-decision-not-sent` | `warning` | `false` |
+| `engine-decision-unacknowledged` | `warning` | `false` |
+| `engine-session-binding-dead` | `session_gone` | `false` |
+| `engine-turn-failed` | `provider_error` | `false` |
+| `execution_engine_changed` | `conflict` | `false` |
+| `foreground_message_indeterminate` | `indeterminate` | `false` |
+| `model_not_advertised` | `model_unavailable` | `false` |
+| `model-override-unsupported` | `input_unsupported` | `false` |
+| `muse_turn_slot_releasing` | `busy` | `true` |
+| `muse-approval-decide-failed` | `warning` | `false` |
+| `muse-approval-expired` | `warning` | `false` |
+| `muse-approval-mode-not-applied` | `warning` | `false` |
+| `muse-exit-without-terminal` | `engine_crashed` | `true` |
+| `muse-held-turn-unfinished` | `warning` | `false` |
+| `muse-lingering-child-reaped` | `warning` | `false` |
+| `muse-serve-host-exited` | `engine_crashed` | `true` |
+| `muse-serve-stop-unconfirmed` | `warning` | `false` |
+| `muse-serve-unavailable` | `warning` | `false` |
+| `muse-spawn-failed` | `unavailable` | `true` |
+| `muse-terminal-not-completed` | `provider_error` | `false` |
+| `muse-turn-idle-timeout` | `timeout` | `true` |
+| `muse-turn-timeout` | `timeout` | `true` |
+| `principal_unresolved` | `auth` | `false` |
+| `project_identity_not_prepared` | `input_unsupported` | `false` |
+| `provider_session_start_failed` | `unavailable` | `true` |
+| `provider_session_starting` | `busy` | `true` |
+| `provider_turn_in_progress` | `busy` | `true` |
+| `provider-plan-quota-exhausted` | `quota_exhausted` | `false` |
+| `resource_engine_start_capacity` | `busy` | `true` |
+| `session_ended` | `session_gone` | `false` |
+| `session_recovery_failed` | `unavailable` | `true` |
+| `session_start_in_flight` | `busy` | `true` |
+| `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
+| `session-reattach-conflict` | `conflict` | `false` |
+| `transcript-line-skipped` | `warning` | `false` |
+
+The [source inventory guard](../../scripts/__tests__/provider-failure-inventory.test.ts)
+recursively discovers string `*_CODE` declarations and string-literal `code` class
+fields in contracts and server code,
+including private constants and newly added files. Known out-of-scope constants
+are explicitly allowed by file, name and value: directory/command grants and
+Station Control containment are caller authority, Flow unreachable-gate claims
+are evidence governance, and person/native-title control codes do not represent
+turn execution or session startup. Class-field exclusions separately name application
+configuration, storage, policy, and non-provider lifecycle failures. The guard refuses
+a new unclassified constant or class-field code. Object-literal API/validation codes
+are outside this inventory; strict `runtime.error` construction is checked separately.
+Existing server import paths forward the relocated contract constants.
+
+The inventory also reads the delegation-file refusal union in `attachment-staging.ts`
+and the staging service's constructor code union independently of the mapping.
+Their codes surface through delegation HTTP refusals. Invalid, missing, expired,
+incomplete or already consumed file references require valid prepared inputs;
+`stage_capacity` is staging-store contention, while forbidden references or grants
+are permission failures. Workspace file-write unavailability can permit a manual
+retry after the host recovers. The delegation start/turn refusal wrappers no longer
+carry the underlying engine reason, so they conservatively use `provider_error`.
+Cleanup failures also require inspection before another attempt. Unknown delegation
+outcomes remain `indeterminate`; none of these kinds authorizes automatic replay.
+
+
+The same guard requires every literal server `runtime.error` constructor to
+satisfy a strict writer type. Its two named reader exceptions reconstruct old
+observations (`monitoredRuntimeEventFrom`) or pass a small input to a terminal
+predicate (`isDelegationTerminalEvent`); neither publishes a new event. The
+recovery coordinator's error matches are parameter types for observed events,
+not emitters. A compiler-backed test proves that the real writer type rejects
+missing metadata while the legacy reader accepts it.
+
+The [pinned wire test](../../packages/contracts/src/__tests__/provider-failure.test.ts)
+states every code's expected kind and retryable value as independent literals;
+changing an existing mapping to another valid kind fails. The
+[projection route tests](../../src-server/routes/orchestration/__tests__/provider-failure-projection.routes.test.ts)
+reach handoff, continuation and receipted-command failures, including invocation
+uncertainty. The [delivery test](../../src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts)
+reaches ordinary foreground refusal and same-key resend. These use fakes, not
+live model calls.
+
+Station's model-provider SSE writer recognizes `insufficient_quota` only in a
+bounded structured body from a qualified upstream HTTP 429. It forwards a fixed
+kind, never that body or its text. The Station-agent relay distinguishes
+`quota_exhausted` from ordinary `rate_limited` and preserves the same safe text
+in live events and saved failure markers. The
+[relay tests](../../src-server/providers/__tests__/station-agent-adapter.test.ts)
+exercise both cases through the production SSE writer.
+
+Queue retention reads computed eligibility for its existing five provider
+refusal codes, with an explicit fallback when older or hand-built errors have no
+kind. The code membership bounds this migration to the behavior proved equivalent;
+a coarse kind does not expand queue policy. A `muse-spawn-failed` response keeps
+its old drop policy even if it carries an `unavailable` kind. The
+[queue tests](../../src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts)
+pin both behaviors. Code-specific automatic redrain, composer transitions,
+corrective copy, workspace/adoption authority and reset/opt-in recovery policy
+remain separate decisions. Broader retention for newly classified codes is deferred.
+
 ## Product telemetry observations
 
 `@kontourai/station-contracts/product-telemetry` declares the content-free event
-inventory and version1 batch, observation and build shapes. Stable event IDs,
+inventory and version1 batch, observation and build shapes.
+`TelemetryPublisherStatus` includes the effective tier and reason alongside the
+optional saved `userChoice`; a DNT override does not replace that saved choice. Stable event IDs,
 producer occurrence/admission time, inventory revision and allowlisted build
 provenance support reliability comparisons; they do not identify people or
 replace canonical personal usage receipts. Runtime validation and disclosure
@@ -192,6 +414,15 @@ retirement records; its unavailable forms contain no protected owner identity.
 Station does not turn feedback, an accepted request, or transport success into
 a promotion verdict. An empty effect-observation set means not observed, never
 successful.
+
+## Account preferences
+
+`@kontourai/station-contracts/account-preferences` declares portable preference
+keys, the partial account document and field-patch/reset semantics. The scope is
+one verified person within one Station and trusted tenant boundary. Account
+preferences contain no credentials, Device grants or Project/Station policy.
+Interactive approval defaults are per engine; their presence does not authorize
+execution. Device-only keys are refused by the personal preferences route.
 
 ## Native relay and account composition
 
@@ -362,7 +593,41 @@ terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 the session lifecycle like any turn (reasons `provider_turn_started` /
 `provider_turn_completed`), and notifies "Your agent replied" when the owner
 is offline. A send while it runs is refused with the retryable code
-`provider_turn_in_progress`, and the client queues the message until it ends.
+`provider_turn_in_progress`, and the client queues the message until it ends,
+unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
+A send to an ACP session that is still starting (for a restored session,
+reattaching to the engine's stored session) waits for the start, up to 15
+seconds, through the optional adapter method `whenSessionReady`. Orchestration
+awaits it before taking the thread's turn-start claim, so Stop and End are not
+held behind a slow start. The send's cancellation signal ends the wait; that
+signal comes only from an explicit Stop or cancel or a server deadline, never
+from the client's connection, so a client may close once Station has the
+message. If the session is stopped before it is ready, the send is refused
+definitively and the client offers the text back. If the start fails, the
+send is refused with `provider_session_start_failed`, and the client keeps the
+message queued with the reason and Retry without re-sending it on its own. If
+it is still starting after the wait, the send is refused with the retryable
+code `provider_session_starting`, and the client queues the message and
+re-sends it. A retry of the same submitted input whose idempotency key an earlier attempt still holds
+waits for that attempt's turn (up to five minutes). If none arrives, or the
+attempt released the key without sending, the retry is refused with the
+retryable code `client_turn_in_flight` and re-sent with the same key; that
+holds however long the attempt has held the key, because its turn may still
+be delivered. A retry whose earlier attempt may already have reached the
+engine and will never resolve is refused with the non-retryable
+`foreground_message_indeterminate` instead, and nothing is sent again. That
+happens at once when the attempt's owner died after it began invoking. When
+the attempt's engine call failed after it began, it happens only in the
+Station process that made the attempt: at once for a new retry, and at the
+next poll of the wait for a retry already waiting. Another Station process
+sharing the store cannot see that the attempt gave up, so there the retry is
+treated as for a held key. When the client's
+automatic re-sends run out, the message stays queued with a reason and Retry.
+A follow-up sent with `whenBusy: 'queue'` is held by Station instead, in the
+conversation's durable inbox (#3568): `POST /chat` answers `202` with a
+`ConversationInboxQueuedReceipt`, its `ConversationInboxEntry` says where the
+message stands, and the delivery lookup answers `queued` while it waits. See
+the [Session API](session-api.md#let-station-hold-a-follow-up).
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
 ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,
@@ -384,8 +649,37 @@ An ACP send whose attachments the engine cannot take (images when its
 `initialize` handshake did not advertise `promptCapabilities.image`, or any
 non-image file) is refused before any engine effect with
 `ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
-`provider`). Unlike the two codes above it is not retryable: the same send is
-refused again. An ACP steer delivered by the cancel + re-prompt fallback, for
+`provider`). Unlike the retryable codes above it is not retryable: the same send is
+refused again. An ACP session whose requested model the engine's own fresh
+`session/new` options did not offer (`ACP model value unsupported`, or no model
+option at all) is refused by the adapter with `SessionStartRefusedError`,
+carrying `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`).
+That type is how an adapter tells the start boundary that its start is settled:
+the boundary is released and the receipt is `rejected`, where every other
+adapter failure at start stays an indeterminate start that fences the thread. An
+adapter throws it only once the engine has answered with a refusal and what it
+spawned is torn down (an unconfirmed teardown is an `AggregateError`, an
+uncertain start whose end is not announced), and it owes the service the cause and
+the end of the session it had announced: a `runtime.error` carrying the code,
+then a `session.exited` (`start-refused`, no exit code), because
+`session.started` went out before `session/new` answered and the service binds
+the thread to the adapter on it. For a fresh start the session's lifecycle then
+reads `failed` with the engine's own words, also after a reload, and its binding
+is ended, so a resend in the same conversation, whatever it names (another
+model, the same one, or no override), continues in a successor session through
+the continuation seam. The exit is consumed in order on the adapter's event
+queue like any other, so a resend that lands before it has been projected sees
+the session still open and fails at the send; the next send resolves a
+successor. A Stop that lands during `session/new` ends the session's events as
+`stopped` rather than as the refusal (the caller still receives the typed
+refusal). A
+raw start on the refused session id itself is refused (a different model is a
+`session-reattach-conflict`). A model the engine was asked to apply and
+answered differently (`ACP model application unverified`) stays an uncertain
+start. The nested start claim of a task dispatch and delegation keep their own
+conservative uncertainty handling. A refusal raised from a lazy engine start
+inside a send (a restored session with no resume cursor but a model) is a
+`failed` receipt without the code, and ends with the row `closed`. An ACP steer delivered by the cancel + re-prompt fallback, for
 an engine without a native steer method, cancels the running prompt and any
 tool it was running. Its steer `turn.started` carries
 `steerInterruptedRun: true` so a client can say why that step shows as
@@ -440,6 +734,26 @@ terminal. The shared consumer publishes `runtime.warning` with code
 `adapter-event-stream-interrupted` and resumes consumption without changing
 the affected turns' lifecycle or dispatching replacements. Only subsequent
 engine evidence establishes completion or failure. This applies across engines.
+Before that, a publish that fails on event-store contention (the SQLITE_BUSY
+family; SQLITE_LOCKED is not retried) is retried for the same event, with the
+same `eventId`, at most twice before the next event is consumed. When the
+failure was the delta coalescer's flush of text buffered before that event,
+the text is kept, with no window timer, and the retry delivers it first. Once
+no retry is in flight its window timer is re-armed, so text left after
+exhausted retries is flushed by that timer; a timer flush that still fails is
+dropped with a warning, as before. An event that already committed is never
+replayed, and no flushed text contains the delta being offered, so a retried
+delta is never stored twice. Any other failure, and exhausted retries, are the
+observation loss described above.
+A failed append changes no shown or durable state that the event justifies.
+The session row and a provider-started turn's boundary row are written inside
+the event's own append transaction. The read model, the turn-progress and
+child-work projections of the published event, client-origin retirement, a
+pending cooperative stop and the live bus frame change only after the append
+commits. Two admission steps run once per event, before the append, by design:
+the stall watchdog observes raw text deltas as the engine produces them, and a
+turn start consumes the client origin its send reserved. A retry recomputes
+the event's lifecycle stamp from the state at that attempt.
 Muse tool results use the shared bounded output projection before persistence;
 an `outputReceipt` records truncation and whether full output is available.
 EventStore's 64 KiB ingress ceiling remains a last-resort rejection boundary.
@@ -693,7 +1007,10 @@ see [Mobile device inspection](../guides/mobile-device-workspace.md).
 `@kontourai/station-contracts/native-push` owns the agent-activity push
 registration routes (`NATIVE_PUSH_REGISTER_PATH`,
 `NATIVE_PUSH_REGISTRATION_PATH`), the Android package allowlist the push
-gateway delivers to, and the request/response shapes. The response's
+gateway delivers to, and the request/response shapes.
+`NativePushRegistrationStatus`, the `GET` answer on
+`NATIVE_PUSH_REGISTRATION_PATH`, carries only `registered` and the caller's
+own `registrationId`, never a token or key. The registration response's
 `registrationId`, `stationId` and `stationKey` are public identity checks for
 incoming pushes; none of those three is a credential. The response also includes
 `payloadKey`, a secret 32-byte AES-GCM key the phone uses to open sealed content.
@@ -793,3 +1110,53 @@ Room records accept legacy `station.project-task-room/v2` and new
 principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
+
+### Keyed orchestration send identity
+
+The provider contract exports `CLIENT_TURN_INPUT_CONFLICT_CODE`
+(`client_turn_input_conflict`). Existing keyed orchestration sends return this
+nonretryable refusal when a known original submission digest differs. This is
+an additive code, not a requirement for keys on all routes. The server captures
+the digest; clients cannot supply it as provider metadata. Legacy input proof
+and mixed-version limits are described in
+[TurnDeduplicator](../architecture/module-map.md#turndeduplicator).
+
+## Engine durability declarations
+
+`ProviderDurabilityProfile` in the provider contract declares nine required cells:
+steering placement, crash continuation, tool replay, pending approvals, context
+carriage, fork, compaction, partial output and usage. Each cell identifies current
+fidelity (`native`, `emulated` or `none`) and its user-facing limit. Compaction
+also declares its owner (`station`, `engine` or `unknown`) independently of
+Station's crash-recovery support. These are
+delivery declarations, not permission to replay an effect with an unknown outcome.
+
+Built-in adapters expose the profile in their metadata. The engine capability
+matrix carries the same profile for clients that describe an engine before a
+Session exists. Legacy third-party adapter metadata may omit it; omission is
+unreported capability, never inferred support. Built-in adapter conformance
+rejects omitted cells.
+
+The engine description's **Recovery and delivery** disclosure reads these cells.
+Claude and Codex declare their live steering channels as native. ACP discloses a
+connection-dependent orchestration-command fallback that may interrupt and
+reprompt; the ordinary chat composer does not offer ACP steering. Live steering does
+not imply restart safety: no current profile promises mid-turn crash continuation,
+automatic tool replay or durable approval waits. Context supplied by Station has
+no accepted-through acknowledgement, and usage remains engine-reported where
+available. The unknown-engine profile does not infer context, output or usage
+support.
+
+This profile does not replace existing continuity capabilities or migrate existing
+provider-specific execution paths. Durable inbox placement, accepted-through
+context delivery and crash-durable model/tool steps have separate implementation
+owners. Profile claims must change with their adapter behavior and proof.
+
+### Pull request review guides
+
+`@kontourai/station-contracts/pull-request-review-guide` owns the guide,
+stop, excerpt, run, and result shapes. Completed guides name `headSha`,
+`generatedAt`, `modelSelection`, and ordered `stops`. Runs are `Running` or
+`Failed`. Results carry `currentHeadSha` independently of the guide head and
+validated `excerptContents` for rendering. Stale results omit line anchors.
+The [user guide](../user/pull-request-guides.md) describes generation and limits.

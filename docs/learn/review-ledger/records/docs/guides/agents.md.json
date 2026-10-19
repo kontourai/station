@@ -194,7 +194,65 @@
 
     "src-ui/src/components/chat/InputRequestRequest.tsx",
 
-    "src-ui/src/components/chat/inputRequestDrafts.ts"
+    "src-ui/src/components/chat/inputRequestDrafts.ts",
+
+    "src-server/tools/station-control-personal-board-tools.ts",
+
+    "src-ui/src/views/agent-editor/AgentToolPicker.tsx",
+
+    "src-ui/src/views/agent-editor/AgentToolPicker.css",
+
+    "packages/sdk/src/query-domains/catalog.ts",
+
+    "packages/shared/src/mcp-tool-selection.ts",
+
+    "src-server/runtime/tools/tool-approval.ts",
+
+    "src-ui/src/views/agent-editor/AgentToolApproval.tsx",
+
+    "src-ui/src/views/agent-editor/AgentToolDiscovery.tsx",
+
+    "src-ui/src/views/agent-editor/AgentToolCatalog.tsx",
+
+    "src-server/services/plugins/integration-origin.ts",
+
+    "src-server/services/orchestration/session-agent-resolution.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/services/plugins/tool-library-catalog.ts",
+
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx",
+
+    "src-ui/src/views/project-settings/ProjectAgentsPanel.tsx",
+
+    "src-ui/src/components/profile/MyAccessPanel.tsx",
+
+    "src-ui/src/components/profile/ToolRequestsPanel.tsx",
+
+    "src-server/services/projects/project-native-tools.ts",
+
+    "src-ui/src/components/profile/MyAccessPanel.css",
+
+    "src-ui/src/components/profile/ToolRequestsPanel.css",
+
+    "src-ui/src/components/attention/AttentionCard.css",
+
+    "src-server/services/orchestration/session-agent-start-policy.ts",
+
+    "src-ui/src/views/project-page/MemberProjectPage.tsx",
+
+    "src-server/services/approvals/approval-guardian.ts",
+
+    "src-server/runtime/frameworks/voltagent-adapter.ts",
+
+    "src-server/runtime/frameworks/strands-adapter.ts"
   ],
 
   "checks": [

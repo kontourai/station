@@ -35,6 +35,7 @@ import {
   createLocalRegistryTrustPolicyAuthority,
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
 import { projectMcpServers } from '../../services/projects/project-tools.js';
@@ -42,6 +43,7 @@ import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import {
   createNativeDeviceProofRuntime,
   type NativeApplicationConnectorConfiguration,
@@ -199,6 +201,7 @@ import {
   orchestrationStreamPresenceRosterOps,
 } from '../../telemetry/metrics.js';
 import { configuredTelemetryShutdownTask } from '../../telemetry.js';
+import { reconfigureOtelTelemetryDelivery } from '../../telemetry-delivery-state.js';
 import { setRuntimeControlApiBase } from '../../tools/station-control-shared.js';
 import {
   applyConfiguredLogLevel,
@@ -1115,6 +1118,21 @@ export class StationRuntime {
     });
     return createStagedPreToolPolicyEvaluator({
       spec,
+      projectToolPolicy: () => {
+        const policy = new ToolLibraryService(
+          this.configLoader.getProjectHomeDir(),
+        );
+        policy.assertAgent(
+          input.agent!.slug,
+          spec,
+          typeof input.metadata?.projectSlug === 'string'
+            ? this.projectService.getProject(input.metadata.projectSlug).id
+            : spec.project
+              ? this.projectService.getProject(spec.project).id
+              : undefined,
+          input.agent?.toolServers?.map((server) => server.id) ?? [],
+        );
+      },
       agentPolicyService: getAgentPolicyService(this.logger),
       approvalGuardian: new ApprovalGuardianService({
         appConfig: this.appConfig,
@@ -1464,6 +1482,9 @@ export class StationRuntime {
       this.agentService = services.agentService;
       this.skillService = services.skillService;
       this.mcpService = services.mcpService;
+      this.orchestrationEventStore.setMcpAppResourceResolver((ref) =>
+        this.mcpService.getOpenMCPAppResourceUri(ref),
+      );
       this.secretBindingAdministration = services.secretBindingAdministration;
       this.secretBindingIntegrationAdministration =
         services.secretBindingIntegrationAdministration;
@@ -2594,6 +2615,7 @@ export class StationRuntime {
       },
       loadAppConfig: async () => {
         stagedAppConfig = await this.configLoader.loadAppConfig();
+        this.applyPersistedTelemetryConfiguration(stagedAppConfig);
         return stagedAppConfig;
       },
     });
@@ -2601,7 +2623,6 @@ export class StationRuntime {
     this.rebuildGlobalToolRegistry();
     this.assertAgentConfigurationRevisions(configurationBefore, composition);
     this.appConfig = appConfig;
-    this.usageTelemetry?.reconfigure(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);
     if (registryPolicyApplication)
       await this.registryTrustPolicyAuthority!.publishApplied(
@@ -3159,6 +3180,7 @@ export class StationRuntime {
   async reloadDefaultAgent(): Promise<void> {
     await this.mutateAgentConfiguration(async () => {
       const appConfig = await this.configLoader.loadAppConfig();
+      this.applyPersistedTelemetryConfiguration(appConfig);
       const configurationBefore = this.captureAgentConfigurationRevisions();
       this.loadedProviderLaunchabilityRevision = null;
       this.loadedAppConfigLaunchabilityRevision = null;
@@ -3166,9 +3188,39 @@ export class StationRuntime {
       this.rebuildGlobalToolRegistry();
       this.assertAgentConfigurationRevisions(configurationBefore);
       this.appConfig = appConfig;
-      this.usageTelemetry?.reconfigure(appConfig);
       this.recordLoadedConfigurationRevisions(configurationBefore);
     });
+  }
+
+  private applyPersistedTelemetryConfiguration(config: AppConfig): void {
+    this.usageTelemetry?.reconfigure(config);
+    reconfigureOtelTelemetryDelivery(config);
+  }
+
+  private async initializeUsageTelemetry(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const snapshot =
+        await this.configLoader.captureAppConfigLaunchabilitySnapshot();
+      if (this.configLoader.getLaunchabilityRevision() !== snapshot.revision)
+        continue;
+      // HTTP is already listening: a saved withdrawal must survive late construction.
+      const telemetry = new UsageTelemetryService({
+        homeDir: this.configLoader.getProjectHomeDir(),
+        appConfig: snapshot.config,
+        version: packageJson.version,
+        buildProvenance: this.buildProvenanceSnapshot ?? null,
+        logger: this.logger,
+        telemetrySecretResolver: this.secretBindingAdministration,
+      });
+      this.usageTelemetry = telemetry;
+      // Assignment precedes this await so subsequent PUTs reach the live owner.
+      await telemetry.loadDisclosureReceipt();
+      this.orchestrationService.setUsageTelemetry(telemetry);
+      return;
+    }
+    throw new Error(
+      'App configuration changed before product telemetry initialization.',
+    );
   }
 
   private async reloadDefaultAgentFromConfig(
@@ -3401,6 +3453,12 @@ export class StationRuntime {
           this.applicationSessions = undefined;
         });
         await retire(async () => {
+          // #3586: tokens stop reading the account store before it closes.
+          // Set only after security initialized, so its device pairing exists.
+          if (this.localAccounts)
+            this.environmentSecurityService.devicePairing.setAccountDirectory(
+              undefined,
+            );
           await this.deploymentAuthentication?.service.close();
           this.deploymentAuthentication = undefined;
           this.localAccounts = undefined;
@@ -3460,6 +3518,11 @@ export class StationRuntime {
         this.projectMembership.service,
       );
       this.deploymentAuthentication = this.localAccounts;
+      // #3586: account-tied personal access tokens are checked against
+      // this Station's own account standing; no other provider has one.
+      this.environmentSecurityService.devicePairing.setAccountDirectory(
+        this.localAccounts.accountDirectory,
+      );
     } else if (
       this.authenticationConfiguration &&
       !this.deploymentAuthentication
@@ -3560,6 +3623,9 @@ export class StationRuntime {
           readSecureDeviceCookie: (request) =>
             parseSecureDeviceSessionCookie(
               request.headers.get('cookie') ?? undefined,
+              (candidate) =>
+                this.environmentSecurityService.identifyDevice(candidate) !==
+                null,
             ),
           issueAlias: (parentCredential, deviceId, aliasId) =>
             this.environmentSecurityService.devicePairing.issueRelayCredentialAlias(
@@ -3648,6 +3714,20 @@ export class StationRuntime {
           timers: this.timers,
           configLoader: this.configLoader,
           storageAdapter: this.storageAdapter,
+          validateProjectTools: async (slug, spec, input) => {
+            const policy = new ToolLibraryService(
+              this.configLoader.getProjectHomeDir(),
+            );
+            policy.assertAgent(
+              slug,
+              spec,
+              typeof input.metadata?.projectSlug === 'string'
+                ? this.projectService.getProject(input.metadata.projectSlug).id
+                : spec.project
+                  ? this.projectService.getProject(spec.project).id
+                  : undefined,
+            );
+          },
           resolveProjectToolServers: async (input) => {
             const slug = input.metadata?.projectSlug;
             if (typeof slug !== 'string' || !slug) return [];
@@ -3851,18 +3931,7 @@ export class StationRuntime {
     await this.startConsentListenerOrReport();
     await this.startTaskRoomAcceptanceControlIfConfigured();
     this.discordGatewayService.start();
-    this.usageTelemetry = new UsageTelemetryService({
-      homeDir: this.configLoader.getProjectHomeDir(),
-      appConfig: this.appConfig,
-      version: packageJson.version,
-      buildProvenance: this.buildProvenanceSnapshot ?? null,
-      logger: this.logger,
-    });
-    // A saved, current receipt remains consent after a restart. This read is
-    // fail-closed: loadDisclosureReceipt logs malformed receipts and leaves
-    // telemetry inactive, while a missing receipt stays silent and inactive.
-    await this.usageTelemetry.loadDisclosureReceipt();
-    this.orchestrationService.setUsageTelemetry(this.usageTelemetry);
+    await this.initializeUsageTelemetry();
     this.observeRuntimeConfigurationSources();
     // This is the last awaited startup step. Failed listeners/services above
     // cannot leave an accepted policy decision from an incomplete startup.
@@ -4389,6 +4458,10 @@ export class StationRuntime {
       agentSpecs: this.agentSpecs,
       agentTools: this.agentTools,
       loadProjectTools: createProjectNativeToolLoader({
+        validateProjectTools: (slug, spec, project, servers) =>
+          new ToolLibraryService(
+            this.configLoader.getProjectHomeDir(),
+          ).assertAgent(slug, spec, project.id, servers),
         agentSpecs: this.agentSpecs,
         getProject: (slug) => this.projectService.getProject(slug),
         listRoots: () => this.knowledgeStoreProvider.listRoots(),
@@ -4517,6 +4590,31 @@ export class StationRuntime {
   ) {
     return {
       agentSlug,
+      validateProjectTools: (
+        slug: string,
+        spec: AgentSpec,
+        invocation?: import('../types.js').InvocationContext,
+        additions: readonly string[] = [],
+      ) => {
+        const foreground = currentNativeForegroundRelay()?.project;
+        const sessionProject = invocation?.sessionId
+          ? this.orchestrationEventStore.readConversationProjectSlug(
+              invocation.sessionId,
+            )
+          : undefined;
+        const effectiveSlug =
+          foreground?.slug ?? sessionProject ?? spec.project;
+        const project =
+          typeof effectiveSlug === 'string'
+            ? this.projectService.getProject(effectiveSlug)
+            : undefined;
+        if (foreground && foreground.id !== project?.id)
+          throw new Error('Project changed.');
+        const policy = new ToolLibraryService(
+          this.configLoader.getProjectHomeDir(),
+        );
+        policy.assertAgent(slug, spec, project?.id, additions);
+      },
       appConfig,
       configLoader: composition
         ? this.configLoader.forPluginActivationComposition(composition)
@@ -4882,6 +4980,12 @@ export class StationRuntime {
       failures.push(error);
     }
     try {
+      // #3586: tokens stop reading the account store before it closes.
+      // Set only after security initialized, so its device pairing exists.
+      if (this.localAccounts)
+        this.environmentSecurityService.devicePairing.setAccountDirectory(
+          undefined,
+        );
       await this.deploymentAuthentication?.service.close();
       this.deploymentAuthentication = undefined;
       this.localAccounts = undefined;

@@ -1,0 +1,7 @@
+{
+  "revision": "a0c02335930396359c2b777824fda246f2fcb243",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed shared Project A detail response, post-capture fixture cleanup, portal viewport geometry assertion and advisory/strict comparator behavior. Portal repair carried from PR3723 owner with separate evidence; this lane still requires its own browser and hosted qualification.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-bound.png","tests/screenshots.baseline/overlay-dock-project-mismatch.png","tests/screenshots.spec.ts"]}
+  ]
+}

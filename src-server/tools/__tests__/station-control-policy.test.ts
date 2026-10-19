@@ -18,6 +18,8 @@ import {
   type StationControlPolicyCaller,
   type StationControlPolicyContext,
   type StationControlToolPolicy,
+  stationControlOutOfScopeRefusal,
+  stationControlRefusalBody,
   stationControlScopeRefusal,
   stationControlSessionScope,
 } from '../station-control-policy.js';
@@ -55,6 +57,8 @@ const DECISION_1_BOUND_OPERATOR = [
   'list_delegation_targets',
   'reindex_knowledge',
   'migrate_knowledge',
+  // Guides are shared server state; the first slice keeps bound operator authority.
+  'write_pull_request_guides',
 ];
 // Decision 2 (slice B): operator-wide reads — Station-wide data no single
 // person's view contains — need a bound caller acting for the operator.
@@ -67,6 +71,7 @@ const DECISION_2_OPERATOR_READS = [
   'get_usage',
   'check_plugin_updates',
   'list_delegation_environments',
+  'read_pull_request_guide',
 ];
 // Decision 2 (slice B): reads scoped to the principal the caller's session
 // acts for. Transcribed from the slice B brief, independently of the table.
@@ -548,6 +553,37 @@ describe('station-control authority: route matching and refusals', () => {
     ).toBe('station_control_assurance_insufficient');
   });
 
+  test('an out-of-scope refusal carries its reason and copy an agent can act on', () => {
+    // Pinned here, not read from the policy's own list.
+    const reasons = [
+      'other-project',
+      'global-space',
+      'project-from-global',
+      'target-unavailable',
+      'unreadable-caller',
+      'host',
+      'remote',
+    ] as const;
+    const bodies = reasons.map((reason) =>
+      stationControlRefusalBody(stationControlOutOfScopeRefusal(reason)),
+    );
+    expect(bodies.map(({ code, reason }) => [code, reason])).toEqual(
+      reasons.map((reason) => ['station_control_out_of_scope', reason]),
+    );
+    // One sentence per reason, each ending on what to do.
+    expect(new Set(bodies.map(({ error }) => error)).size).toBe(reasons.length);
+    for (const { error } of bodies) expect(error).toMatch(/person/);
+    // Where the agent can stay in its own Project, the copy says how.
+    for (const { reason, error } of bodies)
+      if (reason === 'other-project' || reason === 'global-space')
+        expect(error).toContain('omit projectSlug and projectPath');
+    expect(bodies.find(({ reason }) => reason === 'host')?.error).toContain(
+      'unconfined (host)',
+    );
+    // The old copy blamed the credential; a scope refusal does not.
+    for (const { error } of bodies) expect(error).not.toMatch(/copied/);
+  });
+
   test('slices C1 and C2a: one scope rule for steer, adopt and dispatch', () => {
     const OTHER = 'human:local:someone-else';
     const P = { kind: 'project', id: 'project-a' } as const;
@@ -578,23 +614,40 @@ describe('station-control authority: route matching and refusals', () => {
     const decide = (
       caller: StationControlPolicyCaller | null,
       t: StationControlDispatchTarget | undefined,
-    ) => stationControlScopeRefusal(caller, t, isOperatorPrincipal)?.code;
+    ) => {
+      const refusal = stationControlScopeRefusal(
+        caller,
+        t,
+        isOperatorPrincipal,
+      );
+      return refusal?.reason
+        ? `${refusal.code}:${refusal.reason}`
+        : refusal?.code;
+    };
     const bearer = CALLERS['bearer-operator'];
     const delegated = CALLERS['delegated-operator'];
     const boundOther = CALLERS['bound-other-person'];
     const ASSURANCE = 'station_control_assurance_insufficient';
     const ROLE = 'station_control_role_required';
+    // A scope refusal names why, so the agent can act on it.
+    const OUT = (reason: string) => `station_control_out_of_scope:${reason}`;
 
     for (const caller of [bearer, delegated]) {
       // Project P: only P.
       expect(decide(inP(caller), target(OPERATOR, P))).toBeUndefined();
-      expect(decide(inP(caller), target(OPERATOR, Q))).toBe(ASSURANCE);
-      expect(decide(inP(caller), target(OPERATOR, GLOBAL))).toBe(ASSURANCE);
+      expect(decide(inP(caller), target(OPERATOR, Q))).toBe(
+        OUT('other-project'),
+      );
+      expect(decide(inP(caller), target(OPERATOR, GLOBAL))).toBe(
+        OUT('global-space'),
+      );
       // Global: only global.
       expect(
         decide(inGlobal(caller), target(OPERATOR, GLOBAL)),
       ).toBeUndefined();
-      expect(decide(inGlobal(caller), target(OPERATOR, P))).toBe(ASSURANCE);
+      expect(decide(inGlobal(caller), target(OPERATOR, P))).toBe(
+        OUT('project-from-global'),
+      );
       // Unreadable on either side.
       // (An unreadable Project proves no action held there.)
       expect(
@@ -602,7 +655,7 @@ describe('station-control authority: route matching and refusals', () => {
           inP(caller),
           target(OPERATOR, UNREADABLE, { ownerHoldsAction: false }),
         ),
-      ).toBe(ROLE);
+      ).toBe(OUT('target-unavailable'));
       expect(
         decide(
           {
@@ -612,17 +665,19 @@ describe('station-control authority: route matching and refusals', () => {
           },
           target(OPERATOR, P),
         ),
-      ).toBe(ASSURANCE);
+      ).toBe(OUT('unreadable-caller'));
       expect(
         decide({ ...caller!, projectSlug: 'gone' }, target(OPERATOR, GLOBAL)),
-      ).toBe(ASSURANCE);
+      ).toBe(OUT('unreadable-caller'));
       // Host, remote, another owner, no owner, an unreadable target.
       expect(decide(inP(caller), target(OPERATOR, P, { host: true }))).toBe(
-        ASSURANCE,
+        OUT('host'),
       );
       expect(decide(inP(caller), target(OPERATOR, P, { remote: true }))).toBe(
-        ASSURANCE,
+        OUT('remote'),
       );
+      // Another owner's, an ownerless or an unreadable thread says no more
+      // than a thread that does not exist.
       expect(decide(inP(caller), target(OTHER, P))).toBe(ASSURANCE);
       expect(decide(inP(caller), target(undefined, P))).toBe(ASSURANCE);
       expect(decide(inP(caller), undefined)).toBe(ASSURANCE);
@@ -651,7 +706,7 @@ describe('station-control authority: route matching and refusals', () => {
         inP(boundOther),
         target(OTHER, UNREADABLE, { ownerHoldsAction: false }),
       ),
-    ).toBe(ROLE);
+    ).toBe(OUT('target-unavailable'));
     // An inferred owner owns nothing.
     expect(
       decide(inP(CALLERS['bound-operator-inferred']), target(OPERATOR, P)),
@@ -677,15 +732,24 @@ describe('station-control authority: route matching and refusals', () => {
       { type: 'stopSession', threadId: 't' },
       { type: 'discardDraft', threadId: 't' },
     ]) {
-      const command = (commandThread?: StationControlDispatchTarget) =>
-        authorizeStationControlRequest('POST', '/api/orchestration/commands', {
-          caller: inP(bearer),
-          isOperatorPrincipal,
-          body,
-          ...(commandThread ? { commandThread } : {}),
-        })?.code;
+      const command = (commandThread?: StationControlDispatchTarget) => {
+        const refusal = authorizeStationControlRequest(
+          'POST',
+          '/api/orchestration/commands',
+          {
+            caller: inP(bearer),
+            isOperatorPrincipal,
+            body,
+            ...(commandThread ? { commandThread } : {}),
+          },
+        );
+        return refusal?.reason
+          ? `${refusal.code}:${refusal.reason}`
+          : refusal?.code;
+      };
       expect(command(target(OPERATOR, P))).toBeUndefined();
-      expect(command(target(OPERATOR, Q))).toBe(ASSURANCE);
+      expect(command(target(OPERATOR, Q))).toBe(OUT('other-project'));
+      expect(command(target(OPERATOR, P, { host: true }))).toBe(OUT('host'));
       expect(command()).toBe(ASSURANCE);
     }
   });
@@ -739,12 +803,12 @@ describe('station-control authority table: declare_pull_request and Task close-o
       personOnly: 'never',
     });
     // It writes a durable session record, so it keeps the mutating approval:
-    // only `notify_user` is auto-approved as a bounded write.
+    // visual reply tools and notify_user have their own bounded-write policies.
     expect(
       TABLE.filter(([, entry]) => entry.toolClass === 'bounded-write').map(
         ([name]) => name,
       ),
-    ).toEqual(['notify_user']);
+    ).toEqual(['html_render', 'html_preview', 'notify_user']);
   });
 
   test('declare_pull_request owns exactly its own leaf, and no other tool reaches it', () => {

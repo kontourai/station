@@ -818,6 +818,27 @@ current cell is wired to `provider-task-stop`, so
 its running child work now uses that control. The legacy `TaskRow` bridge
 remains for an engine whose control cell is not wired.
 
+**Amended 2026-10-14.** Subagents also appear as inline chat transcript
+cards (`components/chat/SubagentTranscriptCard.tsx`). Claude and Muse cards
+sit after their spawning tool-call run, including every child of a workflow.
+When an engine such as Codex reports a child without a tool-call row, the
+card uses the child's parent turn and the spawn event's text position.
+A steer binds the card to the assistant row containing its spawn, with text
+offsets local to that row; the live whole-turn shell retains its turn-wide
+offset. If the spawn segment has no content row at the spawn event, the projection
+emits a standalone card block inside that turn, after its preceding rows and
+before any later segment or turn. It stays standalone when later same-turn
+prose arrives: placement is determined from the event prefix at spawn, so live
+completion and cold replay preserve the same key and position without a jump
+or duplicate. Each child appears once, including
+after a queued follow-up. The transcript's loaded `child-work.updated`
+events retain every child whose spawn is loaded, independently of the live
+registry's settled-item retention limit. Completion notices carry child
+identity and remain visible only when no inline card represents that child.
+The Agents pane remains the complete list and stop surface, including
+children with no loaded spawn anchor. The card and pane share status words
+and time formatting (`utils/child-work-display.ts`).
+
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
 no chord, dock regions only, `right` by default because a device screen is
@@ -899,6 +920,13 @@ in (`App.tsx`). `tasks`, `session-board` and `review` are route-shaped pages
 does not make. An id the list no longer carries — a Board promoted, a Layout
 deleted — renders "not found" in the tab; the tab stays, because closing a
 tab is the user's act.
+
+**Personal dashboard content.** The same `LayoutRenderer` also renders a
+Board's saved dashboard definition through `PersonalBoardDashboard`, including
+when it is docked or promoted into a Project Layout. Existing Layout tabs remain
+alongside it. Authoring lives in the Main Board host; a docked copy remains a
+reading surface. Live sections use authorized owner projections and do not
+persist copies of Tasks or approvals. See [Personal Boards](../user/personal-boards.md).
 
 **A built-in tab that reads the route.** `SDKAdapter`'s `boundProjectSlug`
 rewrites the SDK's navigation, which every plugin tab reads; the built-in
@@ -1831,6 +1859,66 @@ Chat position's; only the Files pane's own row write is left to it); the
 inbox fold is judged when a tool opens, is
 resized or restored and when the room rests after a resize, with the inbox's
 measured width at fold time deciding the unfold.
+
+## The session context card beside Chat (2026-10-19)
+
+**A compact panel at the dock body's right edge that answers "what is the
+state of this chat right now".** It is a Panel inside the Chat pane, not a
+pane, a region or a side panel of the Coding workbench, and it adds no
+server read beyond the pull request links Chat details already reads.
+
+- **Rows are facts the dock already holds.** Workspace (the session's
+  project and directory; opens Open in Coding under the More menu's own gate,
+  otherwise the project page), Branch (`gitStatus`: branch, changed-file
+  count, ahead/behind; opens the Active work Changed files panel), Activity
+  (the inbox row's status-ladder line for this chat from
+  `useOptionalObservedWorkStatus`, the Background tasks count and the
+  composer queue's pending count; opens Background tasks through the dock's
+  own router, so a desktop dock reveals the Agents pane), Pull requests
+  (only when links exist or the read failed; opens Chat details). The footer
+  presses the dock's one Chat inventory host and appears only once that host
+  has registered, so a host that never arrives (no authority yet, a chunk
+  that failed) leaves no footer rather than a standing "loading" label. A
+  row whose fact is absent is
+  omitted rather than worded as a state. There is no Kept row: no inventory
+  read runs for the active chat until the inventory opens, and adding one per
+  open chat to prefill a row is not cheap.
+- **Width decides, measured on the conversation surface.** The card shows
+  when the room beside it keeps the transcript's floor:
+  the transcript's 640px floor (`TRANSCRIPT_MIN_WIDTH`, derived from the
+  message column's rules in
+  [transcriptMeasure.ts](../../src-ui/src/components/chat/transcriptMeasure.ts),
+  which the Coding workbench's `CODING_TRANSCRIPT_MIN_WIDTH` also reads)
+  plus the card's 280px column, so at least 920px
+  ([sessionContextCardModel.ts](../../src-ui/src/components/chat-dock/sessionContextCardModel.ts)).
+  The room is the surface plus the card while it shows, so showing it cannot
+  flip the answer back. A measurement rather than a CSS container query
+  because two places read the answer — the card in the body and the header
+  items it replaces, which render into the region bar's slots outside the
+  body — and both must read one derivation. A phone never shows it inline.
+  By the inbox's own width rule a full-width bottom dock keeps it from about
+  1211px with the inbox open (920px without); a side dock folds it.
+- **One copy of each fact.** While the card shows, the header's branch badge
+  and the More trigger's running-count badge stand down. "Shows" is the
+  card's own report that it has mounted, not the width answer alone: while
+  its lazy chunk loads, or if it fails to load, the header keeps both. The
+  header's "This chat: <project>" lead-in stays: it is the contrast with the
+  badge's bound project (#4525 MED-1), which the card's Workspace row does
+  not state beside the badge. The card's props are memoised on the
+  facts they show, so the dock's resize frames and stream renders do not
+  re-render it. While it is folded,
+  a chip after the project context names the ladder word and opens the same
+  rows as a popover anchored under it. On a phone the bar's edge reserve
+  (96px) holds exactly its two 44px controls, and a third wrapped the bar
+  onto a second line, so the sheet opens from a **This chat** row of the
+  Chat actions sheet instead, and closing it returns focus to ⋯. The actions
+  sheet's bare branch line went with it: the sheet's Branch row is labelled.
+- **One inventory host per dock.** The phone dock now mounts the
+  `ChatDockSessionInventoryHost` the desktop header mounts, with the phone
+  presentation (`full-fallback`), so Chat inventory is reachable on a phone
+  again after #2214 trimmed the actions sheet, and an answer's Basis chip,
+  which admits an occurrence only when exactly one host is registered for
+  the chat, can open there too.
 
 ## Failure shapes this design is meant to prevent
 

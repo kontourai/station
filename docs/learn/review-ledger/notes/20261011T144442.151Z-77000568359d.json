@@ -1,0 +1,7 @@
+{
+  "revision": "d0036aa15a8c558c8beaedf95d963feb64d9f571",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read the start composer and Agent list claims against AgentPickerRow and StartMenus at this revision. Rows drop the repeated host line; an engine named '<Agent> (<qualifier>)' shows only the qualifier; an unreported model with no catalog renders no model control, consistent with 'Model controls render only when the Provider reports support'. Added one sentence stating this. Alignment, docked phone sheet, the Coding apps glyph and the inset state boxes are presentation only and the doc makes no claim about them.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/components/chat-start/AgentPickerRow.tsx","src-ui/src/components/chat-start/StartComposer.tsx"]}
+  ]
+}

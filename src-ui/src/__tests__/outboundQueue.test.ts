@@ -5,6 +5,7 @@ import {
   _resetOutboundQueueStorage,
   _setOutboundQueueStorage,
   classifyUndeliverableSend,
+  OUTBOUND_DEFER_RETRY_MS,
   OUTBOUND_QUEUE_MAX_AGE_MS,
   OUTBOUND_QUEUE_MAX_ENTRIES,
   OutboundDispatchCapacityError,
@@ -124,25 +125,51 @@ describe('OutboundDispatchModule', () => {
     expect(send).toHaveBeenCalledOnce();
   });
 
-  it('#749 releases a post-claim deferral without consuming an attempt', async () => {
-    await outboundDispatch.enqueue(turn('deferred-open', 'session-deferred'));
-    const initialAttempts = (await outboundDispatch.snapshot())[0]!.attempts;
-    const defer = vi.fn(async () => ({ kind: 'deferred' as const }));
-
-    await outboundDispatch.flush(defer);
-    await outboundDispatch.flush(defer);
-    expect(defer).toHaveBeenCalledTimes(2);
-    expect(await outboundDispatch.snapshot()).toEqual([
-      expect.objectContaining({
-        clientTurnId: 'deferred-open',
-        status: 'pending',
-        attempts: initialAttempts,
-      }),
-    ]);
-
-    const send = vi.fn(async () => accepted('provider-deferred'));
+  it('an untyped caller cannot enqueue a deferral: the row is sent at once', async () => {
+    await outboundDispatch.enqueue({
+      ...turn('claims-a-deferral', 'session-untyped'),
+      deferredAt: Date.now(),
+    } as never);
+    const [row] = await outboundDispatch.snapshot();
+    expect(row?.deferredAt).toBeUndefined();
+    const send = vi.fn(async () => accepted('provider-untyped'));
     await outboundDispatch.flush(send);
     expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('#749 releases a post-claim deferral without consuming an attempt, and claims it again only after the wait', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await outboundDispatch.enqueue(turn('deferred-open', 'session-deferred'));
+      const initialAttempts = (await outboundDispatch.snapshot())[0]!.attempts;
+      const defer = vi.fn(async () => ({ kind: 'deferred' as const }));
+
+      await outboundDispatch.flush(defer);
+      expect(defer).toHaveBeenCalledTimes(1);
+      // The backstop: a pass started right after the deferral, by whatever
+      // trigger, leaves the row alone.
+      await outboundDispatch.flush(defer);
+      vi.advanceTimersByTime(OUTBOUND_DEFER_RETRY_MS - 100);
+      await outboundDispatch.flush(defer);
+      expect(defer).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(100);
+      await outboundDispatch.flush(defer);
+      expect(defer).toHaveBeenCalledTimes(2);
+      expect(await outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          clientTurnId: 'deferred-open',
+          status: 'pending',
+          attempts: initialAttempts,
+        }),
+      ]);
+
+      vi.advanceTimersByTime(OUTBOUND_DEFER_RETRY_MS);
+      const send = vi.fn(async () => accepted('provider-deferred'));
+      await outboundDispatch.flush(send);
+      expect(send).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('consumes matched early evidence on completion and ignores duplicate terminals on tuple reuse', async () => {
@@ -653,6 +680,57 @@ describe('OutboundDispatchModule', () => {
     await expect(outboundDispatch.edit('fenced', 'revised')).rejects.toThrow(
       'dispatch state is unavailable and cannot be edited',
     );
+  });
+
+  it('#3596: the explicit dismissal refuses a row whose dispatch state this renderer could not record, even once it reads unconfirmed', async () => {
+    const now = Date.now();
+    let state: unknown = {
+      version: 2,
+      turns: [
+        {
+          ...turn('fenced-unconfirmed'),
+          createdAt: now,
+          attempts: 1,
+          status: 'pending',
+        },
+      ],
+      terminalEvidence: [],
+      completedTerminals: [],
+    };
+    let updateCount = 0;
+    _setOutboundQueueStorage({
+      getItem: async () => state,
+      setItem: async (_key, next) => {
+        state = next;
+      },
+      updateItem: async (_key, updater) => {
+        updateCount += 1;
+        if (updateCount === 2)
+          throw new Error('accepted transition unavailable');
+        state = updater(state);
+      },
+    });
+    await expect(outboundDispatch.flush(async () => accepted())).resolves.toBe(
+      'unavailable',
+    );
+    // Another window records the row as unconfirmed meanwhile; this renderer
+    // still holds the in-memory fence for it.
+    const stored = state as { turns: Array<Record<string, unknown>> };
+    state = {
+      ...stored,
+      turns: stored.turns.map((row) => ({
+        ...row,
+        status: 'may-have-started',
+      })),
+    };
+    await expect(
+      outboundDispatch.dismissUnconfirmed('fenced-unconfirmed'),
+    ).rejects.toThrow('Only a message that may have reached the agent');
+    expect(
+      ((state as { turns: Array<{ clientTurnId: string }> }).turns ?? []).map(
+        (row) => row.clientTurnId,
+      ),
+    ).toEqual(['fenced-unconfirmed']);
   });
 
   it('reports a definite pre-invocation rejection instead of claiming a merge target started', async () => {

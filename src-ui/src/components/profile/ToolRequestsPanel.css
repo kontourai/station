@@ -1,0 +1,19 @@
+.tool-requests-panel,
+.tool-requests-panel__request {
+  display: grid;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+.tool-requests-panel__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--k-space-2);
+  flex-wrap: wrap;
+}
+.tool-requests-panel__actions .button {
+  min-height: 44px;
+}
+.tool-requests-panel p {
+  margin: 0;
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "baf01b2e46940eed8177ab9d6a06482438e445a4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read the Agent list paragraph against AgentPickerRow at this revision: rows omit the host line, keep only a single trailing qualifier of an engine named after the Agent, and for an unreported model show 'Choose model' when a catalog exists and no model control otherwise. The doc sentence states exactly that. The row hover rule moved into AgentPickerRow.css; presentation only, no doc claim.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/AgentPickerRow.tsx","src-ui/src/index.css"]}
+  ]
+}

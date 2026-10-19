@@ -1,0 +1,9 @@
+{
+  "revision": "a48563ad26107f5bdc0751cba6d60e1f01b23571",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed release/publish caller delta: only qualification capacity_class is added, with exact-source full qualification and CLI publication/installation commands unchanged. No CLI authority, release identity or runtime lifecycle contract changes.","inputs":["docs/reference/cli.md",".github/workflows/publish-release.yml",".github/workflows/release.yml"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed release workflow class annotation: icon staging, generated hash checks, loose icon verification, channel overlays and packaged/platform evidence limits are unchanged.","inputs":["src-desktop/icons/README.md",".github/workflows/release.yml"]}
+  ]
+}

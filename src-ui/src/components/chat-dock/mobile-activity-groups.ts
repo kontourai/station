@@ -11,6 +11,7 @@ import {
   terminalSinceFromRecency,
 } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
+import type { WorkFactsById } from '../../views/home/work-facts';
 
 // Re-exported for existing callers (station#1099 extracted the storage body
 // into a shared module so the desktop Home lane model can observe the same
@@ -61,6 +62,7 @@ export interface MobileActivityGroup {
   id: MobileActivityGroupId;
   label: string;
   items: HomeWorkItem[];
+  childrenById?: ReadonlyMap<string, readonly HomeWorkItem[]>;
 }
 
 /**
@@ -124,12 +126,14 @@ export function groupMobileActivity(
   items: HomeWorkItem[],
   now: number,
   snoozed: SnoozeMap = {},
+  workFacts?: WorkFactsById,
 ): MobileActivityGroup[] {
   // `snoozeKeyFor` (below) and the partition's own snooze lookup are both
   // `item.id` — the partition reads the same key this module's writers use.
   const partition = partitionHomeWorkItems({
     items,
     now,
+    workFacts,
     snoozedUntil: new Map(Object.entries(snoozed)),
     terminalSince: terminalSinceFromRecency(items),
   });
@@ -141,7 +145,7 @@ export function groupMobileActivity(
   const live = (['needsYou', 'running', 'idle'] as const)
     .filter((id) => partition[id].length > 0)
     .map((id) => ({ id, label: LIVE_LANE_LABELS[id], items: partition[id] }));
-  return [
+  const groups: MobileActivityGroup[] = [
     ...live,
     // #2310: never-prompted sessions. Their own group rather than a chip in
     // "Earlier", which asserts the work finished — a draft has not started.
@@ -166,4 +170,8 @@ export function groupMobileActivity(
         ]
       : []),
   ];
+  return groups.map((group) => ({
+    ...group,
+    childrenById: partition.childrenById,
+  }));
 }

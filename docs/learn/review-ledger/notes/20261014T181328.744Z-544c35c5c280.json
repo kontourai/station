@@ -1,0 +1,7 @@
+{
+  "revision": "c6b05e86cdca3c4ccc1cc6a91f29bc3195e98007",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"The regenerated docs bundle only carries the updated prose of the getting-started, module-map, chat-composer and offline-outbound-queue documents; the station-docs reference's description of the bundle and its tools is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

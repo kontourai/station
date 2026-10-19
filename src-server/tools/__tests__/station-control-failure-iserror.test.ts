@@ -41,7 +41,28 @@ function registeredTools(): Record<string, { handler: Handler }> {
  * and its real refusal path never runs. (The same shapes as
  * `station-control-policy-routes.test.ts`.) Every other tool runs with `{}`.
  */
+const GUIDE_TARGET = {
+  project: 'project-a',
+  provider: 'github',
+  host: 'github.com',
+  owner: 'owner',
+  repository: 'repo',
+  ref: '42',
+};
+
 const MINIMAL_ARGS: Record<string, Record<string, unknown>> = {
+  read_pull_request_guide: { target: GUIDE_TARGET },
+  write_pull_request_guides: { targets: [GUIDE_TARGET] },
+  propose_personal_board: {
+    slug: 'daily',
+    revision: null,
+    definition: {
+      version: 1,
+      name: 'Daily',
+      description: '',
+      sections: [],
+    },
+  },
   continue_task: { taskId: 'task:1', message: 'One more thing' },
   propose_plugin_install: { source: '/tmp/plugin', rationale: 'Needed.' },
   validate_plugin: { source: '/tmp/plugin' },

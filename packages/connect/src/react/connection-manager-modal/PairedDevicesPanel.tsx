@@ -18,9 +18,8 @@ import { PairedDeviceList } from './PairedDeviceList';
 const REFRESH_INTERVAL_MS = 15_000;
 
 /**
- * A native host app holds a device credential, not the operator credential,
- * so Station refuses its device-admin writes. The working route is the host
- * CLI (#2894, #3256).
+ * A native client without an explicit administration grant can use the host
+ * operator CLI instead (#2894, #3256).
  */
 function hostCliRefusal(
   hostAppName: string | undefined,
@@ -85,7 +84,7 @@ export function PairedDevicesPanel({
     [allowManualCredentials, apiBase, getCredential, request],
   );
 
-  // Pairing credentials deliberately cannot administer the pairing family.
+  // Device changes require an explicit access:devices grant or the operator.
   // Keep an operator credential entered for this one management action in
   // component state only; it is neither persisted nor used for inventory reads.
   const deviceAdminFetch = useCallback(
@@ -137,7 +136,9 @@ export function PairedDevicesPanel({
         setLoadError(
           response.status === 401
             ? "This device's access to this Station needs review. Reconnect it, then try again."
-            : `This Station could not list its paired devices (HTTP ${response.status}).`,
+            : response.status === 403
+              ? 'Listing devices requires Manage device access and a principal allowed by this Station’s account policy. Ask the Station operator to review this device.'
+              : `This Station could not list its paired devices (HTTP ${response.status}).`,
         );
         return;
       }
@@ -196,9 +197,11 @@ export function PairedDevicesPanel({
                     'change a device’s access',
                     'scope <device> --add|--remove|--set',
                   )
-              : response.status === 409
-                ? `“${device.name}” was changed somewhere else while this was open. Nothing was applied — reopen it to see its current access.`
-                : `This Station refused the access change (HTTP ${response.status}). The device keeps its current access.`,
+              : response.status === 403
+                ? 'Device changes require Manage device access and a principal allowed by this Station’s account policy. Only the Station operator can grant or remove that administrative permission.'
+                : response.status === 409
+                  ? `“${device.name}” was changed somewhere else while this was open. Nothing was applied — reopen it to see its current access.`
+                  : `This Station refused the access change (HTTP ${response.status}). The device keeps its current access.`,
           );
           return;
         }
@@ -252,7 +255,9 @@ export function PairedDevicesPanel({
                 ? allowManualCredentials
                   ? 'Revoking a device requires this Station’s operator credential. Enter it below and try again.'
                   : hostCliRefusal(hostAppName, 'revoke a device', 'revoke')
-                : deviceRevokeError(response.status),
+                : response.status === 403
+                  ? 'Revoking devices requires Manage device access and a principal allowed by this Station’s account policy.'
+                  : deviceRevokeError(response.status),
             );
             return;
           }
@@ -297,7 +302,9 @@ export function PairedDevicesPanel({
                       'remove a device record',
                       'remove',
                     )
-                : `This Station could not remove the revoked record for “${device.name}” (HTTP ${response.status}).`,
+                : response.status === 403
+                  ? 'Removing device records requires Manage device access and a principal allowed by this Station’s account policy.'
+                  : `This Station could not remove the revoked record for “${device.name}” (HTTP ${response.status}).`,
             );
             return;
           }
@@ -329,9 +336,9 @@ export function PairedDevicesPanel({
         <label className="station-connect-edit__label">
           Operator credential for device changes
           <span className="station-connect-edit__hint">
-            Required only to revoke a device or remove its revoked record. It is
-            kept for this open panel and is never saved as a paired-device
-            credential.
+            Optional when this device has Manage device access. Otherwise the
+            operator credential authorizes access changes. It is kept for this
+            open panel and is never saved as a paired-device credential.
           </span>
           <input
             type="password"
@@ -346,8 +353,9 @@ export function PairedDevicesPanel({
       ) : (
         <p className="station-connect-edit__hint">
           {hostAppName ?? 'This native host'} can list devices but does not hold
-          the operator credential, so access changes, revoke and remove run on
-          the host with <code>station environment access</code>.
+          the operator credential. An explicit Manage device access grant allows
+          changes here; otherwise use <code>station environment access</code> on
+          the host.
         </p>
       )}
 

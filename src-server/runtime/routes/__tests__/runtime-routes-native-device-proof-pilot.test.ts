@@ -633,15 +633,18 @@ describe('native Device request-proof pilot over the production composition', ()
      * `createApplicationChannelFetch` client; the manual frame channel
      * exists for controlled delayed-revocation delivery only.
      */
-    const startNativePeer = async (paired: {
-      device: { id: string };
-      surface: SelfHostedBrokerNativeClientSurfaceV2;
-      binding: { bindingId: string; deviceProof: { thumbprint: string } };
-      deviceKey: {
-        publicJwk: { kty: 'EC'; crv: 'P-256'; x: string; y: string };
-        sign: (input: Uint8Array) => Promise<Uint8Array>;
-      };
-    }) => {
+    const startNativePeer = async (
+      paired: {
+        device: { id: string };
+        surface: SelfHostedBrokerNativeClientSurfaceV2;
+        binding: { bindingId: string; deviceProof: { thumbprint: string } };
+        deviceKey: {
+          publicJwk: { kty: 'EC'; crv: 'P-256'; x: string; y: string };
+          sign: (input: Uint8Array) => Promise<Uint8Array>;
+        };
+      },
+      beforeDispatch?: (request: Request) => void,
+    ) => {
       const device = {
         id: paired.device.id,
         surface: paired.surface,
@@ -654,9 +657,10 @@ describe('native Device request-proof pilot over the production composition', ()
         readVerifiedNativePionApplicationRequest,
       );
       ingress.bind({
-        fetch: app.fetch as unknown as (
-          request: Request,
-        ) => Response | Promise<Response>,
+        fetch: (request: Request) => {
+          beforeDispatch?.(request);
+          return app.fetch(request);
+        },
       });
       const virtual = ingress.activate();
       const issuerPair = await generateKeyPair('ES256', { extractable: true });
@@ -1480,7 +1484,10 @@ describe('native Device request-proof pilot over the production composition', ()
       guest.login,
       'orchestration:read',
     );
-    const peer = await h.startNativePeer(paired);
+    let injectedCookie: string | undefined;
+    const peer = await h.startNativePeer(paired, (request) => {
+      if (injectedCookie) request.headers.set('Cookie', injectedCookie);
+    });
     try {
       const path = '/api/system/identity';
       const identity = await peer.nativeFetch(
@@ -1496,6 +1503,26 @@ describe('native Device request-proof pilot over the production composition', ()
         bootId: 'native-pilot-fixture-boot',
         sha: '081bfd979d9f3e180586bafb6b46130556ce5d60',
       });
+      for (const name of [
+        'station-device ',
+        'station-device-0123456789abcdef ',
+      ]) {
+        // Fault injection after channel validation: HTTP admission must also
+        // reject a credential introduced by an intervening adapter.
+        injectedCookie = `${name}=${paired.credential}`;
+        const conflict = await peer.nativeFetch(
+          new Request(`${ORIGIN}${path}`, {
+            headers: {
+              [NATIVE_DEVICE_PROOF_HEADER]: await peer.deviceProof('GET', path),
+            },
+          }),
+        );
+        expect(conflict.status).toBe(403);
+        expect(await conflict.json()).toMatchObject({
+          error: { code: 'native_device_proof_credential_conflict' },
+        });
+      }
+      injectedCookie = undefined;
       const statusPath = '/api/system/status';
       const status = await peer.nativeFetch(
         new Request(`${ORIGIN}${statusPath}`, {

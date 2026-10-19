@@ -74,6 +74,25 @@ describe('taskGraph SDK domain', () => {
     vi.unstubAllGlobals();
   });
 
+  it('preserves a proposal refusal status for the accepting UI', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Accepted proposal must match the shaping answer',
+        }),
+        { status: 409 },
+      ),
+    );
+    await expect(
+      createTask({ projectId: 'alpha', title: 'Proposal' }),
+    ).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status: 409,
+      message: 'Accepted proposal must match the shaping answer',
+    });
+  });
+
   it('fetches tasks for a project', async () => {
     mockJsonResponse({ success: true, data: [{ id: 'task-1' }] });
 
@@ -170,6 +189,8 @@ describe('taskGraph SDK domain', () => {
         projectId: 'project-alpha',
         title: 'Create SDK task',
         priority: 'normal',
+        description: 'Approved chat brief',
+        shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
       }),
     ).resolves.toEqual({ id: 'task-2' });
     const [createUrl, createInit] = vi.mocked(fetch).mock.calls[0] as [
@@ -183,6 +204,8 @@ describe('taskGraph SDK domain', () => {
         projectId: 'project-alpha',
         title: 'Create SDK task',
         priority: 'normal',
+        description: 'Approved chat brief',
+        shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
       }),
     );
     expect(new Headers(createInit.headers).get('Content-Type')).toBe(

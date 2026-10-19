@@ -13,7 +13,7 @@ import {
   childWorkForReporter,
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   extractString,
   extractTokenFigure,
@@ -629,7 +629,8 @@ function observeSubAgentActivity(
   reportingThreadId: string,
 ): void {
   const childId = extractString(item.agentThreadId);
-  if (!childId) return;
+  // The root's activity can arrive in the same format as its children.
+  if (!childId || childId === context.record.codexThreadId) return;
   const kind = extractString(item.kind);
   const agentPath = extractString(item.agentPath);
   const name = agentPath?.split('/').filter(Boolean).at(-1);

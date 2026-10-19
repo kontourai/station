@@ -1,0 +1,7 @@
+{
+  "revision": "3957fbb25bb5c7e4caefe8aa53249f6535a9d538",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Gallery reference loop in docs/guides/testing.md against baseline-only commit 3957fbb25bb5c7e4caefe8aa53249f6535a9d538 and hosted PR3668 run38669782656 at81f345b3a075d6a99245267adb76726935dc6c53. Only the mismatch PNG and its RGBA manifest hash changed, using the hosted artifact; all other references, the exact comparator, thresholds, volatility and assertions remain unchanged. Old-fill/current-fill/old-fill full54-screen controls in the pinned Linux amd64 renderer reproduced the retained-effect difference; current output exactly matches hosted, both old outputs match each other, and the residual3 old icon pixels exactly match hosted run38275175971 already recorded in issue3619. The guide remains accurate: source inspection and controlled local execution explain this reviewed refresh, the downloaded artifact compares53of53 unchanged with1existingvolatile skip, and fresh new-head hosted Gallery and merge-queue qualification are still required. No local capture is used as a baseline and no GPU mechanism, native-device, release or live-provider proof is inferred.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}

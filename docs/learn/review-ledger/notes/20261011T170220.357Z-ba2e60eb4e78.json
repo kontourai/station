@@ -1,0 +1,7 @@
+{
+  "revision": "94dace91f362277ec3e3467a374da7e6ec5a2702",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3552 final: Activity reads as the ordinary chat; Send hands the draft to Chat, which confirms once; the No project confirmation offers Add a project for this folder instead, which opens New project with the folder chosen (documented). Checked against AttachedSessionDetail, ImportedConversationPane, useNewProjectDraft.","inputs":["docs/user/getting-started.md","src-ui/src/index.css"]}
+  ]
+}

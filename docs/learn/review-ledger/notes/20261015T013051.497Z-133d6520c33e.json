@@ -1,0 +1,33 @@
+{
+  "revision": "7c94f7e0115612149a386c06601d8d2d69db190c",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"#3667 fix round 1: Checked authenticated fetch-SSE Last-Event-ID ownership and apiBase stream deduplication against the changed SDK/UI delta. The per-read body deadline and last-client refresh cleanup do not change SSE replay, connection ownership or the ADR’s qualified connection-budget observations.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","packages/sdk/src/client/http.ts","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#3667 fix round 1: Reviewed the transport/authority and live-surface boundaries against the SDK delta: only explicit-deadline body readers gain a bounded wait. No interface, routing, authorization or engine-lifetime ownership changes; existing module explanations remain accurate.","inputs":["docs/architecture/module-map.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"#3667 fix round 1: Reviewed shared /agent and /client transport identity, captured credential scope and uncertainty guidance. Deadline errors retain their type/mutation fact; no Agent exports, grants or execution cancellation contract changed.","inputs":["docs/guides/agent-development.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3667 fix round 1: Reviewed the SDK-reference addition and integration routing table: the new explicit session-list read deadline adds no setup, authorization or provider claim. Existing API/SDK entry routes and evidence requirements remain accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#3667 fix round 1: Reviewed responsive layout, question-sheet and interaction guidance against the SDK body-reader change. No rendering, viewport, input-focus, approval or dialog behavior is changed; no prose change needed.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"#3667 fix round 1: Reviewed theme/token ownership and branding-query discussion against the SDK delta. No theme, CSS, branding transport, global request default or visual evidence claim changed.","inputs":["docs/guides/theming.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"#3667 fix round 1: Reviewed admission, protocol-header, typed-failure and stream responsibilities against the SDK delta. The client body deadline changes no server route/protocol/authorization behavior or mutation uncertainty policy.","inputs":["docs/patterns/backend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#3667 fix round 1: Reviewed existing-SDK-request-owner guidance: the explicit per-read deadline continues to live at the SDK seam; credentials, transport selection and remote state remain in their canonical owners. No competing fetch lifecycle or UI state was added.","inputs":["docs/patterns/frontend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#3667 fix round 1: Reviewed frontend SDK routing, HTTP envelope and authority guidance against the transport delta. No server route, status, envelope or request authority changes; per-call body timeouts remain typed client failures.","inputs":["docs/reference/api.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"#3667 fix round 1: Reviewed request-deadline configuration, explicit-budget precedence and long-lived SSE exemptions. Global timeout configuration and opt-out behavior are unchanged; the UI query-domain session-list read now has its own explicit budget. Body deadline errors retain mutation uncertainty.","inputs":["docs/reference/cli.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"#3667 fix round 1: Reviewed health-coordinator and mutationAllowed transport boundaries against the SDK delta. Credential guards, dispatch policy and native qualification limits are unchanged; no connectivity or host authority is inferred from timeout recovery.","inputs":["docs/reference/connect.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#3667 fix round 1: Reviewed the stream-scheduler delta against contracts ownership: releasing its final client clears local resources, and the existing SDK read now has an explicit deadline. No wire shape, Session authority, projection or public contract changes.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#3667 fix round 1: Reviewed shipped static manual/product and plugin SDK-reading routes against the session-list fetcher change. The local read deadline introduces no docs tool, live-state observation, credential or plugin packaging change; manual prose remains accurate.","inputs":["docs/reference/station-docs.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#3667 fix round 1: Reviewed the revised SDK reference against the scope instructions: the new deadline is documented at its canonical owner, public exports remain stable, and regression coverage observes both typed failure and the cache’s recovered result.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

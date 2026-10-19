@@ -9,6 +9,12 @@ export interface SkeletonListProps {
   count?: number;
   withIcon?: boolean;
   label?: string;
+  /**
+   * The list is its own status region (default). A container that is already
+   * a persistent status region and names the wait itself passes `false`, so
+   * one wait is not two nested regions.
+   */
+  announce?: boolean;
 }
 
 export interface SkeletonBlockProps {
@@ -62,13 +68,14 @@ export function SkeletonList({
   count = 6,
   withIcon = true,
   label = 'Loading',
+  announce = true,
 }: SkeletonListProps) {
   return (
     <div
       className="skeleton-list"
-      role="status"
-      aria-busy="true"
-      aria-label={label}
+      {...(announce
+        ? { role: 'status', 'aria-busy': 'true' as const, 'aria-label': label }
+        : {})}
     >
       <span className="skeleton-status-label" aria-hidden="true">
         {label}

@@ -1306,6 +1306,9 @@ describe('new-chat-modal-utils', () => {
       expect(viewModel.groups.map((group) => group.label)).toEqual([
         'Coding apps',
       ]);
+      // Its own mark: Station's group keeps the engine (lightning) glyph, and
+      // two headers under one icon read as one group.
+      expect(viewModel.groups[0]?.glyph).toBe('code');
       expect(
         viewModel.groups.find((group) => group.label === 'My agents'),
       ).toBeUndefined();

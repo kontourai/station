@@ -24,6 +24,10 @@
 //   4. a caller script that runs the text through Invoke-Expression and was
 //      itself given an argument: install.ps1 neither exits the caller nor
 //      takes the caller's arguments;
+//   3b. `STATION_CHANNEL=nightly` alone, through Invoke-Expression: the
+//      wrapper supplies the rolling nightly manifest (the core gets past its
+//      missing-manifest refusal to the exact-pin check, offline) and leaves
+//      the caller's STATION_INSTALL_PUBLIC_MANIFEST_URL as it found it;
 //   5. refusals on this host: archive bytes that differ from the signed
 //      sha256; a manifest signed by another key; a copy of install.ps1 whose
 //      pinned Node.js digest is wrong; and a Station root outside the user
@@ -1244,6 +1248,35 @@ try {
   check(
     lastLine(three.stdout) === 'SESSION-ALIVE',
     'Invoke-Expression ended the calling session',
+  );
+
+  // 3b. STATION_CHANNEL=nightly with no manifest URL: install.ps1 supplies
+  // the rolling nightly manifest. A stable exact pin makes the core refuse
+  // right after it accepts the manifest URL and before any download, so
+  // reaching that refusal proves the default without the network; without
+  // the default the wrapper or core refuses the missing manifest instead.
+  const nightlyDefault = await runAsync(
+    windowsPowerShell,
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `Invoke-Expression ([IO.File]::ReadAllText('${installScript.replaceAll("'", "''")}')); Write-Output ('MANIFEST-URL-AFTER=[' + $env:STATION_INSTALL_PUBLIC_MANIFEST_URL + ']')`,
+    ],
+    environment(join(profile, 'nightly-default'), '', {
+      STATION_CHANNEL: 'nightly',
+      STATION_VERSION: 'v1.2.3',
+    }),
+  );
+  check(
+    nightlyDefault.stderr.includes(
+      'Station install failed: STATION_VERSION v1.2.3 is a stable release; it cannot be installed as STATION_CHANNEL=nightly',
+    ),
+    'stage 3b: STATION_CHANNEL=nightly alone did not reach the core with the rolling nightly manifest',
+  );
+  check(
+    lastLine(nightlyDefault.stdout) === 'MANIFEST-URL-AFTER=[]',
+    "stage 3b: install.ps1 left its manifest default in the caller's session",
   );
 
   // 4. A caller script, given its own argument, that runs install.ps1's text

@@ -372,14 +372,15 @@ function configureEnrollmentHost() {
           generation: 3,
           signingKey: enrollmentSigningKey,
         };
-      if (command === 'station_native_relay_ice_configuration')
+      if (command === 'station_native_relay_ice_configuration') {
+        const issuedAt = Date.now();
         return {
           version: 'station-relay-ice-configuration/v1',
           scope: { stationId, enrollmentId, routingGeneration: 4 },
           surface: enrollmentSurface,
           iceTransportPolicy: 'relay',
-          issuedAt: Date.now(),
-          expiresAt: Date.now() + 600_000,
+          issuedAt,
+          expiresAt: issuedAt + 600_000,
           iceServers: [
             {
               urls: ['turns:relay.example:5349?transport=tcp'],
@@ -388,6 +389,7 @@ function configureEnrollmentHost() {
             },
           ],
         };
+      }
       if (command === 'station_native_enrollment_peer_prepare')
         return {
           version: 'station-native-enrollment-peer/v1',
@@ -1055,6 +1057,18 @@ describe('RelayRouteProfiles', () => {
     mocks.repository = repository;
     const originalHost = mocks.enrollmentInvoke.getMockImplementation()!;
     mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+      if (command === 'station_native_relay_ice_configuration') {
+        const issuedAt = Date.now();
+        const clock = vi
+          .spyOn(Date, 'now')
+          .mockReturnValueOnce(issuedAt)
+          .mockReturnValue(issuedAt + 1);
+        try {
+          return await originalHost(command, args);
+        } finally {
+          clock.mockRestore();
+        }
+      }
       const result = await originalHost(command, args);
       if (command === 'station_native_enrollment_activation_accept') {
         liveStore.revision = 13;

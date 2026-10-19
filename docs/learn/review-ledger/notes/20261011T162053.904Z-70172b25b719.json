@@ -1,0 +1,7 @@
+{
+  "revision": "4d7dd9b704305e729ae5da64e12ce8223c98fc04",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed Continue an Attached Session for #3552: Activity shows the conversation as the ordinary chat; Send hands the draft to Chat, which asks Continue here? once and continues with that message; Cancel keeps the draft; the unavailable reason shows above the message box. Checked against AttachedSessionDetail, ActivityWorkspacePane and the attached-continuation-handoff store.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md"]}
+  ]
+}

@@ -2,8 +2,13 @@
  * @vitest-environment jsdom
  */
 
+import {
+  decodeDevicePairingPayload,
+  encodeDevicePairingPayload,
+} from '@kontourai/station-connect/device-pairing';
+import { encodeBrowserPairingLink } from '@kontourai/station-connect/pairing-deep-link';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const native = vi.hoisted(() => ({
   isTauri: false,
@@ -33,15 +38,18 @@ vi.mock('@kontourai/station-connect', () => ({
     hostAppName,
     hasLocalStation,
     onPairingSucceeded,
+    initialPairingPayload,
   }: {
     isOpen: boolean;
     initialPanel?: string;
     hostAppName?: string;
     hasLocalStation?: boolean;
     onPairingSucceeded?: () => void;
+    initialPairingPayload?: string;
   }) =>
     isOpen ? (
       <div
+        data-pairing-payload={initialPairingPayload}
         data-host-app-name={hostAppName}
         data-has-local-station={String(hasLocalStation)}
         data-testid="connection-manager"
@@ -79,6 +87,26 @@ describe('GuidedConnect', () => {
     native.productName = 'Station';
   });
 
+  test('a phone starts with pairing and provides a setup handoff without desktop-app instructions', () => {
+    native.isMobile = true;
+    render(<GuidedConnect />);
+    expect(
+      screen.getByRole('heading', { name: 'Connect your phone' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Open in the Station app' }),
+    ).toBeNull();
+    expect(document.querySelector('details')?.open).toBe(false);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I haven’t set up a Station yet' }),
+    );
+    expect(
+      screen.getByRole('link', { name: 'Get Station for your computer' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Pair with a code' }));
+    expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
+  });
+
   test('offers only the production app, even from a Nightly web build', () => {
     vi.stubEnv('VITE_NATIVE_APP_UPDATE_CHANNEL', 'nightly');
     render(<GuidedConnect />);
@@ -110,6 +138,7 @@ describe('GuidedConnect', () => {
         screen.queryByRole('link', { name: 'Open in the Station app' }),
       ).toBeNull();
       expect(screen.queryByRole('link', { name: 'Get Station' })).toBeNull();
+      fireEvent.click(screen.getByText('Other ways to connect'));
       fireEvent.click(
         screen.getByRole('button', { name: 'Set up a broker route' }),
       );
@@ -156,6 +185,7 @@ describe('GuidedConnect', () => {
 
   test('lets a fresh browser open broker trust and invitation setup before pairing', async () => {
     render(<GuidedConnect />);
+    fireEvent.click(screen.getByText('Other ways to connect'));
     fireEvent.click(
       screen.getByRole('button', { name: 'Use a broker invitation' }),
     );
@@ -174,6 +204,8 @@ describe('GuidedConnect', () => {
     (label, panel) => {
       render(<GuidedConnect />);
 
+      if (label === 'Enter a host address')
+        fireEvent.click(screen.getByText('Other ways to connect'));
       fireEvent.click(screen.getByRole('button', { name: label }));
 
       expect(screen.getByText(`Connection manager: ${panel}`)).toBeTruthy();
@@ -243,4 +275,38 @@ describe('GuidedConnect', () => {
         .getAttribute('data-host-app-name'),
     ).toBe('Station Nightly');
   });
+});
+
+afterEach(() => window.history.replaceState(null, '', '/'));
+
+test('an unpaired browser opens its invitation review before the protected application mounts', () => {
+  const payload = encodeDevicePairingPayload({
+    protocolVersion: 1,
+    environmentId: 'invited-station',
+    offerId: 'browser-offer',
+    manualCode: 'ABCDE12345',
+    challenge: 'browser-proof',
+    endpoint: 'http://127.0.0.1:43141',
+    scope: 'orchestration:read',
+    expiresAt: Date.now() + 60_000,
+  });
+  window.history.replaceState(
+    null,
+    '',
+    encodeBrowserPairingLink({ payload, browserUrl: window.location.origin }),
+  );
+  render(<GuidedConnect />);
+  const received = decodeDevicePairingPayload(
+    screen
+      .getByTestId('connection-manager')
+      .getAttribute('data-pairing-payload')!,
+  );
+  expect(received).toMatchObject({
+    environmentId: 'invited-station',
+    offerId: 'browser-offer',
+    challenge: 'browser-proof',
+    endpoint: window.location.origin,
+  });
+  expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
+  expect(window.location.hash).toBe('');
 });

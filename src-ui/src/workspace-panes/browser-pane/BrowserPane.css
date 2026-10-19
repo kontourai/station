@@ -416,14 +416,21 @@
 }
 
 .browser-pane__chip-dot {
+  position: relative;
   background: currentColor;
   border-radius: 50%;
   height: 7px;
   width: 7px;
 }
 
-/* An agent drove recently: the dot breathes. */
-.browser-pane__chip[data-tone="agent"] .browser-pane__chip-dot {
+/* An agent drove recently: the ring breathes without repainting a shadow. */
+.browser-pane__chip[data-tone="agent"] .browser-pane__chip-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  border-radius: inherit;
+  pointer-events: none;
   animation: browser-pane-breathe var(--motion-status-breathe)
     var(--ease-standard) infinite;
 }
@@ -431,10 +438,12 @@
 @keyframes browser-pane-breathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent);
+    transform: scale(1);
+    opacity: 0.3;
   }
   50% {
-    box-shadow: 0 0 0 5px transparent;
+    transform: scale(2.4);
+    opacity: 0;
   }
 }
 

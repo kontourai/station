@@ -55,7 +55,7 @@ describe('station-control tool classification', () => {
       expect(classifyControlTool(read)).toBe('read-only');
   });
 
-  test('bounded-write is exactly notify_user and spot-checked tools keep their class', () => {
+  test('bounded-write includes publishing and notify_user and spot-checked tools keep their class', () => {
     const names = registeredToolNames();
     const readOnly = names.filter(
       (name) => classifyControlTool(name) === 'read-only',
@@ -68,9 +68,15 @@ describe('station-control tool classification', () => {
     );
     // #2584: notify_user writes (one bounded inbox record), so it is not
     // labelled a reader; it is auto-approved as a bounded write.
-    expect(boundedWrite).toEqual(['notify_user']);
+    expect(boundedWrite).toEqual([
+      'notify_user',
+      'html_render',
+      'html_preview',
+    ]);
     expect(SC_AUTO_APPROVED_TOOLS).toEqual([
       ...SC_READ_ONLY_TOOLS,
+      'station-control_html_render',
+      'station-control_html_preview',
       'station-control_notify_user',
     ]);
     // Skill listing is a read, so it stays on the auto-approved list.

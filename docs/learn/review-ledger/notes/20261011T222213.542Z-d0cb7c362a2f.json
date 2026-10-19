@@ -1,0 +1,13 @@
+{
+  "revision": "f3834c33406071b6010f112bbc39a665267cb7ec",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Re-recorded because docs/architecture/module-map.md returned to its pre-#3557 bytes (f3834c3340 reverted this branch's native-runtime sentence, which the generated Station Docs bundle ships verbatim). This map points readers to the glossary and per-context pages and names no pairing, scope, device or group term; the module map's content is identical to its reviewed base, so nothing here changes.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Re-recorded because docs/architecture/module-map.md returned to its pre-#3557 bytes (f3834c3340 reverted this branch's native-runtime sentence, which the generated Station Docs bundle ships verbatim). This page explains main boundaries and links the glossary and Session API; it makes no claim about native admission or pairing scope. Still true.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Re-recorded because docs/architecture/module-map.md returned to its pre-#3557 bytes (f3834c3340 reverted this branch's native-runtime sentence, which the generated Station Docs bundle ships verbatim). The index row 'module interfaces and evidence' and the API/CLI consumer rows remain accurate; reference/api.md already documents the people/group routes. Still true.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Re-recorded because docs/architecture/module-map.md returned to its pre-#3557 bytes (f3834c3340 reverted this branch's native-runtime sentence, which the generated Station Docs bundle ships verbatim). Re-checked the 'Station group' entry (#3557) against contracts station-groups.ts (admin/member, member default, ceiling only) and project-membership.ts roles (Viewer, Contributor, Admin, Owner): accurate. The Device entry's /api/pairing/devices reference and the runtime composition link are unchanged.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]}
+  ]
+}

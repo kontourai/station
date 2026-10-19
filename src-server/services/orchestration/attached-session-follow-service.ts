@@ -597,7 +597,7 @@ export class AttachedSessionFollowService {
       });
       return;
     }
-    const state = this.followState(source, descriptor, snapshot);
+    const state = await this.followState(source, descriptor, snapshot);
     // archive#1997: one persisted-sessions snapshot for both the ownership
     // check and the alias lookup. Every scan is synchronous sqlite + JSON
     // parsing on the main thread, so the snapshot is passed into followState
@@ -605,7 +605,7 @@ export class AttachedSessionFollowService {
     if (this.isStationOwnedProviderCursor(source, descriptor, snapshot)) {
       const alias = snapshot.get(descriptor.threadId);
       if (alias?.controlMode === 'read-only-attached') {
-        this.deleteAttachedAlias(descriptor.threadId);
+        await this.deleteAttachedAlias(descriptor.threadId);
       }
       state.ownership = 'collision';
     }
@@ -649,7 +649,7 @@ export class AttachedSessionFollowService {
             return;
           }
           publicationAttempted = true;
-          this.appendIngestibleEvent(state, event);
+          await this.appendIngestibleEvent(state, event);
           envelopeWrites += 1;
           if (
             envelopeWrites % APPEND_YIELD_EVERY === 0 ||
@@ -678,7 +678,7 @@ export class AttachedSessionFollowService {
           descriptor,
           state.latestEventAt,
         );
-        this.appendAndPublish(record, (error) => {
+        await this.appendAndPublish(record, (error) => {
           // Retried every poll (below), but a deterministic refusal is
           // logged once per thread, not once per poll.
           if (!state.ownerRecordRefusalLogged) {
@@ -705,9 +705,53 @@ export class AttachedSessionFollowService {
       return;
     }
     const priorCursor = state.cursors.get(sourceCursorKey(source));
-    const reusableCursor = cursorMatchesSource(priorCursor, source, descriptor)
+    let reusableCursor = cursorMatchesSource(priorCursor, source, descriptor)
       ? priorCursor.cursor
       : undefined;
+    let anchorPersisted = false;
+    if (
+      source.initialCursor &&
+      (reusableCursor === undefined || reusableCursor === 0)
+    ) {
+      const anchor = await source.initialCursor(descriptor);
+      if (anchor === undefined) return;
+      if (!validAttachedSessionCursor(anchor)) {
+        throw new Error(
+          'Attached session source returned an invalid initial cursor.',
+        );
+      }
+      // #3708: no observable page may depend on a moving cold-read window.
+      // A legacy row gains affinity only after a successful read. Its migration
+      // anchor stays in memory until then; other rows pin it before read().
+      const migratingLegacyAffinity =
+        persisted?.controlMode === 'read-only-attached' &&
+        !persisted.attachedSource?.affinity &&
+        descriptor.affinity !== undefined;
+      if (!migratingLegacyAffinity) {
+        if (
+          !(await this.persistAttachedSession(
+            source,
+            descriptor,
+            snapshot,
+            anchor,
+          ))
+        ) {
+          this.rejectFollow(source, descriptor);
+          return;
+        }
+        anchorPersisted = true;
+      }
+      reusableCursor = anchor;
+      state.cursors.set(sourceCursorKey(source), {
+        provider: source.provider,
+        sourceKind: source.kind,
+        sourceHandle: descriptor.sourceHandle,
+        ...(descriptor.affinity
+          ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
+          : {}),
+        cursor: anchor,
+      });
+    }
     let read: AttachedSessionReadResult;
     try {
       read = await source.read(descriptor, reusableCursor);
@@ -730,8 +774,8 @@ export class AttachedSessionFollowService {
       // A later successful poll can continue without replaying the source.
       // In particular, do not grant a legacy attachment a newly discovered
       // affinity until that source has completed one successful bounded read.
-      if (!persisted) {
-        this.persistAttachedSession(
+      if (!persisted && !anchorPersisted) {
+        await this.persistAttachedSession(
           source,
           descriptor,
           snapshot,
@@ -754,13 +798,13 @@ export class AttachedSessionFollowService {
     // Revalidate the current row after source.read yielded, before any page
     // import or meaningful attachment write. Never advance progress here.
     if (
-      !this.persistAttachedSession(
+      !(await this.persistAttachedSession(
         source,
         descriptor,
         snapshot,
         reusableCursor,
         hasNewEvents,
-      )
+      ))
     ) {
       this.rejectFollow(source, descriptor);
       return;
@@ -789,7 +833,7 @@ export class AttachedSessionFollowService {
         this.rejectFollow(source, descriptor);
         return;
       }
-      if (this.appendIngestibleEvent(state, event)) {
+      if (await this.appendIngestibleEvent(state, event)) {
         if (!state.latestEventAt || event.createdAt > state.latestEventAt) {
           state.latestEventAt = event.createdAt;
         }
@@ -810,7 +854,12 @@ export class AttachedSessionFollowService {
       }
     }
     if (
-      !this.persistAttachedSession(source, descriptor, snapshot, read.cursor)
+      !(await this.persistAttachedSession(
+        source,
+        descriptor,
+        snapshot,
+        read.cursor,
+      ))
     ) {
       this.rejectFollow(source, descriptor);
       return;
@@ -826,17 +875,17 @@ export class AttachedSessionFollowService {
     });
   }
 
-  private followState(
+  private async followState(
     source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
     snapshot: PollSessionSnapshot,
-  ): FollowState {
+  ): Promise<FollowState> {
     const cached = this.followStates.get(descriptor.threadId);
     if (cached) {
       if (this.isStationOwnedProviderCursor(source, descriptor, snapshot)) {
         const alias = snapshot.get(descriptor.threadId);
         if (alias?.controlMode === 'read-only-attached') {
-          this.deleteAttachedAlias(descriptor.threadId);
+          await this.deleteAttachedAlias(descriptor.threadId);
         }
         cached.ownership = 'collision';
       }
@@ -855,7 +904,7 @@ export class AttachedSessionFollowService {
       isStationOwnedProviderCursor &&
       persisted?.controlMode === 'read-only-attached'
     ) {
-      this.deleteAttachedAlias(descriptor.threadId);
+      await this.deleteAttachedAlias(descriptor.threadId);
     }
     // archive#1867 class: never materialize the full thread via listEvents on
     // the cold path — large Claude-import threads (10k–20k events) held the
@@ -959,13 +1008,13 @@ export class AttachedSessionFollowService {
     );
   }
 
-  private persistAttachedSession(
+  private async persistAttachedSession(
     source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
     snapshot: PollSessionSnapshot,
     cursor?: AttachedSessionCursor,
     hasNewEvents = false,
-  ): boolean {
+  ): Promise<boolean> {
     const completedBoundary =
       source.continuationBoundary === 'completed-turn'
         ? readCompletedSourceBoundary(
@@ -1079,7 +1128,7 @@ export class AttachedSessionFollowService {
       this.options.eventStore.latestEventCreatedAtByThread(
         descriptor.threadId,
       ) ?? session.createdAt;
-    this.options.eventStore.upsertSession(session);
+    await this.options.eventStore.upsertSessionInBackground(session);
     snapshot.set(session);
     return true;
   }
@@ -1096,8 +1145,8 @@ export class AttachedSessionFollowService {
   }
 
   /** Deleting the alias removes its recorded owner, so the cached one goes too. */
-  private deleteAttachedAlias(threadId: string): void {
-    this.options.eventStore.deleteThread(threadId);
+  private async deleteAttachedAlias(threadId: string): Promise<void> {
+    await this.options.eventStore.deleteThreadInBackground(threadId);
     this.options.invalidateSessionOwner?.(threadId);
   }
 
@@ -1117,17 +1166,18 @@ export class AttachedSessionFollowService {
    * sanitizer exception here can never drop an imported event or crash the
    * poll loop.
    */
-  private appendAndPublish(
+  private async appendAndPublish(
     event: CanonicalRuntimeEvent,
     onIngressRefusal?: (error: EventStoreIngressError) => void,
-  ): boolean {
+  ): Promise<boolean> {
     this.options.eventStore.assertNoOuterTransactionForPublication();
     event = safeSanitizeUIBlockEventProvenance(event, (message, meta) =>
       this.options.logger?.warn(message, meta),
     );
     let sequence: number | undefined;
     try {
-      sequence = this.options.eventStore.appendEventIfAbsent(event);
+      sequence =
+        await this.options.eventStore.appendEventIfAbsentInBackground(event);
     } catch (error) {
       if (!(error instanceof EventStoreIngressError) || !onIngressRefusal)
         throw error;
@@ -1155,11 +1205,11 @@ export class AttachedSessionFollowService {
    * alive, the cursor moves past the event, and the log names the subject.
    * Anything else still throws and surfaces through the poll failure path.
    */
-  private appendIngestibleEvent(
+  private async appendIngestibleEvent(
     state: FollowState,
     event: CanonicalRuntimeEvent,
-  ): boolean {
-    const committed = this.appendAndPublish(event, (error) => {
+  ): Promise<boolean> {
+    const committed = await this.appendAndPublish(event, (error) => {
       this.options.logger?.warn(
         'Attached-session event cannot be persisted; skipping it and advancing',
         {

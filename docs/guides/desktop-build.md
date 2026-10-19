@@ -95,11 +95,15 @@ This is not a byte-preservation check: further changes to an already-dirty path
 can keep the same status entry. Preserve and inspect intentional edits separately. Expected
 caches and outputs such as `dist-*` and `src-desktop/target/` remain ignored.
 
-The path-filtered Ubuntu job in
+The Ubuntu job in
 [desktop-clean-checkout.yml](../../.github/workflows/desktop-clean-checkout.yml)
-runs the same npm command for PR heads, `main` pushes and manual dispatches.
-Its separate Windows job exercises unsigned diagnostic NSIS packaging. Neither
-job's definition establishes that the current revision passed.
+runs the same npm command. The shared
+[delivery workflow](../../.github/workflows/delivery-validation.yml) selects it
+for affected PR heads after required source checks and for scheduled main
+qualification after the full corpus succeeds; manual dispatch remains available.
+It no longer starts independently on each `main` push. Its separate Windows job
+exercises unsigned diagnostic NSIS packaging. Neither job's definition
+establishes that the current revision passed.
 
 ## Startup readiness boundary
 
@@ -132,8 +136,8 @@ latest upstream releases:
 
 - Rust `tauri` 2.12.1
 - Rust `tauri-build` 2.7.1
-- npm `@tauri-apps/api` `^2.12.1`
-- npm `@tauri-apps/cli` `^2.12.1`
+- npm `@tauri-apps/api` `^2.12.4`
+- npm `@tauri-apps/cli` `^2.12.2`
 
 Tauri recommends keeping the JS API and Rust core on compatible minor lines;
 Station keeps the resolved pnpm and Cargo graphs in their lockfiles. The
@@ -143,7 +147,11 @@ Tauri's
 before changing either side.
 
 The Rust process, deep-link, updater, haptics, and notification plugins use
-the same minor lines as their npm packages. `tauri:context` checks the selected
+the same minor lines as their npm packages. The notification plugin is pinned
+to Rust `=2.7.0` with npm `2.7.0`; the updater uses Rust `=2.14.0` and npm
+`2.14.0`. Matching versions satisfy the CLI version guard, while native build
+and runtime evidence remain separate.
+`tauri:context` checks the selected
 toolchain and configuration; those checks alone do not prove a packaged shell
 works.
 

@@ -241,6 +241,10 @@ function dispatchProjectedOrchestrationEvent(
   event: OrchestrationEvent,
   provenance?: unknown,
 ) {
+  if (event.method === 'request.resolved') {
+    handleRequestResolvedEvent(event);
+    return;
+  }
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 
@@ -281,9 +285,6 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'request.opened':
       handleRequestOpenedEvent(apiBase, event);
-      return;
-    case 'request.resolved':
-      handleRequestResolvedEvent(event);
       return;
     case 'request.delivery':
       handleRequestDeliveryEvent(event);

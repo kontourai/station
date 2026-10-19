@@ -1,0 +1,7 @@
+{
+  "revision": "1a7bc33e59753e8f390f3e492caede5e79841e71",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Looked at the capture: the notifications Inspect request dialog for a pending tool approval. The orchestration-service change only refuses a same-key resend of a retained claim as indeterminate; nothing shown here changes.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

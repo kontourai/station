@@ -1,0 +1,9 @@
+{
+  "revision": "da0139ae313e584b1ac6938101dbe592e63c739d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed working-chat focus through shared ActionOverflowMenu trigger, useWorkingChatFocus and selected composer/transcript after main integration. Thirteen Chromium focus/replay journeys passed on 08d7709ea37. The final caption delta now distinguishes account-synced display preferences from device-specific options, matching ACCOUNT_PREFERENCE_KEYS and DeviceSettingsStore.resolve. Twelve current ChatSettingsPanel tests pass; guide interaction claims stay accurate. Earlier screenshots are historical, not fresh native qualification.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/ChatSettingsPanel.tsx"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the ChatSettingsPanel caption-only delta against developer-tools gating, Step through this conversation, ReplayCaptureControls and account preference projection. Replay entry, recording, import/export and read-only isolation behavior are unchanged; the device-specific Return preference remains distinct from account display choices. Thirteen controlled working-chat browser journeys include replay selection; twelve current settings tests pass. No new live-provider/native evidence or full replay campaign is claimed.","inputs":["docs/design/session-tape-replay.md","src-ui/src/components/chat/ChatSettingsPanel.tsx"]}
+  ]
+}

@@ -7,10 +7,29 @@ import {
   PRODUCT_TELEMETRY_ENVELOPE,
   type ProductTelemetryBatch,
   type ProductTelemetryBuild,
+  type ProductTelemetryCommitReceipt,
   type ProductTelemetryObservation,
+  STATION_DAILY_FIELDS,
 } from '@kontourai/station-contracts/product-telemetry';
+import type {
+  ProductTelemetryDeliveryStatus,
+  TelemetryConnectionProbeStatus,
+} from '@kontourai/station-contracts/telemetry-delivery';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
+import {
+  LITE_TELEMETRY_INVENTORY_REVISION,
+  mapRuntimeChannelToTelemetryChannel,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+  parseProductTelemetryCommitReceipt,
+  parseProductTelemetryProbeReceipt,
+} from '@kontourai/station-shared/product-telemetry';
 import { redactDeep } from '@kontourai/station-shared/redaction';
+import {
+  type ResolvedTelemetryConfiguration,
+  resolveProductTelemetryEnabled,
+  resolveProductTelemetryEnvironment,
+  resolveTelemetryConfiguration,
+} from '../domain/telemetry-configuration.js';
 import {
   type BuildProvenanceSnapshot,
   captureBuildProvenance,
@@ -19,10 +38,17 @@ import { usageTelemetryOutcomes } from '../telemetry/metrics.js';
 import { errorMessage } from '../utils/error-message.js';
 import type { Logger } from '../utils/logger.js';
 import { persistedRandomIdentifierHash } from './persisted-random-identifier.js';
+import type { TelemetrySecretResolver } from './secrets/secret-binding-administration.js';
+import {
+  abortableTelemetryOperation,
+  readTelemetryJson,
+  TelemetryRequestError,
+  telemetryRequestFailure,
+} from './telemetry-response.js';
 import {
   assertUsageTelemetryInventoryContract,
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
   USAGE_TELEMETRY_EVENTS,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
   type UsageTelemetryEvent,
   type UsageTelemetryProperties,
 } from './usage-telemetry-inventory.js';
@@ -47,18 +73,11 @@ interface UsageTelemetryServiceOptions {
   fetch?: typeof globalThis.fetch;
   setInterval?: typeof globalThis.setInterval;
   clearInterval?: typeof globalThis.clearInterval;
-}
-function parseBoolean(value: string | undefined): boolean | undefined {
-  if (value === undefined) return undefined;
-  if (['0', 'false', 'off', 'disabled'].includes(value.trim().toLowerCase()))
-    return false;
-  if (['1', 'true', 'on', 'enabled'].includes(value.trim().toLowerCase()))
-    return true;
-  return undefined;
+  telemetrySecretResolver?: TelemetrySecretResolver;
 }
 /**
- * WHERE the effective `telemetryEnabled` came from. The precedence is
- * `appConfig` over `STATION_TELEMETRY_ENABLED` over the default, and a client
+ * Where the effective `telemetryEnabled` came from. The precedence is
+ * saved config over canonical/legacy product environment values over the default, and a client
  * cannot see the last two — so a first-run screen offering to keep telemetry
  * as it is cannot tell "recorded" from "the environment is deciding, for now"
  * without being told. #1582 A3/L1: the distinction is what decides whether
@@ -66,31 +85,21 @@ function parseBoolean(value: string | undefined): boolean | undefined {
  */
 type UsageTelemetryEnabledSource = 'config' | 'env' | 'default';
 
-/**
- * The one precedence chain, resolved once and reported with its provenance so
- * `enabled` and `enabledSource` can never disagree about which link won.
- */
-function resolveEnabled(
-  appConfig: AppConfig,
-  env: NodeJS.ProcessEnv,
-): { enabled: boolean; source: UsageTelemetryEnabledSource } {
-  if (appConfig.telemetryEnabled !== undefined)
-    return { enabled: appConfig.telemetryEnabled, source: 'config' };
-  // Only a value this parses counts as the environment deciding: an
-  // unrecognised `STATION_TELEMETRY_ENABLED` falls through to the default,
-  // and reporting it as `env` would invite a client to write a value the
-  // environment never actually set.
-  const fromEnv = parseBoolean(env.STATION_TELEMETRY_ENABLED);
-  if (fromEnv !== undefined) return { enabled: fromEnv, source: 'env' };
-  return { enabled: true, source: 'default' };
-}
-
-/** Server-only, dependency-free product telemetry. It never reads vendor homes. */
+/** Server-only product observations and delivery state, independent of OTel SDK availability. */
 export class UsageTelemetryService {
   private readonly build: ProductTelemetryBuild;
-  private readonly endpoint: string | undefined;
+  private endpoint: string | undefined;
+  private keyRef: string | undefined;
+  private savedDestination = false;
   private readonly apiKey: string | undefined;
-  private enabled: boolean;
+  private appConfig: AppConfig;
+  private get enabled(): boolean {
+    return resolveProductTelemetryEnabled(
+      this.appConfig,
+      this.options.env ?? process.env,
+      this.hasCurrentDisclosureReceipt,
+    ).enabled;
+  }
   private enabledSource: UsageTelemetryEnabledSource;
   private readonly fetchImpl: typeof fetch;
   private readonly setIntervalImpl: typeof setInterval;
@@ -102,12 +111,37 @@ export class UsageTelemetryService {
   private requestAbort: AbortController | undefined;
   private acceptingTracks = true;
   private readonly tracking = new Set<Promise<void>>();
+  private deliveryEpoch = 0;
+  private readonly counts: ProductTelemetryDeliveryStatus['counts'] = {
+    buffered: 0,
+    acknowledged: 0,
+    overflowDropped: 0,
+    withdrawn: 0,
+    shutdownDropped: 0,
+    rejected: 0,
+    attempts: 0,
+    failedAttempts: 0,
+  };
+  private lastAttemptAt: string | null = null;
+  private lastAcknowledged: ProductTelemetryDeliveryStatus['lastAcknowledged'] =
+    null;
+  private lastFailure: ProductTelemetryDeliveryStatus['lastFailure'] = null;
+  private latestDelivery: 'never' | 'acknowledged' | 'failed' = 'never';
+  private probeStatus: TelemetryConnectionProbeStatus = {
+    phase: 'never',
+    checkedAt: null,
+    scope: null,
+    failure: null,
+  };
+  private probing: Promise<TelemetryConnectionProbeStatus> | undefined;
+  private probeAbort: AbortController | undefined;
   constructor(private readonly options: UsageTelemetryServiceOptions) {
     const env = options.env ?? process.env;
     const provenance =
       options.buildProvenance === undefined
         ? captureBuildProvenance(env)
         : options.buildProvenance;
+    const channel = mapRuntimeChannelToTelemetryChannel(provenance?.channel);
     this.build = {
       version: options.version,
       platform: process.platform,
@@ -117,19 +151,28 @@ export class UsageTelemetryService {
       provenance.shaSource
         ? { sha: provenance.fullSha, sha_source: provenance.shaSource }
         : {}),
-      ...(provenance?.channel &&
-      ['stable', 'preview', 'nightly', 'dev', 'source-checkout'].includes(
-        provenance.channel,
-      )
-        ? { channel: provenance.channel as ProductTelemetryBuild['channel'] }
-        : {}),
+      ...(channel ? { channel } : {}),
       ...(provenance?.dirty !== undefined ? { dirty: provenance.dirty } : {}),
     };
-    const resolved = resolveEnabled(options.appConfig, env);
-    this.enabled = resolved.enabled;
+    const resolved = resolveProductTelemetryEnabled(options.appConfig, env);
+    const destinations = resolveProductTelemetryEnvironment(env);
+    this.appConfig = options.appConfig;
     this.enabledSource = resolved.source;
-    this.endpoint = env.STATION_TELEMETRY_ENDPOINT?.trim() || undefined;
-    this.apiKey = env.STATION_USAGE_TELEMETRY_KEY?.trim() || undefined;
+    this.endpoint =
+      options.appConfig.productTelemetryEndpoint?.trim() ||
+      destinations.endpoint.value;
+    this.keyRef = options.appConfig.productTelemetryKeyRef?.trim() || undefined;
+    this.savedDestination =
+      !!options.appConfig.productTelemetryEndpoint?.trim();
+    this.apiKey = destinations.key.value;
+    for (const notice of [
+      ...resolved.notices,
+      ...destinations.endpoint.notices,
+      ...destinations.key.notices,
+    ])
+      this.warn(
+        `Product telemetry environment: ${notice.code} (${notice.envVar}).`,
+      );
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.setIntervalImpl = options.setInterval ?? globalThis.setInterval;
     this.clearIntervalImpl = options.clearInterval ?? globalThis.clearInterval;
@@ -158,7 +201,7 @@ export class UsageTelemetryService {
           typeof (receipt as { acknowledgedAt?: unknown }).acknowledgedAt ===
             'string' &&
           (receipt as { inventoryRevision?: unknown }).inventoryRevision ===
-            USAGE_TELEMETRY_INVENTORY_REVISION,
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       );
       if (!isCurrentReceipt)
         this.warn('Usage telemetry disclosure receipt is invalid.');
@@ -171,7 +214,16 @@ export class UsageTelemetryService {
     return this.hasCurrentDisclosureReceipt;
   }
   async acknowledgeDisclosure(inventoryRevision: string): Promise<void> {
-    if (inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION)
+    if (
+      resolveTelemetryConfiguration(
+        this.appConfig,
+        this.options.env ?? process.env,
+      ).publishers.operator.reason === 'DNT'
+    )
+      throw new Error(
+        'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
+      );
+    if (inventoryRevision !== FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION)
       throw new Error(
         'Usage telemetry disclosure changed; review the current inventory.',
       );
@@ -186,7 +238,7 @@ export class UsageTelemetryService {
       this.disclosurePath,
       {
         acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       },
       { indent: null, trailingNewline: true },
     );
@@ -206,6 +258,25 @@ export class UsageTelemetryService {
   get endpointConfigured(): boolean {
     return this.endpoint !== undefined;
   }
+  async telemetryStatus(): Promise<
+    ResolvedTelemetryConfiguration & {
+      liteInventoryRevision: string;
+      liteInventory: typeof STATION_DAILY_FIELDS;
+      fullInventoryRevision: string;
+    }
+  > {
+    await this.loadDisclosureReceipt();
+    return {
+      ...resolveTelemetryConfiguration(
+        this.appConfig,
+        this.options.env ?? process.env,
+        { operator: this.hasCurrentDisclosureReceipt },
+      ),
+      liteInventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
+      liteInventory: STATION_DAILY_FIELDS,
+      fullInventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    };
+  }
   async disclosure(): Promise<{
     acknowledged: boolean;
     inventoryRevision: string;
@@ -215,10 +286,17 @@ export class UsageTelemetryService {
     endpointConfigured: boolean;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
+    publishers: ReturnType<typeof resolveTelemetryConfiguration>['publishers'];
   }> {
+    await this.loadDisclosureReceipt();
+    const resolved = resolveTelemetryConfiguration(
+      this.appConfig,
+      this.options.env ?? process.env,
+      { operator: this.hasCurrentDisclosureReceipt },
+    );
     return {
       acknowledged: await this.loadDisclosureReceipt(),
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       events: USAGE_TELEMETRY_EVENTS,
       acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
       envelope: Object.entries(PRODUCT_TELEMETRY_ENVELOPE)
@@ -231,32 +309,251 @@ export class UsageTelemetryService {
         )
         .join('\n\n'),
       endpointConfigured: this.endpointConfigured,
-      // The EFFECTIVE setting, which is `telemetryEnabled` folded over the
-      // `STATION_TELEMETRY_ENABLED` fallback and the default. A client that
-      // read `AppConfig.telemetryEnabled` alone would render "on" for a host
-      // the environment has switched off, and offer to turn off something
-      // that is already off.
-      telemetryEnabled: this.enabled,
+      telemetryEnabled: resolved.publishers.operator.tier === 'full',
+      publishers: resolved.publishers,
       enabledSource: this.enabledSource,
     };
   }
   get bufferedCount(): number {
     return this.buffer.length;
   }
+  async deliveryStatus(): Promise<ProductTelemetryDeliveryStatus> {
+    await this.loadDisclosureReceipt();
+    const operator = resolveTelemetryConfiguration(
+      this.appConfig,
+      this.options.env ?? process.env,
+      { operator: this.hasCurrentDisclosureReceipt },
+    ).publishers.operator;
+    const phase = !this.endpoint
+      ? 'unconfigured'
+      : operator.reason === 'disclosure'
+        ? 'awaiting-disclosure'
+        : operator.tier !== 'full'
+          ? 'disabled'
+          : this.latestDelivery === 'acknowledged'
+            ? 'acknowledged'
+            : this.latestDelivery === 'failed'
+              ? 'failed'
+              : 'ready';
+    return {
+      scope: 'current-process',
+      observedAt: new Date().toISOString(),
+      phase,
+      endpointConfigured: this.endpointConfigured,
+      keyConfigured: !!this.keyRef || (!this.savedDestination && !!this.apiKey),
+      enabled: this.enabled,
+      disclosureAcknowledged: this.hasCurrentDisclosureReceipt,
+      sending: !!this.flushing,
+      queued: this.buffer.length,
+      counts: { ...this.counts },
+      lastAttemptAt: this.lastAttemptAt,
+      lastAcknowledged: this.lastAcknowledged
+        ? { ...this.lastAcknowledged }
+        : null,
+      lastFailure: this.lastFailure ? { ...this.lastFailure } : null,
+      probe: this.probeSnapshot(),
+    };
+  }
+  private probeSnapshot(): TelemetryConnectionProbeStatus {
+    return {
+      ...this.probeStatus,
+      failure: this.probeStatus.failure
+        ? { ...this.probeStatus.failure }
+        : null,
+    };
+  }
+  async checkConnection(): Promise<TelemetryConnectionProbeStatus> {
+    if (this.probing) return this.probing;
+    let probeUrl: URL;
+    try {
+      if (!this.acceptingTracks)
+        throw new TelemetryRequestError('service_stopped');
+      if (!this.endpoint)
+        throw new TelemetryRequestError('endpoint_unconfigured');
+      probeUrl = new URL(this.endpoint);
+      if (
+        !['http:', 'https:'].includes(probeUrl.protocol) ||
+        probeUrl.username ||
+        probeUrl.password ||
+        probeUrl.hash ||
+        probeUrl.search ||
+        !probeUrl.pathname.endsWith('/v1/product/events')
+      )
+        throw new TelemetryRequestError('probe_unsupported');
+      probeUrl.pathname = probeUrl.pathname.replace(/events$/, 'probes');
+    } catch (error) {
+      const failure = telemetryRequestFailure(
+        error instanceof TelemetryRequestError
+          ? error
+          : new TelemetryRequestError('probe_unsupported'),
+      );
+      this.probeStatus = {
+        phase: failure.code === 'service_stopped' ? 'failed' : 'unsupported',
+        checkedAt: failure.at,
+        scope: null,
+        failure,
+      };
+      return this.probeSnapshot();
+    }
+    this.probeStatus = {
+      phase: 'checking',
+      checkedAt: null,
+      scope: null,
+      failure: null,
+    };
+    const controller = new AbortController();
+    const epoch = this.deliveryEpoch;
+    this.probeAbort = controller;
+    const timeout = setTimeout(() => controller.abort('timeout'), 3_000);
+    this.probing = (async () => {
+      try {
+        const credential = await this.requestCredential(controller.signal);
+        if (epoch !== this.deliveryEpoch) return this.probeSnapshot();
+        credential.assertCurrent();
+        const response = await abortableTelemetryOperation(
+          this.fetchImpl(probeUrl, {
+            method: 'POST',
+            redirect: 'error',
+            headers: {
+              'content-type': 'application/json',
+              ...(credential.key ? { 'x-api-key': credential.key } : {}),
+            },
+            body: JSON.stringify({
+              protocol: 'station-product-probe/v1',
+              inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+            }),
+            signal: controller.signal,
+          }),
+          controller.signal,
+        );
+        if ([404, 405, 426].includes(response.status))
+          throw new TelemetryRequestError('probe_unsupported', response.status);
+        if (!response.ok)
+          throw new TelemetryRequestError('http_refused', response.status);
+        const body = await readTelemetryJson(response, controller.signal);
+        credential.assertCurrent();
+        try {
+          parseProductTelemetryProbeReceipt(
+            body && typeof body === 'object' && 'probe' in body
+              ? body.probe
+              : null,
+          );
+        } catch {
+          throw new TelemetryRequestError('receipt_invalid');
+        }
+        if (epoch !== this.deliveryEpoch) return this.probeSnapshot();
+        if (!this.acceptingTracks || controller.signal.aborted)
+          throw new TelemetryRequestError('service_stopped');
+        this.probeStatus = {
+          phase: 'ready',
+          checkedAt: new Date().toISOString(),
+          scope: 'postgres-schema-v1',
+          failure: null,
+        };
+      } catch (error) {
+        if (epoch !== this.deliveryEpoch) return this.probeSnapshot();
+        const failure = telemetryRequestFailure(error, controller.signal);
+        this.probeStatus = {
+          phase:
+            failure.code === 'probe_unsupported' ? 'unsupported' : 'failed',
+          checkedAt: failure.at,
+          scope: null,
+          failure,
+        };
+      } finally {
+        clearTimeout(timeout);
+        if (this.probeAbort === controller) this.probeAbort = undefined;
+        this.probing = undefined;
+      }
+      return this.probeSnapshot();
+    })();
+    return this.probing;
+  }
   reconfigure(appConfig: AppConfig): void {
     const env = this.options.env ?? process.env;
     // Both halves, together: `options.appConfig` is the snapshot this service
     // was CONSTRUCTED with and is never updated, so a source derived from it
     // later would report where the value came from at boot rather than now.
-    const resolved = resolveEnabled(appConfig, env);
-    this.enabled = resolved.enabled;
+    const resolved = resolveProductTelemetryEnabled(
+      appConfig,
+      env,
+      this.hasCurrentDisclosureReceipt,
+    );
+    const destinations = resolveProductTelemetryEnvironment(env);
+    const endpoint =
+      appConfig.productTelemetryEndpoint?.trim() || destinations.endpoint.value;
+    const keyRef = appConfig.productTelemetryKeyRef?.trim() || undefined;
+    const savedDestination = !!appConfig.productTelemetryEndpoint?.trim();
+    const destinationChanged =
+      endpoint !== this.endpoint ||
+      keyRef !== this.keyRef ||
+      savedDestination !== this.savedDestination;
+    if (this.enabled !== resolved.enabled || destinationChanged) {
+      this.deliveryEpoch++;
+      this.latestDelivery = 'never';
+      this.lastFailure = null;
+    }
+    if (destinationChanged) {
+      this.requestAbort?.abort();
+      this.probeAbort?.abort();
+      this.counts.withdrawn += this.buffer.length;
+      this.buffer.length = 0;
+      this.lastAcknowledged = null;
+      this.lastAttemptAt = null;
+      this.probeStatus = {
+        phase: 'never',
+        checkedAt: null,
+        scope: null,
+        failure: null,
+      };
+    }
+    this.endpoint = endpoint;
+    this.keyRef = keyRef;
+    this.savedDestination = savedDestination;
+    this.appConfig = appConfig;
     this.enabledSource = resolved.source;
-    if (!this.enabled) {
+    if (!this.active) {
       // Disabling withdraws consent for data still in memory, so discard it rather than flushing it.
       if (this.timer) this.clearIntervalImpl(this.timer);
       this.timer = undefined;
+      this.counts.withdrawn += this.buffer.length;
       this.buffer.length = 0;
       this.requestAbort?.abort();
+    }
+  }
+  private async requestCredential(
+    signal: AbortSignal,
+  ): Promise<{ key?: string; assertCurrent: () => void }> {
+    if (!this.keyRef)
+      return {
+        key: this.savedDestination ? undefined : this.apiKey,
+        assertCurrent: () => {},
+      };
+    try {
+      if (!this.endpoint || !this.options.telemetrySecretResolver)
+        throw new Error();
+      const credential = await abortableTelemetryOperation(
+        this.options.telemetrySecretResolver.resolveForTelemetry({
+          id: this.keyRef,
+          transport: 'product',
+          destination: this.endpoint,
+          signal,
+        }),
+        signal,
+      );
+      return {
+        key: credential.key,
+        assertCurrent: () => {
+          try {
+            credential.assertCurrent();
+          } catch {
+            throw new TelemetryRequestError('credential_unavailable');
+          }
+        },
+      };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      throw new TelemetryRequestError('credential_unavailable');
     }
   }
   track<E extends UsageTelemetryEvent>(
@@ -269,6 +566,7 @@ export class UsageTelemetryService {
       properties,
       randomUUID(),
       new Date().toISOString(),
+      this.deliveryEpoch,
     );
     this.tracking.add(operation);
     void operation.finally(() => this.tracking.delete(operation));
@@ -279,9 +577,10 @@ export class UsageTelemetryService {
     properties: UsageTelemetryProperties<E>,
     eventId: string,
     occurredAt: string,
+    epoch: number,
   ): Promise<void> {
     if (!this.hasCurrentDisclosureReceipt) await this.loadDisclosureReceipt();
-    if (!this.active) return;
+    if (!this.active || epoch !== this.deliveryEpoch) return;
     try {
       assertUsageTelemetryInventoryContract(event, properties);
       assertUsageTelemetryInventoryContract('station_started', {
@@ -290,6 +589,7 @@ export class UsageTelemetryService {
         arch: this.build.arch,
       });
     } catch (error) {
+      this.counts.rejected++;
       this.recordOutcome('drift_rejected');
       this.warn('Usage telemetry event dropped.', error);
       return;
@@ -298,6 +598,7 @@ export class UsageTelemetryService {
       const safeProperties = redactDeep(properties) as Record<string, string>;
       if (this.buffer.length === MAX_BUFFER) {
         this.buffer.shift();
+        this.counts.overflowDropped++;
         this.recordOutcome('event_dropped');
         this.warn('Usage telemetry buffer overflow; dropped oldest event.');
       }
@@ -309,9 +610,11 @@ export class UsageTelemetryService {
         observed_at: new Date().toISOString(),
         build: { ...this.build },
       });
+      this.counts.buffered++;
       this.ensureTimer();
       if (this.buffer.length >= BATCH_SIZE) void this.flush();
     } catch (error) {
+      this.counts.rejected++;
       this.recordOutcome('event_rejected');
       this.warn('Usage telemetry event dropped.', error);
     }
@@ -362,6 +665,7 @@ export class UsageTelemetryService {
       this.options.homeDir,
       'usage-telemetry-id',
       'Usage telemetry identity did not persist as a UUID.',
+      new Date(),
     );
   }
   private async awaitFlushWithinDeadline(
@@ -387,6 +691,10 @@ export class UsageTelemetryService {
     if (!this.active || this.buffer.length === 0 || this.flushing)
       return this.flushing;
     const batch = this.buffer.slice(0, BATCH_SIZE);
+    const epoch = this.deliveryEpoch;
+    const endpoint = this.endpoint!;
+    this.counts.attempts++;
+    this.lastAttemptAt = new Date().toISOString();
     this.flushing = (async () => {
       const controller = new AbortController();
       this.requestAbort = controller;
@@ -397,30 +705,75 @@ export class UsageTelemetryService {
           deadline === undefined ? REQUEST_TIMEOUT_MS : deadline - Date.now(),
         ),
       );
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      const timeoutId = setTimeout(() => controller.abort('timeout'), timeout);
       try {
-        const response = await this.fetchImpl(this.endpoint!, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            ...(this.apiKey ? { 'x-api-key': this.apiKey } : {}),
-          },
-          body: JSON.stringify({
-            schema_version: 1,
-            inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
-            distinct_id: await this.distinctIdHash(),
-            events: batch,
-          } satisfies ProductTelemetryBatch),
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const credential = await this.requestCredential(controller.signal);
+        if (epoch !== this.deliveryEpoch) return;
+        const distinctId = await abortableTelemetryOperation(
+          this.distinctIdHash(),
+          controller.signal,
+        );
+        if (epoch !== this.deliveryEpoch || controller.signal.aborted) return;
+        credential.assertCurrent();
+        const response = await abortableTelemetryOperation(
+          this.fetchImpl(endpoint, {
+            method: 'POST',
+            redirect: 'error',
+            headers: {
+              'content-type': 'application/json',
+              ...(credential.key ? { 'x-api-key': credential.key } : {}),
+            },
+            body: JSON.stringify({
+              schema_version: 1,
+              inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+              distinct_id: distinctId,
+              events: batch,
+            } satisfies ProductTelemetryBatch),
+            signal: controller.signal,
+          }),
+          controller.signal,
+        );
+        if (!response.ok)
+          throw new TelemetryRequestError('http_refused', response.status);
+        const body = await readTelemetryJson(response, controller.signal);
+        credential.assertCurrent();
+        let receipt: ProductTelemetryCommitReceipt;
+        try {
+          receipt = parseProductTelemetryCommitReceipt(
+            body && typeof body === 'object' && 'receipt' in body
+              ? body.receipt
+              : null,
+            batch.map((event) => event.event_id),
+          );
+        } catch {
+          throw new TelemetryRequestError('receipt_invalid');
+        }
+        // Withdrawal fences late acknowledgements, including a transport that ignored abort.
+        if (epoch !== this.deliveryEpoch || controller.signal.aborted) return;
         for (const retained of batch) {
           const index = this.buffer.indexOf(retained);
           if (index !== -1) this.buffer.splice(index, 1);
         }
+        this.counts.acknowledged += receipt.eventIds.length;
+        this.lastAcknowledged = {
+          at: new Date().toISOString(),
+          storedAt: receipt.storedAt,
+          eventCount: receipt.eventIds.length,
+        };
+        this.latestDelivery = 'acknowledged';
       } catch (error) {
+        if (epoch !== this.deliveryEpoch) return;
+        this.counts.failedAttempts++;
+        this.lastFailure = telemetryRequestFailure(error, controller.signal);
+        this.latestDelivery = 'failed';
         this.recordOutcome('batch_failed');
-        this.warn('Usage telemetry batch failed; requeued.', error);
+        this.warn(
+          'Usage telemetry batch failed; requeued.',
+          new TelemetryRequestError(
+            this.lastFailure.code,
+            this.lastFailure.httpStatus,
+          ),
+        );
       } finally {
         clearTimeout(timeoutId);
         if (this.requestAbort === controller) this.requestAbort = undefined;
@@ -439,6 +792,7 @@ export class UsageTelemetryService {
       // forget startup and orchestration telemetry that may still be reading
       // disclosure state or starting persistence beneath the Station home.
       this.acceptingTracks = false;
+      this.probeAbort?.abort();
       if (this.timer) this.clearIntervalImpl(this.timer);
       this.timer = undefined;
       const aborted = new Promise<void>((resolve) => {
@@ -453,6 +807,7 @@ export class UsageTelemetryService {
       const deadline = Date.now() + 1_500;
       await Promise.race([Promise.allSettled([...this.tracking]), aborted]);
       if (signal?.aborted) {
+        this.counts.shutdownDropped += this.buffer.length;
         this.buffer.length = 0;
         return;
       }
@@ -471,6 +826,7 @@ export class UsageTelemetryService {
           deadline,
         );
       if (this.buffer.length > 0) {
+        this.counts.shutdownDropped += this.buffer.length;
         this.recordOutcome('shutdown_dropped', this.buffer.length);
         this.warn('Usage telemetry shutdown left events unsent.');
       }

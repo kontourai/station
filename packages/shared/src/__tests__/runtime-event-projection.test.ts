@@ -2869,3 +2869,129 @@ describe('projectRuntimeEventsToMessages — images a tool returned', () => {
     ).toEqual([]);
   });
 });
+
+// An ACP `session/load` replays the whole conversation as `session/update`
+// notifications; before the adapter stopped persisting them, they were stored
+// as turn-less content between the resumed `session.started` and the next
+// `turn.started`. Shapes follow the stored events (content scrubbed).
+describe('turn-less content after a session resume', () => {
+  const acp = (
+    createdAt: string,
+    e: Partial<CanonicalRuntimeEvent> & { method: string },
+  ) =>
+    ({
+      eventId: `acp-${n++}`,
+      provider: 'acp',
+      threadId: 'station:resume',
+      createdAt,
+      ...e,
+    }) as unknown as CanonicalRuntimeEvent;
+  const events = [
+    acp('2026-10-13T20:30:00.000Z', {
+      method: 'turn.started',
+      turnId: 'turn-a',
+      prompt: 'first question',
+      attachments: [],
+    }),
+    acp('2026-10-13T20:30:05.000Z', {
+      method: 'content.text-delta',
+      turnId: 'turn-a',
+      itemId: 'msg_a',
+      delta: 'first answer',
+    }),
+    acp('2026-10-13T20:30:06.000Z', {
+      method: 'turn.completed',
+      turnId: 'turn-a',
+      finishReason: 'stop',
+    }),
+    acp('2026-10-13T23:35:07.000Z', {
+      method: 'session.started',
+      sessionId: 'station:resume',
+      initialState: 'created',
+    }),
+    acp('2026-10-13T23:35:08.901Z', {
+      method: 'content.reasoning-delta',
+      itemId: 'msg_a',
+      delta: 'replayed thinking',
+    }),
+    acp('2026-10-13T23:35:08.913Z', {
+      method: 'content.text-delta',
+      itemId: 'msg_a',
+      delta: 'replayed first answer',
+    }),
+    acp('2026-10-13T23:35:08.914Z', {
+      method: 'tool.started',
+      itemId: 'call_replay',
+      toolCallId: 'call_replay',
+      toolName: 'list_projects',
+      toolKind: 'other',
+      arguments: {},
+    }),
+    acp('2026-10-13T23:35:08.915Z', {
+      method: 'tool.completed',
+      itemId: 'call_replay',
+      toolCallId: 'call_replay',
+      toolName: 'list_projects',
+      toolKind: 'other',
+      status: 'success',
+      output: '[]',
+    }),
+    acp('2026-10-13T23:35:10.456Z', {
+      method: 'session.configured',
+      sessionId: 'station:resume',
+    }),
+    acp('2026-10-13T23:35:10.666Z', {
+      method: 'turn.started',
+      turnId: 'turn-b',
+      prompt: 'second question',
+      attachments: [],
+    }),
+    acp('2026-10-13T23:35:22.000Z', {
+      method: 'content.text-delta',
+      turnId: 'turn-b',
+      itemId: 'msg_b',
+      delta: 'second answer',
+    }),
+    acp('2026-10-13T23:35:59.934Z', {
+      method: 'turn.completed',
+      turnId: 'turn-b',
+      finishReason: 'stop',
+    }),
+  ];
+
+  it('stamps the replayed row with its own time, so timestamp order keeps the next turn last', () => {
+    const messages = projectRuntimeEventsToMessages(events, {
+      stableIds: true,
+    });
+    const replay = messages.find(
+      (m) => m.role === 'assistant' && m.metadata?.turnId === undefined,
+    );
+    expect(replay?.metadata?.timestamp).toBe(
+      Date.parse('2026-10-13T23:35:08.901Z'),
+    );
+    // Every row is placeable, and ordering by time (what the chat dock does)
+    // ends on turn B's answer rather than the replayed one.
+    expect(
+      messages.every((m) => typeof m.metadata?.timestamp === 'number'),
+    ).toBe(true);
+    const byTime = [...messages].sort(
+      (left, right) =>
+        (left.metadata!.timestamp as number) -
+        (right.metadata!.timestamp as number),
+    );
+    expect(byTime.map((m) => m.role)).toEqual([
+      'user',
+      'assistant',
+      'assistant',
+      'user',
+      'assistant',
+    ]);
+    expect(byTime.at(-1)?.metadata?.turnId).toBe('turn-b');
+    expect(
+      byTime
+        .at(-1)
+        ?.parts.filter((p) => p.type === 'text')
+        .map((p) => p.text),
+    ).toEqual(['second answer']);
+  });
+});

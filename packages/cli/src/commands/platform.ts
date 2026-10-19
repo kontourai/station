@@ -5,7 +5,10 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { createInterface } from 'node:readline/promises';
-import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
+import {
+  lookupProcessBirthFingerprint,
+  lookupWindowsProcessImageIdentity,
+} from '@kontourai/station-shared/process-identity';
 import { resolveStationRuntimeContext } from '@kontourai/station-shared/runtime-path-resolver';
 
 export const IS_WINDOWS = process.platform === 'win32';
@@ -14,6 +17,11 @@ export const IS_MAC = process.platform === 'darwin';
 export type ProcessFingerprint = {
   pid: number;
   startToken: string;
+  /**
+   * sha256 of the command line, or on Windows of the executable image path
+   * (a command line there is readable only through CIM, which can lag a new
+   * process).
+   */
   commandDigest: string;
 };
 
@@ -24,6 +32,7 @@ type StableFingerprintOptions = {
   sleep?: (ms: number) => void;
   stableMs?: number;
   timeoutMs?: number;
+  platform?: NodeJS.Platform;
 };
 
 type InspectFingerprintDependencies = {
@@ -33,6 +42,8 @@ type InspectFingerprintDependencies = {
   birth?: (pid: number) => string | null;
   /** Linux command read; defaults to `/proc/<pid>/cmdline`. */
   readFile?: (path: string, encoding: 'utf8') => string;
+  /** Environment that locates Windows PowerShell. */
+  env?: NodeJS.ProcessEnv;
 };
 
 /**
@@ -68,9 +79,37 @@ export function inspectProcessFingerprint(
   dependencies: InspectFingerprintDependencies = {},
 ): ProcessFingerprint | null {
   if (!Number.isInteger(pid) || pid < 1) return null;
-  if ((dependencies.platform ?? process.platform) === 'linux')
+  const platform = dependencies.platform ?? process.platform;
+  if (platform === 'linux')
     return inspectLinuxProcessFingerprint(pid, dependencies);
+  if (platform === 'win32')
+    return inspectWindowsProcessFingerprint(pid, dependencies);
   return inspectLstartProcessFingerprint(pid, dependencies);
+}
+
+/**
+ * Windows has no `ps`, so before #2675 this probe always came back null
+ * there: a start recorded no fingerprint, and a stop by record then
+ * signalled the recorded PIDs on the PID alone (`taskkill /F /T`), so a PID
+ * Windows had reused for an unrelated process had its whole tree ended.
+ * The token is the process's start time (the `process-identity.mjs` birth)
+ * and the digest is of its executable image, both read in one PowerShell
+ * probe that fails when the PID changes owner while it reads.
+ */
+function inspectWindowsProcessFingerprint(
+  pid: number,
+  dependencies: InspectFingerprintDependencies,
+): ProcessFingerprint | null {
+  const identity = lookupWindowsProcessImageIdentity(pid, {
+    exec: dependencies.exec as never,
+    env: dependencies.env,
+  });
+  if (!identity) return null;
+  return {
+    pid,
+    startToken: identity.birth,
+    commandDigest: createHash('sha256').update(identity.image).digest('hex'),
+  };
 }
 
 function readPsCommand(exec: typeof execFileSync, pid: number): string {
@@ -278,6 +317,10 @@ export function captureStableProcessFingerprint(
   options: StableFingerprintOptions = {},
 ): ProcessFingerprint | null {
   const inspect = options.inspect ?? inspectProcessFingerprint;
+  // Windows creates a process with its final image (there is no fork and
+  // exec), so one observation is the post-exec identity. Its PowerShell
+  // probe also takes longer than this loop's whole default window.
+  if ((options.platform ?? process.platform) === 'win32') return inspect(pid);
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? sleepSync;
   const intervalMs = Math.max(1, options.intervalMs ?? 20);

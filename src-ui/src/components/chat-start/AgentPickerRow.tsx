@@ -1,14 +1,44 @@
 import { Fragment } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
-import { agentEngineDescriptor } from '../../utils/engine';
-import { type AgentFixRoute, AgentReadinessCell } from '../AgentReadinessCell';
+import {
+  agentEngineDescriptor,
+  type EngineDescriptor,
+} from '../../utils/engine';
+import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
+import {
+  type AgentFixRoute,
+  AgentReadinessCell,
+  agentFixLabel,
+} from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
-import { EngineChip, engineChipLabel } from '../badges/EngineChip';
+import { engineChipLabel } from '../badges/EngineChip';
 import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttribution';
 import { AgentIcon } from '../icons/AgentIcon';
 import { resolveNewChatAgentUnavailability } from '../modals/new-chat-modal-utils';
 import { contextGlyph } from './ContextPickerOptions';
+import './AgentPickerRow.css';
+
+/**
+ * The engine as the row's chip names it. An engine named after the Agent
+ * plus a qualifier ("Claude Code (home-server proxy)" under "Claude Code")
+ * keeps only the qualifier: the name is already the line above.
+ */
+function engineQualifiedBy(
+  engine: EngineDescriptor | null,
+  agentName: string,
+): EngineDescriptor | null {
+  if (!engine) return engine;
+  // One trailing group only: under "Claude Code", "Claude Code (a) (b)" stays
+  // whole rather than splitting into "a) (b".
+  const match = /^(.+?)\s*\(([^()]+)\)$/.exec(engine.name);
+  if (
+    !match ||
+    normalizedDisplayLabel(match[1]) !== normalizedDisplayLabel(agentName)
+  )
+    return engine;
+  return { ...engine, name: match[2] };
+}
 
 /**
  * One Agent in a start picker: the New Chat list (fork) and the start
@@ -50,16 +80,33 @@ function AgentPickerRow({
   // one surface and not the other would be the exact divergence §5 forbids.
   const devicePresentation = useDevicePresentation();
   const engine = agentEngineDescriptor(agent);
+  const runnable = agentRunnability(agent).runnable;
+  const chipEngine = engineQualifiedBy(engine, agent.name);
   const repeatsAgent =
-    normalizedDisplayLabel(engineChipLabel(engine)) ===
+    normalizedDisplayLabel(engineChipLabel(chipEngine)) ===
     normalizedDisplayLabel(agent.name);
+  // What runs this Agent, as the quiet engine pill right after its name
+  // rather than on a line of its own: that line doubled every such row's
+  // height for one short label. A label that only repeats the name is the engine word
+  // printed twice, so it is left out.
+  const engineLabel =
+    chipEngine && !repeatsAgent ? engineChipLabel(chipEngine) : undefined;
+  // A model the engine never reported is not a model, so the row never
+  // prints the gap (the Agent chip hides it too). With a catalog there is
+  // still one to choose, so the trigger stays and asks for it; without one
+  // there is nothing to show.
+  const modelReported = modelLabel !== MODEL_NOT_REPORTED;
+  // A row that cannot start keeps its trigger: a Model chosen before the
+  // repair (Connect, Set up) is the intent the setup return carries back.
+  const showModel = modelReported || !modelUnavailable;
+  const modelText = modelReported ? modelLabel : 'Choose model';
   return (
     <div
       className="new-chat-modal__agent-row"
       // The full server sentence, on the ROW rather than the button: the row
       // button is disabled whenever there is a reason to show, and a disabled
       // button receives no hover in Chromium, so a title there would never
-      // appear. Sighted parity for the sentence the chip stands in for.
+      // appear. Sighted parity for the sentence the row cannot show.
       title={unavailability?.description}
     >
       <button
@@ -69,7 +116,7 @@ function AgentPickerRow({
         className={`new-chat-modal__agent ${isSelected ? 'new-chat-modal__agent--selected' : ''}`}
         onMouseEnter={onHover}
         onClick={onSelect}
-        disabled={interactionDisabled || !agentRunnability(agent).runnable}
+        disabled={interactionDisabled || !runnable}
         aria-describedby={
           unavailability ? `agent-${agent.slug}-unavailable` : undefined
         }
@@ -90,32 +137,25 @@ function AgentPickerRow({
           >
             {agent.name}
           </span>
-          {/* archive#4521's compact rule, at the row that proved why: the
-              header badge carries the SHORT state ("Not set up", caution
-              tone), never the server's full sentence — that badge label IS a
-              paragraph, and inline beside the name it squeezed the name to
-              one ellipsized letter while the sentence's own remedy link sat
-              below. The complete sentence stays on the row (assistive node +
-              title) and at this width the Agents list row reads the same
-              compact badge, so §5's one-wording contract keeps holding. */}
-          <AgentReadinessCell agent={agent} part="status" compact />
+          {/* What runs it, as the quiet engine pill, right after the name. */}
+          {engineLabel && (
+            <span className="new-chat-modal__agent-engine" title={engineLabel}>
+              <span className="engine-chip__pill">{engineLabel}</span>
+            </span>
+          )}
+          {/* A state only when nothing else on the row says it. "Ready" is
+              what an enabled row says by being choosable, and a row that
+              cannot start is already disabled, dimmed, and carries its one
+              fixing button (Enable, Connect, Set up, Edit agent) at the end.
+              Only a row with no fix of its own (a policy, or no fix kind at
+              all) keeps the badge, so it is never a dead row with no reason.
+              When shown it is the SHORT state (archive#4521), the Agents
+              list's own word, never the server's paragraph, which stays on
+              the row's title and assistive node. */}
+          {!runnable && !agentFixLabel(agent) && (
+            <AgentReadinessCell agent={agent} part="status" compact />
+          )}
         </div>
-        {/* One quiet line beneath the name carrying what the row IS: the
-            engine (and model, when the descriptor resolves one) plus the
-            agent's own description. Both were already in the row — the engine
-            chip competed with the name on line one, and the description sat at
-            the name's own rung. */}
-        {/* Y1, in §5 as well as §2: a chip that only repeats the name is the
-            engine word printed twice — every seeded engine row read
-            "Claude Code" with a "Claude Code" chip beneath it. */}
-        {!repeatsAgent && (
-          <div className="new-chat-modal__agent-meta">
-            <EngineChip engine={engine} />
-          </div>
-        )}
-        <span className="new-chat-modal__agent-station">
-          on {devicePresentation?.hostName ?? 'this Station'}
-        </span>
         {!agent.engineDefault && agent.description && (
           <div
             className="new-chat-modal__agent-purpose"
@@ -129,10 +169,9 @@ function AgentPickerRow({
           // VISUALLY, never in the accessibility tree. `--assistive` clips this
           // node to a screen-reader-only box so the aria-describedby target
           // still resolves to the whole sentence.
-          // ALWAYS assistive now: `AgentReadinessCell` is the visible
-          // statement of this row's state, so painting the sentence here too
-          // printed the same refusal twice (the badge read `Needs: connection
-          // offline` beside a paragraph reading `connection offline`).
+          // ALWAYS assistive: the row's visible statement is its dimmed name
+          // and fix button (or, with no fix, the short state badge), and
+          // painting the sentence too printed the same refusal twice.
           <div
             id={`agent-${agent.slug}-unavailable`}
             className="new-chat-modal__agent-reason new-chat-modal__agent-reason--assistive"
@@ -147,28 +186,32 @@ function AgentPickerRow({
           name — the picker's dominant source of height. The row is a two-column
           grid now; neither the chip nor any action changed. */}
       <div className="new-chat-modal__agent-side">
-        <button
-          type="button"
-          className="new-chat-modal__model-trigger"
-          onClick={(event) => onOpenModel(event.currentTarget)}
-          // An Agent whose engine has reported no catalog has no model to
-          // choose — the trigger opened an empty picker. Disabled (not
-          // hidden) so the row keeps its shape and the tooltip names why.
-          disabled={interactionDisabled || modelUnavailable}
-          aria-label={`Model: ${modelLabel}`}
-          title={
-            modelUnavailable
-              ? 'This Agent has not reported a model catalog'
-              : `Choose model: ${modelLabel}`
-          }
-        >
-          {/* The model name alone. The `Model · ` prefix read four times per
+        {showModel && (
+          <button
+            type="button"
+            className="new-chat-modal__model-trigger"
+            onClick={(event) => onOpenModel(event.currentTarget)}
+            // An Agent whose engine has reported no catalog has no model to
+            // choose — the trigger opened an empty picker. Disabled (not
+            // hidden) while it still names a model, so the tooltip says why.
+            disabled={interactionDisabled || modelUnavailable}
+            aria-label={`Model: ${modelText}`}
+            title={
+              modelUnavailable
+                ? 'This Agent has not reported a model catalog'
+                : modelReported
+                  ? `Choose model: ${modelLabel}`
+                  : 'Choose model'
+            }
+          >
+            {/* The model name alone. The `Model · ` prefix read four times per
               list and was the first thing the chip's own max-width ellipsized
               — on every seeded row the visible string ended at the model's
               actual name ("Model · Default (r…"), the one part that matters.
               What this control IS stays in the accessible name and tooltip. */}
-          {modelLabel}
-        </button>
+            {modelText}
+          </button>
+        )}
         {/*
           DESIGN.md §5: the SAME readiness cell the Agents list row renders.
           The picker used to draw its own chip ("Not set up" behind a warning
@@ -195,7 +238,7 @@ function AgentPickerRow({
 interface AgentPickerGroup {
   label: string;
   icon?: string;
-  glyph?: 'engine' | 'globe' | 'plug' | 'time';
+  glyph?: 'engine' | 'code' | 'globe' | 'plug' | 'time';
   agents: AgentData[];
 }
 

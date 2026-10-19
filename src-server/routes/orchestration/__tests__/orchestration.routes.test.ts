@@ -28,6 +28,7 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
+import type { ProviderAdapterModelCatalog } from '../../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -1017,6 +1018,9 @@ describe('Orchestration Routes', () => {
     await expect(readJson(response)).resolves.toEqual({
       success: false,
       error: 'Session started, but receipt persistence is unavailable.',
+      kind: 'indeterminate',
+      retryable: false,
+      failurePhase: 'indeterminate',
       receipt,
       outcome: 'indeterminate',
       receiptStatus: 'unavailable',
@@ -1403,6 +1407,9 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
       success: false,
       error:
         'Foreground Agent message may have started. Do not retry automatically.',
@@ -1545,6 +1552,106 @@ describe('Orchestration Routes', () => {
       code: 'project_worktree_directory_invalid',
     });
   });
+  describe('POST /chat expectedEngine', () => {
+    const post = (
+      app: ReturnType<typeof createOrchestrationRoutes>,
+      expectedEngine?: unknown,
+    ) =>
+      app.request('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'Send',
+          target: {
+            environment: { kind: 'current' },
+            agent: 'station',
+            ...(expectedEngine === undefined ? {} : { expectedEngine }),
+          },
+        }),
+      });
+
+    test('forwards the precondition, with its connection id branded, to the target', async () => {
+      const executeForegroundMessage = vi.fn().mockResolvedValue({
+        conversationId: 'conversation:1',
+        sessionId: 'session:1',
+        providerTurnId: 'provider-turn-1',
+        target: { kind: 'agent', id: 'station' },
+      });
+      const app = createOrchestrationRoutes({} as any, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        getUserId: () => 'bound-user',
+        executeForegroundMessage,
+      });
+
+      expect(
+        (await post(app, { kind: 'connection', connectionId: 'opencode' }))
+          .status,
+      ).toBe(200);
+      expect(
+        executeForegroundMessage.mock.lastCall![0].target.expectedEngine,
+      ).toEqual({ kind: 'connection', connectionId: 'opencode' });
+
+      expect((await post(app, { kind: 'station' })).status).toBe(200);
+      expect(
+        executeForegroundMessage.mock.lastCall![0].target.expectedEngine,
+      ).toEqual({ kind: 'station' });
+    });
+
+    // It is a precondition: nothing that could aim a request is admitted.
+    test.each([
+      ['an unknown kind', { kind: 'peer' }],
+      [
+        'an endpoint beside a connection',
+        {
+          kind: 'connection',
+          connectionId: 'opencode',
+          endpoint: 'http://elsewhere',
+        },
+      ],
+      ['a connection with no id', { kind: 'connection' }],
+      ['an extra field on station', { kind: 'station', connectionId: 'x' }],
+    ])('rejects %s', async (_label, expectedEngine) => {
+      const executeForegroundMessage = vi.fn();
+      const app = createOrchestrationRoutes({} as any, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        getUserId: () => 'bound-user',
+        executeForegroundMessage,
+      });
+      expect((await post(app, expectedEngine)).status).toBe(400);
+      expect(executeForegroundMessage).not.toHaveBeenCalled();
+    });
+
+    test('a stale expectation is a 409 carrying its code, not malformed input', async () => {
+      const { ExecutionEngineChangedError } = await import(
+        '../../../services/execution-target/execution-target-resolver.js'
+      );
+      const app = createOrchestrationRoutes({} as any, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        getUserId: () => 'bound-user',
+        executeForegroundMessage: vi.fn().mockRejectedValue(
+          new ExecutionEngineChangedError(
+            'station',
+            { kind: 'station' },
+            {
+              kind: 'connection',
+              connectionId: 'opencode' as never,
+            },
+          ),
+        ),
+      });
+
+      const res = await post(app, { kind: 'station' });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        code: 'execution_engine_changed',
+      });
+    });
+  });
+
   test('POST /chat binds the user and forwards one canonical execution target', async () => {
     const executeForegroundMessage = vi.fn().mockResolvedValue({
       conversationId: 'conversation:1',
@@ -1594,6 +1701,8 @@ describe('Orchestration Routes', () => {
       userId: 'bound-user',
       // #2493: the test app has no auth boundary, so no grant.
       fullAccessGrant: null,
+      // #3568: stops only a same-key retry's join wait; never the send.
+      joinWaitSignal: expect.any(AbortSignal),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -1867,6 +1976,9 @@ describe('Orchestration Routes', () => {
 
       expect(res.status).toBe(409);
       await expect(res.json()).resolves.toMatchObject({
+        kind: 'indeterminate',
+        failurePhase: 'indeterminate',
+        retryable: false,
         success: false,
         code: 'foreground_message_indeterminate',
         outcome: 'indeterminate',
@@ -1895,6 +2007,9 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
       success: false,
       error:
         'Foreground Agent continuation may have started. Do not retry automatically.',
@@ -1933,6 +2048,9 @@ describe('Orchestration Routes', () => {
 
       expect(res.status).toBe(409);
       await expect(res.json()).resolves.toEqual({
+        kind: 'indeterminate',
+        failurePhase: 'indeterminate',
+        retryable: false,
         success: false,
         error: expect.stringContaining('may have started'),
         code: 'foreground_message_indeterminate',
@@ -1981,6 +2099,9 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
       success: false,
       error:
         'Foreground Agent continuation may have started. Do not retry automatically.',
@@ -2274,6 +2395,8 @@ describe('Orchestration Routes', () => {
       userId: 'bound-user',
       // #2493: the test app has no auth boundary, so no grant.
       fullAccessGrant: null,
+      // #3568: stops only a same-key retry's join wait; never the send.
+      joinWaitSignal: expect.any(AbortSignal),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2383,6 +2506,45 @@ describe('Orchestration Routes', () => {
       expect(dispatchWithReceipt).not.toHaveBeenCalled();
     },
   );
+
+  test('POST /delegations answers a stale expectedEngine with its code and 409, not an uncoded 400', async () => {
+    const { ExecutionEngineChangedError } = await import(
+      '../../../services/execution-target/execution-target-resolver.js'
+    );
+    const app = createOrchestrationRoutes({} as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+      delegateTask: vi
+        .fn()
+        .mockRejectedValue(
+          new ExecutionEngineChangedError(
+            'codex',
+            { kind: 'station' },
+            { kind: 'connection', connectionId: 'opencode' as never },
+          ),
+        ),
+    });
+
+    const res = await app.request('/delegations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'Review the mobile shell',
+        target: {
+          environment: { kind: 'current' },
+          agent: 'codex',
+          expectedEngine: { kind: 'station' },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      success: false,
+      code: 'execution_engine_changed',
+    });
+  });
 
   test('POST /delegations binds the authenticated user and strips caller-supplied handle identities', async () => {
     const delegateTask = vi.fn().mockResolvedValue({
@@ -3104,6 +3266,47 @@ describe('Orchestration Routes', () => {
     );
   });
 
+  test('GET /providers/:provider/models preserves resolvedModel through real catalog discovery', async () => {
+    class CatalogAdapter extends GateTestAdapter {
+      async listModelCatalog(): Promise<ProviderAdapterModelCatalog> {
+        return {
+          models: [
+            {
+              id: 'sonnet',
+              name: 'Sonnet',
+              originalId: 'sonnet',
+              resolvedModel: 'claude-sonnet-4-5',
+            },
+          ],
+        };
+      }
+    }
+    const eventBus = new EventBus();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(new CatalogAdapter()),
+      eventBus,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const app = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+    });
+    const response = await app.request('/providers/claude/models');
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual({
+      success: true,
+      data: [
+        {
+          id: 'sonnet',
+          name: 'Sonnet',
+          originalId: 'sonnet',
+          resolvedModel: 'claude-sonnet-4-5',
+        },
+      ],
+    });
+  });
+
   test('GET /providers/:provider/models forwards cancellation to bounded discovery', async () => {
     const getProviderModels = vi
       .fn()
@@ -3401,6 +3604,8 @@ describe('Orchestration Routes', () => {
 
     expect(response.status).toBe(409);
     expect(await readJson(response)).toEqual({
+      kind: 'busy',
+      failurePhase: 'refused',
       success: false,
       error: 'Continuation is being created — retry shortly.',
       code: 'adoption_continuation_in_progress',

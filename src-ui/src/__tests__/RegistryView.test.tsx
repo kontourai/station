@@ -432,6 +432,24 @@ test('keeps an inspected catalog selection after a catalog refresh changes the a
 });
 
 describe('RegistryView', () => {
+  test('the agent picker installs without navigating away from the agent draft', async () => {
+    const { RegistryView } = await import('../views/RegistryView');
+    const onInstalled = vi.fn();
+    render(
+      <RegistryView
+        initialTab="integrations"
+        toolPicker
+        onInstalled={onInstalled}
+      />,
+    );
+    expect(screen.queryByRole('tab', { name: 'Agents' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Plugins' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Find tools' }), {
+      target: { value: 'Integration One' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }));
+    await waitFor(() => expect(onInstalled).toHaveBeenCalledOnce());
+  });
   test('keeps unsupported-format skill details available with an explanation and disabled installation', () => {
     render(<RegistryView initialTab="skills" />);
     fireEvent.click(

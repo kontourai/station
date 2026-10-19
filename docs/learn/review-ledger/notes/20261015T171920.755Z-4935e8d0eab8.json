@@ -1,0 +1,7 @@
+{
+  "revision": "265d08fa83aaf15a70afdba45c8e13f11abead53",
+
+  "notes": [
+    {"path":"examples/experimental-monument-flow-probe/README.md","note":"Reviewed pinned public-command mapping, mutation receipt, conformance reuse and explicit Tier 1 gaps; Flow source links are historical evidence.","inputs":["examples/experimental-monument-flow-probe/README.md","examples/experimental-monument-flow-probe/adapter.mjs","examples/experimental-monument-flow-probe/probe.test.mjs"]}
+  ]
+}

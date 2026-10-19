@@ -1,34 +1,7 @@
 #!/usr/bin/env node
-/**
- * Decides whether a green Main qualification run publishes a Nightly from its
- * own, just-qualified commit.
- *
- * `main-qualification.yml` calls `nightly.yml` from inside the qualification
- * run so that the run's triggering commit — the one every attestation,
- * provenance record, and cohort verifier binds to — is the qualified commit
- * by construction. Main pushes and the hourly fallback qualify immutable
- * candidates; delivery has a separate lease and configurable minimum cadence.
- * Terminal failed delivery producers permit bounded native recovery while live
- * or unknown reservations remain held.
- *
- * Markers, all durable and all maintained by the Nightly legs themselves:
- * - the deploy ledger on `origin/main` (`docs/reference/deploy-ledger.json`):
- *   a native row (`nightly-android`, `nightly-desktop`) is written only after
- *   the attested final cohort receipt verified that platform as published.
- *   Only native rows count: this entry point cannot publish the CLI (npm
- *   trusted publishing matches the top-level workflow, which is
- *   `main-qualification.yml`), so a CLI-only row must not suppress a native
- *   cohort the scheduled Nightly failed to ship;
- * - the native version-code reservation tags
- *   (`refs/tags/nightly-version-code/<code>`), which `nightly-native-stage.yml`
- *   creates at this source before it builds anything. A reservation without
- *   a ledger row means a Nightly at this source failed or is still running.
- *
- * Skip when a native row names this source (or the source it reduces to once
- * generated ledger commit-backs are peeled), when a reservation names this
- * source, or when the newest native row is younger than
- * MIN_PUBLICATION_INTERVAL_MS. Every input is validated and a malformed one
- * throws: a decision must never run on a guess.
+/** Decide whether the scheduled Nightly should attempt its event SHA.
+ * Cadence, published ledger rows and bounded reservation recovery are checked
+ * before the source gate or artifact builds. This decision is not qualification.
  */
 
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -102,7 +75,7 @@ function nativeShips(ledgerEntries) {
 
 /**
  * @param {object} input
- * @param {string} input.sourceSha The qualified commit (the run's event SHA).
+ * @param {string} input.sourceSha The run's event SHA.
  * @param {string} input.candidateSha `sourceSha` with generated ledger
  *   commit-backs peeled, stopping at the newest native ship.
  * @param {unknown} input.ledgerEntries The parsed deploy ledger.
@@ -285,7 +258,7 @@ export async function main(
   if (process.env.GITHUB_STEP_SUMMARY)
     appendFileSync(
       process.env.GITHUB_STEP_SUMMARY,
-      `Qualified Nightly for \`${options.sourceSha}\`: ${decision.publish ? 'publish' : 'skip'} — ${decision.reason}\n`,
+      `Nightly decision for \`${options.sourceSha}\`: ${decision.publish ? 'publish' : 'skip'} — ${decision.reason}\n`,
     );
   return 0;
 }

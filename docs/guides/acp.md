@@ -84,9 +84,28 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
 2. Spawns the configured command as a subprocess via `ACPProcess`
 3. Calls `connection.initialize()` with `clientCapabilities` (fs read/write, terminal)
 4. For a fresh start, calls `connection.newSession()`. A restored Session uses
-   its persisted resume cursor only after validating the connection identity,
-   execution fingerprint and live `agentCapabilities.loadSession` capability;
-   then the adapter calls `connection.loadSession()` for that native session.
+   its persisted resume cursor only after validating the connection identity
+   and execution fingerprint, and that the engine advertises a way to
+   reattach. When the engine advertises `sessionCapabilities.resume`, the
+   adapter calls `session/resume`, which restores the native session without
+   replaying it. It falls back to `connection.loadSession()` when `resume` is
+   not advertised, or when the engine answers it with method-not-found and
+   advertises `loadSession`. Any other resume failure fails the start rather
+   than loading: the fallback is closed, so an unexplained resume failure is
+   reported instead of hidden behind a replayed load.
+   On `session/load`, ACP has the agent replay the whole conversation as
+   `session/update` notifications before it answers. Station already stored
+   that history, so while the session reattaches the adapter does not publish
+   message, thought, tool or plan updates; commands, mode, config and usage
+   updates still apply. A turn sent before the start finishes waits for it
+   (up to 15 seconds, before orchestration takes the thread's turn-start
+   claim, so Stop is never held behind it) instead of racing it. A Stop or
+   an explicit cancel ends the wait with nothing sent. Past the wait it is
+   refused with the retryable code `provider_session_starting`, which the
+   client queues and re-sends. If the start fails, the send is refused with
+   `provider_session_start_failed` and stays queued with a Retry.
+   Station's restore eligibility upstream of the adapter still requires
+   `loadSession` (`src-server/runtime/bootstrap/acp-resume-cursor-support.ts`).
 
 `OrchestrationService` reconstructs the start input with `existing.resumeCursor`
 when it must re-establish an adapter Session. A malformed cursor, changed
@@ -424,7 +443,7 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 | `command` | ✓ | Executable to spawn. Must be on PATH. |
 | `args` | | Arguments passed to the command. |
 | `icon` | | Emoji or string shown next to the agent name. Defaults to `🔌`. |
-| `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace is scoped by this directory. |
+| `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace from an Agent in the global space, or in a Project with no working directory, starts here and is scoped by this directory; an Agent in a Project with a working directory starts it in that Project instead. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
 
 ### Runtime API
@@ -523,6 +542,25 @@ initialization with `station acp connections reconnect <connection-id>` after
 addressing the reported failure. A failed reconnect returns an explicit error;
 its bounded diagnostic describes the latest attempt. A missing connection
 returns not-found.
+
+A new session on a model the engine's fresh `session/new` options did not offer
+is refused by the adapter with the `model_not_advertised` code
+(`SessionStartRefusedError`). The start is settled rather than uncertain: the
+receipt is `rejected`, the thread is not fenced behind "Station may already have
+started this session", and a fresh start's session ends with the engine's
+refusal as its cause (lifecycle `failed`, which survives a reload). In the chat
+composer the
+error offers no Retry (the same model is refused again), re-reads the Agent
+catalog, the ACP connection list and the engine inventory, because the
+composer's snapshot of those is what let the model be chosen, and keeps the
+draft: choose another model and send again, and the conversation continues in a
+successor session. This is the case where the Agent's engine changed after the
+snapshot was taken (the built-in Station Agent re-binds to an external engine
+once its ACP handshake completes). The engine is still spawned and handshaked
+before it can refuse: Station does not refuse from the connection list's cached
+model options, because those come from a probe session that can differ from the
+session a start actually creates. A refusal whose process teardown cannot be
+confirmed stays an uncertain start.
 
 OpenCode's own model listing and Station's ACP model listing are different
 observations. Station obtains model options through its ACP connection. An

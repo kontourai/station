@@ -8,6 +8,11 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
+  type StationControlPolicyCaller,
+  stationControlRefusalBody,
+  stationControlScopeRefusal,
+} from '../../../tools/station-control-policy.js';
+import {
   createStationControlDispatchScope,
   stationControlDirectoryScope,
 } from '../station-control-dispatch-scope.js';
@@ -130,5 +135,131 @@ describe('a Project stored as ~/…', () => {
     expect(newIn(join(home, 'elsewhere'))).toMatchObject({
       scope: { kind: 'unreadable' },
     });
+  });
+});
+
+// Owner decision 2026-10-13 and its review: the caller's own Project for a
+// new Session that names no workspace, and the refusal of a Project the
+// owner cannot use, read from the real scope composition over Station-shaped
+// records. No dispatch route lets an account member's request reach the rule
+// today: the Agent audience gate answers a member turn first (#3276), until
+// #3277. When it does, a missing Project already reaches the rule on every
+// new-session route rather than failing earlier on its default Environment
+// (`newSessionFacts`; the route test 'a named Project that does not exist
+// reaches the scope rule…'), so the two answer alike there too.
+describe('the caller’s own Project, and a Project the owner cannot use', () => {
+  const MEMBER = 'human:deployment:issuer:member';
+  function scopeWith(options: {
+    projects: { id: string; slug?: string; workingDirectory?: string }[];
+    slugIds?: Record<string, string>;
+    executeIn?: string[];
+  }) {
+    return createStationControlDispatchScope({
+      resolveRecord: () => undefined,
+      sessionOwnerId: () => undefined,
+      sessionExists: () => false,
+      sessionRunsHost: () => false,
+      conversationThreads: () => [],
+      conversationSessionIds: () => [],
+      defaultSessionDirectory: () => undefined,
+      sessionCwd: () => undefined,
+      projectDirectories: () => options.projects,
+      projectIdForSlug: (slug) => {
+        const id =
+          options.slugIds?.[slug] ??
+          options.projects.find((project) => project.slug === slug)?.id;
+        if (!id) throw new Error('no project');
+        return id;
+      },
+      ownerMay: (ownerId, projectId, action) =>
+        ownerId === MEMBER &&
+        action !== 'approve' &&
+        (options.executeIn ?? []).includes(projectId),
+    });
+  }
+  const caller = (
+    extra: Partial<StationControlPolicyCaller> = {},
+  ): StationControlPolicyCaller => ({
+    assurance: 'bearer-exposed',
+    principal: { id: MEMBER, elevationEligible: true },
+    localProjectId: 'mine',
+    projectIdSource: 'session-record',
+    ...extra,
+  });
+
+  test('a Project that does not exist and one the owner is no member of answer identically', () => {
+    const root = realpathSync(makeTempDir('own-project-'));
+    const scope = scopeWith({
+      projects: [
+        { id: 'mine', slug: 'mine', workingDirectory: root },
+        { id: 'secret', slug: 'secret', workingDirectory: root },
+      ],
+      executeIn: ['mine'],
+    });
+    const answer = (
+      projectSlug: string,
+      assurance: 'bound' | 'bearer-exposed',
+    ) =>
+      stationControlRefusalBody(
+        stationControlScopeRefusal(
+          caller({ assurance }),
+          scope.target({
+            kind: 'new',
+            ownerId: MEMBER,
+            projectSlug,
+            remote: false,
+          }),
+        )!,
+      );
+    for (const assurance of ['bearer-exposed', 'bound'] as const) {
+      expect(answer('secret', assurance)).toEqual(answer('ghost', assurance));
+      expect(answer('ghost', assurance)).toMatchObject({
+        code: 'station_control_out_of_scope',
+        reason: 'target-unavailable',
+      });
+    }
+  });
+
+  test('the default is the record’s Project only with a folder, a slug that leads back, and execute held', () => {
+    const root = realpathSync(makeTempDir('own-project-'));
+    const own = (
+      options: Parameters<typeof scopeWith>[0],
+      extra: Partial<StationControlPolicyCaller> = {},
+    ) => scopeWith(options).ownProjectSlug(caller(extra));
+    const mine = { id: 'mine', slug: 'mine-slug', workingDirectory: root };
+    expect(own({ projects: [mine], executeIn: ['mine'] })).toBe('mine-slug');
+    // No working directory: nothing to run in.
+    expect(
+      own({
+        projects: [{ id: 'mine', slug: 'mine-slug' }],
+        executeIn: ['mine'],
+      }),
+    ).toBeUndefined();
+    // The slug now names another Project.
+    expect(
+      own({
+        projects: [mine],
+        slugIds: { 'mine-slug': 'someone-else' },
+        executeIn: ['mine'],
+      }),
+    ).toBeUndefined();
+    // The owner may view but not dispatch there.
+    expect(own({ projects: [mine], executeIn: [] })).toBeUndefined();
+    // No recorded owner, a slug looked up now, or the global space.
+    expect(
+      own({ projects: [mine], executeIn: ['mine'] }, { principal: undefined }),
+    ).toBeUndefined();
+    expect(
+      own(
+        { projects: [mine], executeIn: ['mine'] },
+        { projectIdSource: 'slug-lookup' },
+      ),
+    ).toBeUndefined();
+    expect(
+      own(
+        { projects: [mine], executeIn: ['mine'] },
+        { localProjectId: undefined, projectIdSource: undefined },
+      ),
+    ).toBeUndefined();
   });
 });

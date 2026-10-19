@@ -29,6 +29,14 @@ export interface IEmbeddingProvider {
   embed(texts: string[]): Promise<number[][]>;
   dimensions(): number;
   healthCheck?(): Promise<boolean>;
+  /**
+   * The settings that decide what a vector means: provider kind and model.
+   * Never credentials or endpoints. Two embedders that return the same value
+   * must produce interchangeable vectors. Absent, an index can tell embedders
+   * apart only by `id` and width, so a model change within one provider goes
+   * undetected.
+   */
+  embeddingIdentity?(): string;
 }
 
 // ── Index entry/hit shapes ──────────────────────────────────────────────────
@@ -40,6 +48,9 @@ export interface KnowledgeIndexEntry {
   text: string;
   vector: number[];
   metadata: Record<string, unknown>; // category, type, title, status, ...
+  /** The embedding generation that produced `vector`; absent means unknown.
+   * An unknown generation never matches an identity-scoped search. */
+  embeddingIdentity?: string;
 }
 
 export interface KnowledgeIndexHit {
@@ -48,6 +59,15 @@ export interface KnowledgeIndexHit {
   score: number;
   text: string;
   metadata: Record<string, unknown>;
+}
+
+/** How many indexed chunks one root holds under one embedding generation.
+ * `embeddingIdentity: null` is an unknown generation (written without one, or
+ * by an index format that predates generations). */
+export interface KnowledgeIndexGeneration {
+  rootId: string;
+  embeddingIdentity: string | null;
+  chunks: number;
 }
 
 // ── Index provider contract ─────────────────────────────────────────────────
@@ -67,15 +87,24 @@ export interface KnowledgeIndexProvider {
       rootIds?: string[]; // scope to a subset of roots; omitted = all registered roots
       threshold?: number;
       filter?: Record<string, unknown>; // metadata equality predicates
+      /** Admit only chunks written under this embedding generation. Omitted
+       * admits every generation, which is only safe for a single-generation
+       * index. */
+      embeddingIdentity?: string;
     },
   ): Promise<KnowledgeIndexHit[]>;
+
+  /** Indexed chunk counts per root and embedding generation, so a caller can
+   * report roots that need a rebuild for the current embedder. Optional:
+   * an index without it cannot report stale generations. */
+  generations?(rootIds?: string[]): Promise<KnowledgeIndexGeneration[]>;
 
   /**
    * THE rebuild contract: drop everything held for `rootId` and re-derive it by enumerating the
    * root's records through the K2 seam (listByType over all types → chunk → embed → upsert).
    * Property K3 must test: for a root with N records, a from-scratch rebuild produces recall
    * behavior equivalent to the incrementally-built index (index deleted → rebuilt → same results
-   * for a fixture query set).
+   * for a fixture query set). Every re-derived chunk carries the embedder's generation.
    */
   rebuildRoot(
     rootId: string,

@@ -38,6 +38,19 @@ export const MAX_FEED_EVENTS = 200;
  */
 const HISTORY_RETRY_BASE_MS = 1_000;
 const HISTORY_RETRY_MAX_MS = SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS;
+/**
+ * How long a failure must persist before the hook reports the connection
+ * interrupted. A phone resuming from the background drops the live stream and
+ * fails its first history read before the network is back; that blip
+ * recovers within a second or two and is not an outage.
+ */
+export const CONNECTION_INTERRUPTION_GRACE_MS = 3_000;
+/**
+ * How long the live stream may take to open, with no failure reported, before
+ * the hook reports it interrupted. The transport connects with no timeout of
+ * its own, so a connect that hangs would otherwise never surface.
+ */
+export const LIVE_STREAM_CONNECT_TIMEOUT_MS = 10_000;
 
 /**
  * Only a credential failure is terminal for the history window: a 401/403
@@ -187,6 +200,22 @@ export interface SessionEventStream {
    */
   liveStreamStoppedTerminal: boolean;
   /**
+   * Station has been unreachable for longer than a blip: the live stream
+   * failed and stayed closed for `CONNECTION_INTERRUPTION_GRACE_MS`, has not
+   * opened within `LIVE_STREAM_CONNECT_TIMEOUT_MS`, or the history read has
+   * been retrying for the grace window. Distinct from `connected === false`,
+   * which is also true while the stream is still opening, and from `error`,
+   * which a single failed history read sets at once. A terminal live-stream
+   * stop sets this immediately.
+   */
+  connectionInterrupted: boolean;
+  /**
+   * A persisted history read has succeeded for this session, so an empty
+   * `events` means the conversation has no messages rather than that none
+   * have arrived yet.
+   */
+  historyLoaded: boolean;
+  /**
    * archive#3426: the `/event-window` history read's own retry ladder hit a
    * terminal (401/403) failure and stopped — same `isTerminalHistoryFailure`
    * branch that clears `historyRetrying`, so the two together tell "history
@@ -262,6 +291,8 @@ export function useSessionEventStream(
   const [recoveryRevision, setRecoveryRevision] = useState(0);
   const [liveStreamStoppedTerminal, setLiveStreamStoppedTerminal] =
     useState(false);
+  const [connectionInterrupted, setConnectionInterrupted] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyStoppedTerminal, setHistoryStoppedTerminal] = useState(false);
   const [capabilityRecoveryExhausted, setCapabilityRecoveryExhausted] =
     useState(false);
@@ -417,6 +448,8 @@ export function useSessionEventStream(
     setHistoryRetrying(false);
     setElidedHistory(NO_ELIDED_HISTORY);
     setLiveStreamStoppedTerminal(false);
+    setConnectionInterrupted(false);
+    setHistoryLoaded(false);
     setHistoryStoppedTerminal(false);
     setCapabilityRecoveryExhausted(false);
     persistedKeys.current = new Set();
@@ -458,6 +491,66 @@ export function useSessionEventStream(
     const bufferedLive: Array<{ id: string; event: OrchestrationEvent }> = [];
     let historyRetryDelay = HISTORY_RETRY_BASE_MS;
     let historyRetryScheduled = false;
+    // Two independent sources feed `connectionInterrupted`: the live stream
+    // and the history read. Each one is marked only once its own failure has
+    // outlasted its timer, and is cleared by its own recovery.
+    let liveInterrupted = false;
+    let historyInterrupted = false;
+    let liveInterruptionTimer: ReturnType<typeof setTimeout> | undefined;
+    let liveInterruptionTimerKind: 'connect' | 'grace' | undefined;
+    let historyInterruptionTimer: ReturnType<typeof setTimeout> | undefined;
+    const publishInterruption = () => {
+      if (active)
+        setConnectionInterrupted(liveInterrupted || historyInterrupted);
+    };
+    const cancelLiveInterruptionTimer = () => {
+      if (liveInterruptionTimer !== undefined)
+        clearTimeout(liveInterruptionTimer);
+      liveInterruptionTimer = undefined;
+      liveInterruptionTimerKind = undefined;
+    };
+    const armLiveInterruption = (kind: 'connect' | 'grace') => {
+      // A pending grace window is never pushed back; a pending connect
+      // timeout gives way to the shorter grace once a failure is reported.
+      if (liveInterruptionTimerKind === 'grace') return;
+      if (liveInterruptionTimerKind === kind) return;
+      cancelLiveInterruptionTimer();
+      liveInterruptionTimerKind = kind;
+      liveInterruptionTimer = setTimeout(
+        () => {
+          liveInterruptionTimer = undefined;
+          liveInterruptionTimerKind = undefined;
+          liveInterrupted = true;
+          publishInterruption();
+        },
+        kind === 'grace'
+          ? CONNECTION_INTERRUPTION_GRACE_MS
+          : LIVE_STREAM_CONNECT_TIMEOUT_MS,
+      );
+    };
+    const setLiveInterrupted = (interrupted: boolean) => {
+      cancelLiveInterruptionTimer();
+      liveInterrupted = interrupted;
+      publishInterruption();
+    };
+    const cancelHistoryInterruptionTimer = () => {
+      if (historyInterruptionTimer !== undefined)
+        clearTimeout(historyInterruptionTimer);
+      historyInterruptionTimer = undefined;
+    };
+    const armHistoryInterruption = () => {
+      if (historyInterruptionTimer !== undefined || historyInterrupted) return;
+      historyInterruptionTimer = setTimeout(() => {
+        historyInterruptionTimer = undefined;
+        historyInterrupted = true;
+        publishInterruption();
+      }, CONNECTION_INTERRUPTION_GRACE_MS);
+    };
+    const clearHistoryInterruption = () => {
+      cancelHistoryInterruptionTimer();
+      historyInterrupted = false;
+      publishInterruption();
+    };
     let historyRetryTimer: ReturnType<typeof setTimeout> | undefined;
     // archive#3445: a retry scheduled under "this failure was transient" must
     // not be left to fire after a LATER attempt has already established
@@ -477,6 +570,7 @@ export function useSessionEventStream(
       if (historyRetryScheduled) return;
       historyRetryScheduled = true;
       setHistoryRetrying(true);
+      armHistoryInterruption();
       const delay = historyRetryDelay;
       historyRetryDelay = Math.min(historyRetryDelay * 2, HISTORY_RETRY_MAX_MS);
       const retryTimer = setTimeout(() => {
@@ -568,8 +662,10 @@ export function useSessionEventStream(
           discardPendingLiveEvents();
           apply(restored);
           hydrated = true;
+          setHistoryLoaded(true);
           historyRetryDelay = HISTORY_RETRY_BASE_MS;
           setHistoryRetrying(false);
+          clearHistoryInterruption();
           setHistoryStoppedTerminal(false);
           setError(undefined);
           // No `setUpgradeRequired(false)` here, deliberately. Review asked
@@ -626,6 +722,8 @@ export function useSessionEventStream(
           // feed and nothing left to reopen it.
           cancelHistoryRetry();
           setHistoryRetrying(false);
+          // `historyStoppedTerminal` tells this story instead.
+          clearHistoryInterruption();
           setHistoryStoppedTerminal(true);
           return;
         }
@@ -709,6 +807,11 @@ export function useSessionEventStream(
             authenticatedStream?.close();
             capabilityStopped = true;
             const upgradeRequired = capability === false;
+            // The host answered "unsupported", which `upgradeRequired` names;
+            // an undetermined answer leaves the stream closed and re-probing,
+            // which is an outage only once it outlasts the grace window.
+            if (upgradeRequired) cancelLiveInterruptionTimer();
+            else if (!liveInterrupted) armLiveInterruption('grace');
             setUpgradeRequired(upgradeRequired);
             setError(
               new Error(
@@ -788,6 +891,7 @@ export function useSessionEventStream(
     // needless state update/render for a frame we already have.
     const cursor = createStreamCursorTracker();
 
+    armLiveInterruption('connect');
     authenticatedStream = fetchSSE(
       `${apiBase}/api/orchestration/events?threadId=${encodeURIComponent(threadId)}`,
       {
@@ -795,6 +899,7 @@ export function useSessionEventStream(
         onOpen: () => {
           setConnected(true);
           setLiveStreamStoppedTerminal(false);
+          setLiveInterrupted(false);
           hostResponded = true;
           if (!initialHydrationStarted) {
             startInitialHydration();
@@ -825,13 +930,19 @@ export function useSessionEventStream(
           initialHydrationStarted = false;
           negotiateWindow();
           setConnected(false);
+          // The first failure starts the grace window; later failures in the
+          // same outage leave it running rather than restarting it.
+          if (!liveInterrupted) armLiveInterruption('grace');
         },
         // Fires once alongside `onError` for the SAME failure, only when
         // `fetchSSE` classified it `terminal` (401/403) and gave up
         // automatic reconnection — the additive signal `connected === false`
         // alone cannot give (archive#3426): that is equally true while the
         // ladder is mid-backoff and about to retry on its own.
-        onTerminal: () => setLiveStreamStoppedTerminal(true),
+        onTerminal: () => {
+          setLiveStreamStoppedTerminal(true);
+          setLiveInterrupted(true);
+        },
         // archive#3437: `onOpen` was the only clearing path,
         // but the transport's terminal state ends at the WAKE (`retry` or
         // `notifyCredentialChanged`), not at a successful open — a resumed
@@ -843,6 +954,8 @@ export function useSessionEventStream(
         // soon as the transport is actively retrying again; `onOpen` still
         // also clears it for the ordinary (non-terminal-stop) reconnect
         // path.
+        // `onTerminal` has already marked the live stream interrupted; it
+        // stays so until a resumed attempt opens.
         onRetry: () => setLiveStreamStoppedTerminal(false),
         onMessage: (raw) => {
           if (raw.event === 'orchestration:snapshot') {
@@ -957,6 +1070,8 @@ export function useSessionEventStream(
       discardPendingLiveEvents();
       for (const recoveryTimer of recoveryTimers) clearTimeout(recoveryTimer);
       recoveryTimers.clear();
+      cancelLiveInterruptionTimer();
+      cancelHistoryInterruptionTimer();
       authenticatedStream?.close();
     };
   }, [
@@ -985,6 +1100,8 @@ export function useSessionEventStream(
     historyRetrying,
     elidedHistory,
     liveStreamStoppedTerminal,
+    connectionInterrupted,
+    historyLoaded,
     historyStoppedTerminal,
     capabilityRecoveryExhausted,
     retryCapabilityRecovery,

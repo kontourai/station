@@ -450,6 +450,124 @@ describe('bounded Finished list (drop-oldest per chat)', () => {
   });
 });
 
+test('a live delegate reopens in its parent chat after 50 finished Bash cards evict its finished card', () => {
+  const store = new BackgroundTasksStore();
+  const at = (seconds: number) =>
+    new Date(
+      Date.parse('2026-07-29T00:00:00.000Z') + seconds * 1000,
+    ).toISOString();
+  store.ingest({
+    provider: 'claude',
+    eventId: 'delegate-bound',
+    method: 'session.started',
+    threadId: 'delegate',
+    sessionId: 'delegate',
+    createdAt: at(0),
+    metadata: { taskId: 'delegate', parentTaskId: 'chat-1' },
+  });
+  store.ingest({
+    provider: 'claude',
+    eventId: 'delegate-finished',
+    method: 'turn.completed',
+    threadId: 'delegate',
+    turnId: 'first',
+    createdAt: at(1),
+  });
+  for (let i = 0; i < 50; i += 1) {
+    const toolCallId = `bash-${i}`;
+    const itemId = `item-${i}`;
+    store.ingest({
+      provider: 'claude',
+      eventId: `started-${i}`,
+      method: 'tool.started',
+      threadId: 'chat-1',
+      turnId: 'parent-turn',
+      itemId,
+      toolCallId,
+      toolName: 'Bash',
+      arguments: { command: 'true' },
+      createdAt: at(2 + i * 2),
+    });
+    store.ingest({
+      provider: 'claude',
+      eventId: `finished-${i}`,
+      method: 'tool.completed',
+      threadId: 'chat-1',
+      turnId: 'parent-turn',
+      itemId,
+      toolCallId,
+      toolName: 'Bash',
+      status: 'success',
+      createdAt: at(3 + i * 2),
+    });
+  }
+  expect(Object.keys(store.getSnapshot().entries)).toHaveLength(50);
+  expect(store.getSnapshot().entries.delegate).toBeUndefined();
+  store.ingest({
+    provider: 'claude',
+    eventId: 'delegate-follow-up',
+    method: 'turn.started',
+    threadId: 'delegate',
+    turnId: 'follow-up',
+    prompt: 'Continue the review',
+    createdAt: at(200),
+  });
+  expect(
+    selectChatBackgroundTasks(store.getSnapshot(), 'chat-1', []).running,
+  ).toEqual([
+    expect.objectContaining({
+      id: 'delegate',
+      chatThreadId: 'chat-1',
+      delegateThreadId: 'delegate',
+      state: 'running',
+      title: 'Continue the review',
+      stop: { kind: 'delegate-interrupt' },
+    }),
+  ]);
+  expect(
+    selectChatBackgroundTasks(store.getSnapshot(), 'chat-2', []).running,
+  ).toEqual([]);
+});
+
+test('an idle legacy delegate remains addressable for a later turn without another binding snapshot', () => {
+  const store = new BackgroundTasksStore();
+  store.reconcileSnapshot({
+    sessions: [
+      {
+        provider: 'claude',
+        threadId: 'old-delegate',
+        status: 'idle',
+        hasActiveTurn: false,
+        createdAt: '2026-07-29T00:00:00.000Z',
+        delegation: { taskId: 'old-delegate', parentTaskId: 'chat-1' },
+      },
+    ],
+  });
+  expect(store.getSnapshot()).toEqual({
+    entries: {},
+    delegateParents: { 'old-delegate': 'chat-1' },
+  });
+  store.reconcileSnapshot({ sessions: [] });
+  store.ingest({
+    provider: 'claude',
+    eventId: 'idle-follow-up',
+    method: 'turn.started',
+    threadId: 'old-delegate',
+    turnId: 'follow-up',
+    prompt: 'Late turn',
+    createdAt: '2026-07-29T00:00:05.000Z',
+  });
+  expect(
+    selectChatBackgroundTasks(store.getSnapshot(), 'chat-1', []).running,
+  ).toEqual([
+    expect.objectContaining({
+      id: 'old-delegate',
+      state: 'running',
+      stop: { kind: 'delegate-interrupt' },
+    }),
+  ]);
+});
+
 describe('reconcileBackgroundTasksSnapshot', () => {
   function payload(
     sessions: OrchestrationSnapshotPayload['sessions'],

@@ -1,0 +1,7 @@
+{
+  "revision": "f5e07fdcb99bade18e236f04c8e6251de93a55a5",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the metrics change: only the station.acp.resume_sessions description changed, adding the 'resumed' outcome. The document makes no claim about that counter's outcomes; its statements remain accurate.","inputs":["docs/guides/web-push-notifications.md","src-server/telemetry/metrics.ts"]}
+  ]
+}

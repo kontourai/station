@@ -206,7 +206,14 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
         <h3 id="agent-instructions" className="agent-editor__section-title">
           Instructions
         </h3>
-        <AgentEditorPromptTab {...props} finding={findingFor('prompt')} />
+        <AgentEditorPromptTab
+          {...props}
+          finding={findingFor('prompt')}
+          firstTurnDelivery={
+            matrix.systemPrompt.state === 'unsupported' &&
+            matrix.instructionsInFirstTurn.state !== 'unsupported'
+          }
+        />
       </section>
 
       {(sections.some((section) => section.key === 'tools') ||

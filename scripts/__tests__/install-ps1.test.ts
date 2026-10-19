@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -195,6 +196,79 @@ describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
     });
     expect(explicit.status, explicit.stderr).toBe(0);
     expect(explicit.lastLine).toBe('STATION_STAGED_VERSION=0.7.0-nightly.12');
+  });
+
+  it('refuses to stage a release older than one this install already accepted, though newer than the active one (#187)', () => {
+    const f = fixture();
+    const mark = join(f.installRoot, '.station-release-accepted.json');
+    const newest = buildWindowsArchive(f.dir, '0.7.0-nightly.13');
+    expect(stage(f, signed(f, newest)).status).toBe(0);
+    expect(readFileSync(mark, 'utf8')).toBe(
+      `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'nightly', version: '0.7.0-nightly.13' })}\n`,
+    );
+    // The service rolled back to nightly.11 (a deliberate, explicit stage).
+    const oldest = buildWindowsArchive(f.dir, '0.7.0-nightly.11');
+    const rolledBack = stage(f, signed(f, oldest), {
+      STATION_VERSION: 'v0.7.0-nightly.11',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(rolledBack.status, rolledBack.stderr).toBe(0);
+    symlinkSync(
+      join(f.installRoot, 'versions', '0.7.0-nightly.11'),
+      join(f.installRoot, 'current'),
+    );
+    expect(JSON.parse(readFileSync(mark, 'utf8')).version).toBe(
+      '0.7.0-nightly.13',
+    );
+
+    const replayed = buildWindowsArchive(f.dir, '0.7.0-nightly.12');
+    const refused = stage(f, signed(f, replayed));
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain(
+      'Station install failed: refusing Station v0.7.0-nightly.12: this install already accepted the newer signed release v0.7.0-nightly.13, so this manifest is stale or replayed',
+    );
+    expect(versionDirs(f)).toEqual(['0.7.0-nightly.11', '0.7.0-nightly.13']);
+
+    const explicit = stage(f, signed(f, replayed), {
+      STATION_VERSION: 'v0.7.0-nightly.12',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(explicit.status, explicit.stderr).toBe(0);
+    expect(explicit.lastLine).toBe('STATION_STAGED_VERSION=0.7.0-nightly.12');
+    // Control: the accepted release itself stages without a flag.
+    const forward = stage(f, signed(f, newest));
+    expect(forward.status, forward.stderr).toBe(0);
+  });
+
+  it('seeds the accepted release from the verified active one when an install predates it (#187)', () => {
+    const f = fixture();
+    const mark = join(f.installRoot, '.station-release-accepted.json');
+    const archive = buildWindowsArchive(f.dir, '0.7.0-nightly.12');
+    expect(stage(f, signed(f, archive)).status).toBe(0);
+    symlinkSync(
+      join(f.installRoot, 'versions', '0.7.0-nightly.12'),
+      join(f.installRoot, 'current'),
+    );
+    rmSync(mark);
+    // Not into an install root that fails the trust checks: nothing to do,
+    // and nothing written.
+    const untrusted = stage(f, signed(f, archive), {
+      STATION_INSTALL_TEST_UNTRUSTED_ROOT: '1',
+    });
+    expect(untrusted.status, untrusted.stderr).toBe(0);
+    expect(untrusted.stdout).toContain(
+      'Station v0.7.0-nightly.12 is already installed; nothing to do.',
+    );
+    expect(existsSync(mark)).toBe(false);
+
+    const same = stage(f, signed(f, archive));
+    expect(same.status, same.stderr).toBe(0);
+    expect(same.stdout).toContain(
+      'Station v0.7.0-nightly.12 is already installed; nothing to do.',
+    );
+    expect(JSON.parse(readFileSync(mark, 'utf8')).version).toBe(
+      '0.7.0-nightly.12',
+    );
   });
 
   // Each rejection path: the named refusal, exit 1, and no version staged.

@@ -347,6 +347,11 @@ export function ProjectSidebarPresenceTray({
         <span className="sidebar__presence-glyph" aria-hidden="true">
           <PeopleGlyph />
         </span>
+        {activeSessions.length === 0 && workers.length === 0 && (
+          <span className="sidebar__presence-summary" aria-hidden="true">
+            Live work
+          </span>
+        )}
         {shown.length > 0 && (
           <span className="sidebar__presence-stack" aria-hidden="true">
             {shown.map((participant) => (

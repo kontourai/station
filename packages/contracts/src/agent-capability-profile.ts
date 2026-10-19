@@ -1,6 +1,7 @@
-import type {
-  AgentCapabilitySurface,
-  AuthoredCapabilityFlags,
+import {
+  type AgentCapabilitySurface,
+  type AuthoredCapabilityFlags,
+  agentPromptDelivery,
 } from './agent-validation.js';
 import type { EngineCapabilityMatrix } from './engine-capability-matrix.js';
 
@@ -65,7 +66,10 @@ export function deriveAgentEditorSurfaces(
 ): AgentEditorSurfaceState[] {
   return SURFACE_ORDER.map((key) => {
     const supported =
-      matrix[SURFACE_TO_MATRIX_KEY[key]].state !== 'unsupported';
+      (key === 'prompt'
+        ? agentPromptDelivery(matrix)
+        : matrix[SURFACE_TO_MATRIX_KEY[key]]
+      ).state !== 'unsupported';
     if (supported) {
       return { key, visible: true, mode: 'editable' as const };
     }

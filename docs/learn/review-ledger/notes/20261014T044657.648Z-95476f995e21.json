@@ -1,0 +1,7 @@
+{
+  "revision": "d88b69bf475dce29c21f24ba442e945a4a0fd183",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Re-reviewed after transcriptLayoutTrace.ts stopped exporting its namespace constant (now module-private; the value app:transcript-layout is unchanged). The Transcript layout tracing section names the localStorage.debug value and the window.__stationTranscriptTrace API, not the constant, so it stays accurate.","inputs":["docs/guides/development.md","src-ui/src/components/chat/transcriptLayoutTrace.ts"]}
+  ]
+}

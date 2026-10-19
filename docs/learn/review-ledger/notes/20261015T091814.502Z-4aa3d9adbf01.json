@@ -1,0 +1,7 @@
+{
+  "revision": "a75e1374339db7750b57e19b13ff0fa4031dddb2",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"PR #3676 Fix round 8: Re-read the conversation-open API and execution-binding sections and traced the optional signal/timeoutMs forwarding through authenticatedFetch. Updated the signature and per-call body-inclusive deadline contract; UI authoritative opens explicitly select 30 seconds without enabling a global deadline. Real-SDK controlled header/body stalls and epoch cancellation passed; existing SDK timeout and conversation tests passed 90/90 with the owner suite.","inputs":["docs/reference/sdk.md","packages/sdk/src/conversation-open.ts","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

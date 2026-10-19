@@ -1,3 +1,5 @@
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { providerFailure } from '../provider-failure.js';
 /**
  * AcpAdapter — ProviderAdapterShape implementation for ACP-connected agent
  * apps (e.g. Kiro), driven through the canonical adapter seam (ADR-0008).
@@ -30,13 +32,17 @@ import type {
 } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { ACP_MODEL_OVERRIDE_PER_TURN } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  ACP_ENGINE_DURABILITY,
+  ACP_MODEL_OVERRIDE_PER_TURN,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   CapabilityUndelivered,
   ResolvedAgentDefinition,
 } from '@kontourai/station-contracts/provider';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  MODEL_NOT_ADVERTISED_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
@@ -73,18 +79,22 @@ import {
   agentCapabilityUndelivered,
   sessionCwdResolution,
 } from '../../telemetry/metrics.js';
+import { raceWithSignal } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   AttachmentInputUnsupportedError,
-  type CanonicalRuntimeEvent,
+  type ProviderRuntimeEvent as CanonicalRuntimeEvent,
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
   type ProviderSession,
+  ProviderSessionStartFailedError,
   type ProviderSessionStartInput,
+  ProviderSessionStartingError,
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../adapter-shape.js';
 import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
 import {
@@ -296,6 +306,8 @@ export function acpConnectionDefaultCwd(config: {
 
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
+  /** Overrides {@link DEFAULT_SEND_TURN_START_WAIT_MS} (tests). */
+  sendTurnStartWaitMs?: number;
   logger?: AcpLogger;
   processFactory?: (opts: ACPProcessOptions) => ACPProcess;
   /** Injectable Station home for private unbound-session workspaces. */
@@ -538,7 +550,66 @@ export interface AcpSessionRecord {
   turnErrorNotificationsSuppressed?: boolean;
   /** Bounded per-session owner for ACP's redraw-style tool updates. */
   toolUpdateSupervisor: AcpToolUpdateSupervisor;
+  /**
+   * True while `session/resume` or `session/load` reattaches this record to
+   * its native session. Replayed content is history Station already stored,
+   * so it is not published; session-state updates (commands, mode, config,
+   * usage) still apply. `sendTurn` waits for the start (`startSettled`).
+   */
+  reattaching?: boolean;
+  /**
+   * Settles (never rejects) when this record's `startSession` finishes,
+   * successfully or not. The record is visible to `sendTurn` from before the
+   * engine starts, so a send that arrives meanwhile waits on this instead of
+   * racing the start. Absent once nothing is pending.
+   */
+  startSettled?: Promise<void>;
+  /** Why this record's start failed, for a send that waited on it. */
+  startFailure?: unknown;
+  /** Sends waiting in `whenSessionReady`, woken when a Stop begins. */
+  startWaiters?: Set<() => void>;
 }
+
+/**
+ * How long a send waits for its session's engine start (for a restored ACP
+ * session, the reattach) before refusing retryably. Short: the client keeps
+ * the message queued and re-sends it.
+ */
+const DEFAULT_SEND_TURN_START_WAIT_MS = 15_000;
+
+/** The first line of an error, bounded, for a user-facing refusal. */
+function shortReason(error: unknown): string {
+  const line = errorMessage(error).split('\n')[0]?.trim() || 'unknown error';
+  return line.length > 160 ? `${line.slice(0, 157)}...` : line;
+}
+
+/**
+ * How this engine can reattach to a stored session: `session/resume` (no
+ * history replay) when advertised, else `session/load`. Omitted and `null`
+ * both mean `resume` is not advertised.
+ */
+function acpReattachMethod(
+  initResult: ACPProcess['initResult'],
+): 'resume' | 'load' | undefined {
+  const capabilities = initResult?.agentCapabilities;
+  if (capabilities?.sessionCapabilities?.resume != null) return 'resume';
+  if (capabilities?.loadSession === true) return 'load';
+  return undefined;
+}
+
+/**
+ * The `session/update` kinds an ACP `session/load` replays as history
+ * (ACP: the agent streams the entire conversation back before it answers
+ * the load request).
+ */
+const ACP_HISTORY_REPLAY_UPDATES: ReadonlySet<string> = new Set([
+  'user_message_chunk',
+  'agent_message_chunk',
+  'agent_thought_chunk',
+  'tool_call',
+  'tool_call_update',
+  'plan',
+]);
 
 /**
  * The ACP engine's declared capabilities, exported because
@@ -593,6 +664,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // ACP's `loadSession` is negotiated per connected CLI. A global adapter
     // declaration would overstate arbitrary/older connections; the inspector
     // must project an observed connection-specific capability instead.
+    durability: ACP_ENGINE_DURABILITY,
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('acp'),
@@ -905,6 +977,10 @@ export class AcpAdapter implements ProviderAdapterShape {
       logger,
     });
     record.process = acpProcess;
+    let settleStart!: () => void;
+    record.startSettled = new Promise<void>((resolve) => {
+      settleStart = resolve;
+    });
     this.sessions.set(input.threadId, record);
 
     try {
@@ -1285,24 +1361,70 @@ export class AcpAdapter implements ProviderAdapterShape {
       // for recovery (session closed) with a truthful reason.
       this.requireCurrentGeneration(input.threadId, record.generation);
       if (isAcpResumeCursor(input.resumeCursor)) {
-        if (acpProcess.initResult?.agentCapabilities?.loadSession !== true) {
+        const reattach = acpReattachMethod(acpProcess.initResult);
+        if (!reattach) {
           acpResumeSessions.add(1, {
             connectionId: config.id,
             outcome: 'load-unsupported',
           });
           throw new Error(
-            "This engine's CLI does not advertise session loading (ACP loadSession); the previous conversation cannot be resumed.",
+            "This engine's CLI does not advertise session loading (ACP session/resume or loadSession); the previous conversation cannot be resumed.",
           );
         }
-        await acpProcess.loadSession(
-          input.resumeCursor.acpSessionId,
-          cwd,
-          passthroughMcpServers,
-        );
-        acpResumeSessions.add(1, {
-          connectionId: config.id,
-          outcome: 'loaded',
-        });
+        const acpSessionId = input.resumeCursor.acpSessionId;
+        // A turn sent while the engine reattaches would race the history
+        // suppression below, so `sendTurn` waits for the start to finish.
+        // `session/load` makes the engine replay the whole conversation as
+        // `session/update` notifications before it answers; `session/resume`
+        // does not. Station already holds that history, so a replay is not
+        // published: persisting it stored a second, turn-less copy of every
+        // earlier answer.
+        record.reattaching = true;
+        try {
+          let outcome: 'resumed' | 'loaded';
+          if (reattach === 'resume') {
+            try {
+              await acpProcess.resumeSession(
+                acpSessionId,
+                cwd,
+                passthroughMcpServers,
+              );
+              outcome = 'resumed';
+            } catch (error) {
+              // An engine that advertises `sessionCapabilities.resume` but
+              // answers "method not found" is loaded instead. Any other
+              // failure is real and propagates (fail closed: loading after
+              // an unexplained resume failure could mask it).
+              if (
+                !isAcpMethodNotFound(error) ||
+                acpProcess.initResult?.agentCapabilities?.loadSession !== true
+              ) {
+                throw error;
+              }
+              await acpProcess.loadSession(
+                acpSessionId,
+                cwd,
+                passthroughMcpServers,
+              );
+              outcome = 'loaded';
+            }
+          } else {
+            await acpProcess.loadSession(
+              acpSessionId,
+              cwd,
+              passthroughMcpServers,
+            );
+            outcome = 'loaded';
+          }
+          // The SDK dispatches each notification without awaiting it before
+          // reading the next message, so the last replayed updates can still
+          // be in flight (as microtasks) when the response resolves. Yield a
+          // macrotask so they land while the replay is still suppressed.
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          acpResumeSessions.add(1, { connectionId: config.id, outcome });
+        } finally {
+          record.reattaching = false;
+        }
       } else {
         const sessionResult = await acpProcess.newSession(
           cwd,
@@ -1372,8 +1494,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             sessionResult.configOptions,
           );
           if (!modelOption) {
-            throw new Error(
+            throw new SessionStartRefusedError(
               `ACP model option unavailable: connection '${config.id}' did not advertise a model configuration option for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
             );
           }
           if (
@@ -1381,8 +1504,9 @@ export class AcpAdapter implements ProviderAdapterShape {
               (option) => option.value === requestedModel,
             )
           ) {
-            throw new Error(
+            throw new SessionStartRefusedError(
               `ACP model value unsupported: connection '${config.id}' did not advertise '${requestedModel}' for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
             );
           }
           const response = await acpProcess.setConfigOption(
@@ -1484,7 +1608,15 @@ export class AcpAdapter implements ProviderAdapterShape {
 
       return session;
     } catch (error) {
-      const cancelled = error instanceof AcpSessionStartCancelledError;
+      record.startFailure = error;
+      // A Stop that landed while `session/new` was in flight ends the start
+      // as a stop whatever the engine then said: the user asked for it, so a
+      // refusal arriving afterwards is not reported as the model's.
+      const superseded =
+        error instanceof SessionStartRefusedError &&
+        !this.isCurrentGeneration(input.threadId, record.generation);
+      const cancelled =
+        error instanceof AcpSessionStartCancelledError || superseded;
       session.status = 'error';
       session.updatedAt = new Date().toISOString();
       // archive#1684: the session never started — a station-control MCP token
@@ -1508,6 +1640,39 @@ export class AcpAdapter implements ProviderAdapterShape {
             reason: 'stopped',
           });
         }
+        // `session.started` went out before `session/new` answered, so the
+        // service has bound this thread to this adapter. A refused start ends
+        // that session: say why, then end it, or the thread stays bound and
+        // the very retry the refusal invites fails with "Session already
+        // exists". `exitCode` is deliberately absent (no process observation):
+        // the cause is the `runtime.error`, which is what folds the lifecycle
+        // to `failed` with the engine's own words.
+        if (
+          error instanceof SessionStartRefusedError &&
+          !superseded &&
+          record.startedPublished
+        ) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'runtime.error',
+            ...providerFailure(error.kind, error.failurePhase),
+            severity: 'error',
+            code: error.code,
+            message: error.message,
+          } satisfies ProviderRuntimeErrorEvent);
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'session.exited',
+            sessionId: input.threadId,
+            reason: 'start-refused',
+          });
+        }
       } catch (cleanupError) {
         throw new AggregateError(
           [error, cleanupError],
@@ -1515,6 +1680,83 @@ export class AcpAdapter implements ProviderAdapterShape {
         );
       }
       throw error;
+    } finally {
+      record.startSettled = undefined;
+      settleStart();
+    }
+  }
+
+  /**
+   * A send that arrives while its session is still starting (the record is
+   * registered before the engine answers, and a restored ACP session spends
+   * that time reattaching) waits for the start rather than racing it: updates
+   * during a reattach are treated as replayed history and dropped, so a turn
+   * opened then would lose its own output. Orchestration awaits this before
+   * taking the thread's turn-start claim, so Stop/End/park never queue
+   * behind it. Nothing reaches the engine here.
+   */
+  async whenSessionReady(
+    threadId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<void> {
+    const record = this.sessions.get(threadId);
+    const pending = record?.startSettled;
+    if (!record || !pending) return;
+    const waitMs =
+      this.options.sendTurnStartWaitMs ?? DEFAULT_SEND_TURN_START_WAIT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let wake: (() => void) | undefined;
+    const outcome = await raceWithSignal(
+      Promise.race([
+        pending.then(() => 'settled' as const),
+        new Promise<'timeout'>((resolve) => {
+          timer = setTimeout(() => resolve('timeout'), waitMs);
+        }),
+        // A Stop does not wait for the start to unwind before this send
+        // learns it will never run.
+        new Promise<'stopping'>((resolve) => {
+          wake = () => resolve('stopping');
+          record.startWaiters ??= new Set();
+          record.startWaiters.add(wake);
+        }),
+      ]),
+      options.signal,
+    ).finally(() => {
+      clearTimeout(timer);
+      if (wake) record.startWaiters?.delete(wake);
+    });
+    // Still starting: retryable, so the client keeps the message queued.
+    if (outcome === 'timeout') throw new ProviderSessionStartingError();
+    // A Stop ended the start: the user's decision, so definitive.
+    if (
+      outcome === 'stopping' ||
+      record.stopping ||
+      record.startFailure instanceof AcpSessionStartCancelledError
+    ) {
+      throw new SendTurnRefusedError(
+        "The agent's session ended before it was ready. Nothing was sent.",
+        'session_gone',
+      );
+    }
+    if (record.startFailure !== undefined) {
+      // The engine's own words stay in the log; the refusal is user-facing.
+      this.options.logger?.warn?.(
+        {
+          threadId,
+          connectionId: record.connectionId,
+          err: record.startFailure,
+        },
+        'ACP send refused: the session it waited for failed to start',
+      );
+      throw new ProviderSessionStartFailedError(
+        shortReason(record.startFailure),
+      );
+    }
+    if (this.sessions.get(threadId) !== record) {
+      throw new SendTurnRefusedError(
+        "The agent's session ended before it was ready. Nothing was sent.",
+        'session_gone',
+      );
     }
   }
 
@@ -1522,6 +1764,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    // Orchestration waits in `whenSessionReady` before claiming the turn; a
+    // caller that did not (or a start that began since) is refused
+    // retryably rather than racing the start.
+    if (record.startSettled) throw new ProviderSessionStartingError();
     // #2415: a send that races the session's active turn is refused here,
     // before any provider-visible effect, so it must be a
     // `SendTurnRefusedError`. A plain error is recorded by orchestration as
@@ -1533,6 +1779,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (record.activeTurnId) {
       throw new SendTurnRefusedError(
         `ACP session '${input.threadId}' already has an active turn.`,
+        'busy',
       );
     }
     const turnId = crypto.randomUUID();
@@ -1544,7 +1791,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     try {
       decodedAttachments = decodeChatAttachments(input.attachments);
     } catch (error) {
-      throw new SendTurnRefusedError(errorMessage(error));
+      throw new SendTurnRefusedError(errorMessage(error), 'input_unsupported');
     }
     // Both attachment refusals carry a structured code: the same send is
     // refused again on retry, so the client must not present it as a
@@ -1941,6 +2188,7 @@ export class AcpAdapter implements ProviderAdapterShape {
   private prepareRecordForStop(record: AcpSessionRecord): void {
     const threadId = record.session.threadId;
     record.toolUpdateSupervisor.dispose();
+    for (const wake of record.startWaiters ?? []) wake();
     if (!record.stopping) {
       record.stopping = true;
       record.activeTurnId = undefined;
@@ -2233,6 +2481,12 @@ export class AcpAdapter implements ProviderAdapterShape {
     // entirely in the mapper's AcpMapperState branches now — `state: record`
     // makes AcpSessionRecord the live backing store the mapper mutates
     // directly, so this method is pure wiring.
+    if (
+      record.reattaching &&
+      ACP_HISTORY_REPLAY_UPDATES.has(update.sessionUpdate)
+    ) {
+      return;
+    }
     const ctx: AcpMapperContext = {
       provider: this.provider,
       session: record.session,
@@ -2346,7 +2600,8 @@ export class AcpAdapter implements ProviderAdapterShape {
   /**
    * Re-establish exactly once from an already-validated resume cursor. A
    * fresh `session/new` would silently abandon the native conversation, so an
-   * unavailable cursor or `loadSession` capability is a diagnostic-only
+   * unavailable cursor or reattach (`session/resume` / `loadSession`)
+   * capability is a diagnostic-only
    * outcome rather than a new child process.
    */
   private async recoverCredentialRefusal(
@@ -2357,7 +2612,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (
       !isAcpResumeCursor(resumeCursor) ||
       !resumeCursor.connectionFingerprint ||
-      record.process.initResult?.agentCapabilities?.loadSession !== true
+      !acpReattachMethod(record.process.initResult)
     ) {
       throw new Error(
         'The ACP session cannot be re-established safely after the engine refused its credential callback.',
@@ -2407,10 +2662,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           method: 'runtime.error',
+          ...providerFailure('indeterminate'),
           severity: 'error',
           message:
             'The engine process could not be terminated during credential-refusal recovery.',
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         throw destroyError;
       }
       if (this.sessions.get(threadId) !== record) return;
@@ -2455,10 +2711,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           method: 'runtime.error',
+          ...providerFailure('provider_error'),
           severity: 'error',
           message:
             'The engine session could not be re-established after its credential request was refused.',
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         throw error;
       }
     } finally {
@@ -2641,11 +2898,12 @@ export class AcpAdapter implements ProviderAdapterShape {
             createdAt: new Date().toISOString(),
             turnId,
             method: 'runtime.error',
+            ...providerFailure('quota_exhausted'),
             severity: 'error',
             code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
             message: PROVIDER_PLAN_QUOTA_MESSAGE,
             details: providerQuotaEventDetails(quota),
-          });
+          } satisfies ProviderRuntimeErrorEvent);
         } else {
           const baseMessage = errorMessage(error);
           this.publish({
@@ -2655,11 +2913,12 @@ export class AcpAdapter implements ProviderAdapterShape {
             createdAt: new Date().toISOString(),
             turnId,
             method: 'runtime.error',
+            ...providerFailure('provider_error'),
             severity: 'error',
             message: coReportedCause
               ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
               : baseMessage,
-          });
+          } satisfies ProviderRuntimeErrorEvent);
         }
         record.session.status = 'error';
         record.session.updatedAt = new Date().toISOString();

@@ -54,8 +54,6 @@
 
     "packages/shared/src/station-home-schema.ts",
 
-    "pnpm-lock.yaml",
-
     "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
 
     "scripts/__tests__/startup-readiness-static.test.ts",
@@ -144,7 +142,11 @@
 
     "vite.config.ts",
 
-    "scripts/__tests__/tauri-context.test.ts"
+    "scripts/__tests__/tauri-context.test.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

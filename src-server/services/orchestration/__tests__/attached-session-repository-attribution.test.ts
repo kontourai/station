@@ -743,13 +743,18 @@ describe('a session no project claims is followed under No project (#3386)', () 
     expect(summarize().projectSlug).toBeUndefined();
   });
 
-  test('absent is on; an unreadable configuration never widens what is followed', async () => {
+  test('new homes opt out; legacy absence stays on; unreadable config never widens what is followed', async () => {
     const fresh = new ConfigLoader({ projectHomeDir: join(dir, 'fresh-home') });
-    expect(
-      (await fresh.loadAppConfig()).attachedSessionsOutsideProjects,
-    ).toBeUndefined();
+    expect((await fresh.loadAppConfig()).attachedSessionsOutsideProjects).toBe(
+      false,
+    );
     await expect(
       attachedSessionsOutsideProjectsEnabled(() => fresh.loadAppConfig()),
+    ).resolves.toBe(false);
+    const legacyConfig = { ...(await fresh.loadAppConfig()) };
+    delete legacyConfig.attachedSessionsOutsideProjects;
+    await expect(
+      attachedSessionsOutsideProjectsEnabled(async () => legacyConfig),
     ).resolves.toBe(true);
     await expect(
       attachedSessionsOutsideProjectsEnabled(() =>

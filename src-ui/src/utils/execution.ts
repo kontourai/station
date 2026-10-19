@@ -256,6 +256,7 @@ export function resolveEffectiveModel({
   projectDefaultModel,
   sessionOverride,
   lastChosenModel,
+  advertisedModels,
 }: {
   agent?: AgentWithExecution | null;
   runtimeConnection?: AgentConnectionView | ConnectionConfig | null;
@@ -271,6 +272,16 @@ export function resolveEffectiveModel({
    * selectableModels (when that catalog is known) — otherwise ignored.
    */
   lastChosenModel?: string | null;
+  /**
+   * Models an ACP engine advertised itself (its `model` config option), the
+   * list the adapter holds a session's requested model to. A default the
+   * engine did not advertise is skipped rather than sent for the engine to
+   * refuse at session start. Empty or absent means there is nothing to check
+   * against. The runtime catalog is deliberately not used for this: it is a
+   * different observation (the runtime-reported model may legitimately sit
+   * outside it).
+   */
+  advertisedModels?: ReadonlyArray<{ id: string; originalId?: string }>;
 }): EffectiveModel {
   const catalog = (runtimeConnection as AgentConnectionView | null)
     ?.runtimeCatalog;
@@ -288,6 +299,12 @@ export function resolveEffectiveModel({
       ))
       ? lastChosenModel
       : null;
+  // Unknown (nothing advertised) is not "unadvertised": nothing to check.
+  const isAdvertised = (candidate: string) =>
+    !advertisedModels?.length ||
+    advertisedModels.some(
+      (model) => model.id === candidate || model.originalId === candidate,
+    );
   const candidates: Array<[string | null | undefined, EffectiveModelSource]> = [
     [sessionOverride, 'session override'],
     [validLastChosenModel, 'last chosen'],
@@ -296,8 +313,13 @@ export function resolveEffectiveModel({
     [agent?.model ?? agent?.execution?.modelId, 'agent default'],
     [connectionDefault, 'connection default'],
   ];
+  // An explicit session override is the user's own choice and is checked where
+  // it is made; every inherited default must be one the engine advertises.
   const [id, source] = candidates.find(
-    ([candidate]) => !!candidate?.trim(),
+    ([candidate, candidateSource]) =>
+      !!candidate?.trim() &&
+      (candidateSource === 'session override' ||
+        isAdvertised(candidate.trim())),
   ) ?? [null, 'unknown'];
   return {
     id: id || null,
@@ -321,6 +343,30 @@ export function resolveEffectiveModel({
  * fallback lives in a thin wrapper applied only at those New Chat call
  * sites rather than inside the shared resolver.
  */
+/**
+ * The models an ACP engine advertised on its config options (category
+ * "model"). ACP select options are `{ value, name }` objects; bare strings
+ * are tolerated.
+ */
+export function acpAdvertisedModels(
+  configOptions:
+    | ReadonlyArray<{
+        category: string;
+        options?: Array<string | { value: string; name?: string }>;
+      }>
+    | undefined,
+): Array<{ id: string; name: string }> {
+  return (configOptions ?? [])
+    .filter((option) => option.category === 'model')
+    .flatMap((option) => option.options ?? [])
+    .map((entry) =>
+      typeof entry === 'string'
+        ? { id: entry, name: entry }
+        : { id: entry.value, name: entry.name ?? entry.value },
+    )
+    .filter((model) => model.id.length > 0);
+}
+
 export function guaranteeConcreteModel(model: EffectiveModel): EffectiveModel {
   if (model.id || model.selectableModels.length === 0) {
     return model;

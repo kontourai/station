@@ -20,8 +20,6 @@
 
     "packages/sdk/src/client/projects.ts",
 
-    "pnpm-lock.yaml",
-
     "src-desktop/src/native_account_operations.rs",
 
     "src-desktop/src/native_application_peer.rs",
@@ -86,7 +84,15 @@
 
     "src-ui/src/views/account/guest-account-authority.ts",
 
-    "src-server/security/relay-management-authority.ts"
+    "src-server/security/relay-management-authority.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts"
   ],
 
   "checks": [

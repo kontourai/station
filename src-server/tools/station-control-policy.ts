@@ -315,7 +315,24 @@ const DISPATCH: Omit<StationControlToolPolicy, 'routes'> = {
 
 const NAVIGATE_ROUTE = post('/api/ui');
 
+const DEVICE_AGENT = {
+  assurance: 'bound',
+  role: 'project',
+  projectAction: 'edit',
+  toolClass: 'mutating',
+  personOnly: 'never',
+  enforcedBy: 'route',
+  routes: [post('/api/device-agent/:operation')],
+} as const satisfies StationControlToolPolicy;
+
 export const STATION_CONTROL_TOOL_POLICY = {
+  device_list: DEVICE_AGENT,
+  device_open: DEVICE_AGENT,
+  device_screenshot: DEVICE_AGENT,
+  device_snapshot: DEVICE_AGENT,
+  device_input: DEVICE_AGENT,
+  device_close: DEVICE_AGENT,
+
   // ── agents + conversations ─────────────────────────────────────────────
   list_agents: { ...READ, routes: [get('/agents')] },
   // Reaches `GET /agents/:slug`, which has no handler (404) — recorded as it
@@ -391,6 +408,18 @@ export const STATION_CONTROL_TOOL_POLICY = {
     toolClass: 'mutating',
     personOnly: 'never',
     routes: [post('/api/board/move')],
+  },
+  list_personal_boards: { ...SELF_READ, routes: [get('/api/me/layouts')] },
+  get_personal_board: {
+    ...SELF_READ,
+    routes: [get('/api/me/boards/:layoutSlug')],
+  },
+  propose_personal_board: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/me/boards/:layoutSlug/proposal')],
   },
   board_read: {
     ...SELF_READ,
@@ -640,10 +669,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
 
   // ── operations: Project activity (#3413) ───────────────────────────────
   // Owner-scoped reads (decision 2): each answers with what the caller's owner
-  // may read. The routes then hold every Session to the one scope rule
+  // may read. The routes then hold every other Session to the one scope rule
   // (`stationControlScopeRefusal`, Project `view`): a caller that is not bound
   // stays in its own Project or the global space, and another Project's
-  // Sessions read as absent. Each owns its leaf and shares none.
+  // Sessions read as absent. The caller's own conversation is its own whatever
+  // its scope. Each owns its leaf and shares none.
   list_project_activity: {
     ...SELF_READ,
     routes: [get('/api/orchestration/session-activity')],
@@ -833,6 +863,16 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
 
   // ── declared outputs ───────────────────────────────────────────────────
+  read_pull_request_guide: {
+    ...OPERATOR_READ,
+    routes: [get('/api/pull-requests/:provider/:host/:owner/:repo/:ref/guide')],
+  },
+  write_pull_request_guides: {
+    ...OPERATOR_MUTATION,
+    routes: [
+      post('/api/pull-requests/:provider/:host/:owner/:repo/:ref/guide'),
+    ],
+  },
   // #3161: records a pull request on the caller's OWN session and the turn it
   // is running, in the event store at that turn's completion. The route reads
   // the session from the verified caller, never the body, and holds it to the
@@ -848,6 +888,22 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
 
   // ── notify ─────────────────────────────────────────────────────────────
+  html_render: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    enforcedBy: 'route',
+    routes: [post('/api/html-replies/render')],
+  },
+  html_preview: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    enforcedBy: 'route',
+    routes: [post('/api/html-replies/preview')],
+  },
   notify_user: {
     assurance: 'any',
     role: 'self',
@@ -902,13 +958,53 @@ const STATION_CONTROL_REFUSAL_CODES = [
    * from a caller that is not a bound operator.
    */
   'station_control_posture_not_allowed',
+  /**
+   * A caller that is not bound aims a dispatch, steer or follow-up outside
+   * its own scope (another Project, the global space, a Project it cannot
+   * confirm, a Session that runs `host`, another Station). The refusal's
+   * `reason` says which ({@link StationControlOutOfScopeReason}).
+   */
+  'station_control_out_of_scope',
 ] as const;
 export type StationControlRefusalCode =
   (typeof STATION_CONTROL_REFUSAL_CODES)[number];
 
+/**
+ * Why the scope rule refused a caller that is not bound
+ * (`station_control_out_of_scope`). Each has fixed copy; none names a
+ * Project, so a refusal never tells the caller more about a Session than
+ * that it is outside the caller's own scope, and in which direction.
+ */
+export const STATION_CONTROL_OUT_OF_SCOPE_REASONS = [
+  /** The caller runs in a Project; the target is in another Project. */
+  'other-project',
+  /** The caller runs in a Project; the target is in the global space. */
+  'global-space',
+  /** The caller runs in the global space; the target is in a Project. */
+  'project-from-global',
+  /**
+   * The target's Project is not one the caller's owner can use here: Station
+   * cannot confirm it (no such Project, a folder missing, moved or outside
+   * it), or, for a new Session, the owner may not dispatch in the Project
+   * named. One reason for both, so a refusal never tells whether a Project
+   * the owner is not a member of exists.
+   */
+  'target-unavailable',
+  /** Station cannot confirm the caller's own Project. */
+  'unreadable-caller',
+  /** The target, or a Session of its conversation, runs unconfined. */
+  'host',
+  /** The target is on another Station. */
+  'remote',
+] as const;
+export type StationControlOutOfScopeReason =
+  (typeof STATION_CONTROL_OUT_OF_SCOPE_REASONS)[number];
+
 export interface StationControlRefusal {
   readonly code: StationControlRefusalCode;
   readonly message: string;
+  /** Only on `station_control_out_of_scope`, when the rule knows why. */
+  readonly reason?: StationControlOutOfScopeReason;
 }
 
 /** The body both the server guard and the tool-side check return. */
@@ -916,8 +1012,14 @@ export function stationControlRefusalBody(refusal: StationControlRefusal): {
   success: false;
   code: StationControlRefusalCode;
   error: string;
+  reason?: StationControlOutOfScopeReason;
 } {
-  return { success: false, code: refusal.code, error: refusal.message };
+  return {
+    success: false,
+    code: refusal.code,
+    error: refusal.message,
+    ...(refusal.reason ? { reason: refusal.reason } : {}),
+  };
 }
 
 const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
@@ -933,12 +1035,43 @@ const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
     'No station-control tool reaches this Station route, so Station refuses it for internal callers.',
   station_control_posture_not_allowed:
     "An agent may not choose the approval mode of a Session it starts or continues. Send the request without one. Without an approval mode, the Session uses the conversation's recorded mode, else the Agent's saved default, else this Station's default. Ask the person to change the mode in Station if it needs to differ.",
+  // The copy when the reason is not known (the spawn-side recheck, whose
+  // refusal crosses the dispatch as a code only).
+  station_control_out_of_scope:
+    'That Session would run outside your own scope, or its folder is no longer the one Station admitted. An agent that Station does not host in-process may start or steer Sessions only in its own Project (or, from the global space, only in the global space), on this Station, and never one that runs unconfined. To start a new Session in your own Project, omit projectSlug and projectPath; otherwise ask the person to do it in Station.',
+};
+
+/** The bound ("Station hosts it in-process") rule, said once for every reason. */
+const SCOPE_RULE =
+  'An agent that Station does not host in-process may start or steer Sessions only in its own scope.';
+
+const OUT_OF_SCOPE_MESSAGES: Record<StationControlOutOfScopeReason, string> = {
+  'other-project': `That Session is outside your Project: it runs in another Project. ${SCOPE_RULE} To start a new Session in your own Project, omit projectSlug and projectPath. Otherwise ask the person to do it in Station.`,
+  'global-space': `That Session is outside your Project: it runs in the global space (no Project). ${SCOPE_RULE} To start a new Session in your own Project, omit projectSlug and projectPath. Otherwise ask the person to do it in Station.`,
+  'project-from-global': `You run in the global space (no Project), and that Session is in a Project. ${SCOPE_RULE} From the global space, name a folder that no Project contains, or omit projectSlug and projectPath. Otherwise ask the person to do it in Station.`,
+  'target-unavailable':
+    "That Session's Project isn't one this Session can use: it doesn't exist on this Station, the person this Session acts for may not do this there, or the folder is missing, moved or outside that Project. Omit projectSlug and projectPath to use your own Project, or ask the person to do it in Station.",
+  'unreadable-caller': `Station cannot confirm which Project your own Session belongs to, so it cannot tell whether that Session is in your scope. ${SCOPE_RULE} Ask the person to do it in Station.`,
+  host: 'That Session runs unconfined (host), so only the person, or an agent Station hosts in-process, can steer it. Ask the person to do it in Station.',
+  remote:
+    'That would run on another Station (a saved Environment, or a portable Project another Station offers). Only the person, or an agent Station hosts in-process acting for the operator, may reach another Station. Omit environmentId and name a Project on this Station (or none, for your own Project), or ask the person to do it in Station.',
 };
 
 export function stationControlRefusal(
   code: StationControlRefusalCode,
 ): StationControlRefusal {
   return { code, message: REFUSAL_MESSAGES[code] };
+}
+
+/** `station_control_out_of_scope` with the fixed copy for its reason. */
+export function stationControlOutOfScopeRefusal(
+  reason: StationControlOutOfScopeReason,
+): StationControlRefusal {
+  return {
+    code: 'station_control_out_of_scope',
+    message: OUT_OF_SCOPE_MESSAGES[reason],
+    reason,
+  };
 }
 
 // ── evaluation ─────────────────────────────────────────────────────────────
@@ -1040,9 +1173,15 @@ export interface StationControlDispatchTarget {
  *   thread that runs `host`.
  *
  * The refusal names what would have admitted it:
- * `station_control_assurance_insufficient` when a bound caller acting for
- * the same person would pass, `station_control_role_required` when no
- * credential would.
+ * `station_control_assurance_insufficient` when only a bound caller acting
+ * for the same person would pass and the rule may not say more (a target it
+ * cannot read, or another owner's, reads the same as one that does not
+ * exist); `station_control_role_required` when no credential would; and
+ * `station_control_out_of_scope`, with its reason, when the caller's own
+ * owner holds the target but it lies outside the caller's scope: another
+ * Station, a Project Station cannot confirm, a Session that runs `host`, or
+ * another Project or the global space. That one the agent can act on: stay
+ * in its own scope, or ask the person.
  */
 export function stationControlScopeRefusal(
   caller: StationControlPolicyCaller | null,
@@ -1058,15 +1197,34 @@ export function stationControlScopeRefusal(
       ? 'station_control_assurance_insufficient'
       : 'station_control_role_required',
   );
-  if (!target || !ownsThread(caller, target) || target.remote)
-    return notOperatorEnough;
+  if (!target || !ownsThread(caller, target)) return notOperatorEnough;
+  // Another Station needs a bound operator (decision 3): a non-operator has
+  // no credential that would reach it.
+  if (target.remote)
+    return operator
+      ? stationControlOutOfScopeRefusal('remote')
+      : notOperatorEnough;
+  // A Project Station cannot confirm holds no action for anyone (bound or
+  // not). A new Session in a named Project the owner may not dispatch in
+  // arrives here as unreadable too (`newTarget`), so the two read alike.
+  if (target.scope.kind === 'unreadable')
+    return stationControlOutOfScopeRefusal('target-unavailable');
   if (target.ownerHoldsAction === false)
     return stationControlRefusal('station_control_role_required');
   if (bound) return undefined;
-  return !target.host &&
-    sameScope(stationControlSessionScope(caller), target.scope)
-    ? undefined
-    : stationControlRefusal('station_control_assurance_insufficient');
+  // `host` is decided before the scope comparison, so a Session that runs
+  // unconfined reads as `host` even in the caller's own scope (and a host
+  // Session in another scope reads as `host`, not as another Project).
+  if (target.host) return stationControlOutOfScopeRefusal('host');
+  const own = stationControlSessionScope(caller);
+  if (sameScope(own, target.scope)) return undefined;
+  if (own.kind === 'unreadable')
+    return stationControlOutOfScopeRefusal('unreadable-caller');
+  if (own.kind === 'global')
+    return stationControlOutOfScopeRefusal('project-from-global');
+  return stationControlOutOfScopeRefusal(
+    target.scope.kind === 'global' ? 'global-space' : 'other-project',
+  );
 }
 
 export interface StationControlPolicyContext {
@@ -1169,8 +1327,10 @@ const REFUSAL_STAGE: Record<StationControlRefusalCode, number> = {
   station_control_caller_required: 2,
   station_control_assurance_insufficient: 3,
   station_control_role_required: 4,
-  // Decided at the dispatch routes, never by the table.
+  // Decided at the dispatch routes (and the scope route rule), never by the
+  // table.
   station_control_posture_not_allowed: 5,
+  station_control_out_of_scope: 5,
 };
 
 // ── route matching ─────────────────────────────────────────────────────────

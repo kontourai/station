@@ -23,9 +23,12 @@ See the [application walkthrough](../learn/walkthroughs.md#projects-and-tasks) f
 
 When Home offers **Start your first task**, it appears only after the durable
 first-run decision is completed and Station has confirmed a real Project. The
-action opens that Project's ordinary Task form; it does not create a second
-onboarding task type. In Starter mode, submitting the form calls the Starter
-launch API with a saved operation identity. The server checks readiness,
+action opens that Project's guided Starter, retaining its focused title entry
+and saved launch identity. This separate onboarding path does not create a
+second Task type. General **New Task** entry points instead
+[shape an idea in chat](../reference/station-docs.md#tasks-and-the-task-workspace)
+and wait for proposal acceptance without dispatching implementation work.
+Submitting the guided Starter calls the Starter launch API with a saved operation identity. The server checks readiness,
 creates or retrieves the exact Task idempotently, binds it to the Starter,
 then requests the ordinary Task dispatcher once. If the initial readiness check reports the Agent as deferred or
 unavailable, Station creates no Task and shows the recoverable readiness reason;
@@ -66,11 +69,14 @@ visible. Run `station doctor` for a local diagnosis.
 
 ## Continue an Attached Session
 
-Open the terminal Session in **Activity**, then choose **Continue in Station**.
+Open the terminal Session in **Activity**, where it reads like any chat, then
+type a message and press Send. Chat asks once, **Continue here?**,
+and **Continue and send** continues it there with that message.
 Claude and Codex create independent children, so the original terminal Session
 can keep running. Codex starts from the latest completed turn Station has
-observed; wait for a completed turn if the action is disabled. Station also
-shows a reason when the engine or source configuration is unavailable. The
+observed; wait for a completed turn if the message box is unavailable. Station
+shows the reason above the message box when the engine or source configuration
+is unavailable. The
 child always runs in the Session's own folder, checked again at continuation:
 a worktree Session continues in its worktree under the Project its repository
 belongs to, and a **No project** Session continues as a No project chat
@@ -78,8 +84,8 @@ confined to its folder once you confirm that choice, and only in a folder
 inside your home folder that Station allows (see
 [Continue an Attached Session](../user/getting-started.md#continue-an-attached-session)).
 
-An attached terminal Session stays read only. The first eligible **Continue in
-Station** action launches the bounded `continue-session` Starter: Station
+An attached terminal Session stays read only. The first eligible continuation
+launches the bounded `continue-session` Starter: Station
 validates the exact source Session, reuses the orchestration adoption ledger
 with one stable operation identity, and opens the exact Station-owned child
 returned by that owner. Retrying an uncertain response reuses that identity

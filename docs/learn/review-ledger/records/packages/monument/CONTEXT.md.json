@@ -1,0 +1,43 @@
+{
+  "path": "packages/monument/CONTEXT.md",
+
+  "kind": "current",
+
+  "state": "partial",
+
+  "summary": "Scoped delta review: Reviewed Tier 1 ownership and import isolation, default versus host terminal authority, retention and the explicit boundary-integration deferral.",
+
+  "limits": "No independent provider, device or release qualification. The Station coordinator has not switched to this API. Existing unchanged primitive descriptions are not a new subsystem-wide audit.",
+
+  "sources": [
+    "packages/monument/src/port.ts",
+
+    "packages/monument/src/step.ts",
+
+    "packages/monument/src/sqlite.ts",
+
+    "packages/monument/src/adapter.ts",
+
+    "packages/monument/src/records.ts",
+
+    "packages/monument/src/commands.ts",
+
+    "packages/monument/src/decisions/turn-dedup.ts",
+
+    "packages/monument/src/testing/conformance.ts",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "packages/monument/src/index.ts",
+
+    "src-server/routes/orchestration/session-agent-control.ts",
+
+    "src-server/services/orchestration/delegation-result-delivery.ts",
+
+    "packages/monument/src/__tests__/session-message-delivery.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts"
+  ],
+
+  "checks": []
+}

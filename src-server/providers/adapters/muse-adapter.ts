@@ -9,6 +9,7 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import { EXTERNAL_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ApprovalMode,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -21,7 +22,10 @@ import {
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
   readApprovalMode,
 } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
@@ -53,6 +57,7 @@ import {
   findCliBinary,
   resolveAugmentedPathSync,
 } from '../auth/cli-auth.js';
+import { providerFailureForCode } from '../provider-failure.js';
 import {
   AsyncEventQueue,
   type AsyncEventStreamOptions,
@@ -383,7 +388,6 @@ const MUSE_SETTLED_CHILD_EXIT_WAIT_MS = 5_000;
  */
 export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
   readonly code = MUSE_TURN_SLOT_RELEASING_CODE;
-  readonly retryable = true;
   /**
    * Kept off the message: a client queue shows the refusal text to the user
    * verbatim, and a thread id there is noise. `sendTurn` logs it.
@@ -391,6 +395,7 @@ export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
   constructor(readonly threadId: string) {
     super(
       "Muse is still closing the previous turn's process; try again in a moment.",
+      'busy',
     );
     this.name = 'MuseTurnSlotReleasingError';
   }
@@ -817,6 +822,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   readonly metadata: ProviderAdapterMetadata;
   private static readonly baseMetadata = {
     displayName: 'Muse Code',
+    durability: EXTERNAL_ENGINE_DURABILITY,
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('muse'),
@@ -1292,7 +1298,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (record.stopped) {
       throw this.refuseSend(
         input.threadId,
-        new SendTurnRefusedError('This Muse session is stopped.'),
+        new SendTurnRefusedError(
+          'This Muse session is stopped.',
+          'session_gone',
+        ),
       );
     }
     if (record.serve) return this.sendServeTurn(record, record.serve, input);
@@ -1311,7 +1320,10 @@ export class MuseAdapter implements ProviderAdapterShape {
       if (record.stopped) {
         throw this.refuseSend(
           input.threadId,
-          new SendTurnRefusedError('This Muse session is stopped.'),
+          new SendTurnRefusedError(
+            'This Muse session is stopped.',
+            'session_gone',
+          ),
         );
       }
     }
@@ -1337,6 +1349,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           input.threadId,
           new SendTurnRefusedError(
             'Station could not confirm that the previous Muse process stopped. It will try stopping it again; this message can be sent again after that.',
+            'conflict',
           ),
         );
       }
@@ -1349,6 +1362,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         input.threadId,
         new SendTurnRefusedError(
           'This Muse session already has an active turn.',
+          'busy',
         ),
       );
     }
@@ -2390,6 +2404,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           threadId: record.externalThreadId,
           createdAt: nowIso,
           method: 'runtime.error',
+          ...providerFailureForCode(outcome.error.code),
           severity: 'error',
           turnId: turn.turnId,
           // The bounded output-text detail and stderr tail ride the error
@@ -2399,7 +2414,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           message: `${outcome.error.message}${this.outputTextDetail(outcome.outputText)}${outcome.omitStderr ? '' : this.stderrDetail(turn)}`,
           code: outcome.error.code,
           retriable: false,
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         break;
       case 'completed':
         this.publish({

@@ -79,6 +79,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import {
   afterAll,
   afterEach,
@@ -149,6 +150,7 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
   useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
@@ -177,6 +179,17 @@ vi.mock('../platform/useBundledServerStatus', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+
+vi.mock('../views/agent-editor/ToolLibraryContext', () => ({
+  StationToolLibraryProvider: ({ children }: { children: ReactNode }) =>
+    children,
+  useToolLibraryClient: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('@kontourai/station-sdk/tool-library', () => ({
+  useOwnToolAccess: () => ({
+    data: { station: { operator: true, name: 'Fixture Station' } },
+  }),
 }));
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({

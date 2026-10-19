@@ -68,6 +68,11 @@ updater payloads; it is not the Android upload key.
    generated namespace. It never initializes `ndk_context`: tao owns that
    initialization, and a second one aborts the app at launch. The channel icon and network-policy helpers also run
    before compilation. See the workflow for their exact ordering.
+   The icon helper restores the selected channel in both `main` and `debug`.
+   Android 13+ launchers receive a monochrome adaptive layer for themed icons;
+   the ordinary foreground/background layers remain available when theming is
+   off and on older Android versions. Launcher tinting and icon-cache refresh
+   after an update require device verification.
 5. **Stage build provenance** — `node scripts/write-android-build-manifest.mjs`
    writes `station-build.json` into the generated project's asset source set,
    after init (which would otherwise replace it) and before the build that

@@ -19,6 +19,19 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
  * answer lost its opening words and an early tool call vanished.
  */
 
+const markdownRendered = vi.hoisted(() => vi.fn());
+vi.mock('../components/chat/LazyMarkdown', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../components/chat/LazyMarkdown')>();
+  return {
+    ...actual,
+    LazyMarkdown: (props: Parameters<typeof actual.LazyMarkdown>[0]) => {
+      markdownRendered(props.children);
+      return <actual.LazyMarkdown {...props} />;
+    },
+  };
+});
+
 const windowState = vi.hoisted(() => ({
   events: [] as Array<{ sequence: number; event: unknown }>,
   watermark: 0,
@@ -135,6 +148,41 @@ beforeEach(() => {
 });
 
 describe('SessionTranscript source', () => {
+  test('a live delta only renders the growing message content', () => {
+    renderTranscript();
+    live([
+      ev({ method: 'turn.started', turnId: 'one', prompt: 'First question' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'one',
+        itemId: 'a1',
+        delta: 'Settled answer',
+      }),
+      ev({ method: 'turn.completed', turnId: 'one' }),
+      ev({ method: 'turn.started', turnId: 'two', prompt: 'Next question' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'two',
+        itemId: 'a2',
+        delta: 'Growing',
+      }),
+    ]);
+    expect(screen.getAllByTestId('session-transcript-message')).toHaveLength(4);
+    markdownRendered.mockClear();
+    live([
+      ev({
+        method: 'content.text-delta',
+        turnId: 'two',
+        itemId: 'a2',
+        delta: ' answer',
+      }),
+    ]);
+    expect(screen.getByText('Growing answer')).toBeTruthy();
+    expect(markdownRendered.mock.calls.map(([text]) => text)).toEqual([
+      'Growing answer',
+    ]);
+  });
+
   test.each([
     { upgrade: false, title: 'Conversation could not be loaded' },
     { upgrade: true, title: 'Update Station to read this conversation' },

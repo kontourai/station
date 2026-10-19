@@ -54,6 +54,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
     mutate: confirmPairing,
   }),
+  useSystemStatusForApiBaseQuery: () => ({ data: undefined }),
   useDenyDevicePairingRequestMutation: () => ({
     isPending: false,
     error: null,
@@ -254,15 +255,20 @@ describe('NotificationsPage', () => {
     expect(
       within(attentionSection).getByText('A device is asking to pair'),
     ).toBeTruthy();
-    // The decision is on the item — approve calls the pairing confirm.
+    // The item is one line; Review opens the decision in a dialog.
+    expect(
+      within(attentionSection).queryByRole('button', { name: 'Approve' }),
+    ).toBeNull();
     fireEvent.click(
-      within(attentionSection).getByRole('button', { name: 'Approve' }),
+      within(attentionSection).getByRole('button', { name: 'Review' }),
     );
-    expect(confirmPairing).toHaveBeenCalledWith('pair-req-1');
-    fireEvent.click(
-      within(attentionSection).getByRole('button', { name: 'Deny' }),
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(confirmPairing).toHaveBeenCalledWith(
+      'pair-req-1',
+      expect.anything(),
     );
-    expect(denyPairing).toHaveBeenCalledWith('pair-req-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+    expect(denyPairing).toHaveBeenCalledWith('pair-req-1', expect.anything());
     // The mirror notification does not double up in the activity list.
     expect(screen.getByText(/Showing 0 of 0 activity items/)).toBeTruthy();
   });
@@ -296,8 +302,12 @@ describe('NotificationsPage', () => {
     expect(confirmPairing).not.toHaveBeenCalled();
     expect(denyPairing).not.toHaveBeenCalled();
     if (!target) throw new Error('Target pairing card missing');
-    fireEvent.click(within(target).getByRole('button', { name: 'Approve' }));
-    expect(confirmPairing).toHaveBeenCalledWith('pair-target');
+    fireEvent.click(within(target).getByRole('button', { name: 'Review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(confirmPairing).toHaveBeenCalledWith(
+      'pair-target',
+      expect.anything(),
+    );
   });
 
   test('an unavailable pairing deep link reports its absence without deciding another request', () => {

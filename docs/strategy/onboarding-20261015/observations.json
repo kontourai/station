@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-15",
+  "scope": "Source-built web app, fresh isolated Station home, pre-existing signed-in Codex account on macOS",
+  "findings": [
+    {
+      "id": "01",
+      "priority": "Fixed",
+      "title": "The guide named a destination the menu did not name",
+      "observed": "Getting started said Connections; the only entry was Customize \u2192 Engines & Models.",
+      "change": "Renamed that existing menu destination Connections and named Customize in the README and guide.",
+      "proof": "connections-comparison.jpg"
+    },
+    {
+      "id": "02",
+      "priority": "Fixed",
+      "title": "The empty-layout choice preceded the recommended Coding workspace",
+      "observed": "Git detection selected Coding, but it appeared below Start without a layout and could be below the initial fold.",
+      "change": "Moved the detected Git recommendation above the empty-layout choice. Selection and Git detection behavior are unchanged.",
+      "proof": "starter-comparison.jpg"
+    },
+    {
+      "id": "03",
+      "priority": "Fixed",
+      "title": "The project invitation named Muse even after choosing Codex",
+      "observed": "The banner used the first ready agent rather than the composer selection. Two Start controls made the promised agent ambiguous.",
+      "change": "The invitation now refers to this project and tells the user to choose an agent above. The separate duplicate action remains a recommendation.",
+      "proof": "project-comparison.jpg"
+    },
+    {
+      "id": "04",
+      "priority": "P1 \u00b7 Recommend",
+      "title": "Ready Codex did not make the Station assistant usable in the first observed setup",
+      "observed": "The Station picker said No enabled LLM provider connection is configured, although Codex was signed in and could chat.",
+      "change": "Offer Use Codex to power Station at this point, with explicit confirmation using the existing engine picker. Do not imply an API key is required. The guide now explains the current Settings \u2192 General \u2192 Built-in agent engine \u2192 Change\u2026 \u2192 Codex \u2192 Use this engine \u2192 Save path.",
+      "proof": "station-unavailable.jpg",
+      "owner": "Reuse #75 and #286; source inspection and one live setup only. A second baseline later bound automatically, so startup timing/default selection needs a separate reproduction."
+    },
+    {
+      "id": "05",
+      "priority": "P1 \u00b7 Recommend",
+      "title": "No clear first successful task",
+      "observed": "A fresh home opened with a telemetry decision and an implicitly selected Muse Code. Model was not reported. The onboarding did not establish a real reply or a tool result.",
+      "change": "Offer Choose your app \u2192 Open a folder \u2192 Send your first request. Explain why a particular app is suggested. End with a real reply and an optional read-only Station tool check, with consent for model use.",
+      "proof": "first-launch.jpg",
+      "owner": "Existing first-chat owner #286. Do not recreate engine discovery or materialization."
+    },
+    {
+      "id": "06",
+      "priority": "P1 \u00b7 Recommend",
+      "title": "A fresh Station immediately imported outside conversations",
+      "observed": "The first Home showed 172 outside conversations, including internal title/branch-generation prompts. Coding\u2019s inbox could be dominated by unrelated work.",
+      "change": "Explain attached-session discovery and offer a project-first inbox on first use. Let users opt into the broader history without silently deleting or hiding retained work.",
+      "proof": "first-launch.jpg"
+    },
+    {
+      "id": "07",
+      "priority": "P2 \u00b7 Recommend",
+      "title": "Agent creation asks for configuration before demonstrating value",
+      "observed": "The new Agent form required scrolling through identity, engine, account, model, instructions, tools and advanced controls. Codex\u2019s instructions field was retained but disabled with a capability warning. Expanding Station exposed a 93-tool catalog.",
+      "change": "Start with Name + Codex + Project and a model default. Keep the existing read-only tool preset; offer an explicit Test chat / Test Station tools action after saving. Put unsupported fields and the full tool checklist behind details.",
+      "proof": "agent-editor.jpg"
+    },
+    {
+      "id": "08",
+      "priority": "P2 \u00b7 Recommend",
+      "title": "Project creation opens a management page before Coding",
+      "observed": "Choosing Coding at creation still opened the project summary, then required another click on Coding. The initial form also asks for a default environment and project identity.",
+      "change": "Offer Create and open Coding. Keep name inferred from the folder and move optional metadata/environment choices into details.",
+      "proof": "project-before.jpg"
+    },
+    {
+      "id": "09",
+      "priority": "P2 \u00b7 Recommend",
+      "title": "Coding relies on icons and several overlapping navigation controls",
+      "observed": "Files, Diff and Terminal were discoverable through the right rail, but a new user must hover or explore. Chat, the inbox, dock regions, the project page and the Coding layout expose several ways to start or move work.",
+      "change": "Show labels for Files, Changes and Terminal on first use, with a dismissible explanation of where each opens. Consolidate duplicate Start a chat actions around the shared composer.",
+      "proof": "coding-tools.jpg"
+    },
+    {
+      "id": "10",
+      "priority": "P1 \u00b7 Recommend",
+      "title": "The Coding workspace grew beyond the available height",
+      "observed": "At 1280 \u00d7 800 the content-view was 760 px high with 1171 px of content. The chat input could be below the fold; focusing terminal controls scrolled the whole workspace.",
+      "change": "Give the workbench a bounded available height and independent chat/file/terminal scroll regions. Verify with long conversations, inbox open/closed and the on-screen keyboard before a layout fix.",
+      "proof": "coding-tools.jpg",
+      "owner": "Observed geometry, not an attributed CSS root cause. No speculative stylesheet change included."
+    },
+    {
+      "id": "11",
+      "priority": "P2 \u00b7 Recommend",
+      "title": "Identity and readiness need simpler labels",
+      "observed": "The same local setup displayed Default, on Kontour, Station, Codex, via Default, and Requested gpt-6.1-sol. These mix Station destination, profile, Agent, engine and model.",
+      "change": "Use one compact summary: Station assistant \u00b7 powered by Codex \u00b7 on this computer. Keep provider-reported versus requested model evidence available in details.",
+      "proof": "coding-tools.jpg"
+    },
+    {
+      "id": "12",
+      "priority": "P2 \u00b7 Investigate",
+      "title": "Two localhost instances disrupted browser authentication",
+      "observed": "After signing Chrome into the baseline on a second port, the first tab reported that Default was not accepting the device. It recovered after signing into the first instance again.",
+      "change": "Qualify same-host multi-instance browser sessions. Cookie scope is a plausible cause: runtime-http uses the station-device cookie name, and browser cookies do not isolate by port. Use separate browser profiles during development until the owner confirms the fix.",
+      "owner": "Observation plus source-based hypothesis; not a cross-account security finding and not fixed here."
+    }
+  ]
+}

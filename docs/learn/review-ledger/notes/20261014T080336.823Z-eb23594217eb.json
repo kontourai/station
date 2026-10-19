@@ -1,0 +1,7 @@
+{
+  "revision": "b79664f735b7bae33fc165836d570b935d7e4c48",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-checked after merging main (#3650's session-start refusal codes): a composer send refused as still-starting now joins the queue with its outbox row held, like engine-busy, and a held row drops any earlier lookup answer. No claim in this document describes either detail; its claims still hold.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

@@ -24,8 +24,15 @@ const receiptData = vi.hoisted(() => ({
  * geometry.
  */
 
+// The chat's user avatar reads auth, which this harness does not provide.
+vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentsQuery: () => ({ data: [], error: null }),
+  // The chat's per-message rating, inert here.
+  useFeedbackRatingsQuery: () => ({ data: [] }),
+  useSaveFeedbackRatingMutation: () => ({ mutate: vi.fn() }),
+  useDeleteFeedbackRatingMutation: () => ({ mutate: vi.fn() }),
   adoptOrchestrationSession: vi.fn(),
   createAdoptOrchestrationSessionIntent: () => ({
     idempotencyKey: '55555555-5555-4555-8555-555555555555',
@@ -261,11 +268,18 @@ describe('session detail scroll structure (station#3305)', () => {
     ).toBe(true);
   });
 
-  test('read-only detail: the transcript is inside the scroll region, the header pinned outside it', () => {
+  /**
+   * #3552: an external conversation reads as the ordinary chat. One scroll
+   * region (the chat's message log) holds the conversation; the name, the
+   * connection status and the composer stay pinned around it, and nothing
+   * else sits outside it to be clipped.
+   */
+  test('read-only detail: the conversation scrolls in the chat log, with only its header, status and composer pinned', () => {
     withClient(
       <AttachedSessionDetail
         apiBase="http://station.test"
         session={session}
+        showHeader
         onAdopted={vi.fn()}
         getSelectionIntent={() => 0}
         events={[
@@ -273,40 +287,24 @@ describe('session detail scroll structure (station#3305)', () => {
           ev({ method: 'content.text-delta', itemId: 'i1', delta: 'Hello.' }),
           ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
         ]}
-        connected
+        connected={false}
+        connectionInterrupted
         visualViewport={{ style: {} } as any}
       />,
     );
 
     const detail = screen.getByTestId('session-detail');
-    const scroll = detail.querySelector('.sessions-detail__scroll');
-    expect(scroll).not.toBeNull();
-
-    const transcript = screen.getByTestId('attached-session-transcript');
-    expect(transcript.closest('.sessions-detail__scroll')).toBe(scroll);
-    // The adoption controls scroll with the transcript rather than being
-    // positionally clipped (the concrete "details don't show" defect).
+    const log = screen.getByRole('log', { name: 'Conversation messages' });
+    expect(log.parentElement).toBe(detail);
     expect(
-      screen
-        .getByRole('button', { name: 'Continue in Station' })
-        .closest('.sessions-detail__scroll'),
-    ).toBe(scroll);
-    // The identity header stays pinned outside the scroll region.
-    expect(
-      detail
-        .querySelector('.sessions-detail__header')
-        ?.closest('.sessions-detail__scroll'),
-    ).toBeNull();
-
-    // …and it is the ONLY thing outside it here: the read-only pane has no
-    // pinned composer, so every other child must scroll.
-    expect(
-      unpinnedChildrenOutsideScroll(detail),
-      'unpinned direct child of .sessions-detail rendered outside .sessions-detail__scroll',
-    ).toEqual([]);
-    expect(
-      detail.querySelector('.sessions-detail__details')?.parentElement,
-    ).toBe(scroll);
+      screen.getByTestId('attached-session-transcript').closest('[role="log"]'),
+    ).toBe(log);
+    expect([...detail.children].map((child) => child.className)).toEqual([
+      'sessions-detail__chat-header',
+      'sessions-detail__connection-state',
+      'chat-messages',
+      'external-chat-composer chat-input',
+    ]);
   });
 
   test('mutable detail: context and diagnostics scroll; the composer is pinned outside the scroll region', () => {
@@ -395,28 +393,6 @@ describe('session detail scroll structure (station#3305)', () => {
       expect(mutableChildren.classes).toContain('sessions-detail__disclosure');
       expect(mutableChildren.shrinking).toEqual([]);
       mutable.unmount();
-
-      withClient(
-        <AttachedSessionDetail
-          apiBase="http://station.test"
-          session={session}
-          onAdopted={vi.fn()}
-          getSelectionIntent={() => 0}
-          events={[
-            ev({ method: 'turn.started', turnId: 'r2', prompt: 'hi' }),
-            ev({
-              method: 'turn.completed',
-              turnId: 'r2',
-              finishReason: 'stop',
-            }),
-          ]}
-          connected
-          visualViewport={{ style: {} } as any}
-        />,
-      );
-      const attached = screen.getByTestId('attached-session-transcript');
-      expect(attached.parentElement?.className).toBe('sessions-detail__scroll');
-      expect(shrinkingChildren().shrinking).toEqual([]);
     } finally {
       sheet.remove();
     }

@@ -325,6 +325,56 @@ describe('chatRuntimeStream', () => {
     });
   });
 
+  // #3581: a retried keyed turn that may already have reached the agent.
+  it('surfaces a /chat may-have-started refusal as a typed indeterminate outcome, distinct from a generic error', async () => {
+    const answer = (body: Record<string, unknown>) =>
+      vi.fn(async () => ({
+        ok: false,
+        status: 409,
+        json: async () => body,
+      })) as any;
+    vi.stubGlobal(
+      'fetch',
+      answer({
+        success: false,
+        error:
+          'Foreground Agent message may have started. Do not retry automatically.',
+        code: 'foreground_message_indeterminate',
+        outcome: 'indeterminate',
+      }),
+    );
+    const turn = streamConversationTurn({
+      agentSlug: 'default',
+      content: 'hello',
+      chatOptions: { clientTurnId: 'turn-3581' },
+      onStreamEvent: vi.fn(),
+      apiBase: 'http://example.test',
+    });
+    await expect(turn).rejects.toBeInstanceOf(ChatHttpError);
+    await expect(turn).rejects.toMatchObject({
+      status: 409,
+      code: 'foreground_message_indeterminate',
+      outcome: 'indeterminate',
+    });
+
+    // A refusal under another code is an ordinary error with no outcome.
+    vi.stubGlobal(
+      'fetch',
+      answer({ success: false, error: 'Agent busy', code: 'agent_busy' }),
+    );
+    const refused = await streamConversationTurn({
+      agentSlug: 'default',
+      content: 'hello',
+      onStreamEvent: vi.fn(),
+      apiBase: 'http://example.test',
+    }).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(ChatHttpError);
+    // #3606 review F3: `outcome` is a declared member of ChatHttpError.
+    const outcome: 'indeterminate' | undefined = (refused as ChatHttpError)
+      .outcome;
+    expect(outcome).toBeUndefined();
+  });
+
   it('falls back to a generic HTTP status message when the error body is not JSON', async () => {
     vi.stubGlobal(
       'fetch',

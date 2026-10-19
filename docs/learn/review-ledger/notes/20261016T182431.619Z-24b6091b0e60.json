@@ -1,0 +1,7 @@
+{
+  "revision": "35f8b5355dde195fe9cdd76112eb62e2a66b5fe6",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed initial sixty-second provisioning, same-generation idempotency, explicit recovery proposal and linked native-fixture registration/renewal evidence. The delta changes diagnostic formatting and assertion context only: prepare/serve/confirm-recovered-cleanup/prepare-successor custody, lease observations, generation CAS, provisioning and cleanup are unchanged. Canonical fixture guide now explains bounded assertion-code stderr. Six fixture tests pass; no new public/native/physical qualification or recovery authority is claimed.","inputs":["docs/guides/self-hosted-broker.md","scripts/native-fresh-relay-fixture.ts","tests/tauri-shell/native-fresh-relay-fixture.md"]}
+  ]
+}

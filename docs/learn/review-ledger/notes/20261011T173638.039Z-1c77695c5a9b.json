@@ -1,0 +1,7 @@
+{
+  "revision": "9e6792652ccc11e6c6507d2d5a2067c969417805",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Agent list paragraph updated per owner direction: ready rows show no state badge; a row that cannot start is dimmed and disabled with its one fixing button and shows a badge only when it has no fix (policy/unknown); the engine is a quiet pill after the name. Checked against AgentPickerRow and its tests.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/components/chat-start/AgentPickerRow.tsx"]}
+  ]
+}

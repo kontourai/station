@@ -340,6 +340,12 @@ export interface DevicePairingAttentionItem extends AttentionItemBase {
   /** The requesting device's display name, as recorded on the request. */
   deviceName: string;
   /**
+   * The space-delimited scope the device asked for (or its offer carried),
+   * so the approval surface can list it and let the approver untick any
+   * before approving. Optional because an older Station does not send it.
+   */
+  requestedScope?: string;
+  /**
    * Whether THE CALLER OF THIS READ could actually act on those approve/deny
    * routes — derived per response at the HTTP seam from the same two gates
    * the middleware applies to the request, in the same order: the pairing
@@ -505,7 +511,14 @@ export interface PluginLifecycleProposalAttentionItem
   openHref: string;
 }
 
+export interface ToolRequestAttentionItem extends AttentionItemBase {
+  kind: 'tool-request';
+  source: { requestId: string };
+  openHref: string;
+}
+
 export type AttentionItem =
+  | ToolRequestAttentionItem
   | ApprovalAttentionItem
   | PluginLifecycleProposalAttentionItem
   | SetupIncompleteAttentionItem
@@ -573,6 +586,7 @@ export const DECISION_RESOLVED_ATTENTION_KINDS: ReadonlySet<
   'gate-review',
   // #2323 S5: resolved by completing the change or dismissing the proposal.
   'plugin-lifecycle-proposal',
+  'tool-request',
 ]);
 
 /**

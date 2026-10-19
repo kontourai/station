@@ -1,0 +1,7 @@
+{
+  "revision": "8ad8353c77dacb6288e44bb52acd352f9458d2a9",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Searched for givenUp, client_turn_in_flight and retained-claim claims: none here. The change only narrows givenUp to this owner's own unresolved retained claim; this document is unaffected.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]}
+  ]
+}

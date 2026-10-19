@@ -8,14 +8,16 @@ import {
   type ToolCallback,
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-
 import { registerAgentTools } from './station-control-agent-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
 import { registerDeclarePullRequestTools } from './station-control-declare-pull-request-tools.js';
+import { registerDeviceTools } from './station-control-device-tools.js';
+import { registerHtmlReplyTools } from './station-control-html-reply-tools.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
+import { registerPersonalBoardTools } from './station-control-personal-board-tools.js';
 import { registerPlatformTools } from './station-control-platform-tools.js';
 import {
   evaluateStationControlPolicy,
@@ -26,6 +28,7 @@ import {
   stationControlToolPolicy,
 } from './station-control-policy.js';
 import { registerProjectActivityTools } from './station-control-project-activity-tools.js';
+import { registerReviewGuideTools } from './station-control-review-guide-tools.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
 import { registerSessionSearchTools } from './station-control-session-search-tools.js';
 import { registerSessionTools } from './station-control-session-tools.js';
@@ -91,7 +94,7 @@ function stationControlToolMetadata(name: string) {
     ['Agents', /agent/],
     // The Sessions in a Project: a chat-level read, not a Project record.
     ['Chats', /^list_project_activity$/],
-    ['Projects', /project|layout|^board_/],
+    ['Projects', /project|layout|^board_|personal_board/],
     ['Chats', /conversation|session|message/],
     ['Tasks', /task|delegat|ssh_environment|pull_request/],
     ['Scheduling', /job|schedul/],
@@ -117,6 +120,16 @@ function stationControlToolMetadata(name: string) {
  * It keeps the domain modules independent of transport while registering
  * native v2 tools with object schemas.
  */
+interface StationControlAppCatalog {
+  tools: {
+    name: string;
+    originalName: string;
+    serverId: 'station-control';
+    _meta: Record<string, unknown>;
+  }[];
+  resources: Parameters<StationControlToolRegistry['resource']>[2][];
+}
+
 export class StationControlToolRegistry {
   constructor(
     private readonly server: McpServer,
@@ -126,6 +139,7 @@ export class StationControlToolRegistry {
       shape?: z.ZodRawShape,
     ) => void,
     private readonly allowedTools?: readonly string[],
+    private readonly apps?: StationControlAppCatalog,
   ) {}
 
   tool<Shape extends z.ZodRawShape>(
@@ -184,6 +198,12 @@ export class StationControlToolRegistry {
     // official metadata normalization rather than reimplementing it.
     if (this.allowedTools && !this.allowedTools.includes(name)) return;
     this.catalog?.(name, description);
+    this.apps?.tools.push({
+      name,
+      originalName: name,
+      serverId: 'station-control',
+      _meta: config._meta,
+    });
     const callback = withToolSideRefusal(name, unguardedCallback);
     const metadata = stationControlToolMetadata(name);
     return registerAppTool(
@@ -216,6 +236,7 @@ export class StationControlToolRegistry {
       };
     },
   ) {
+    this.apps?.resources.push(resource);
     return registerAppResource(
       this.server as unknown as Parameters<typeof registerAppResource>[0],
       name,
@@ -262,8 +283,10 @@ export function createSelectedStationControlMcpServer(
     registerKnowledgeDataTools(registry);
     return server;
   }
+  registerDeviceTools(registry);
   registerAgentTools(registry);
   registerBoardTools(registry);
+  registerPersonalBoardTools(registry);
   registerCatalogTools(registry);
   registerOperationsTools(registry);
   registerPlatformTools(registry);
@@ -273,7 +296,9 @@ export function createSelectedStationControlMcpServer(
   registerSessionTools(registry);
   registerProjectActivityTools(registry);
   registerNotifyTools(registry);
+  registerHtmlReplyTools(registry);
   registerDeclarePullRequestTools(registry);
+  registerReviewGuideTools(registry);
   return server;
 }
 
@@ -295,4 +320,23 @@ export function stationControlToolCatalog() {
     });
   });
   return tools;
+}
+
+let appCatalog: StationControlAppCatalog | undefined;
+
+/** Static shipped definitions and resource bytes, independent of engine connections. */
+export function stationControlAppCatalog(): StationControlAppCatalog {
+  if (!appCatalog) {
+    const catalog: StationControlAppCatalog = { tools: [], resources: [] };
+    const registry = new StationControlToolRegistry(
+      new McpServer({ name: 'station-control', version: '2.0.0' }),
+      undefined,
+      undefined,
+      catalog,
+    );
+    registerBasisTools(registry);
+    registerSessionInventoryTools(registry);
+    appCatalog = catalog;
+  }
+  return appCatalog;
 }

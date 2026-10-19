@@ -1,0 +1,7 @@
+{
+  "revision": "2ba9dfffd31731fc8f6ed80c8b0eddbbace22bf4",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Round 9: re-read resolveConversationOpen signature/options, SDK authenticatedFetch call and UI authoritative resolver. Optional public deadline/signal remain supported; picker/retry no longer pass either or impose total hydration deadline. Real SDK no-any and progressive 36.3s hydration regressions pass.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

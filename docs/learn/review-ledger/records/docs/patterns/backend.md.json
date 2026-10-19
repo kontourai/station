@@ -26,10 +26,6 @@
 
     "packages/sdk/src/queryFactories.ts",
 
-    "packages/shared/package.json",
-
-    "pnpm-lock.yaml",
-
     "scripts/mobile-css-ratchet.mjs",
 
     "scripts/responsive-surface-ratchet.mjs",
@@ -80,7 +76,15 @@
 
     "src-server/security/client-protocol-admission.ts",
 
-    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/package.json#/exports",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

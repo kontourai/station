@@ -1,0 +1,7 @@
+{
+  "revision": "ea68139b73a1767f7fd5126debfb042d6ead8815",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#561 review fix round: vitest-resource-manifest.mjs adds owned-process-owner-birth.test.ts to the process-heavy group. Re-read the scripts scope guidance; unaffected. No prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

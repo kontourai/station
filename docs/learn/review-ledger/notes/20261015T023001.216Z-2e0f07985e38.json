@@ -1,0 +1,7 @@
+{
+  "revision": "574632b2174a0d7f80edde4bfe1b352064d2e2be",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Reviewed the optional terminalEventId command field and createdSequence record field against commands.ts and records.ts; the binding populates the latter from an existing host column and does not add a default SQLite schema column. This is a scoped API delta review, with the remaining document limits retained.","inputs":["packages/monument/README.md","packages/monument/src/commands.ts","packages/monument/src/records.ts"]}
+  ]
+}

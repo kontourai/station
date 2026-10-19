@@ -1,0 +1,7 @@
+{
+  "revision": "9c043a1844da78aa9dd3718cdaff74c6b13b8f6f",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"PR 3830 merge with ea7af29a8d9: resolved the CLI review record with the documented path-only ledger migrator, preserving both source sets and all other record fields. Read #3788's manifest delta and inspected the combined manifest against both parents: retained the FIFO delegation suite and author-telemetry-build suite in the process-heavy group, with no other manifest differences. The CLI delegation files section and nonblocking FIFO refusal contract are unchanged and remain accurate; upstream build/telemetry changes do not add a CLI author-endpoint sender. No new runtime or hosted qualification is claimed by this source review; requested checks follow separately.","inputs":["docs/reference/cli.md"]}
+  ]
+}

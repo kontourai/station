@@ -1,0 +1,7 @@
+{
+  "revision": "f23439b79075dd7772c7d27ebac2c4f70d19d197",
+
+  "notes": [
+    {"path":"docs/guides/release-channel-ports.md","note":"Re-read --temp-home/home claims. helpers.ts change only affects --temp-home minting: a candidate the runtime-home guard rejects (e.g. TMPDIR inside a Station instance tree, as for Station-spawned agents) is removed and retried once under /tmp; other home selections (--home, --base, STATION_HOME, default), ports and channel derivation unchanged. No prose change needed: doc names --temp-home usage, not its location.","inputs":["docs/guides/release-channel-ports.md","packages/cli/src/commands/helpers.ts"]}
+  ]
+}

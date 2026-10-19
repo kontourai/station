@@ -1,3 +1,4 @@
+import { ACCOUNT_PREFERENCE_KEYS } from '../account-preferences.js';
 /**
  * Registry-completeness tests for `device-settings.ts`
  * (docs/design/settings-architecture.md §3 "S3. Device", §6 slice 2). The
@@ -24,9 +25,13 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  test('every entry declares scope: device', () => {
+  test('portable choices declare account scope and hardware/geometry stay device scoped', () => {
     for (const definition of DEVICE_SETTINGS_REGISTRY) {
-      expect(definition.scope).toBe('device');
+      expect(definition.scope).toBe(
+        ACCOUNT_PREFERENCE_KEYS.some((key) => key === definition.key)
+          ? 'account'
+          : 'device',
+      );
     }
   });
 
@@ -153,6 +158,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'chatDockWidth',
         'diffStyle',
         'diffWrap',
+        'inboxScope',
         'inboxOpen',
         'inboxSections',
         'projectSidebarCollapsed',

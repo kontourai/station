@@ -607,6 +607,63 @@
   opacity: 1;
 }
 
+/* The shared CopyGlyph is 1em on a 16-unit grid; message copy controls draw it
+   at 14px (16px for the phone's inline control, below). Its family stroke
+   (1.8 units) would render ~1.6px there, heavier than the 24-grid rating
+   icons beside it (2 units at 14px = ~1.17px), so message controls thin it to
+   the same rendered weight. */
+.message__copy-btn > svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.33;
+}
+
+/* Desktop footers and the user bubble's corner: copy and ⋯ (whose trigger
+   reuses `.message__copy-btn`) are one chip family, the same 28px square.
+   Doubled so it outranks the footer's own padding rule further down. */
+:is(.turn-footer__actions, .message__user-actions)
+.message__copy-btn.message__copy-btn {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+/* Desktop user bubble: its copy icon and overflow menu share the bottom-right
+   corner as one cluster, so neither is drawn over the other. The bubble
+   reserves 44px per control so the cluster cannot cover the user's text
+   (the one-control reservation lives in TurnActionsMenu.css). */
+.message__user-actions {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+.message__user-actions .message__copy-btn {
+  position: static;
+  /* On the accent bubble, a chip tinted from the bubble's own text colour
+     instead of the page's dark/light surface, which read as a hole in the
+     bubble in the dark theme. */
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  color: inherit;
+  opacity: 1;
+}
+.message__user-actions .message__copy-btn:hover {
+  background: color-mix(in srgb, currentColor 24%, transparent);
+}
+.message.user:has(.message__user-actions) {
+  padding-inline-end: calc(44px + var(--k-space-3));
+}
+.message.user:has(.message__user-actions > :nth-child(2)) {
+  padding-inline-end: calc(88px + var(--k-space-3));
+}
+
 .message__rating {
   position: absolute;
   bottom: 5px;
@@ -820,6 +877,104 @@
   color: var(--text-muted);
 }
 
+/* The user's own message before the agent has it: outlined, with no fill,
+   and a short delivery line (`MessageDeliveryNote`). The outline is drawn
+   inside the bubble so the bubble keeps its size when it fills on delivery.
+   The line style carries meaning beside colour: dashed while it is on its
+   way, solid once it needs the user (not sent, may have reached the agent).
+   Only a send under way keeps the accent; a send with no answer reads as a
+   caution. */
+.message.user {
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+.message.user.message--undelivered {
+  background: transparent;
+  color: var(--text-primary);
+  outline: 1px dashed var(--accent-primary);
+  outline-offset: -1px;
+}
+.message.user.message--delivery-not-sent {
+  outline: 1px solid var(--k-negative);
+}
+.message.user.message--delivery-unanswered,
+.message.user.message--delivery-awaiting-confirmation {
+  outline-color: var(--k-caution);
+}
+.message.user.message--delivery-unconfirmed {
+  outline: 1px solid var(--k-caution);
+}
+.message-delivery {
+  display: grid;
+  gap: var(--k-space-1);
+  margin-top: var(--k-space-1);
+  color: var(--text-secondary);
+  font-size: var(--k-text-xs);
+  line-height: 1.4;
+}
+.message-delivery__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+}
+/* The two states that need the user name themselves in their tone as well as
+   in words (AA on the page background in both themes). */
+.message-delivery[data-delivery-state="unconfirmed"] .message-delivery__label,
+.message-delivery[data-delivery-state="unanswered"] .message-delivery__label,
+.message-delivery[data-delivery-state="awaiting-confirmation"]
+  .message-delivery__label {
+  color: var(--k-caution);
+  font-weight: 500;
+}
+.message-delivery[data-delivery-state="not-sent"] .message-delivery__label {
+  color: var(--error-text, var(--k-negative));
+  font-weight: 500;
+}
+/* The status regions stay in the accessibility tree while empty (so their
+   first text is announced), but take no space in the line or the grid. */
+.message-delivery__status:empty,
+.message-delivery__notice:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.message-delivery__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+}
+.message-delivery__action {
+  padding: 2px var(--k-space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-control);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.message-delivery__action:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+.message-delivery__action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.message-delivery__action--danger {
+  border-color: var(--k-negative);
+  color: var(--error-text, var(--k-negative));
+}
+.message-delivery__notice {
+  color: var(--text-primary);
+}
+/* Phone: every delivery action is a full 44px target. */
+.message-row--compact .message-delivery__action,
+.message-row--compact .unconfirmed-discard__button {
+  min-height: 44px;
+  padding-inline: var(--k-space-3);
+}
+
 /* A steer that stopped the running step says so inside its own bubble, on
    the bubble's accent background. */
 .message__steer-note {
@@ -927,11 +1082,6 @@
 }
 
 .file-mention-picker {
-  position: absolute;
-  z-index: 20;
-  left: 8px;
-  right: 8px;
-  bottom: calc(100% + 8px);
   display: grid;
   max-height: min(320px, 45vh);
   overflow-y: auto;
@@ -1209,6 +1359,14 @@
   background: var(--bg-primary);
 }
 
+/* The dock's own wait rows (the long-load sentence with Start new chat, the
+   stale-busy check) sit beside the transcript, not in it, so they do not get
+   its gutter: on a phone the sentence ran into the screen edge. Same inset as
+   `.chat-messages`' `--chat-message-gutter`. */
+.chat-dock__body > .session-history-controls {
+  padding-inline: clamp(12px, 4vw, 20px);
+}
+
 /* In a short dock everything above the composer yields before its draft:
    the failed-session banner (it scrolls; the send notice carries the same
    failure in full) and the transcript, down to zero. (The stream status line
@@ -1439,6 +1597,10 @@
 .chat-input__agent-name,
 .chat-input__model-name {
   min-width: 0;
+  /* The stack aligns its lines to the start, which sizes each to its own
+     unwrapped text; without this cap a long name ran out of the chip and
+     under its caret instead of ending in an ellipsis. */
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2093,6 +2255,11 @@
   .app-toolbar__conn .app-toolbar__conn-state {
     display: none;
   }
+  /* "Answer details and actions" wraps to two lines on the narrowest phones
+     in the phone panel's large title size; one step down it keeps one line. */
+  .message-details__panel .responsive-dialog-header strong {
+    font-size: var(--k-text-md);
+  }
 }
 
 /* Mobile transcripts spend their width on the words. Secondary controls open
@@ -2197,7 +2364,8 @@
   border: 0;
   padding: 10px 0;
 }
-.message-details__trigger {
+.message-details__trigger,
+.message-details__copy {
   flex: 0 0 44px;
   width: 44px;
   height: 44px;
@@ -2208,32 +2376,140 @@
   color: var(--text-secondary);
   border-radius: var(--radius-md);
 }
+.message-details__copy > svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.17;
+}
+.message-details__copy {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+}
+/* The user's bubble keeps its copy and ⋯ beside it; MessageBubble reserves
+   44px per control (plus the row gap) from the bubble's max-width. */
+.message-row--compact > .message-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
 .message-details__panel {
   width: min(480px, 100%);
   background: var(--bg-primary);
   color: var(--text-primary);
 }
+/* Two classes so the sheet's own padding wins over the shared phone panel
+   default by specificity, not by which stylesheet loaded last. */
+.message-details__panel.responsive-surface-panel {
+  --responsive-header-padding: var(--k-space-2) var(--k-space-3);
+}
+/* One compact block. Its summary row puts the identity chips at the start and
+   the actions at the end; the actions wrap to a row of their own only when the
+   two cannot share one (a long Station label, an open rating reason). The
+   panel's overlay already pads for the safe area, so the body adds no more. */
 .message-details__body {
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
   overflow-y: auto;
 }
-.message-details__body .turn-footer {
-  flex-direction: column;
-  align-items: stretch;
-}
-.message-details__body .turn-footer__actions {
+.message-details__summary {
+  display: flex;
   flex-wrap: wrap;
-  opacity: 1;
-  height: auto;
-  overflow: visible;
-  pointer-events: auto;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
 }
-
-.message-details__body .message__copy-btn,
-.message-details__body .message__rating,
-.message-details__body .message__trace {
+.message-details__lead {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+.message-details__lead > .message-attribution {
+  margin: 0;
+}
+/* The bubble truncates a long Station label to fit its width cap; the sheet
+   is where the whole label is read, so it wraps instead of ellipsing. */
+.message-details__lead .attribution-chip {
+  margin-left: 0;
+}
+.message-details__lead .attribution-chip__pill {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+/* Doubled with its parent so it outranks the phone baseline that wraps every
+   `[class*="__actions"]` row (index.css): the group stays anchored at the end
+   and wraps as a unit, its overflow (an open rating reason) dropping below,
+   still end-aligned, instead of stranding the ⋯ at the start. */
+.message-details__summary > .message-details__actions {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 0;
+  max-width: 100%;
+  margin-inline-start: auto;
+}
+.message-details__lead:empty,
+.message-details__actions:empty {
+  display: none;
+}
+.message-details__actions :is(.message__trace, .message__rating) {
   position: static;
   opacity: 1;
+}
+.message-details__actions .message__rating {
+  gap: var(--k-space-1);
+}
+/* Items keep their size so a line that cannot hold them breaks, rather than
+   squeezing the rating (whose reason field clips its own overflow, so it has
+   no min-content width) until the open field runs out of the sheet. */
+.message-details__actions > * {
+  flex-shrink: 0;
+}
+/* One ghost icon-button family for every action in the sheet. The overflow
+   trigger borrows `.message__copy-btn`'s filled chip elsewhere; here it
+   matches the rating buttons beside it. */
+.message-details__actions
+:is(.turn-footer__overflow-trigger, .message__rating-btn) {
+  position: static;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: var(--k-border-thin) solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--k-text-md);
+  opacity: 1;
+}
+.message-details__actions
+  :is(.turn-footer__overflow-trigger, .message__rating-btn):hover,
+.message-details__trigger:hover,
+.message-details__copy:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.message-details__actions
+  :is(.turn-footer__overflow-trigger, .message__rating-btn):active,
+.message-details__trigger:active,
+.message-details__copy:active {
+  background: color-mix(in srgb, var(--k-text) 10%, transparent);
+}
+.message-details__actions .message__rating-btn--active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .chat-stream-status {
@@ -2367,11 +2643,6 @@
   gap: var(--k-space-1);
   flex: 0 0 auto;
 }
-.chat-input__send-mode {
-  min-height: var(--k-space-6);
-  gap: var(--k-space-1);
-}
-
 .chat-input .chat-input__send-btn {
   width: auto;
   min-width: 44px;
@@ -2404,6 +2675,12 @@
 .chat-input .chat-input__stop-btn:hover:not(:disabled) {
   background: var(--k-negative-soft);
 }
+/* Trailing Stop (phone layout, see ChatInputArea): its gap sits before it. */
+.chat-input
+  .chat-input__send-group[data-stop-placement="trailing"]
+  .chat-input__stop-btn {
+  margin-inline: var(--k-space-1) 0;
+}
 .chat-input__send-group {
   gap: 0;
 }
@@ -2411,10 +2688,35 @@
   border-start-end-radius: 0;
   border-end-end-radius: 0;
 }
-.chat-input__send-mode {
+/* Steer/Queue is the trailing segment of one split Send button: same height,
+   a hairline divider, only the outer corners rounded, and Send's accent while
+   Send is ready. It stays at full strength otherwise because it still works. */
+.chat-input .chat-input__send-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-space-1);
   height: 44px;
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
+  padding: 0 var(--k-space-3);
+  border: none;
+  border-inline-start: var(--k-border-thin) solid
+    color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 0 var(--k-radius-control) var(--k-radius-control) 0;
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+.chat-input .chat-input__send-mode--active {
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+}
+/* :not(:disabled) lifts this past the shared `.chat-input button` hover dim
+   (index.css), which would otherwise leave this half at 0.8 opacity. */
+.chat-input .chat-input__send-mode:hover:not(:disabled),
+.chat-input .chat-input__send-mode[aria-expanded="true"] {
+  opacity: 1;
+  filter: brightness(1.08);
 }
 
 .chat-input__submit-controls {
@@ -2426,10 +2728,6 @@
   visibility: hidden;
   pointer-events: none;
 }
-.chat-input__mode-slot {
-  display: none;
-}
-
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .app-toolbar__action--secondary.app-toolbar__action--secondary {
     display: none;
@@ -2800,15 +3098,10 @@
     display: none;
   }
   .chat-input .chat-input__send-btn,
-  .chat-input__send-mode {
+  .chat-input .chat-input__send-mode {
     width: 44px;
     min-width: 44px;
     padding: 0;
-  }
-  .chat-input__mode-slot {
-    display: block;
-    width: 44px;
-    height: 44px;
   }
 }
 
@@ -2888,7 +3181,14 @@
     flex-basis: 100%;
   }
 
+  /* #3050: a narrow composer gives up the Agent's route before its name. The
+     chip's accessible name and tooltip keep the route. */
+  .chat-input__agent-route {
+    display: none;
+  }
+
   .chat-input__activity .chat-scroll-to-bottom,
+  .chat-input__activity .transcript-turn-actions__step,
   .chat-input__activity .chat-status-pill-host .chat-status-pill {
     min-width: 44px;
     min-height: 44px;
@@ -2966,4 +3266,38 @@
   transform: none;
   box-shadow: none;
   background: var(--k-panel-raised);
+}
+
+/* The queued notice's Discard confirmation: in the transcript notice a row
+   of its own under its Discard…; in the composer, its popover's content. */
+.ephemeral-message__confirm {
+  margin-top: var(--k-space-2);
+}
+.composer-popover-panel.chat-input__queued-retry-confirm {
+  padding: var(--k-space-3);
+}
+
+/* The phone sheet lists a user message's actions directly. */
+/* A fieldset (a group of buttons, not a menu) without its default chrome. */
+.message-details__menu {
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.message-details__menu > button {
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-control);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.message-details__menu > .turn-footer__overflow-item--danger {
+  color: var(--error-text, var(--k-negative));
 }

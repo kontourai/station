@@ -1,0 +1,7 @@
+{
+  "revision": "7dfd9fa0cf7f42bd3df6c573e9bf120ecb981d10",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Rechecked the header dependency restoration: the guide makes no claim that Project moved into Chat actions. Direct Project and conversation switching are retained. The phone section still starts with connecting to a computer and names the operator trust boundary; simulator/bootstrap evidence does not qualify code pairing or physical devices.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]}
+  ]
+}

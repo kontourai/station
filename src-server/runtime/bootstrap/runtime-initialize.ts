@@ -165,6 +165,11 @@ import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js'
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
 export interface InitializeRuntimeDeps {
+  validateProjectTools?: (
+    slug: string,
+    spec: AgentSpec,
+    input: ProviderSessionStartInput,
+  ) => Promise<void>;
   resolveProjectToolServers?: (
     input: import('@kontourai/station-contracts/provider').ProviderSessionStartInput,
   ) => Promise<readonly string[]>;
@@ -178,6 +183,8 @@ export interface InitializeRuntimeDeps {
     EnvironmentSecurityService,
     | 'verifyCredential'
     | 'resolveGrantedScope'
+    // #3586: the voice WebSocket refuses account-bound devices and tokens.
+    | 'identifyDevice'
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
     | 'deviceHoldsFullAccess'
@@ -520,6 +527,7 @@ export async function initializeRuntime(
   const loadSessionAgentSpec = (slug: string) =>
     configLoader.loadAgent(slug).catch(() => null);
   const resolveSessionAgent = createSessionAgentResolver({
+    validateProjectTools: deps.validateProjectTools,
     resolveProjectToolServers: deps.resolveProjectToolServers,
     loadAgentSpec: loadSessionAgentSpec,
     resolveToolServer: (id) =>

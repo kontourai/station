@@ -1,0 +1,7 @@
+{
+  "revision": "cb5359fd3dd9ea28670b486e8b21abf887dec0c2",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Delta review for #2675: process-identity.mjs gains lookupWindowsProcessImageIdentity (Windows start time plus executable image, used by the CLI's server/UI fingerprint). Existing birth probes, caches, registry and lock semantics are unchanged; this document makes no claim about the CLI lifecycle fingerprint, so no prose change.","inputs":["docs/guides/native-releases.md","packages/shared/src/process-identity.mjs"]}
+  ]
+}

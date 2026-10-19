@@ -1,0 +1,7 @@
+{
+  "revision": "e93f93a3602577402c3c48a56f9e9e5ae8f61d6c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the autosizing test migration against the two-line draft and interaction-stability contract. The removed jsdom test supplied scrollHeight only on the live textarea; the Chromium keeper now measures the real 160px cap, overflowing content, shrink and short-content fit while retaining the pinned-scroll regression. Independent review confirmed coverage equivalence after tightening the long-height and short-fit assertions. A constant-40px production defect failed the keeper at the 160px assertion, and the restored source passed. The remaining 75 composer tests preserve input and authority coverage; the conversation-picker lazy-loading timeout also reproduces with all lane production files restored to exact parent 1031eb0 and is outside this repair. No prose change is required.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/composer-sizing.browser.test.tsx"]}
+  ]
+}

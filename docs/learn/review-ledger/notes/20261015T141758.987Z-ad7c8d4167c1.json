@@ -1,0 +1,7 @@
+{
+  "revision": "b205b7e671d9fb6fc166f4aaf80264dc1f50220f",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the upstream Dockerfile and deployment-guide deltas against this profile: adding the Monument workspace manifest to the shared managed-dependencies stage matches the root workspace and lockfile without changing telemetry-runtime, its private-file inputs or ports. Deployment guide additions describe person/group Device administration, not companion installation or product/OTel authority; the profile grants none of those rights. Retained explicit unqualified-container/persistent-deployment and unsigned-provenance limits. Local broker build/live PostgreSQL qualification passed at75a8, but it does not qualify Compose, Collector/Grafana/Tempo, backup/restore or a deployed Station turn. No prose change, no runtime or release claim upgraded.","inputs":["deployment/telemetry/README.md","Dockerfile","docs/guides/deployment.md"]}
+  ]
+}

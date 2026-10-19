@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import type { TelemetryPublisherStatus } from '@kontourai/station-contracts/product-telemetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -290,6 +291,7 @@ function inventoryResponse(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
 ) {
   return new Response(
@@ -300,6 +302,7 @@ function inventoryResponse(
         endpointConfigured: derived.endpointConfigured ?? false,
         telemetryEnabled: derived.telemetryEnabled ?? true,
         enabledSource: derived.enabledSource ?? 'default',
+        publishers: derived.publishers,
         events: {
           station_started: {
             description: 'Station completed startup.',
@@ -322,6 +325,7 @@ function renderStep(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -394,7 +398,7 @@ test('#1582 A3: the step leads with a derived sentence and hides the schema behi
 
   expect(
     await screen.findByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
     ),
   ).toBeTruthy();
   const details = screen
@@ -417,13 +421,13 @@ test('#1582 A3: the summary is derived from the host, never asserted', () => {
   // "none is configured here" is a claim about THIS Station. A build that
   // cannot see the endpoint says less rather than guessing.
   expect(usageTelemetryDisclosureSummary(false)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
   );
   expect(usageTelemetryDisclosureSummary(true)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; one is configured on this Station.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; one is configured on this Station.',
   );
   expect(usageTelemetryDisclosureSummary(undefined)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured.',
   );
 });
 
@@ -606,6 +610,7 @@ function renderModal(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -635,7 +640,7 @@ test('#1600: the standalone modal leads with the derived sentence, not the inven
   const modal = await screen.findByTestId('usage-telemetry-disclosure-modal');
   expect(
     screen.getByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
     ),
     'the modal did not lead with the derived summary',
   ).toBeTruthy();
@@ -705,7 +710,11 @@ test('#1600: an already-off host is offered the decision it can make, and keepin
   // labels follow the EFFECTIVE setting, and keeping a state only the
   // environment holds writes it down, because a decision resting on
   // `STATION_TELEMETRY_ENABLED` disappears the day that variable does.
-  const view = renderModal({ telemetryEnabled: false, enabledSource: 'env' });
+  const view = renderModal({
+    telemetryEnabled: false,
+    enabledSource: 'env',
+    endpointConfigured: true,
+  });
 
   expect(
     await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
@@ -876,3 +885,84 @@ test('a lapsed snooze, or a changed inventory, re-offers the disclosure', async 
   ).toBeTruthy();
   resetUsageTelemetryDisclosureDismissal();
 });
+
+test.each([
+  ['full', 'off', 'Off'],
+  ['lite', 'off', 'Off'],
+  ['off', 'full', 'Full'],
+  ['lite', 'lite', 'Lite'],
+] as const)(
+  'under DNT, saving %s as %s writes the choice without acknowledging',
+  async (savedChoice, next, label) => {
+    const view = renderModal({
+      endpointConfigured: true,
+      telemetryEnabled: false,
+      publishers: {
+        kontour: { tier: 'off', reason: 'DNT', userChoice: 'lite' },
+        operator: { tier: 'off', reason: 'DNT', userChoice: savedChoice },
+      },
+    });
+    const choice = await screen.findByRole('radio', { name: label });
+    fireEvent.click(choice);
+    expect(choice).toHaveProperty('checked', true);
+    expect(updateConfig).not.toHaveBeenCalled();
+    const save = screen.getByRole('button', {
+      name: `Save operator choice as ${label}`,
+    });
+    expect(
+      screen.getByText(/DO_NOT_TRACK is active: nothing is sent/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Full will still require confirmation after DO_NOT_TRACK is removed/,
+      ),
+    ).toBeTruthy();
+    for (const choice of ['Off', 'Lite', 'Full'])
+      expect(screen.getByRole('radio', { name: choice })).toBeTruthy();
+    fireEvent.click(save);
+    expect(updateConfig.mock.calls.map((call) => call[0])).toEqual([
+      { telemetryTier: { operator: next } },
+    ]);
+    await act(async () => {
+      updateConfig.mock.calls[0][1]?.onSuccess?.({});
+    });
+    expect(
+      authenticatedFetch.mock.calls.filter((call) =>
+        String(call[0]).endsWith('/acknowledgements'),
+      ),
+    ).toEqual([]);
+    expect(
+      window.localStorage.getItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY),
+    ).toBeNull();
+    view.unmount();
+    resetUsageTelemetryDisclosureDismissal();
+    if (next === 'full') {
+      renderModal({
+        telemetryEnabled: false,
+        publishers: {
+          kontour: { tier: 'lite', reason: 'default' },
+          operator: { tier: 'lite', reason: 'disclosure', userChoice: 'full' },
+        },
+      });
+      expect(await screen.findByRole('dialog')).toBeTruthy();
+      const allow = screen.getByRole('button', {
+        name: 'Allow Full usage telemetry',
+      });
+      expect(
+        authenticatedFetch.mock.calls.filter((call) =>
+          String(call[0]).endsWith('/acknowledgements'),
+        ),
+      ).toEqual([]);
+      fireEvent.click(allow);
+      await act(async () => {
+        updateConfig.mock.calls[0][1]?.onSuccess?.({});
+      });
+      await waitFor(() =>
+        expect(authenticatedFetch).toHaveBeenLastCalledWith(
+          ACKNOWLEDGEMENTS_URL,
+          expect.objectContaining({ method: 'POST' }),
+        ),
+      );
+    }
+  },
+);

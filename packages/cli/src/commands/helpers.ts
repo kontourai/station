@@ -1,15 +1,26 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { readPluginManifest } from '@kontourai/station-shared/parsers';
 
 import {
   admitStationRuntimeHome,
+  resolveStationRoot,
   resolveStationRuntimeContext,
   runtimeChannelFromEnvironment,
+  StationRuntimeHomeAdmissionError,
 } from '@kontourai/station-shared/runtime-path-resolver';
-import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import {
+  createStationTempDirSync,
+  STATION_TEMP_ROOT_NAME,
+} from '@kontourai/station-shared/temp-dir';
 import {
   type LifecycleCodeRoot,
   type LifecycleStateLocation,
@@ -111,15 +122,108 @@ export function normalizeHomePath(
   return normalized;
 }
 
+const SYSTEM_TEMP_HOME_ROOT = join('/tmp', STATION_TEMP_ROOT_NAME);
+
+/**
+ * The Station-owned `<home>/tmp` tree containing `candidate`, for the homes an
+ * agent can inherit: `STATION_HOME` and the resolved Station root (which is
+ * that home when it is self-rooted). Station hands spawned engines
+ * `<home>/tmp/engine-spawn` and reaps it by age, so nothing durable for the
+ * length of a run may live there. Only that subtree is refused: a temp root
+ * elsewhere under a Station root, such as `STATION_ROOT=/tmp/station` with
+ * the default `TMPDIR`, stays where it was.
+ */
+function stationHomeTmpContaining(
+  candidate: string,
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  const target = realpathSync.native(candidate);
+  for (const owner of [resolveStationRoot(env), env.STATION_HOME?.trim()]) {
+    if (!owner) continue;
+    let ownedTmp: string;
+    try {
+      ownedTmp = realpathSync.native(join(resolve(owner), 'tmp'));
+    } catch {
+      continue; // No such tree, so the candidate cannot be inside it.
+    }
+    const relation = relative(ownedTmp, target);
+    if (
+      relation === '' ||
+      (relation !== '..' &&
+        !relation.startsWith(
+          `..${process.platform === 'win32' ? '\\' : '/'}`,
+        ) &&
+        !isAbsolute(relation))
+    ) {
+      return ownedTmp;
+    }
+  }
+  return undefined;
+}
+
+function mintAdmittedTemporaryHome(
+  env: NodeJS.ProcessEnv,
+  root?: string,
+): string {
+  const candidate = realpathSync(createStationTempDirSync('dev-home', root));
+  try {
+    const ownedTmp = stationHomeTmpContaining(candidate, env);
+    if (ownedTmp) {
+      throw new StationRuntimeHomeAdmissionError(
+        candidate,
+        `a temporary home must not live in the Station-reaped tree ${ownedTmp}`,
+      );
+    }
+    return normalizeHomePath(candidate, env);
+  } catch (error) {
+    rmSync(candidate, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+/**
+ * A `--temp-home` lives under the Station temp root, which follows the ambient
+ * `TMPDIR`. Station points every agent it spawns at `<home>/tmp/engine-spawn`
+ * (see `engine-spawn-tmpdir.ts`), so an agent running
+ * `./station start --temp-home` would mint its home inside its parent's
+ * Station tree. Under `instances/` the runtime-home guard refuses it; under a
+ * self-rooted parent home (`--home`, `--temp-home`) the guard admits it, and
+ * the parent's engine-spawn reaper then deletes it by age while it may still
+ * be in use. So a candidate inside that home's `tmp/` tree is refused here
+ * too, and any refused candidate is retried once under the system `/tmp`.
+ * Windows agents do not get this redirect (`os.tmpdir()` reads TEMP/TMP
+ * there), so the original refusal stands.
+ */
+function createTemporaryRuntimeHome(env: NodeJS.ProcessEnv): string {
+  try {
+    return mintAdmittedTemporaryHome(env);
+  } catch (error) {
+    if (
+      !(error instanceof StationRuntimeHomeAdmissionError) ||
+      process.platform === 'win32'
+    ) {
+      throw error;
+    }
+    try {
+      return mintAdmittedTemporaryHome(env, SYSTEM_TEMP_HOME_ROOT);
+    } catch (retryError) {
+      throw new StationRuntimeHomeAdmissionError(
+        error.homeDir,
+        `${error.detail}; retrying under ${SYSTEM_TEMP_HOME_ROOT} was also refused: ${
+          retryError instanceof Error ? retryError.message : String(retryError)
+        }`,
+      );
+    }
+  }
+}
+
 export function resolveLifecycleHomeTarget(
   options: LifecycleHomeOptions = {},
 ): LifecycleHomeTarget {
   const env = options.env ?? process.env;
 
   if (options.tempHome) {
-    const projectHome = normalizeHomePath(
-      realpathSync(createStationTempDirSync('dev-home')),
-    );
+    const projectHome = createTemporaryRuntimeHome(env);
     return {
       projectHome,
       isDefaultHome: false,

@@ -422,18 +422,33 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
       expect(requiredPairingScope(method, path)).toBe('orchestration:operate');
     }
   });
-  test('covers every context.app.route(...) mount in runtime-routes.ts', () => {
+  test('covers every declared router through its root or every discovered method leaf', () => {
     const bases = scanMountedRouteBases();
     expect(bases.length).toBeGreaterThan(20); // sanity: the scan itself found routes
 
+    const leaves = scanRegisteredLeafRoutes(RUNTIME_ROUTES_PATH);
     const uncovered: string[] = [];
     for (const base of new Set(bases)) {
       if (PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS.includes(base)) continue;
+      if (requiredExternalSurfaceCapability('http', 'GET', base) !== undefined)
+        continue;
+      // A mount need not expose GET at its root. Exact-leaf families must
+      // still have discoverable routes, and every actual method must classify.
+      const actual = leaves.filter(
+        (leaf) => leaf.path === base || leaf.path.startsWith(`${base}/`),
+      );
       if (
-        requiredExternalSurfaceCapability('http', 'GET', base) === undefined
-      ) {
+        !actual.length ||
+        actual.some(
+          (leaf) =>
+            requiredExternalSurfaceCapability(
+              'http',
+              leaf.method,
+              leaf.path,
+            ) === undefined,
+        )
+      )
         uncovered.push(base);
-      }
     }
     expect(uncovered).toEqual([]);
   });
@@ -806,6 +821,9 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       'orchestration:operate',
     ],
     ['GET', '/api/usage-telemetry/disclosure', 'orchestration:read'],
+    ['GET', '/api/usage-telemetry/delivery-status', 'orchestration:read'],
+    ['POST', '/api/usage-telemetry/connection-checks/product', 'access:manage'],
+    ['POST', '/api/usage-telemetry/connection-checks/otel', 'access:manage'],
     [
       'POST',
       '/api/usage-telemetry/disclosure/acknowledgements',
@@ -1126,6 +1144,29 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ).toBe(true);
   });
 
+  test('allows read-only paired devices to discover transcript UI tools but not integration configuration', async () => {
+    const resolver = {
+      verifyCredential: async () => true,
+      identifyDevice: () => null,
+      resolveGrantedScope: async () => pairingScopePresetString('read-only'),
+    };
+    const scope = requiredPairingScope(
+      'GET',
+      '/integrations/station-control/ui-tools',
+    );
+    expect(scope).toBe('orchestration:read');
+    await expect(
+      credentialAuthorizedForScope(resolver, scope!, 'paired-reader'),
+    ).resolves.toBe(true);
+    await expect(
+      credentialAuthorizedForScope(
+        resolver,
+        requiredPairingScope('GET', '/integrations/station-control')!,
+        'paired-reader',
+      ),
+    ).resolves.toBe(false);
+  });
+
   test('makes integration detail and embedded tool execution explicit operate decisions', () => {
     expect(matchPairingScopeRule('GET', '/integrations/mcp-1')).toMatchObject({
       origin: 'explicit',
@@ -1306,12 +1347,14 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ] as const;
     const standardResolver = {
       verifyCredential: vi.fn(async () => true),
+      identifyDevice: () => null,
       resolveGrantedScope: vi.fn(async () =>
         pairingScopePresetString('standard'),
       ),
     };
     const operatorResolver = {
       verifyCredential: vi.fn(async () => true),
+      identifyDevice: () => null,
       resolveGrantedScope: vi.fn(async () => DEFAULT_GRANT_PAIRING_SCOPE),
     };
 
@@ -1337,12 +1380,14 @@ describe('pairing-route-scopes: table-driven lookups', () => {
   test('standard paired credentials cannot manage host marketplace sources', async () => {
     const standardResolver = {
       verifyCredential: vi.fn(async () => true),
+      identifyDevice: () => null,
       resolveGrantedScope: vi.fn(async () =>
         pairingScopePresetString('standard'),
       ),
     };
     const operatorResolver = {
       verifyCredential: vi.fn(async () => true),
+      identifyDevice: () => null,
       resolveGrantedScope: vi.fn(async () => DEFAULT_GRANT_PAIRING_SCOPE),
     };
     for (const [method, path] of [
@@ -1620,6 +1665,7 @@ describe.each([
     test('a read-only credential is denied', async () => {
       const resolver = {
         verifyCredential: vi.fn(async () => true),
+        identifyDevice: () => null,
         resolveGrantedScope: vi.fn(async () =>
           pairingScopePresetString('read-only'),
         ),
@@ -1632,6 +1678,7 @@ describe.each([
     test('a standard credential is allowed', async () => {
       const resolver = {
         verifyCredential: vi.fn(async () => true),
+        identifyDevice: () => null,
         resolveGrantedScope: vi.fn(async () =>
           pairingScopePresetString('standard'),
         ),
@@ -1644,6 +1691,7 @@ describe.each([
     test('the full-scope (operator) credential is allowed', async () => {
       const resolver = {
         verifyCredential: vi.fn(async () => true),
+        identifyDevice: () => null,
         resolveGrantedScope: vi.fn(async () => DEFAULT_GRANT_PAIRING_SCOPE),
       };
       await expect(
@@ -1657,6 +1705,7 @@ describe.each([
       );
       const resolver = {
         verifyCredential: vi.fn(async () => false),
+        identifyDevice: () => null,
         resolveGrantedScope,
       };
       await expect(
@@ -1668,6 +1717,7 @@ describe.each([
     test('an unresolvable (undefined) scope is denied', async () => {
       const resolver = {
         verifyCredential: vi.fn(async () => true),
+        identifyDevice: () => null,
         resolveGrantedScope: vi.fn(async () => undefined),
       };
       await expect(

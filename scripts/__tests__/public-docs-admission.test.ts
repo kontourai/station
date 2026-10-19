@@ -354,7 +354,7 @@ describe('public documentation markdown rendering', () => {
     expect(html.match(/<li>/g)).toHaveLength(4);
     expect(html.match(/<ul>/g)).toHaveLength(4);
     expect(html.match(/<\/ul>/g)).toHaveLength(4);
-    expect(html).toContain('<h2>Next</h2>');
+    expect(html).toMatch(/<h2\b[^>]*>Next<\/h2>/);
     expect(html).toContain('<blockquote>quoted</blockquote>');
   });
 

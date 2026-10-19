@@ -25,6 +25,7 @@ import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   type ApprovalFullAccessRefusalDetails,
   type ApprovalFullAccessRequester,
+  groupLimitedCommandStep,
   sanitizeRefusalDeviceName,
 } from '@kontourai/station-contracts/orchestration';
 import { requestMayBeAnAgent } from './coding-authority.js';
@@ -35,6 +36,19 @@ export interface FullAccessRefusalIdentitySource {
   environmentId(): string | undefined;
   /** A paired device's display name, by its id. */
   deviceName(deviceId: string): string | undefined;
+  /**
+   * The operator CLI command for this Station's channel
+   * (`npx @kontourai/station-cli@nightly` for a nightly). A bare `station`
+   * is on no PATH for a nightly or desktop install, and in a checkout it can
+   * be an older CLI without the command.
+   */
+  hostCli?(): string | undefined;
+  /**
+   * #3557: set when the device is tied to a person whose Station group does
+   * not allow full access, so granting the device alone cannot help.
+   * `hasGrant` says whether the device's own grant already carries it.
+   */
+  groupLimit?(deviceId: string): { hasGrant: boolean } | undefined;
 }
 
 const identitySources = new WeakMap<Request, FullAccessRefusalIdentitySource>();
@@ -68,12 +82,52 @@ const FULL_ACCESS_GRANT_UI_STEPS: readonly string[] = [
   "Open the Station desktop app on the Station's host.",
   'Select the Station name (top right), then Paired devices.',
   'Select the device by its name, then Change access.',
-  'Turn on Allow full access, then Apply.',
+  'Turn on Skip approval prompts, then Apply.',
 ];
 
+/**
+ * #3557: the path when the person's group stops full access. Their group
+ * must allow it first; when the device's own grant does not carry it either,
+ * the host command (`grant.groupLimited.cli`) is the step AFTER these, never
+ * an alternative. People is reachable wherever the operator is signed in.
+ */
+const GROUP_GRANT_UI_STEPS: readonly string[] = [
+  'As the operator, open Settings, then Devices, then People.',
+  'Find the person this device is tied to and set their group to Admin.',
+];
+
+function groupLimitOf(
+  request: Request,
+  deviceId: string,
+): { hasGrant: boolean } | undefined {
+  try {
+    return identitySources.get(request)?.groupLimit?.(deviceId);
+  } catch {
+    return undefined;
+  }
+}
+
 /** The operator command, run on the Station's own host. */
-function fullAccessGrantCommand(deviceId: string): string {
-  return `station environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
+function fullAccessGrantCommand(deviceId: string, cli: string): string {
+  return `${cli} environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
+}
+
+/**
+ * The operator CLI command on this Station's host, for any refusal that
+ * names a host command (`station` when no identity source is bound).
+ */
+export function operatorHostCli(request: Request): string {
+  try {
+    return identitySources.get(request)?.hostCli?.() || 'station';
+  } catch {
+    return 'station';
+  }
+}
+
+/** The short id of the paired device a request came from, if it did. */
+export function requestingDeviceShortId(request: Request): string | undefined {
+  const deviceId = getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId;
+  return deviceId ? shortDeviceId(deviceId) : undefined;
 }
 
 function requesterOf(request: Request): ApprovalFullAccessRequester {
@@ -110,6 +164,33 @@ function detailsFor(
     requester.kind === 'device'
       ? getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId
       : undefined;
+  const limit = fullDeviceId ? groupLimitOf(request, fullDeviceId) : undefined;
+  const needsDeviceGrant = !limit || !limit.hasGrant;
+  const command =
+    fullDeviceId && needsDeviceGrant
+      ? fullAccessGrantCommand(fullDeviceId, operatorHostCli(request))
+      : undefined;
+  if (limit && requester.kind !== 'agent')
+    // #3557: the People steps, then (when the device's own grant lacks it
+    // too) the host command as the step AFTER them. The command is never
+    // the top-level `cli`, which older clients offer as an alternative.
+    return {
+      requested: 'never',
+      requester,
+      station,
+      grant: {
+        by: 'operator',
+        scope: 'approval:full-access',
+        uiSteps: command
+          ? [...GROUP_GRANT_UI_STEPS, groupLimitedCommandStep(command)]
+          : GROUP_GRANT_UI_STEPS,
+        groupLimited: {
+          group: 'member',
+          ...(command ? { cli: command } : {}),
+        },
+      },
+    };
+  const uiSteps = FULL_ACCESS_GRANT_UI_STEPS;
   return {
     requested: 'never',
     requester,
@@ -120,15 +201,16 @@ function detailsFor(
         : {
             by: 'operator',
             scope: 'approval:full-access',
-            uiSteps: FULL_ACCESS_GRANT_UI_STEPS,
-            ...(fullDeviceId
-              ? { cli: fullAccessGrantCommand(fullDeviceId) }
-              : {}),
+            uiSteps,
+            ...(command ? { cli: command } : {}),
           },
   };
 }
 
-function messageFor(details: ApprovalFullAccessRefusalDetails): string {
+function messageFor(
+  details: ApprovalFullAccessRefusalDetails,
+  groupLimited: boolean,
+): string {
   const { requester, grant } = details;
   if (requester.kind === 'agent' || !grant)
     return 'Full access was not applied. An agent can never put itself, or any session, at full access. A person must choose it in Station, from a device the operator has allowed full access.';
@@ -136,6 +218,13 @@ function messageFor(details: ApprovalFullAccessRefusalDetails): string {
     requester.kind === 'device'
       ? `this device (id ${requester.deviceId})`
       : 'the device you are using';
+  if (groupLimited)
+    return (
+      `Full access was not applied. ${who.charAt(0).toUpperCase()}${who.slice(1)} belongs to a person in the Member group, which does not allow full access. The operator can make them Admin under Settings, Devices, People` +
+      (grant.groupLimited?.cli
+        ? `, then on the Station's host run: ${grant.groupLimited.cli}`
+        : '.')
+    );
   return (
     `Full access was not applied. Only this Station's operator can allow full access, for ${who}.` +
     (grant.cli
@@ -151,11 +240,19 @@ export function fullAccessRefusalBody(request: Request): {
   error: string;
   details: ApprovalFullAccessRefusalDetails;
 } {
-  const details = detailsFor(request, requesterOf(request));
+  const requester = requesterOf(request);
+  const details = detailsFor(request, requester);
+  const deviceId =
+    requester.kind === 'device'
+      ? getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId
+      : undefined;
   return {
     success: false,
     code: APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
-    error: messageFor(details),
+    error: messageFor(
+      details,
+      deviceId !== undefined && groupLimitOf(request, deviceId) !== undefined,
+    ),
     details,
   };
 }

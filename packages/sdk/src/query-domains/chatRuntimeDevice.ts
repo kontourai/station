@@ -3,6 +3,7 @@ import {
   NATIVE_PUSH_REGISTRATION_PATH,
   type NativePushRegistrationRequest,
   type NativePushRegistrationResponse,
+  type NativePushRegistrationStatus,
 } from '@kontourai/station-contracts/native-push';
 import { resolveApiBase } from '../query-core';
 
@@ -176,6 +177,39 @@ export async function unregisterNativePush(apiBase?: string): Promise<void> {
       `Failed to unregister from native push: ${response.status}`,
     );
   }
+}
+
+/**
+ * Whether the Station still holds this paired device's native push
+ * registration, and under which id. `null` when the Station predates the
+ * route (404 or 405), so the caller keeps its own refresh rule there.
+ */
+export async function nativePushRegistrationStatus(
+  apiBase?: string,
+): Promise<NativePushRegistrationStatus | null> {
+  const resolvedApiBase = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}${NATIVE_PUSH_REGISTRATION_PATH}`,
+    { method: 'GET' },
+  );
+  await throwIfDevicePairingRequired(response);
+  if (response.status === 404 || response.status === 405) return null;
+  if (!response.ok) {
+    throw new Error(
+      `Failed to read native push registration: ${response.status}`,
+    );
+  }
+  const result =
+    (await response.json()) as Partial<NativePushRegistrationStatus>;
+  if (
+    result.registered === true &&
+    typeof result.registrationId === 'string' &&
+    result.registrationId.length > 0
+  )
+    return { registered: true, registrationId: result.registrationId };
+  if (result.registered === false && result.registrationId === null)
+    return { registered: false, registrationId: null };
+  throw new Error('Malformed native push registration status');
 }
 
 export async function createVoiceSession(apiBase?: string): Promise<{

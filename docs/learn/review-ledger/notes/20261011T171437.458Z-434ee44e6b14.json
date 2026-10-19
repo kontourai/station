@@ -1,0 +1,21 @@
+{
+  "revision": "b3dec9a0a38eb4b1e4964437665bcccc9208da22",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"#3552 changed one rule in src-ui/src/index.css, inside the phone-width media query only: a Dialog footer keeps max(16px, safe-bottom) bottom padding. Checked this capture: it shows no Dialog footer at a phone width (desktop-width capture, or a narrow view with no dialog open), so the rendered bytes are unaffected; no recapture needed.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"#3552 changed one rule in src-ui/src/index.css, inside the phone-width media query only: a Dialog footer keeps max(16px, safe-bottom) bottom padding. Checked this capture: it shows no Dialog footer at a phone width (desktop-width capture, or a narrow view with no dialog open), so the rendered bytes are unaffected; no recapture needed.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"#3552 changed one rule in src-ui/src/index.css, inside the phone-width media query only: a Dialog footer keeps max(16px, safe-bottom) bottom padding. Checked this capture: it shows no Dialog footer at a phone width (desktop-width capture, or a narrow view with no dialog open), so the rendered bytes are unaffected; no recapture needed.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"#3552 changed one rule in src-ui/src/index.css, inside the phone-width media query only: a Dialog footer keeps max(16px, safe-bottom) bottom padding. Checked this capture: it shows no Dialog footer at a phone width (desktop-width capture, or a narrow view with no dialog open), so the rendered bytes are unaffected; no recapture needed.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"#3552 changed one rule in src-ui/src/index.css, inside the phone-width media query only: a Dialog footer keeps max(16px, safe-bottom) bottom padding. Checked this capture: it shows no Dialog footer at a phone width (desktop-width capture, or a narrow view with no dialog open), so the rendered bytes are unaffected; no recapture needed.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"#3552 changed one rule in src-ui/src/index.css, inside the phone-width media query only: a Dialog footer keeps max(16px, safe-bottom) bottom padding. Checked this capture: it shows no Dialog footer at a phone width (desktop-width capture, or a narrow view with no dialog open), so the rendered bytes are unaffected; no recapture needed.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"#3552 changed one rule in src-ui/src/index.css, inside the phone-width media query only: a Dialog footer keeps max(16px, safe-bottom) bottom padding. Checked this capture: it shows no Dialog footer at a phone width (desktop-width capture, or a narrow view with no dialog open), so the rendered bytes are unaffected; no recapture needed.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"#3552 changed one rule in src-ui/src/index.css, inside the phone-width media query only: a Dialog footer keeps max(16px, safe-bottom) bottom padding. Checked this capture: it shows no Dialog footer at a phone width (desktop-width capture, or a narrow view with no dialog open), so the rendered bytes are unaffected; no recapture needed.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]}
+  ]
+}

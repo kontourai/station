@@ -875,6 +875,7 @@ export function projectRuntimeEventsToMessages(
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           existing.state = derivedState;
           existing.output = ev.output;
+          if (ev.htmlReply) existing.htmlReply = ev.htmlReply;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = ev.error;
           existing.sourceEventId = ev.eventId;
@@ -956,6 +957,7 @@ export function projectRuntimeEventsToMessages(
             purpose: ev.purpose,
             state: derivedState,
             output: ev.output,
+            ...(ev.htmlReply ? { htmlReply: ev.htmlReply } : {}),
             ...(ev.outputReceipt?.truncated
               ? { outputTruncated: true as const }
               : {}),
@@ -1267,6 +1269,12 @@ export function projectRuntimeEventsToMessages(
         // handled above, before it ever reaches this branch.)
         break;
     }
+    // A run of content no `turn.started` opened (an engine's history replay
+    // persisted turn-less, or a window that begins mid-turn) would otherwise
+    // be emitted with no timestamp, and readers that merge rows by timestamp
+    // then cannot place it. It takes the time of the event that opened it;
+    // a turn that did start keeps that start (or its terminal) time.
+    if (turnOpen && turnTimestamp === undefined) stamp(ev.createdAt);
   }
 
   if (turnOpen) emitAssistantTurn(openTurnSessionExited);

@@ -1,0 +1,7 @@
+{
+  "revision": "3d96ef1053aec36aeae3167b317486c2e4975afd",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked responsive-ui.md against the chat.css change: a phone-width inset for the dock's wait rows, using the transcript's own clamp(12px, 4vw, 20px) gutter. The guide's viewport, inset-projection, touch-target and sheet rules are unaffected. No prose change needed.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

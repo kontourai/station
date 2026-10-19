@@ -1,0 +1,7 @@
+{
+  "revision": "af77bc60ae5f1f6dde4eb492e5999e853f38538c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed Starter registry selection repair at af77bc60ae5: the exact manifest edge now supplements the retained documentation-foundations suite with related discovery. Existing changed-test selection guidance at lines 412-426 remains accurate; no lane, deadline, resource profile, or qualification claim changed. Selector owner passed 190 tests; separate actual graph discovery found 77 importers and its 78-suite combined plan had no deferral. Broad CI qualification remains with publication.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/test-impact-manifest.mjs"]}
+  ]
+}

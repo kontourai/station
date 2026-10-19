@@ -14,8 +14,6 @@
 
     "packages/cli/src/commands/install.ts",
 
-    "packages/sdk/package.json",
-
     "packages/sdk/src/agent/index.ts",
 
     "packages/sdk/src/api-agent-runtime.ts",
@@ -62,7 +60,21 @@
 
     "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
 
-    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx"
+    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx",
+
+    "packages/sdk/package.json#/name",
+
+    "packages/sdk/package.json#/exports",
+
+    "packages/sdk/package.json#/files",
+
+    "packages/sdk/package.json#/main",
+
+    "packages/sdk/package.json#/types",
+
+    "packages/sdk/package.json#/peerDependencies",
+
+    "packages/sdk/package.json#/scripts"
   ],
 
   "checks": [

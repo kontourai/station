@@ -564,7 +564,7 @@ function bucketOf(row: HomeWorkItem): string {
     terminalSince: new Map(),
   });
   return Object.entries(partition)
-    .filter(([, rows]) => (rows as HomeWorkItem[]).includes(row))
+    .filter(([, rows]) => Array.isArray(rows) && rows.includes(row))
     .map(([name]) => name)
     .join(',');
 }
@@ -704,22 +704,46 @@ describe('status facts for chat, task and merged rows', () => {
     expect(build({ status: 'queued' }).line).toBe('Queued to send');
   });
 
-  it('a blocked durable Task reads as blocked', () => {
-    expect(
-      build(
-        null,
-        [],
-        [
-          {
-            id: 'task-1',
-            title: 'Task',
-            status: 'blocked',
-            updatedAt: '2026-09-30T10:00:00.000Z',
-          } as TaskRecord,
-        ],
-      ).line,
-    ).toBe('Blocked');
-  });
+  it.each([
+    ['todo', 'Task · To do', 'idle', 'idle'],
+    ['ready', 'Task · To do', 'idle', 'idle'],
+    ['triage', 'Task · To do', 'idle', 'idle'],
+    ['in_progress', 'Task · In progress', 'running', 'running'],
+    ['review', 'Task · In review', 'needsYou', 'waiting'],
+    ['verification', 'Task · In review', 'needsYou', 'waiting'],
+    ['blocked', 'Task · Blocked', 'needsYou', 'blocked'],
+    ['done', 'Task · Done', 'finished', 'done'],
+    ['canceled', 'Task · Canceled', 'finished', 'stopped'],
+  ] as const)(
+    'an unassigned %s Task shows Task state without a session lifecycle',
+    (status, line, lane, rung) => {
+      const task: TaskRecord = {
+        id: 'task-1',
+        projectId: 'project-alpha',
+        title: 'Plan the release',
+        status,
+        priority: 'normal',
+        description: '',
+        createdBy: 'user',
+        createdAt: '2026-09-30T09:00:00.000Z',
+        updatedAt: '2026-09-30T10:00:00.000Z',
+      };
+      const row = build(null, [], [task]);
+      expect(row.item).toMatchObject({
+        kind: 'task',
+        title: 'Plan the release',
+        agentLabel: 'No agent assigned',
+        taskSessionId: undefined,
+      });
+      expect(workStatus(row.item, NOW, row.facts)).toMatchObject({
+        line,
+        lane,
+        rung,
+      });
+      // Home partitions without facts; both consumers must name the same state.
+      expect(workStatus(row.item, NOW)).toMatchObject({ line, lane, rung });
+    },
+  );
 
   it('a merged chat+session row reads the more urgent kind, only under the label that won', () => {
     // The chat only knows "waiting"; the session knows it is an approval.

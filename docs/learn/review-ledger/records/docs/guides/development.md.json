@@ -40,8 +40,6 @@
 
     "docs/plans/documentation-code-audit.md",
 
-    "package.json",
-
     "packages/cli/src/commands/helpers.ts",
 
     "packages/cli/src/commands/lifecycle-code-root.ts",
@@ -100,7 +98,23 @@
 
     "src-server/__test-utils__/sse-helpers.ts",
 
-    "src-server/routes/spatial-board.ts"
+    "src-server/routes/spatial-board.ts",
+
+    "package.json#/scripts",
+
+    "package.json#/engines",
+
+    "package.json#/packageManager",
+
+    "src-ui/src/components/chat/transcriptLayoutTrace.ts",
+
+    "src-ui/src/components/chat/transcriptLayoutTracer.ts",
+
+    "tests/transcript-load-stability.spec.ts",
+
+    "packages/monument/src/index.ts",
+
+    "packages/monument/src/session-message-delivery.ts"
   ],
 
   "checks": [

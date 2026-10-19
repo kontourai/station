@@ -1,0 +1,7 @@
+{
+  "revision": "339af16a91f79db3605a1962559bfbca46c56974",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed Activity tail-follow against SessionTranscript and AttachedSessionDetail callers after the PR #3787 review fixes. The hook retains follow through asynchronous resize scroll echoes, requires a paused reader to return within 2px after the input grace interval, and rechecks bottom-only input. Jump to latest is exposed off the true bottom. Mounted Chromium cases passed for sustained 20px/16ms growth outside React commits, a slow upward wheel, return to bottom, and wheel/pointerdown/touchstart without movement; clean-commit reversion caught 1140px tail loss and disabled follow, then restoration passed. The existing Activity explanation remains accurate; full-app and native behavior remain unverified.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/session-detail/useSessionTranscriptScroll.ts","src-ui/src/__tests__/session-follow-reader.browser.test.tsx"]}
+  ]
+}

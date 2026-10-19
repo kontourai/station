@@ -266,6 +266,44 @@ describe('session control request keys (real SQLite table)', () => {
     }
   });
 
+  // #3559: an unresolved claim may already have had its effect; forgetting it
+  // would let a late retry run the request again.
+  test('the TTL purge keeps an unresolved claim, which is still re-driven with its recorded decision', async () => {
+    const { store } = open();
+    const keys = store.sessionControlRequestKeys();
+    const digest = sessionControlRequestDigest(['x']);
+    await runWithSessionControlKey(keys, id(), digest, async (resume) => {
+      resume.recordDecision('steer:thread-1');
+      return { settle: 'pending' as const, result: 'indeterminate' };
+    });
+    const realNow = Date.now;
+    Date.now = () => realNow() + SESSION_CONTROL_REQUEST_KEY_TTL_MS + 1000;
+    const seen: Array<string | undefined> = [];
+    try {
+      // A claim of ANOTHER key runs the purge first.
+      await runWithSessionControlKey(
+        keys,
+        id('key-other-001'),
+        digest,
+        async () => ({ settle: 'final' as const, result: 'other' }),
+      );
+      const outcome = await runWithSessionControlKey(
+        keys,
+        id(),
+        digest,
+        async (resume) => {
+          seen.push(resume.decision);
+          return { settle: 'final' as const, result: 'done' };
+        },
+      );
+      expect(outcome).toEqual({ kind: 'executed', result: 'done' });
+    } finally {
+      Date.now = realNow;
+    }
+    // Re-driven as the same attempt, never claimed afresh.
+    expect(seen).toEqual(['steer:thread-1']);
+  });
+
   describe('quotas', () => {
     const digest = sessionControlRequestDigest(['x']);
     const done = async () => ({ settle: 'final' as const, result: 'ok' });
@@ -408,6 +446,144 @@ describe('session control request keys (real SQLite table)', () => {
           )
         ).kind,
       ).toBe('executed');
+    });
+
+    // #3606 review F1: an unresolved claim kept past the TTL must not hold a
+    // quota slot forever. A start whose downstream claim is indeterminate
+    // re-drives to `pending` on every repeat, so it can never be resolved.
+    describe('unresolved claims past the TTL', () => {
+      const stuck = async () => ({
+        settle: 'pending' as const,
+        result: 'indeterminate',
+      });
+      function capped(limits: { perCaller: number; station: number }) {
+        const { store } = open();
+        const db = (store as unknown as { db: SqliteDatabase }).db;
+        let clock = 1_000_000;
+        const keys = createSqliteSessionControlRequestKeys(db, {
+          now: () => clock,
+          limits,
+        });
+        const rows = (caller: string) =>
+          (
+            db
+              .prepare(
+                'SELECT COUNT(*) AS total FROM session_control_request_keys WHERE caller_session_id = ?',
+              )
+              .get(caller) as { total: number }
+          ).total;
+        return {
+          keys,
+          rows,
+          advance: (ms: number) => {
+            clock += ms;
+          },
+        };
+      }
+
+      test('no longer count toward the caller quota, so the caller is not locked out', async () => {
+        const { keys, advance } = capped({ perCaller: 2, station: 100 });
+        await fill(keys, 'stuck', 2, stuck);
+        expect(
+          await runWithSessionControlKey(
+            keys,
+            id('fresh-0001', 'stuck'),
+            digest,
+            done,
+          ),
+        ).toEqual({ kind: 'capacity', scope: 'caller' });
+        for (const multiple of [10, 100]) {
+          advance(SESSION_CONTROL_REQUEST_KEY_TTL_MS * multiple);
+          // A repeat of a stuck key still re-drives and still cannot settle.
+          await runWithSessionControlKey(
+            keys,
+            id('fill-000000', 'stuck'),
+            digest,
+            stuck,
+          );
+        }
+        expect(
+          await runWithSessionControlKey(
+            keys,
+            id('fresh-0001', 'stuck'),
+            digest,
+            done,
+          ),
+        ).toEqual({ kind: 'executed', result: 'ok' });
+      });
+
+      test('count until exactly the TTL and stop counting one millisecond later', async () => {
+        const { keys, advance } = capped({ perCaller: 2, station: 100 });
+        await fill(keys, 'stuck', 2, stuck);
+        advance(SESSION_CONTROL_REQUEST_KEY_TTL_MS);
+        expect(
+          await runWithSessionControlKey(
+            keys,
+            id('fresh-0001', 'stuck'),
+            digest,
+            done,
+          ),
+        ).toEqual({ kind: 'capacity', scope: 'caller' });
+        advance(1);
+        expect(
+          await runWithSessionControlKey(
+            keys,
+            id('fresh-0001', 'stuck'),
+            digest,
+            done,
+          ),
+        ).toEqual({ kind: 'executed', result: 'ok' });
+      });
+
+      test('no longer count toward the station backstop', async () => {
+        const { keys, advance } = capped({ perCaller: 100, station: 2 });
+        await fill(keys, 'c1', 1, stuck);
+        await fill(keys, 'c2', 1, stuck);
+        expect(
+          await runWithSessionControlKey(
+            keys,
+            id('late-0001', 'c3'),
+            digest,
+            done,
+          ),
+        ).toEqual({ kind: 'capacity', scope: 'station' });
+        advance(SESSION_CONTROL_REQUEST_KEY_TTL_MS + 1);
+        expect(
+          await runWithSessionControlKey(
+            keys,
+            id('late-0001', 'c3'),
+            digest,
+            done,
+          ),
+        ).toEqual({ kind: 'executed', result: 'ok' });
+      });
+
+      test('a repeat of a past-TTL key re-drives its recorded decision and creates no new claim', async () => {
+        const { keys, advance, rows } = capped({ perCaller: 2, station: 100 });
+        await runWithSessionControlKey(
+          keys,
+          id('key-old-0001', 'stuck'),
+          digest,
+          async (resume) => {
+            resume.recordDecision('start:thread-1');
+            return { settle: 'pending' as const, result: 'indeterminate' };
+          },
+        );
+        expect(rows('stuck')).toBe(1);
+        advance(SESSION_CONTROL_REQUEST_KEY_TTL_MS * 10);
+        const seen: Array<string | undefined> = [];
+        await runWithSessionControlKey(
+          keys,
+          id('key-old-0001', 'stuck'),
+          digest,
+          async (resume) => {
+            seen.push(resume.decision);
+            return { settle: 'pending' as const, result: 'indeterminate' };
+          },
+        );
+        expect(seen).toEqual(['start:thread-1']);
+        expect(rows('stuck')).toBe(1);
+      });
     });
 
     test('the defaults are the documented literals', () => {

@@ -1,0 +1,9 @@
+{
+  "revision": "acfa127849cb43100d4e29893cf7b52838be89b3",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"pull-request-review.test.ts only renames fixture check-group data from 'Windows PR Verification' to the current workflow name 'PR: Windows'. The contract's check grouping behaviour and fields are unchanged.","inputs":["docs/reference/contracts.md","src-server/services/pull-requests/__tests__/pull-request-review.test.ts"]},
+
+    {"path":"docs/reference/issue-lifecycle.md","note":"labels.json and label-manifest.mjs gain the existing live 'flaky' label (quarantined flaky test). The doc names labels.json as the canonical inventory and labels:check as its check; both still hold. The lifecycle reducer does not use the label.","inputs":["docs/reference/issue-lifecycle.md",".github/labels.json"]}
+  ]
+}

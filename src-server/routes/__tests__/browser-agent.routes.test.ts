@@ -95,6 +95,10 @@ function harness() {
     resize: vi.fn(),
     snapshot: vi.fn(async () => ({ ok: true, snapshot: '' })),
     click: vi.fn(async () => ({ ok: true, clicked: 'x' })),
+    hover: vi.fn(async () => ({ ok: true })),
+    drag: vi.fn(async () => ({ ok: true })),
+    selectOption: vi.fn(async () => ({ ok: true })),
+    colorScheme: vi.fn(async () => ({ ok: true })),
     type: vi.fn(),
     press: vi.fn(),
     scroll: vi.fn(),
@@ -271,3 +275,47 @@ describe('browser-agent routes: the authority chain', () => {
     expect(h.touched()).toBe(false);
   });
 });
+
+test.each([
+  ['hover', 'hover', { target: { ref: 'e1' } }, [{ ref: 'e1' }]],
+  [
+    'drag',
+    'drag',
+    { source: { x: 1, y: 2 }, target: { ref: 'e2' } },
+    [{ x: 1, y: 2 }, { ref: 'e2' }],
+  ],
+  [
+    'select',
+    'selectOption',
+    { target: { locator: '#color' }, value: 'b' },
+    [{ locator: '#color' }, { value: 'b' }],
+  ],
+  ['color-scheme', 'colorScheme', { scheme: 'dark' }, ['dark']],
+] as const)(
+  '%s routes only an authorized caller with the intended arguments',
+  async (operation, method, body, args) => {
+    const h = harness();
+    expect(
+      await (
+        await h.call(operation, 'bearer-exposed', {
+          browserSessionId: 'bs_x',
+          ...body,
+        })
+      ).json(),
+    ).toMatchObject({ ok: false, code: 'caller-not-bound' });
+    expect(h.touched()).toBe(false);
+    expect(
+      await (
+        await h.call(operation, 'operator', {
+          browserSessionId: 'bs_x',
+          ...body,
+        })
+      ).json(),
+    ).toMatchObject({ ok: true });
+    expect(h.automation[method]).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'alpha', profileKey: 'operator' }),
+      'bs_x',
+      ...args,
+    );
+  },
+);

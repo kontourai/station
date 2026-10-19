@@ -18,6 +18,15 @@ It does not provide filesystem inspection, create a new skill, or change Project
 configuration by itself. Those require a separately authorized surface; the
 example does not grant one implicitly.
 
+## Visual replies
+
+Attach `station-control` and select `html_preview` and `html_render` to let an
+Agent preview and publish a self-contained HTML reply in its own conversation.
+This works through the existing Claude, Codex and ACP MCP passthroughs when the
+connection supports tool servers. Preview starts Chromium and publishing stores a page. Both are bounded writes
+and respect the engine's approval policy. The [visual replies guide](../user/html-replies.md)
+owns limits, theme variables, Chromium prerequisites and page deletion semantics.
+
 ## What `station-control` gives you
 
 `station-control` is the built-in MCP server for platform management. It exposes tools such as:
@@ -134,10 +143,58 @@ Station checks an Agent's dispatch against its verified Session caller:
 Here, `bound` describes verified caller assurance, not a selected approval mode.
 A plain folder target belongs to the deepest Project whose canonical working
 directory contains it; otherwise it is global. A missing or unreadable folder
-does not establish a scope. With no workspace, Station checks the default
-Session directory. Conversation follow-ups use the newest started Session's
-scope and check unconfined execution across the conversation's lineage,
-including reserved successors.
+does not establish a scope. Conversation follow-ups use the newest started
+Session's scope and check unconfined execution across the conversation's
+lineage, including reserved successors.
+
+A new Session on this Station that names no workspace (`send_message` or
+`delegate_task` with neither `projectSlug` nor `projectPath`, and no
+`environmentId`) starts in the calling Session's own Project, as if the Agent
+had named that Project's slug. This applies to every verified caller, bound or
+not. The Project is the one the calling Session's start record names, never
+anything in the request, and only when that Project has a working directory
+and the Session's owner holds `execute` there. The new Session runs in the
+Project's working directory with the Project's normal workspace mode (a new
+worktree, when the Project isolates Sessions in worktrees), not in the folder
+or worktree the calling Session runs in, and its start records the Project. A
+follow-up or input reply continues its conversation instead. To run somewhere
+else, name it: `projectPath` alone names a plain folder, which opts out of the
+default and is scoped by the Project that contains it, if any. A caller in the global space, one whose Project
+Station cannot confirm, one whose Project has no working directory, and one
+whose owner may not dispatch there get no default: Station checks the default
+Session directory, as it does for a request from outside station-control.
+
+A refusal of a caller that is not bound for its scope is
+`station_control_out_of_scope`, with a `reason` beside the code and fixed copy
+that says what to do instead. The tool result carries all three: the
+delegation tools (`send_message`, `delegate_task`, `continue_task`,
+`interrupt_task`, `respond_to_task_request`, `get_task`, `get_task_events`,
+`list_delegated_tasks`) relay this Station's own `code` and `reason`, and the
+Session-control tools, `declare_pull_request` and `rename_session` return the
+route's answer as it was sent:
+
+| `reason` | Meaning |
+| --- | --- |
+| `other-project` | The caller runs in a Project and the target is in another one. |
+| `global-space` | The caller runs in a Project and the target is in the global space. |
+| `project-from-global` | The caller runs in the global space and the target is in a Project. |
+| `target-unavailable` | The target's Project is not one this Session can use: the Project named does not exist, the Session's owner may not dispatch in it (a new Session's named Project reads the same either way), or the folder is missing, moved or outside it. |
+| `unreadable-caller` | Station cannot confirm the calling Session's own Project. |
+| `host` | The target, or a Session of its conversation, runs unconfined (`host`). |
+| `remote` | The target is on another Station; only a bound operator reaches one. |
+
+The copy names no Project. `target-unavailable` also refuses a bound caller
+that is not acting for the operator. `remote` is given only to a caller acting
+for the operator; any other caller is refused another Station with
+`station_control_role_required`. A target Station cannot read at all, or one
+another person owns, keeps `station_control_assurance_insufficient` (or
+`station_control_role_required` for a caller not acting for the operator), so
+it reads the same as a Session that does not exist. Reads keep their own
+answers: `read_conversation` answers `conversation_out_of_scope` or
+`conversation_not_found`, and `list_project_activity` and `get_session_digest`
+answer `session_not_found`. `station_control_assurance_insufficient` otherwise remains the code of the
+assurance checks themselves, such as a tool that needs a bound caller or an
+approval command.
 
 For every caller except a bound operator, Station makes the folder decision a
 second time immediately before it starts the engine for a new Session:
@@ -156,10 +213,12 @@ second time immediately before it starts the engine for a new Session:
   directory as well as the default Session directory, so a connection
   configured inside a Project is not reachable from the global scope.
 
-These refusals use the same codes as the admission check:
-`station_control_role_required` when the folder is no longer the one admitted,
-and `station_control_assurance_insufficient` when it is in another scope. The
-check runs before Station calls the engine adapter. The adapter then starts
+These refusals use `station_control_out_of_scope`, whether the folder is no
+longer the one admitted or is now in another scope. The refusal crosses the
+dispatch as a code only, so it carries that code's general copy and no
+`reason`. A composition that cannot tell where an engine connection would start
+the Session refuses with `station_control_role_required`. The check runs
+before Station calls the engine adapter. The adapter then starts
 the process with the same path string, so the check narrows the interval in
 which a folder can be swapped; it does not pin the directory. Other uses of a
 Session's folder, such as terminals, are not covered. A follow-up to a Session
@@ -285,20 +344,26 @@ Session by its `sessionId`, without creating a task.
   (`replayed: true`) without acting again; the same key with different arguments
   is `request_key_conflict`. A refusal that did nothing (`session_busy`,
   `no_active_turn`) frees the key, so the same call may be repeated once the
-  Session is ready. Keys belong to the verified calling Session and expire after
-  seven days. A calling Session keeps at most 300 keys: past that its own oldest
-  completed keys are dropped (they no longer replay), and it is refused
+  Session is ready. Keys belong to the verified calling Session. Completed keys
+  expire after seven days; an unresolved `indeterminate` key never expires by
+  age, so a late repeat still re-checks it instead of sending again. A calling
+  Session keeps at most 300 keys: past that its own oldest completed keys are
+  dropped (they no longer replay), and it is refused
   (`request_key_caller_capacity`) only while every one of its keys is an
-  unresolved `indeterminate` request. An `indeterminate` answer means the
-  message may have been delivered, so repeat the same call to re-check rather
-  than sending under a new key. A re-driven request keeps the branch (steer or
-  start) and Session its first attempt chose, even if the re-drive is refused.
-  Two limits are accepted: once a completed key has been dropped (more than 300
-  later sends from that session) a retry under it is not guaranteed to be
-  deduplicated downstream, because the chat-turn claim table holds 2,000 entries
-  Station-wide and a retry from another branch of the work is not caught at all;
-  and unresolved claims are never dropped, so 300 stuck ones leave that session
-  unable to use new requestKeys until the seven-day expiry. A re-driven attempt
+  unresolved `indeterminate` request less than seven days old. An
+  `indeterminate` key older than that stops counting against the limit but is
+  kept. An `indeterminate` answer means the message may have been delivered,
+  so repeat the same call to re-check rather than sending under a new key. A
+  re-driven request keeps the branch (steer or start) and Session its first
+  attempt chose, even if the re-drive is refused. Three limits are accepted.
+  Once a completed key has been dropped (more than 300 later sends from that
+  session, or seven days), a retry under it acts again unless the downstream
+  client-turn claim still answers it: a start's claim is kept as a replay row
+  or, once evicted from the 2,000-row table, as an `expired` tombstone that
+  refuses the resend until the target Session is deleted; a retry from another
+  branch of the work is not caught at all. A start whose turn may already have reached the engine can
+  stay `indeterminate` on every repeat, so 300 such keys block that session's
+  new requestKeys until the oldest passes seven days. A re-driven attempt
   that is refused answers with `pinned: true`; its key stays tied to its first
   attempt, so check the Session before using a new key. A re-driven interrupt
   that finds nothing running also keeps its claim, so a later re-drive could
@@ -316,8 +381,10 @@ and carry no approval mode, model, or Environment: the receiving Session runs
 under its own Agent's saved settings, so a call cannot widen what the Session may
 do. A request without a verified station-control caller is refused. The
 [route](../../src-server/routes/orchestration/session-agent-control.ts) and the
-[delivery seam](../../src-server/services/orchestration/session-message-delivery.ts)
-own these rules.
+[delivery sequence in Monument](../../packages/monument/src/session-message-delivery.ts)
+share the send path: the route owns scope and authorization, while Monument
+selects and records a branch before calling the host's start or steer port.
+Station retains the durable keys, receipts and engine invocation.
 
 ### Project activity
 
@@ -345,6 +412,9 @@ inputs: nothing names a Project, an owner, or a host.
   filter (it reads both `session.started` and `session.configured` start records,
   as the scope owner does) that never drops a row the scope check would admit;
   every row is still held to the scope rule, which narrowing never replaces.
+  The one exception is the caller's own conversation: its current Session is
+  listed and marked `self`, even when the caller's Project cannot be
+  read or that Session runs `host`, as `get_session_digest` reads it.
 - `get_session_digest` summarizes one Session from what the event store
   recorded. No model summarizes, and a fact that was not recorded is absent.
   The `session` has `title`, `projectSlug`, `engine`, `agent`, `status`, and
@@ -414,6 +484,27 @@ these rules.
    and extension fields. It retains bounded assistant text and request titles;
    those strings are not scrubbed of paths or other sensitive content the
    worker wrote.
+   An agent that delegates through its own Session-bound Station Control
+   connection (Claude Code, Codex, or an ACP engine) does not need to poll for
+   a child it started on this Station. When the child's turn ends, Station delivers its
+   result to the delegating conversation once. An idle conversation gets a
+   new turn. A running one is steered if its engine accepts mid-turn input;
+   otherwise the result waits until that turn ends. The new turn or steer
+   carries the same owner attribution as the `delegate_task` call: a Codex or
+   ACP token is not proof of who presented it, so their results arrive
+   unattributed, exactly like their own `send_to_session` messages. The
+   delivered text is marked as a Station-delivered task result, not the
+   person's message. It quotes the child's recorded output, clipped at 8,000
+   characters. Reading a finished child with `get_task` first means the same
+   result is not delivered again. An `interrupt_task` from the delegating
+   conversation that stops a turn, or holds a stop for one being started,
+   cancels a result that has not been delivered yet; one that stops nothing,
+   such as a `turnId` that is not the running turn, cancels nothing.
+   Station gives up after five failed or unconfirmed attempts, for example
+   when the delegating conversation has no Agent binding to continue.
+   Children on an SSH or paired Station, children of Station's own agent, and
+   children on a hosted Station are not delivered this way: use `get_task`
+   for those.
 4. Keep child sessions isolated with delegation limits.
 5. Refine successful skills instead of baking everything into one giant system prompt.
 
@@ -534,6 +625,19 @@ to load: the Agent is unusable, not only unable to delegate. The runtime derives
 the default child policy described below; this is not an editable Agent setting.
 
 ## Delegation rules
+
+Keep long exact values (commit SHAs, ids and hashes) in files the worker can
+read, or in the corresponding structured fields. A model can mistype an opaque
+string when retyping prompt prose. When the value must appear in a prompt or
+result, copy it from the file or command output such as `git rev-parse HEAD`,
+and echo it back for the caller to compare.
+
+For a new task on the current Station, the CLI offers repeatable
+`station delegate --attach=<path>`; `--file` supplies prompt text only.
+See [the delegate reference](../reference/cli.md#delegate) for workspace
+placement, limits and unsupported targets. An agent using `delegate_task`
+needs an independently authorized way to make the file available to the worker;
+this example's management tools do not grant filesystem access.
 
 Station records a child's lineage and derives its depth and tool policy at
 delegation. Policy delivery also depends on the selected engine: the

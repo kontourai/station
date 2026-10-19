@@ -1,0 +1,7 @@
+{
+  "revision": "3043a8977771bb5ba8070bae0ddd026ee66b6515",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"updated the chat-controls paragraph for the Status unavailable Resync action, the last-known background banner, and the inbox footer Refresh; other claims re-read against ChatDock/chatStatus changes","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/status/chatStatus.ts"]}
+  ]
+}

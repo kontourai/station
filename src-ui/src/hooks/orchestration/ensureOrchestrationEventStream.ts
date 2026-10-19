@@ -6,6 +6,7 @@ import {
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { workObservation } from '../../contexts/work-observation';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
   handleOrchestrationEvent,
@@ -123,6 +124,15 @@ function notifyOrchestrationAuthorityChanged(apiBase: string): void {
   }
 }
 
+/** Explicit resync restarts a live stream; auth-refused streams keep the
+ * same retry floor and single deferred retry as focus/online recovery.
+ */
+export function resyncOrchestrationEventStream(apiBase: string): void {
+  const owned = activeSources.get(apiBase);
+  if (owned?.parked) ensureOrchestrationEventStream(apiBase);
+  else notifyOrchestrationAuthorityChanged(apiBase);
+}
+
 function reensureRequestedStreams(): void {
   if (
     (globalThis as { document?: { hidden?: boolean } }).document?.hidden ===
@@ -205,8 +215,39 @@ const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
   'turn.aborted',
 ]);
 const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
-let lastSessionReadModelRefreshAt = 0;
-let deferredSessionReadModelRefresh: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Refresh scheduling, per apiBase: a stream for a Station the user switched
+ * away from keeps running, and its frames must not hold the live Station's
+ * window or wait.
+ */
+interface SessionReadModelRefreshState {
+  lastAt: number;
+  deferred: ReturnType<typeof setTimeout> | undefined;
+  /** Unsubscribes the wait for an in-flight read to settle. */
+  awaitingSettle: (() => void) | undefined;
+  /** An update arrived during the in-flight read; re-read once it settles. */
+  owed: boolean;
+}
+const sessionReadModelRefreshes = new Map<
+  string,
+  SessionReadModelRefreshState
+>();
+
+function sessionReadModelRefreshState(
+  apiBase: string,
+): SessionReadModelRefreshState {
+  let state = sessionReadModelRefreshes.get(apiBase);
+  if (!state) {
+    state = {
+      lastAt: 0,
+      deferred: undefined,
+      awaitingSettle: undefined,
+      owed: false,
+    };
+    sessionReadModelRefreshes.set(apiBase, state);
+  }
+  return state;
+}
 /**
  * #2307: the `QueryClient` each apiBase's stream writes through.
  *
@@ -253,6 +294,12 @@ function registerStreamQueryClient(
   return () => {
     const index = streamQueryClients.indexOf(registration);
     if (index !== -1) streamQueryClients.splice(index, 1);
+    if (!currentStreamQueryClient(apiBase)) {
+      const state = sessionReadModelRefreshes.get(apiBase);
+      if (state?.deferred !== undefined) clearTimeout(state.deferred);
+      state?.awaitingSettle?.();
+      sessionReadModelRefreshes.delete(apiBase);
+    }
   };
 }
 
@@ -260,26 +307,70 @@ function refreshSessionReadModelOnFact(
   apiBase: string,
   event: OrchestrationEvent,
 ): void {
-  const client = currentStreamQueryClient(apiBase);
-  if (!client || !SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
-  const elapsed = Date.now() - lastSessionReadModelRefreshAt;
-  if (elapsed < SESSION_READ_MODEL_REFRESH_WINDOW_MS) {
-    // One deferred refresh covers every fact that arrives in the window. It
-    // re-resolves the client when it fires: an authority switch inside the
-    // window must not send the refresh to the client it retired.
-    if (deferredSessionReadModelRefresh === undefined) {
-      deferredSessionReadModelRefresh = setTimeout(() => {
-        deferredSessionReadModelRefresh = undefined;
-        lastSessionReadModelRefreshAt = Date.now();
-        void currentStreamQueryClient(apiBase)?.invalidateQueries({
-          queryKey: ['orchestration-sessions'],
-        });
-      }, SESSION_READ_MODEL_REFRESH_WINDOW_MS - elapsed);
-    }
+  if (!SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
+  requestSessionReadModelRefresh(apiBase);
+}
+
+/**
+ * The one way the stream asks for a fresh session read-model, whether a fact
+ * or a server projection-update frame prompted it.
+ *
+ * Throttled to one refresh per window AND single-flight. The read-model is the
+ * whole session list (about a megabyte on a busy Station), and a projection
+ * update arrives on every turn-progress tick. An invalidation that lands while
+ * the previous read is still in flight makes TanStack cancel that read and
+ * start another — but the cancelled HTTP request keeps running, because the
+ * fetcher has no abort path, and its answer is discarded. Over a slow remote
+ * link that is a loop in which no read ever lands: the inbox never shows a
+ * conversation started on another device, and the abandoned reads pile up in
+ * the native request queue until session history and status are refused. So
+ * while a read is in flight this only remembers that another is owed, and
+ * asks again once that read settles. `fetchOrchestrationSessions` explicitly
+ * bounds headers and body inactivity by `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS`,
+ * so a stalled read settles while a progressing slow read can finish.
+ */
+function requestSessionReadModelRefresh(apiBase: string): void {
+  const state = sessionReadModelRefreshState(apiBase);
+  if (state.deferred !== undefined) return;
+  if (state.awaitingSettle !== undefined) {
+    state.owed = true;
     return;
   }
-  lastSessionReadModelRefreshAt = Date.now();
-  void client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
+  const elapsed = Date.now() - state.lastAt;
+  if (elapsed < SESSION_READ_MODEL_REFRESH_WINDOW_MS) {
+    // One deferred refresh covers every request that arrives in the window.
+    // It re-resolves the client when it fires: an authority switch inside the
+    // window must not send the refresh to the client it retired.
+    state.deferred = setTimeout(() => {
+      state.deferred = undefined;
+      refreshSessionReadModelNow(apiBase);
+    }, SESSION_READ_MODEL_REFRESH_WINDOW_MS - elapsed);
+    return;
+  }
+  refreshSessionReadModelNow(apiBase);
+}
+
+function refreshSessionReadModelNow(apiBase: string): void {
+  const client = currentStreamQueryClient(apiBase);
+  if (!client) return;
+  const state = sessionReadModelRefreshState(apiBase);
+  const queryKey = ['orchestration-sessions'];
+  if (client.isFetching({ queryKey }) > 0) {
+    state.owed = true;
+    const stop = client.getQueryCache().subscribe(() => {
+      if (client.isFetching({ queryKey }) > 0) return;
+      stop();
+      state.awaitingSettle = undefined;
+      if (!state.owed) return;
+      state.owed = false;
+      requestSessionReadModelRefresh(apiBase);
+    });
+    state.awaitingSettle = stop;
+    return;
+  }
+  state.owed = false;
+  state.lastAt = Date.now();
+  void client.invalidateQueries({ queryKey });
 }
 
 /**
@@ -288,11 +379,11 @@ function refreshSessionReadModelOnFact(
  * test's (#2310 review L3).
  */
 export function resetSessionReadModelRefreshForTests(): void {
-  if (deferredSessionReadModelRefresh !== undefined) {
-    clearTimeout(deferredSessionReadModelRefresh);
+  for (const state of sessionReadModelRefreshes.values()) {
+    if (state.deferred !== undefined) clearTimeout(state.deferred);
+    state.awaitingSettle?.();
   }
-  deferredSessionReadModelRefresh = undefined;
-  lastSessionReadModelRefreshAt = 0;
+  sessionReadModelRefreshes.clear();
   streamQueryClients.length = 0;
 }
 
@@ -416,6 +507,14 @@ export function ensureOrchestrationEventStream(
             isReconnectFallback: hasReceivedSnapshot,
             queryClient: currentStreamQueryClient(apiBase),
           });
+          const client = currentStreamQueryClient(apiBase);
+          if (client)
+            for (const session of caughtUp.sessions) {
+              if (session.conversationActivity)
+                workObservation(client).streamObserved(
+                  session.conversationActivity,
+                );
+            }
           hasReceivedSnapshot = true;
           basesWithSnapshot.add(apiBase);
         }
@@ -436,6 +535,8 @@ export function ensureOrchestrationEventStream(
         if (payload.epoch && previousEpoch && payload.epoch !== previousEpoch) {
           activeChatsStore.clearConversationActivity();
           clearSequencedLiveEvents(apiBase);
+          const client = currentStreamQueryClient(apiBase);
+          if (client) workObservation(client).resetStreamEpoch();
         }
         if (payload.epoch) streamEpochs.set(apiBase, payload.epoch);
         cursor.adopt(raw.id);
@@ -447,6 +548,14 @@ export function ensureOrchestrationEventStream(
           isReconnectFallback: hasReceivedSnapshot,
           queryClient: currentStreamQueryClient(apiBase),
         });
+        const client = currentStreamQueryClient(apiBase);
+        if (client)
+          for (const session of payload.sessions) {
+            if (session.conversationActivity)
+              workObservation(client).streamObserved(
+                session.conversationActivity,
+              );
+          }
         hasReceivedSnapshot = true;
         basesWithSnapshot.add(apiBase);
       } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {
@@ -456,6 +565,9 @@ export function ensureOrchestrationEventStream(
         activeChatsStore.applyConversationActivity(
           payload.conversation?.activity,
         );
+        const client = currentStreamQueryClient(apiBase);
+        if (client && payload.conversation?.activity)
+          workObservation(client).streamObserved(payload.conversation.activity);
       } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
         if (!cursor.admit(raw.id)) return;
         if (parseStreamSequence(raw.id) !== undefined)
@@ -477,6 +589,9 @@ export function ensureOrchestrationEventStream(
           payload.conversation,
           parseStreamSequence(raw.id),
         );
+        const client = currentStreamQueryClient(apiBase);
+        if (client && payload.conversation?.activity)
+          workObservation(client).streamObserved(payload.conversation.activity);
         refreshSessionReadModelOnFact(apiBase, payload.event);
       } else if (
         raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
@@ -485,9 +600,7 @@ export function ensureOrchestrationEventStream(
         // server projection". In particular, the client must not turn
         // `lastEventAt` into a second silence detector; the watchdog's
         // narrower progress derivation is serialized on that projection.
-        void currentStreamQueryClient(apiBase)?.invalidateQueries({
-          queryKey: ['orchestration-sessions'],
-        });
+        requestSessionReadModelRefresh(apiBase);
       }
     },
     // `fetchSSE` owns transient retry. Keep its single-flight entry until it

@@ -1,0 +1,7 @@
+{
+  "revision": "351cf6a9ac6605a1ab41f5e65eaaa863da051883",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3563 fix round 1: replaced the startup-gate sentence with the fire-time fence (startup repair and per-intent cancelIfSourceTerminated share RECOVERY_SOURCE_TERMINATED; timers armed at startup; fire-time check cancels an ended source and re-arms every 60s while unreadable) and added that dead-claim settlement on an unreadable job record advances last_run_ms without rewriting its bytes. Checked against event-store.ts cancelRecoveryIfSourceTerminated, session-recovery-coordinator.ts passesSourceTerminalFence/reconcile, scheduler-ledger.ts reconcileDeadClaims.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/recovery-ledger.ts","src-server/services/orchestration/session-recovery-coordinator.ts","src-server/services/scheduling/__tests__/scheduler-ledger.test.ts","src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}

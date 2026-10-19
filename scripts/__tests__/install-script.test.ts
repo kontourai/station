@@ -969,7 +969,7 @@ describe('one-line Station installer', {
     executable(join(fakeBin, 'curl'), '#!/bin/sh\nexit 42\n');
     const readme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
     const command =
-      /^#{2,3} (?:Install|Verified installer).*?\n[\s\S]*?```bash\n([^\n]+)\n```/m.exec(
+      /^### Verified installer[^\n]*\n[\s\S]*?```bash\n([^\n]+)\n```/m.exec(
         readme,
       )?.[1];
     expect(command).toBeTruthy();
@@ -1777,6 +1777,38 @@ describe('prebuilt archive installs (#2675 B2)', {
 }, () => {
   const tempDir = trackTempDirs();
 
+  it('finishes a signed install when macOS leaves Finder metadata in the extraction stage', () => {
+    const harness = archiveHarness(tempDir('station-archive-finder-'));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const manifest = archiveManifest(harness, archive);
+    const bin = join(harness.root, 'finder-tar');
+    executable(
+      join(bin, 'tar'),
+      `#!/bin/sh
+/usr/bin/tar "$@" || exit "$?"
+case "$1:$4" in
+  -xzf:*/versions/.stage.*) printf 'Finder metadata' >"$4/.DS_Store" ;;
+esac
+`,
+    );
+    harness.guardedPath = `${bin}:${harness.guardedPath}`;
+    const result = runArchiveInstaller(harness, manifest);
+    expect(result.status, result.stderr).toBe(0);
+    expect(
+      existsSync(
+        join(harness.installRoot, 'current', '.station-install-complete'),
+      ),
+    ).toBe(true);
+    expect(cliCalls(harness).some((call) => call.includes('|start '))).toBe(
+      true,
+    );
+    expect(
+      readdirSync(join(harness.installRoot, 'versions')).some((name) =>
+        name.startsWith('.stage.'),
+      ),
+    ).toBe(false);
+  });
+
   it('installs the host archive as a read-only version with a sentinel, current, launcher v2 and state schema 4, and never builds', () => {
     const harness = archiveHarness(tempDir('station-archive-install-'));
     const archive = buildPrebuiltArchive(harness.root, '1.2.3');
@@ -2060,6 +2092,80 @@ describe('prebuilt archive installs (#2675 B2)', {
     expect(cliCalls(harness)).toContain(
       `${firstVersion}|stop --base=${realpathSync(harness.stationHome)}`,
     );
+  });
+
+  it('keeps the accepted release raised when its install fails, and a retry of that release is allowed (#187)', () => {
+    const harness = archiveHarness(tempDir('station-archive-accepted-fail-'));
+    const mark = join(harness.installRoot, '.station-release-accepted.json');
+    const first = buildPrebuiltArchive(harness.root, '1.2.3');
+    expect(
+      runArchiveInstaller(harness, archiveManifest(harness, first)).status,
+    ).toBe(0);
+    const version = (name: string) =>
+      join(realpathSync(harness.installRoot), 'versions', name);
+
+    // 1.2.4 verifies, raises the mark, then does not start: rolled back.
+    const failing = buildPrebuiltArchive(harness.root, '1.2.4', {
+      failStart: true,
+    });
+    const failed = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, failing),
+    );
+    expect(failed.stderr).toContain(
+      'the new release did not start; the previous release was restored',
+    );
+    expect(failed.status).toBe(1);
+    expect(readlinkSync(join(harness.installRoot, 'current'))).toBe(
+      version('1.2.3'),
+    );
+    expect(readFileSync(mark, 'utf8')).toBe(
+      `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'stable', version: '1.2.4' })}\n`,
+    );
+
+    // A retry of 1.2.4 is not refused by the mark (equal is allowed): a
+    // republished 1.2.4 installs without any flag.
+    const fixed = buildPrebuiltArchive(harness.root, '1.2.4', {
+      variant: 'fixed',
+    });
+    const retried = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, fixed),
+    );
+    expect(retried.status, retried.stderr).toBe(0);
+    expect(readlinkSync(join(harness.installRoot, 'current'))).toBe(
+      version('1.2.4'),
+    );
+    expect(existsSync(join(version('1.2.4'), 'variant-fixed'))).toBe(true);
+  });
+
+  it('seeds the accepted release from the verified active one when an install predates it (#187)', () => {
+    const harness = archiveHarness(tempDir('station-archive-accepted-seed-'));
+    const mark = join(harness.installRoot, '.station-release-accepted.json');
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const manifest = archiveManifest(harness, archive);
+    expect(runArchiveInstaller(harness, manifest).status).toBe(0);
+    rmSync(mark);
+    // Not into an install root that fails the owned-root checks (here, it
+    // lost its installer marker): nothing to do, and nothing written.
+    const marker = join(harness.installRoot, '.station-portable-install-root');
+    const markerText = readFileSync(marker, 'utf8');
+    chmodSync(marker, 0o600);
+    rmSync(marker);
+    const unowned = runArchiveInstaller(harness, manifest);
+    expect(unowned.status, unowned.stderr).toBe(0);
+    expect(unowned.stdout).toContain(
+      'Station v1.2.3 is already installed; nothing to do.',
+    );
+    expect(existsSync(mark)).toBe(false);
+    writeFileSync(marker, markerText, { mode: 0o600 });
+
+    const again = runArchiveInstaller(harness, manifest);
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.stdout).toContain(
+      'Station v1.2.3 is already installed; nothing to do.',
+    );
+    expect(JSON.parse(readFileSync(mark, 'utf8')).version).toBe('1.2.3');
   });
 
   it('restores the source release, its launcher and state when the archive does not start', () => {

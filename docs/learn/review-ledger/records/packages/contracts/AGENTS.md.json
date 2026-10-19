@@ -12,8 +12,6 @@
   "sources": [
     "docs/reference/contracts.md",
 
-    "packages/contracts/package.json",
-
     "packages/contracts/package.json#/exports",
 
     "packages/contracts/package.json#/name"

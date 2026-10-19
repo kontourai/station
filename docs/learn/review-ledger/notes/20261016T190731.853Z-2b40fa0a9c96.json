@@ -1,0 +1,7 @@
+{
+  "revision": "246a89a0fe2e1ca6e4f52b86d77fb5a97675648d",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed Codex policy/reviewer split from UI picker and chip through codex-approval-mode.ts, start/resume/fork/turn request construction, configured metadata, and ignored settings notifications at base 75532e2ae0962fb1054729aea138f1b6604e630e. Compared installed Codex 0.162.1 generated stable schema and official OpenAI auto-review docs. The change discloses reviewer unknown/inherited, not effective reviewer status or manual reviewer control; no policy/sandbox change. Focused UI and existing fake-app-server approval delivery/permission negative-control suites passed 158 tests; retained R2/R3 qualify no new runtime or release. Other historical Claude/probe claims are unchanged and not requalified.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/badges/ApprovalModeChip.tsx"]}
+  ]
+}

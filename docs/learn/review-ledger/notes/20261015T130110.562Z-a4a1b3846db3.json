@@ -1,0 +1,7 @@
+{
+  "revision": "b94766af92206342de9c0de40eb024c0266808c0",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-reviewed the tests/android/mobile-layout.spec.ts bytes after biome reformatted the sweep exemption onto one line; behavior is unchanged from the earlier review. The touch-target sweep skips an element only when it is inside aria-hidden=true AND has tabIndex below 0 (StartComposer's clipped file input from #3673). Every focusable or non-aria-hidden visible control is still measured, and fault injection (a 20px start-composer tool button, and the same input made focusable) turned the sweep red naming the element. The matrix row for Home / continuity rail citing Android mobile-layout for mobile geometry stays accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}

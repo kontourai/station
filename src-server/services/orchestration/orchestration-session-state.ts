@@ -1,3 +1,9 @@
+import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { providerFailure } from '../../providers/provider-failure.js';
+
+export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
+
 import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -8,6 +14,7 @@ import {
   type ClientOrigin,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
+import { sessionDeliveryChannels } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   AgentRunFailureKind,
   AgentRunStatus,
@@ -56,6 +63,7 @@ import {
   projectRequestAnswerability,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
+import { sessionAgentStartUnavailableReason } from './session-agent-start-policy.js';
 import {
   acceptsTurnTerminalEvent,
   activeTurnIdForEvents,
@@ -382,7 +390,38 @@ export function projectOrchestrationEventToReadModel(options: {
   sessionReadModel: Map<string, ProviderSession>;
   eventStore?: EventStore;
 }): void {
-  const { event, threadProviders, sessionReadModel, eventStore } = options;
+  const { threadProviders, sessionReadModel, eventStore } = options;
+  const session = deriveReadModelSession(options);
+  if (!session) return;
+  trackOrchestrationSession({ threadProviders, sessionReadModel, session });
+  persistReadModelSession(eventStore, session);
+}
+
+/**
+ * #3561: the durable half of {@link projectOrchestrationEventToReadModel}. The
+ * live publish path runs it as a co-commit participant of the event's own
+ * append, so the session row changes only with the event that justifies it.
+ */
+export function persistReadModelSession(
+  eventStore: EventStore | undefined,
+  session: ProviderSession,
+): void {
+  if (session.status === 'closed') {
+    eventStore?.markSessionClosed(session.threadId, session.provider);
+    return;
+  }
+  eventStore?.upsertSession(session);
+}
+
+/**
+ * #3561: the session an event would project, read from the current read
+ * model and changing nothing. `null` when the event projects no session.
+ */
+export function deriveReadModelSession(options: {
+  event: CanonicalRuntimeEvent;
+  sessionReadModel: ReadonlyMap<string, ProviderSession>;
+}): ProviderSession | null {
+  const { event, sessionReadModel } = options;
   const existing = sessionReadModel.get(event.threadId);
   const baseSession: ProviderSession = existing ?? {
     provider: event.provider,
@@ -457,17 +496,7 @@ export function projectOrchestrationEventToReadModel(options: {
       break;
   }
 
-  if (!nextSession) return;
-  trackOrchestrationSession({
-    threadProviders,
-    sessionReadModel,
-    session: nextSession,
-  });
-  if (nextSession.status === 'closed') {
-    eventStore?.markSessionClosed(nextSession.threadId, nextSession.provider);
-    return;
-  }
-  eventStore?.upsertSession(nextSession);
+  return nextSession;
 }
 
 export function buildOrchestrationSessionSummary(options: {
@@ -1523,7 +1552,6 @@ function isAgentRunRetryEligible(kind: AgentRunFailureKind): boolean {
  * A conversation Station could not reopen IS retryable: the usual cause is a
  * connection setting the user can change back.
  */
-export const SESSION_RECOVERY_FAILED_CODE = 'session_recovery_failed';
 
 /**
  * Deterministic event id for a recovery failure, so the same failure recorded
@@ -1717,22 +1745,15 @@ export async function startRecoveredOrchestrationSession(options: {
       startInput = await deps.applyApprovalPosture(adapter, startInput);
     }
     if (deps.resolveSessionAgent) {
-      try {
-        startInput = await deps.resolveSessionAgent(startInput);
-      } catch (error) {
-        if (startInput.metadata?.executionAgentId) throw error;
-        // Ordinary saved bindings retain boot recovery's unresolved-input
-        // fallback. Explicit overrides above require verified profile delivery.
-        deps.logger.warn(
-          'resolveSessionAgent failed during session recovery; continuing without a resolved agent definition',
-          {
-            provider: session.provider,
-            threadId: session.threadId,
-            error: errorMessage(error),
-          },
-        );
-      }
+      startInput = await deps.resolveSessionAgent(startInput);
     }
+    const unavailableReason = sessionAgentStartUnavailableReason({
+      agentSlug: startInput.metadata?.agentSlug,
+      hasResolvedAgent:
+        Boolean(startInput.agent) ||
+        sessionDeliveryChannels(startInput.provider) === undefined,
+    });
+    if (unavailableReason) throw new Error(unavailableReason);
     // Apply credentials before reserving the independent engine-start slot.
     // Not wrapped in a try/catch: see `applyCredentialProfile`'s docs.
     if (deps.applyCredentialProfile) {
@@ -1796,6 +1817,14 @@ export async function startRecoveredOrchestrationSession(options: {
           threadId: session.threadId,
           createdAt: failedAt,
           method: 'runtime.error',
+          ...providerFailure(
+            error instanceof SessionStartIndeterminateError
+              ? 'indeterminate'
+              : 'unavailable',
+            error instanceof SessionStartIndeterminateError
+              ? 'indeterminate'
+              : 'failed',
+          ),
           severity: 'error',
           code:
             error instanceof SessionStartIndeterminateError
@@ -1803,7 +1832,7 @@ export async function startRecoveredOrchestrationSession(options: {
               : SESSION_RECOVERY_FAILED_CODE,
           retriable: !(error instanceof SessionStartIndeterminateError),
           message: `This conversation could not be reopened: ${message}`,
-        },
+        } satisfies ProviderRuntimeErrorEvent,
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),
       ),
     );

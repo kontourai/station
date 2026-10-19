@@ -128,7 +128,7 @@ function aggregateFixture({
   shardCount = 4,
 } = {}) {
   const { directory, head } = repository();
-  const plan = { ...planFor(head, files), shardCount };
+  const plan = { ...planFor(head, files, files.length === 0), shardCount };
   const planText = `${JSON.stringify(plan, null, 2)}\n`;
   mkdirSync(join(directory, 'plan'));
   writeFileSync(join(directory, 'plan/fast-checks-plan.json'), planText);
@@ -184,6 +184,31 @@ describe('fast-checks aggregator exit status (child process)', () => {
       const result = aggregate(aggregateFixture({ shardCount }));
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain('[fast-checks] PASS');
+    },
+  );
+
+  test.each([0, 1])(
+    'omitted runners require a truly empty plan (%i files)',
+    (count) => {
+      const directory = aggregateFixture({
+        files: count ? ['a/a.test.ts'] : [],
+        omit: [1, 2, 3, 4],
+      });
+      const needs = {
+        ...successNeeds,
+        'fast-checks-plan': { result: 'success', outputs: { empty: 'true' } },
+        'fast-checks-shard': { result: 'skipped' },
+      };
+      const result = aggregate(directory, needs);
+      expect(result.status, result.stderr).toBe(count ? 1 : 0);
+      if (count)
+        expect(result.stderr).toContain(
+          'empty-shard admission requires an empty plan',
+        );
+      else
+        expect(result.stdout).toContain(
+          'no tests selected; no runner allocated',
+        );
     },
   );
 
@@ -619,14 +644,24 @@ describe('fast-checks shard execution verdicts', () => {
         },
       ],
     });
-    await runChangedVerificationShard({ deferredLanes: [] }, slice, {
-      root,
-      run: fakeRun(1, contents),
-      vitestPath: 'vitest.mjs',
-      prepareExecution: boundExecution,
-      failedReportDir: failing,
-    });
-    const kept = readFileSync(join(failing, 'ordinary-0.json'), 'utf8');
+    const failed = await runChangedVerificationShard(
+      { deferredLanes: [] },
+      slice,
+      {
+        root,
+        run: fakeRun(1, contents),
+        vitestPath: 'vitest.mjs',
+        prepareExecution: boundExecution,
+        failedReportDir: failing,
+      },
+    );
+    const retained = failed.executions[0].retainedReports.find(
+      (artifact: { path: string; sha256: string }) =>
+        !artifact.path.endsWith('.errors.json'),
+    );
+    expect(retained).toBeDefined();
+    const kept = readFileSync(resolve(root, retained!.path), 'utf8');
+    expect(digestText(kept)).toBe(retained!.sha256);
     expect(kept).toContain('numFailedTests');
     expect(kept).toContain('[REDACTED]');
     expect(kept).not.toContain('ghp_');
@@ -914,7 +949,8 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
           join(root, 'node_modules', entry),
           join(worktree, 'node_modules', entry),
         );
-      const orphan = 'scripts/lib/fast-checks-orphan-fixture.mjs';
+      // Tooling changes intentionally select supplemental documentation suites.
+      const orphan = 'src-server/fast-checks-orphan-fixture.mjs';
       writeFileSync(join(worktree, orphan), 'export const orphan = 1;\n');
       git(worktree, 'add', orphan);
       git(
@@ -1278,4 +1314,96 @@ describe('the plan records its related-discovery cost (#2803)', () => {
       '[fast-checks] related discovery: 34.2s of its 265.0s timeout\n',
     );
   });
+});
+
+describe('hosted mapped tests beside broad deferred obligations', () => {
+  test('keeps more than32 mapped tests and catches a real UI caller failure while retaining deferral', async () => {
+    const directory = makeTempDir('station-hosted-mixed-deferral-');
+    mkdirSync(join(directory, 'src-ui/src/__tests__'), { recursive: true });
+    mkdirSync(join(directory, 'src-ui/src/components'), { recursive: true });
+    mkdirSync(join(directory, 'packages/shared/src'), { recursive: true });
+    mkdirSync(join(directory, 'config'));
+    writeFileSync(
+      join(directory, 'config/product-laws.json'),
+      JSON.stringify({ schemaVersion: 1, laws: [] }),
+    );
+    symlinkSync(join(root, 'node_modules'), join(directory, 'node_modules'));
+    writeFileSync(
+      join(directory, 'vitest.config.mjs'),
+      'export default { test: { environment: "node", include: ["src-ui/src/__tests__/*.test.ts"] } };\n',
+    );
+    const uiPath = 'src-ui/src/components/mixedCaller.ts';
+    const deferredPath = 'packages/shared/src/mixed-global.ts';
+    writeFileSync(
+      join(directory, deferredPath),
+      'export const shared = true;\n',
+    );
+    writeFileSync(join(directory, uiPath), 'export const label = "broken";\n');
+    const files = Array.from(
+      { length: 33 },
+      (_, index) => `src-ui/src/__tests__/mixed-${index}.test.ts`,
+    );
+    for (const [index, file] of files.entries())
+      writeFileSync(
+        join(directory, file),
+        index === 0
+          ? 'import { test, expect } from "vitest"; import { label } from "../components/mixedCaller"; test("mapped UI caller", () => expect(label).toBe("expected"));\n'
+          : 'import { test, expect } from "vitest"; test("mapped explicit target", () => expect(true).toBe(true));\n',
+      );
+    const discoveredPaths: string[][] = [];
+    const plan = await planChangedVerificationShards('fixture-base', {
+      root: directory,
+      headSha: 'a'.repeat(40),
+      shardCount: 1,
+      assertDependencyProvenance: () => {},
+      changedPathsFn: () => ({
+        mergeBase: 'fixture-base',
+        paths: [deferredPath, uiPath, ...files],
+      }),
+      discoverRelatedFiles: async (cwd, paths, options) => {
+        discoveredPaths.push(paths);
+        return discoverRelatedTestFiles(cwd, paths, {
+          ...options,
+          deadlineAt: Date.now() + FAST_CHECKS_PLAN_BUDGET_MS,
+        });
+      },
+    });
+    const local = prepareChangedSelection('fixture-base', {
+      root: directory,
+      changedPathsFn: () => ({
+        mergeBase: 'fixture-base',
+        paths: [deferredPath, uiPath, ...files],
+      }),
+    });
+    expect(local.executionSelection.tests).toEqual([]);
+    expect(local.executionSelection.relatedPaths).toEqual([]);
+    expect(plan.fileCount).toBe(33);
+    expect(plan.groups.flatMap((group) => group.files).sort()).toEqual(
+      [...files].sort(),
+    );
+    expect(discoveredPaths).toEqual([[uiPath]]);
+    expect(
+      plan.deferredLanes.some((lane: { id: string }) => lane.id === 'ci-fast'),
+    ).toBe(true);
+    const slice = {
+      groups: plan.groups,
+      files: plan.groups.flatMap((group) => group.files),
+    };
+    const options = {
+      root: directory,
+      assertDependencyProvenance: () => {},
+      vitestPath: join(root, 'node_modules/vitest/vitest.mjs'),
+      prepareExecution: () => ({ env: { ...process.env } }),
+    };
+    const failed = await runChangedVerificationShard(plan, slice, options);
+    expect(failed.status).toBe('failed');
+    expect(failed.counts.failed).toBe(1);
+    writeFileSync(
+      join(directory, uiPath),
+      'export const label = "expected";\n',
+    );
+    const repaired = await runChangedVerificationShard(plan, slice, options);
+    expect(repaired.status).toBe('provisional');
+    expect(repaired.counts.executed).toBe(33);
+  }, 90_000);
 });

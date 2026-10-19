@@ -132,7 +132,7 @@ records delivery differences.
 - **Agent run** — one agent working through a request from start to stop: the thing a step limit counts steps of, an output-token ceiling bounds, and a workspace is chosen for. It is the vocabulary the product already uses in its own settings help ("Station stops an agent run once it has taken this many steps",
   `defaultMaxTurns` in `packages/contracts/src/settings-registry.ts`), and #2182 makes the Settings card that holds those controls say it too — **Agent runs**, not "Defaults". A run is carried by a **Session**, and where the two could both be said, Session names the execution episode Station records and Agent run names what the agent is doing inside it. **"Profile" never names this** (see Saved Stations, above), and neither does **"Agents"** — that word is the entity list at `/agents`, and a Settings strip cannot carry two rows reading "Agents" that go to different places.
 - **Activity** — the one surface that lists this Station's Sessions (its own and read-only attached ones from other apps) to answer "what is running, what needs me, and what happened" ([the Activity list](../src-ui/src/views/SessionsView.tsx)). It groups by **state**, through the same classifier Home uses (`partitionSessionLanes` → `partitionHomeWorkItems`), never a second one: the lanes and their headings are that classifier's (`SESSION_LANE_ORDER`, `SESSION_LANE_LABELS`), live lanes first, then Just finished and Earlier — the same lane names as Home and the chat dock inbox, with each row's own time saying when. Kind (conversations or delegated tasks), project, and where work was started from (the recorded turn origin, "Started in <engine>" for an attached transcript, or "Origin not recorded" — never a guess) are **filters**, not groupings; the project filter's **No project** option lists the Sessions no project claims, including attached transcripts from a folder in no project's repository (#3386). A row's state word comes from the same fold as its lane, so a standalone row never contradicts its heading. A delegated **Run** is the one exception, and it says so: it renders in the most urgent lane any of its members is in, so a finished root can sit under a live lane because a subtask needs attention, and the run's label names that ("2 subtasks · 1 needs you"). An Activity status reports what Station recorded about a Session and is not proof the underlying work is correct.
-- **Run** (delegated run) — a Session plus the delegated tasks it started, directly or through its own delegated tasks, shown together in Activity: the root row leads, and its **subtasks** fold under it with a count ("2 subtasks") and a per-state summary of those subtasks ([run grouping](../src-ui/src/views/sessions/run-groups.ts)). A task joins a run only through a recorded parent link (the parent's thread id, or a task id that matches exactly one scoped owner); shared characteristics never join unrelated work. Not the same as an **Agent run**, which is one agent's work inside one Session.
+- **Run** (delegated run) — a Session plus the delegated tasks it started, directly or through its own delegated tasks, shown together in Activity, Home, and the chat inbox: the root row leads, and its **subtasks** fold under it with a count ("2 subtasks") and a per-state summary of those subtasks ([run grouping](../src-ui/src/views/sessions/run-groups.ts)). A task joins a run only through a recorded parent link (the parent's thread id, or a task id that matches exactly one scoped owner); shared characteristics never join unrelated work. In Home and the inbox, a durable Task also folds its owned chats as **sessions**; a recorded delegation link takes precedence when both relationships exist. Not the same as an **Agent run**, which is one agent's work inside one Session.
 - **Direct chat** — an immediate conversation entry point. Starting a direct chat does not silently create or infer a Task.
 - **Workspace availability** — `available`, `ambiguous`, or `unavailable`. Only `available` permits local inspection; the other states preserve the captured identity without claiming the path is still safe or current.
 
@@ -159,6 +159,8 @@ with two explicit, structurally identical exceptions, both off by default and ne
 - **Tool** — one callable: a function from an integration, or a `station-control` platform function.
 - **Command** — a slash command.
 - **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
+- **Personal access token** — a credential a person makes for a script (`stp_…`): it acts as them, carries Read and optionally Operate, never exceeds their own access, and can expire or be revoked (#3557). It is not a paired device: it cannot manage Station access or a Project's members.
+- **Station group** — Admin or Member: what any device tied to a person may do at most, Station-wide (#3557). Not a Project role: Project roles (Viewer, Contributor, Admin, Owner) say what a person may do in one Project, and neither grants the other. The operator is the Owner, outside both.
 - **Plugin visibility** — which installed plugins one principal may see and compose a Board or a personal agent from (#2067). Installation stays instance-wide: visibility is a *projection* of that one installed set onto one person, derived from the operator's grant record plus the live inventory, never a stored `visible` label. The operator sees everything; anybody else sees only what they have been granted, and a plugin outside their projection is absent from their plugin list rather than flagged. It is a listing and composition projection only — the execution authority for a plugin remains its permission grants, which every invocation rechecks.
 
 > **MCP passthrough (exception 1):** an ACP-connected External agent's connection can
@@ -178,8 +180,8 @@ with two explicit, structurally identical exceptions, both off by default and ne
 
 ## Tasks & work items
 
-- **Task** — Station's friendly label for a work item plus its dispatch affordance (the Tasks board on a project's page): create it, assign an agent/skill, and dispatch it into a session. Its statuses (`TaskStatus` in `@kontourai/station-contracts/task-graph`) are aligned to the flow-agents neutral work-item vocabulary — `todo`, `ready`, `triage`, `in_progress`, `blocked`, `review`, `verification`, `done` — with `canceled` kept as a documented **Station-local extension** (a task a user abandons before completion; the neutral contract itself has no such state).
-- **Work item** — the provider-neutral unit from `@kontourai/flow-agents`' work-item contract (`schemas/backlog-provider-settings.schema.json`, published by that package — not a file in this repo): a piece of backlog work identified independent of any one tracker (e.g. a GitHub issue). A Station `TaskRecord` may carry `sourceProvider`/`workItemRef` to reference the work item it originated from, without Station reaching into that provider's internals.
+- **Task** — Station's friendly label for a work item plus its dispatch affordance (the Tasks board on a project's page): create it, assign an agent/skill, and dispatch it into a session. Its statuses (`TaskStatus` in `@kontourai/station-contracts/task-graph`) are aligned to the flow-agents neutral work-item vocabulary — `todo`, `ready`, `in_progress`, `blocked`, `review`, `verification`, `done` — with `triage` (local intake) and `canceled` (a task a user abandons before completion) kept as explicit **Station-local extensions**. Neither has an automatic mapping to a shared status.
+- **Work item** — the provider-neutral unit from `@kontourai/flow-agents`' work-item contract (`schemas/backlog-provider-settings.schema.json`, published by that package — not a file in this repo): a piece of backlog work identified independent of any one tracker (e.g. a GitHub issue). A Station `TaskRecord` may carry `sourceProvider`/`workItemRef` to reference the work item it originated from, without Station reaching into that provider's internals. The [tracker sync handoff](plans/task-tracker-sync-upstream-gaps.md) records the published-contract gaps blocking write-back and ChangeProvider close-out.
 - The direction of travel from the Session Board to a Console board (a work-item-aware view) is governed by epic **#580** — this glossary entry documents the vocabulary alignment (issue **#581**); the board convergence itself is tracked separately under that epic.
 
 ## The three "planes"
@@ -270,14 +272,16 @@ retired names.
   [design/placement.md](design/placement.md)) — Coding and Chat kinds render
   in the main region only.
 - **Board** — a Layout owned by a principal: the viewer's own, project-less
-  page, listed in the left panel's `Boards` section between Activity and
-  Projects and rendered by the same layout renderer a project Layout is
+  page, listed in the left panel's **Personal Boards** section after Projects
+  and rendered by the same layout renderer a project Layout is
   (#2062; [design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
   decision D1). A Board can be **promoted** — MOVED into a project, where it
   becomes that project's Layout under the same id; the personal record is gone
   afterwards, so promote is never a copy. A Board may also be held by a dock
   region as a pane beside Chat (`board:<layoutId>`, #2157;
-  [design/placement.md](design/placement.md)).
+  [design/placement.md](design/placement.md)). Its dashboard editor supports
+  live sections, notes and links. Chat proposals require explicit preview and
+  Apply; see [Personal Boards](user/personal-boards.md).
 
   Board has other qualified meanings in this codebase: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
   a layout `type`) and the **board face** (`NavigationView`'s `board` member at
@@ -318,6 +322,18 @@ retired names.
 - **Panel** — a bounded visual grouping of controls or information within a
   page or pane, such as a Trust panel or inspector panel. A Panel is not
   persisted and is not a synonym for a pane.
+- **Session context card** — the Chat dock's compact "what is the state of
+  this chat" panel, titled **This chat** where users see it
+  ([SessionContextCard](../src-ui/src/components/chat-dock/SessionContextCard.tsx)).
+  Its rows are the workspace (project and directory), the branch with its
+  changed-file count, the activity line (the inbox row's status-ladder word,
+  background tasks and pending messages) and any linked pull requests; its
+  footer opens Chat inventory. Each row shows a fact the dock already holds
+  and opens a surface that already exists; it computes no state of its own.
+  It sits beside the transcript when the dock body has room for it and a
+  640px transcript, and is otherwise one tap away: a header chip on a desktop
+  dock, a row of the Chat actions sheet on a phone. It is a Panel, not a
+  pane, and is not persisted.
 
 > **Composition:** the **shell** has regions; a region holds a **surface**;
 > a surface or a layout holds a **pane host**; a pane host holds **panes** in
@@ -428,11 +444,13 @@ release delivery.
 | A thing that can occupy a region (Chat, Activity) | **Surface** |
 | The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
 | Visual grouping inside a page or pane | **Panel** |
+| The Chat dock's summary of the open chat's workspace, branch, activity and pull requests | **This chat** (the **session context card**) |
 | The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
 | One agent working through a request from start to stop | **Agent run** (the Settings card is **Agent runs**) |
 | An authored instruction a user or agent can reuse (some are runnable as `/command`) | **Skill** — the page is **Skills** (`/guidance`, with a Commands tab) |
+| The live transcript's map of user turns, and stepping between them | **Conversation turns** (the desktop gutter's name; contributors call it the turn rail); **Previous turn** / **Next turn** beside Scroll to bottom. History replay's separate view is **History** |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
 
 ## Persisted identity records

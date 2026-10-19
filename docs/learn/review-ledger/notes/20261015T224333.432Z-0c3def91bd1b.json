@@ -1,0 +1,7 @@
+{
+  "revision": "043bc4d0b1331370857439c8152cbde789a937b5",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Reviewed final source 043bc4d0b13 after interruption-precedence and fixture-PID findings: parent interruption is independent of the first timeout/output reason and remains terminal after owned-tree settlement. PID readiness, probes and cleanup use strict positive integral non-self identities; guarded-signal case checks malformed and empty publications without sending real unsafe signals. The separate precedence regression failed before the fix for continuation after timeout plus SIGTERM; twenty-two tests and scripts typecheck passed afterward. Package/CLI/credential/entrypoint claims remain unchanged. No functional release, hosted qualification or Windows runtime assertion. Exact negative/restored results are retained by the parent separately.","inputs":["packages/monument/README.md","scripts/__tests__/monument-pack-smoke.test.ts","scripts/monument-pack-smoke.mjs"]}
+  ]
+}

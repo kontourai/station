@@ -1,0 +1,7 @@
+{
+  "revision": "c96a40636b5a24e59b40c404d780a49d5f4c5030",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the combined main 1fe533c675a and settings/focus integration. The runtime is bd72f77a137; subsequent canonical serialization preserves all 73 source references and all human record fields byte-for-value. Resolved concurrent source-list additions without changing document prose. Traced useWorkingChatFocus through the shared-menu trigger, selectWorkingChat, conversationOpenPhase, ChatDockBody onEnabledChange and transcript focus. Traced work-observation through open/retry and liveStatusUnavailable independently of focus intent. Combined runtime passed 188 tests in 10 focused files, 13 Chromium working-chat focus/replay journeys, UI and E2E typechecks and fixture policy. No native-device, live-provider or new-head hosted qualification claimed.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

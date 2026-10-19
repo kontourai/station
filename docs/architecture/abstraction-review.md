@@ -46,30 +46,6 @@ GitHub owns implementation work and current status. These sections retain the
 source observations that explain each finding. Their issue links include
 suggested fixes and documentation acceptance; they are not a second backlog.
 
-### Store-index freshness lacks two identities
-
-The [sqlite-vec index](../../src-server/knowledge-index/sqlite-vec-index-provider.ts)
-records vector width but not the embedding model/configuration that produced
-it. Its [migration caller](../../src-server/knowledge-index/migrate-pre-index-knowledge.ts)
-also treats matching width as sufficient for vector reuse. A different model
-with the same width can therefore be mixed with existing vectors without a
-dimension error.
-
-Tracked in [#2727: embedding configuration identity](https://github.com/kontourai/station/issues/2727).
-
-The [store search route](../../src-server/routes/knowledge/knowledge-index-routes.ts)
-rechecks access and record existence, but returns the index's old excerpt
-beside the record's current title/category. It does not compare a record-body
-revision. This differs from the older document API's content-hash validation
-through [KnowledgeFileTransactions](module-map.md#knowledgefiletransactions).
-
-Tracked separately in [#2728: source-content freshness](https://github.com/kontourai/station/issues/2728).
-
-Next design review: give index entries explicit source-content and embedding
-configuration identity, then decide how callers should see stale results and
-rebuild requirements. Matching dimensions and a readable record are useful
-checks, but neither establishes the meaning or freshness of an embedding.
-
 ### Personal Knowledge scope and the Settings card disagree
 
 `KnowledgeStoreProvider.generateRootId` allows `root:personal:2` and later

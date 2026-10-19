@@ -196,19 +196,31 @@ const terminalSubprocessState = readRequiredSource(
   '../src-server/services/terminal/terminal-subprocess-state.ts',
 );
 for (const requiredTerminalHelper of [
-  'export function pollTerminalSubprocessActivity',
+  'export async function pollTerminalSubprocessActivity',
   'function detectWindowsSubprocesses',
   'function detectUnixSubprocesses',
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source-expectation string deliberately contains an interpolation
   'Get-Process -Id ${pid}',
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source-expectation string deliberately contains an interpolation
-  'pgrep -P ${pid}',
 ]) {
   if (!terminalSubprocessState.includes(requiredTerminalHelper)) {
     errors.push(
       `terminal-subprocess-state.ts must include ${requiredTerminalHelper}.`,
     );
   }
+}
+if (
+  !/\bexecFile\s*\(\s*['"]pgrep['"]\s*,\s*\[\s*['"]-P['"]\s*,\s*String\s*\(\s*pid\s*\)\s*\]/.test(
+    terminalSubprocessState,
+  )
+) {
+  errors.push(
+    "terminal-subprocess-state.ts must probe Unix children asynchronously with execFile('pgrep', ['-P', String(pid)]).",
+  );
+}
+if (/\bexecSync\s*\(\s*['"`]\s*pgrep\b/.test(terminalSubprocessState)) {
+  errors.push(
+    'terminal-subprocess-state.ts must not synchronously probe Unix children with execSync.',
+  );
 }
 
 const systemRuntime = readRequiredSource(
@@ -833,10 +845,16 @@ if (
 const orchestrationService = readRequiredSource(
   '../src-server/services/orchestration/orchestration-service.ts',
 );
+// #3561: the live publish path projects the read model in three steps owned
+// by orchestration-session-state.ts — a pure derivation before the append,
+// the durable session row as a co-commit participant of the append, and the
+// in-memory read model after it commits — instead of one call that wrote
+// both before the append.
 for (const requiredHelper of [
   './orchestration-session-state.js',
   'resolveOrchestrationAdapterForThread({',
-  'projectOrchestrationEventToReadModel({',
+  'deriveReadModelSession({',
+  'persistReadModelSession(',
   'recoverOrchestrationSessions({',
   'trackOrchestrationSession({',
 ]) {
@@ -863,6 +881,8 @@ for (const requiredHelper of [
   'export function trackOrchestrationSession',
   'export async function resolveOrchestrationAdapterForThread',
   'export function projectOrchestrationEventToReadModel',
+  'export function deriveReadModelSession',
+  'export function persistReadModelSession',
   'export async function recoverOrchestrationSessions',
 ]) {
   if (!orchestrationSessionState.includes(requiredHelper)) {
@@ -6017,11 +6037,10 @@ const usageStatsUtils = readRequiredSource(
   '../src-ui/src/components/usage-stats/utils.ts',
 );
 for (const requiredHelper of [
-  'export function getAverageCostPerMessage',
+  'export function formatRecordedCost',
   'export function getTotalUsageConversations',
   'export function getTopUsageEntries',
   'export function getUsageModelDisplayName',
-  'export function getUsageAgentsForModel',
   'export function getAgentModelBreakdown',
 ]) {
   if (!usageStatsUtils.includes(requiredHelper)) {
@@ -6204,7 +6223,6 @@ const projectSidebarHeader = readRequiredSource(
 for (const requiredHelper of [
   'export function ProjectSidebarHeader',
   'sidebar__header',
-  'sidebar__collapse-button',
 ]) {
   if (!projectSidebarHeader.includes(requiredHelper)) {
     errors.push(`ProjectSidebarHeader.tsx must include ${requiredHelper}.`);

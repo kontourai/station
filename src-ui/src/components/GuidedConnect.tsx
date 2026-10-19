@@ -10,7 +10,10 @@
 import { ConnectionManagerModal } from '@kontourai/station-connect';
 import { pairingDeepLinkScheme } from '@kontourai/station-connect/pairing-deep-link';
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { usePairingDeepLink } from '../hooks/usePairingDeepLink';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
@@ -58,7 +61,23 @@ export function GuidedConnect({
 }: GuidedConnectProps) {
   const [openPanel, setOpenPanel] = useState<GuidedConnectPanel | null>(null);
   const [brokerOpen, setBrokerOpen] = useState(false);
+  const [pairingPayload, setPairingPayload] = useState<string>();
+  const [pairingError, setPairingError] = useState<string>();
+  const openBrowserInvitation = useCallback((payload: string) => {
+    setPairingPayload(payload);
+    setPairingError(undefined);
+    setOpenPanel('pair-device');
+  }, []);
+  usePairingDeepLink({
+    enabled: false,
+    onPairingPayload: openBrowserInvitation,
+    onError: setPairingError,
+  });
   const profile = usePlatformProfile();
+  const compact = useIsMobile();
+  const coarse = useCoarsePointer();
+  const phone = profile.isMobile || (!profile.isTauri && compact && coarse);
+  const [needsStation, setNeedsStation] = useState(false);
   const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(
     window.location.hostname,
   );
@@ -71,16 +90,20 @@ export function GuidedConnect({
     <div className="guided-connect">
       <div className="guided-connect__inner">
         <img src="/favicon.png" alt="" className="guided-connect__logo" />
-        <h1 className="guided-connect__title">Connect to a Station</h1>
+        <h1 className="guided-connect__title">
+          {phone ? 'Connect your phone' : 'Connect to a Station'}
+        </h1>
         <p className="guided-connect__description">
-          Choose the computer where you want to work.
+          {phone
+            ? 'Use the AI and files on your computer.'
+            : 'Choose the computer where you want to work.'}
         </p>
-        {notice && (
+        {(notice || pairingError) && (
           <p role="alert" className="guided-connect__notice">
-            {notice}
+            {pairingError ?? notice}
           </p>
         )}
-        {!profile.isTauri && (
+        {!profile.isTauri && !phone && (
           <section
             className="guided-connect__destination"
             aria-label="Current Station"
@@ -123,66 +146,88 @@ export function GuidedConnect({
             >
               Request access
             </button>
-            {isLocal && (
-              <small>
-                Or request access to connect this browser to the address above.
-              </small>
-            )}
           </section>
         )}
         <section
           className="guided-connect__destination"
           aria-label="Another Station"
         >
-          <h2>On another computer</h2>
+          {!phone && <h2>On another computer</h2>}
           <p>
-            Connect to the Station running there using its pairing code or
-            address.
+            {phone
+              ? 'On your computer, open Station → Pair phone. Keep it running.'
+              : 'Use a pairing code from the Station running on that computer.'}
           </p>
-          <div className="guided-connect__alternatives">
-            <button
-              type="button"
+          <Button
+            variant="primary"
+            className="guided-connect__action guided-connect__action--primary"
+            onClick={() => setOpenPanel('pair-device')}
+          >
+            Pair with a code
+          </Button>
+          {phone && !profile.isTauri && !isLocal && (
+            <Button
               className="guided-connect__action"
-              onClick={() => setOpenPanel('pair-device')}
+              onClick={() => setOpenPanel('request-access')}
             >
-              Pair with a code
-            </button>
-            <button
-              type="button"
+              Request access to this Station
+            </Button>
+          )}
+        </section>
+        {phone && (
+          <section className="guided-connect__setup">
+            <Button
+              variant="ghost"
+              aria-expanded={needsStation}
+              onClick={() => setNeedsStation((value) => !value)}
+            >
+              I haven’t set up a Station yet
+            </Button>
+            {needsStation && (
+              <div>
+                <p>
+                  Install Station on a computer, then return with its pairing
+                  code.
+                </p>
+                <a
+                  href="https://station.kontourai.io/#start"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Get Station for your computer
+                </a>
+              </div>
+            )}
+          </section>
+        )}
+        <details className="guided-connect__advanced">
+          <summary>Other ways to connect</summary>
+          <div className="guided-connect__alternatives">
+            <Button
               className="guided-connect__action"
               onClick={() => setOpenPanel('add')}
             >
               Enter a host address
-            </button>
-            {profile.isTauri ? (
+            </Button>
+            {(profile.isTauri || (phone && isLocal)) && (
               <Button
                 className="guided-connect__action"
-                aria-expanded={brokerOpen}
-                onClick={() => setBrokerOpen((current) => !current)}
+                onClick={() => setOpenPanel('request-access')}
               >
-                Set up a broker route
+                Request access
               </Button>
-            ) : (
-              <button
-                type="button"
-                className="guided-connect__action"
-                aria-expanded={brokerOpen}
-                onClick={() => setBrokerOpen((current) => !current)}
-              >
-                Use a broker invitation
-              </button>
             )}
-          </div>
-          {profile.isTauri && (
-            <button
-              type="button"
+            <Button
               className="guided-connect__action"
-              onClick={() => setOpenPanel('request-access')}
+              aria-expanded={brokerOpen}
+              onClick={() => setBrokerOpen((current) => !current)}
             >
-              Request access
-            </button>
-          )}
-        </section>
+              {profile.isTauri
+                ? 'Set up a broker route'
+                : 'Use a broker invitation'}
+            </Button>
+          </div>
+        </details>
         {brokerOpen && (
           <section
             className="guided-connect__broker"
@@ -223,6 +268,9 @@ export function GuidedConnect({
         checkHealth={checkServerHealthDetailed}
         checkCompatibility={checkHostCompatibility}
         initialPanel={openPanel ?? undefined}
+        initialPairingPayload={pairingPayload}
+        pairingLinkError={pairingError}
+        onPairingReviewDismissed={() => setPairingPayload(undefined)}
         originIsStation={!profile.isTauri}
         hasLocalStation={hasLocalStationForProfile(profile)}
         hostAppName={

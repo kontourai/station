@@ -25,6 +25,21 @@ type SpawnChild = (
   options: Parameters<typeof nodeSpawn>[2],
 ) => ChildProcess;
 
+/** What one engine spawn launches. */
+export interface ClaudeSpawnLaunch {
+  command: string;
+  args: readonly string[];
+  cwd: string | undefined;
+  env: Record<string, string | undefined>;
+}
+
+/**
+ * #2494: rewrites a launch before it is spawned (a confinement provider
+ * wrapping it in `sandbox-exec`). Whatever it returns is exactly what is
+ * spawned; a throw fails the spawn.
+ */
+export type ClaudeSpawnWrap = (launch: ClaudeSpawnLaunch) => ClaudeSpawnLaunch;
+
 /** The engine process of one Claude session and what Station reads from it. */
 export type ClaudeEngineProcess = {
   /** The permission asks read from the engine's stdout (#2932). */
@@ -35,6 +50,11 @@ export type ClaudeEngineProcess = {
   stderrTail: () => string;
   /** Prevent future spawns and require the owned engine processes to exit. */
   terminate: () => Promise<void>;
+  /**
+   * #2494: the command and arguments the latest engine process was actually
+   * spawned with, as passed to the spawn call; `undefined` before one.
+   */
+  spawned: () => { command: string; args: readonly string[] } | undefined;
 };
 
 function tailOf(text: string): string {
@@ -69,20 +89,30 @@ function tailOf(text: string): string {
  */
 export function createClaudeEngineProcess(
   spawnChild: SpawnChild = nodeSpawn,
+  wrap?: ClaudeSpawnWrap,
 ): ClaudeEngineProcess {
   const asks = new ClaudePermissionAsks();
   let stderrTail = '';
   let retired = false;
+  let spawned: { command: string; args: readonly string[] } | undefined;
   const children = new Set<ChildProcess>();
 
   const spawn = (options: SpawnOptions): SpawnedProcess => {
     if (retired)
       throw new Error('The Claude engine process owner has retired.');
-    const child = spawnChild(options.command, options.args, {
+    const launch: ClaudeSpawnLaunch = {
+      command: options.command,
+      args: options.args,
       cwd: options.cwd,
+      env: options.env,
+    };
+    const { command, args, cwd, env } = wrap ? wrap(launch) : launch;
+    spawned = { command, args: [...args] };
+    const child = spawnChild(command, args, {
+      cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       signal: options.signal,
-      env: options.env,
+      env,
       windowsHide: true,
     });
     children.add(child);
@@ -171,6 +201,7 @@ export function createClaudeEngineProcess(
     asks,
     spawn,
     stderrTail: () => tailOf(redactSecrets(stderrTail)).trim(),
+    spawned: () => spawned,
     async terminate() {
       retired = true;
       await Promise.all(

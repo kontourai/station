@@ -19,6 +19,7 @@ import {
 } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { isChatInForeground } from './chatForeground';
 import { isReplayThread } from './replay/replay-registry';
 import {
   openInputRequestRecordPart,
@@ -196,10 +197,18 @@ function showApprovalToast(
 ) {
   const answer = (decision: 'accept' | 'acceptForSession' | 'decline') => {
     const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
-    navigationStore.navigate('/', {
-      chat: chat?.conversationId ?? event.threadId,
-      dock: 'open',
-    });
+    if (
+      !isChatInForeground({
+        chatKey: activeChatsStore.getChatKeyForExecutionSession(event.threadId),
+        threadId: event.threadId,
+        conversationId: chat?.conversationId,
+      })
+    ) {
+      navigationStore.navigate('/', {
+        chat: chat?.conversationId ?? event.threadId,
+        dock: 'open',
+      });
+    }
     void answerFromToast(apiBase, event, view, decision);
   };
   const toastId = toastStore.showToolApproval({

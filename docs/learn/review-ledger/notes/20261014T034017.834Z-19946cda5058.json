@@ -1,0 +1,7 @@
+{
+  "revision": "b049694f8c347cf302857f6081c499bb4e4600d7",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"Re-reviewed after the user-menu gate fix in MessageBubble: changed-files details and Restore workspace to here… are untouched (answer rows only). No prose change.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

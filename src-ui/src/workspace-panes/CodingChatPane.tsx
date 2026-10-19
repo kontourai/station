@@ -1,5 +1,5 @@
 import type { WorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { BrowserPreviewPaneLauncher } from './BrowserPreviewPaneLauncher';
@@ -10,6 +10,28 @@ import {
   useWorkspacePaneHostOpenAction,
   type WorkspacePaneHostOpenAction,
 } from './WorkspacePaneHostOpenContext';
+
+const dockTransitions = new WeakMap<
+  HTMLElement,
+  { duration: string; frame: number }
+>();
+
+function holdDockTransition(dock: HTMLElement) {
+  const pending = dockTransitions.get(dock);
+  if (pending) cancelAnimationFrame(pending.frame);
+  const duration =
+    pending?.duration ?? dock.style.getPropertyValue('--dock-transition');
+  dock.style.setProperty('--dock-transition', '0s');
+  const frame = requestAnimationFrame(() => {
+    // Commit the new height while transitions are disabled, then return
+    // manual dock changes to their normal animation.
+    void dock.offsetHeight;
+    if (duration) dock.style.setProperty('--dock-transition', duration);
+    else dock.style.removeProperty('--dock-transition');
+    dockTransitions.delete(dock);
+  });
+  dockTransitions.set(dock, { duration, frame });
+}
 
 /**
  * What the Coding layout's Chat position does besides showing Chat, shared by
@@ -53,10 +75,15 @@ export function useCodingChatPositionEffects({
     updateParams,
   } = useNavigation();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isMobile || !ownsMobileDock) return;
+    const dock = document.getElementById('chat-dock');
+    if (dock) holdDockTransition(dock);
     setDockState(true, true);
-    return () => setDockState(false, false);
+    return () => {
+      if (dock) holdDockTransition(dock);
+      setDockState(false, false);
+    };
   }, [isMobile, ownsMobileDock, setDockState]);
 
   useEffect(() => {

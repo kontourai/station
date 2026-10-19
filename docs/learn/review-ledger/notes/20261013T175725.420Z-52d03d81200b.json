@@ -1,0 +1,7 @@
+{
+  "revision": "0835fddd83f806d29ff39d6567e829ea200ee9d4",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"The bundle's only change is regenerated content for the module-map Behavior paragraph (one added sentence on interrupted-turn consumption retry and shutdown stop, #3562), produced by npm run docs:mcp:generate, not hand-edited. docs/reference/station-docs.md describes the bundle's shape and tooling, not that paragraph; no prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

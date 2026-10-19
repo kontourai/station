@@ -140,14 +140,8 @@ describe('one-revision native promotion contract', () => {
       rebuild_index: '$' + '{{ inputs.rebuild_index }}',
     });
     expect((stageCaller as any)?.secrets).toBe('inherit');
-    expect(caller?.needs).toEqual([
-      'test-gate',
-      'full-regression',
-      'native-stage',
-    ]);
-    expect(caller?.if).toContain(
-      "needs['full-regression'].result == 'success'",
-    );
+    expect(caller?.needs).toEqual(['test-gate', 'native-stage']);
+    expect(caller?.if).toContain("needs['test-gate'].result == 'success'");
     expect(caller?.if).toContain("needs['native-stage'].result == 'success'");
     expect(caller?.permissions).toEqual({
       contents: 'write',
@@ -229,7 +223,7 @@ describe('one-revision native promotion contract', () => {
       marketing_version: '$' + '{{ inputs.marketing_version }}',
       bundle_version: '$' + '{{ inputs.bundle_version }}',
     });
-    expect(fleetCaller?.needs).toEqual(['test-gate', 'full-regression']);
+    expect(fleetCaller?.needs).toEqual(['test-gate']);
     expect((fleetCaller as any)?.uses).toBe(
       './.github/workflows/nightly-fleet-staging.yml',
     );
