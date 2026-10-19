@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
 
 /**
- * The avatar's menu (#1552 D1) — the header's Help and Settings controls, folded
- * into rows.
+ * The account menu (#1552 D1) — Profile, Help and Settings as rows, opened from
+ * the sidebar footer's account control and anchored above it.
  *
  * The Escape case is here because it was a REAL defect, found by looking at a
  * screenshot rather than by any assertion: the component's own docblock claimed
@@ -41,12 +41,31 @@ vi.mock('@kontourai/station-sdk/tool-library', () => ({
 
 import { ProfileMenu } from '../ProfileMenu';
 
+/** The sidebar footer's trigger, at a known box near the viewport's bottom. */
+function anchorAt(box: { left: number; top: number }): HTMLElement {
+  const anchor = document.createElement('button');
+  document.body.append(anchor);
+  anchor.getBoundingClientRect = () =>
+    ({
+      left: box.left,
+      top: box.top,
+      right: box.left + 32,
+      bottom: box.top + 32,
+      width: 32,
+      height: 32,
+      x: box.left,
+      y: box.top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  return anchor;
+}
+
 function menuProps(overrides: Partial<Parameters<typeof ProfileMenu>[0]> = {}) {
   const handlers = {
     onClose: vi.fn(),
     onOpenProfile: vi.fn(),
     onOpenHelp: vi.fn(),
-    onToggleSettings: vi.fn(),
+    onOpenSettings: vi.fn(),
   };
   return {
     handlers,
@@ -56,6 +75,7 @@ function menuProps(overrides: Partial<Parameters<typeof ProfileMenu>[0]> = {}) {
       isSettingsActive: false,
       settingsShortcut: '⌘,',
       userInitials: 'ST',
+      anchor: anchorAt({ left: 12, top: 700 }),
       ...handlers,
       ...overrides,
     },
@@ -101,7 +121,7 @@ describe('ProfileMenu', () => {
     for (const [name, spy] of [
       ['Profile', handlers.onOpenProfile],
       ['Ask Station for help', handlers.onOpenHelp],
-      ['Open settings', handlers.onToggleSettings],
+      ['Open settings', handlers.onOpenSettings],
     ] as const) {
       fireEvent.click(screen.getByRole('menuitem', { name }));
       expect(spy, `${name} did not run its command`).toHaveBeenCalledTimes(1);
@@ -169,18 +189,53 @@ describe('ProfileMenu', () => {
   });
 
   /**
-   * #1552 review L4. This panel is portalled to `document.body` while its
-   * TRIGGER — the avatar — lives in `.app-toolbar__action--secondary`, which the
-   * mobile query hides (archive#3311 demoted the profile into the `⋯` menu
-   * there). Crossing the breakpoint with the menu open therefore left it
-   * floating over the app with nothing on screen that could have opened it and
-   * no trigger to return focus to.
+   * The trigger is the sidebar footer's account control, so the menu opens
+   * ABOVE it by its bottom edge — the access panel's rows arrive late and must
+   * grow the menu upward, not past the viewport — and its left edge follows
+   * the trigger, clamped inside the viewport.
+   */
+  test('anchors above its sidebar trigger and stays inside the viewport', () => {
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 800,
+    });
+    renderMenu({ anchor: anchorAt({ left: 12, top: 700 }) });
+
+    const menu = screen.getByRole('menu', { name: 'Profile and settings' });
+    expect(menu.style.bottom).toBe('108px');
+    expect(menu.style.left).toBe('12px');
+    expect(menu.style.top).toBe('auto');
+    expect(menu.style.maxHeight).toBe('684px');
+  });
+
+  /**
+   * A phone opens this menu from the drawer's footer, so opening at the
+   * mobile breakpoint must keep it open; the header-era rule closed every
+   * mobile render because the header's trigger was hidden there.
+   */
+  test('stays open when it was opened at the mobile breakpoint', () => {
+    harness.isMobile = true;
+    const { handlers, props } = menuProps();
+    const { rerender } = render(<ProfileMenu {...props} />);
+    rerender(<ProfileMenu {...props} />);
+
+    expect(
+      screen.getByRole('menu', { name: 'Profile and settings' }),
+    ).toBeTruthy();
+    expect(handlers.onClose).not.toHaveBeenCalled();
+  });
+
+  /**
+   * #1552 review L4, kept for the footer's trigger: the panel is portalled to
+   * `document.body`, and crossing the breakpoint moves its trigger between the
+   * desktop rail and the phone drawer, so a resize with the menu open would
+   * leave it floating over a trigger that moved or left the screen.
    *
    * Driven by RERENDERING across the flip, not by opening at a mobile width: a
    * resize is the case, and a mount-time-only check would pass while the live
    * transition still stranded the panel.
    */
-  test('closes itself when the breakpoint takes its trigger away', () => {
+  test('closes itself when the breakpoint changes under it', () => {
     const { handlers, props } = menuProps();
     const { rerender } = render(<ProfileMenu {...props} />);
 

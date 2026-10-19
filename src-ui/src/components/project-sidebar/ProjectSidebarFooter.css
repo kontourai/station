@@ -17,6 +17,25 @@
   align-items: center;
   gap: var(--k-space-1);
 }
+/* Live work and the account control, side by side on the expanded footer and
+   stacked on the collapsed rail; the utilities follow them. */
+.sidebar__footer-identity {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+.sidebar__account {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-pill);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+}
+.sidebar--collapsed .sidebar__footer-meta,
+.sidebar--collapsed .sidebar__footer-identity {
+  flex-direction: column;
+}
 .sidebar__footer-action {
   display: inline-flex;
   align-items: center;
@@ -58,12 +77,6 @@
 .sidebar__footer-popover .sidebar__utility-label {
   display: inline;
   font-size: var(--k-text-sm);
-}
-.sidebar__footer-popover .sidebar__presence-tray {
-  position: static;
-  width: 100%;
-  max-width: 100%;
-  margin-top: var(--k-space-2);
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .sidebar__footer {

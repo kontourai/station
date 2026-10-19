@@ -186,11 +186,11 @@
   display: none;
 }
 
-/* The help menu (#1552 D4 gave it a class; its geometry was inline before). Same
-   anchor as the avatar menu below it, and the same literal `zIndex: 209/210`
-   pair it carried inline is now the shared `--layer-navigation` tier its two
-   siblings use — the retired literals were one below and one above nothing in
-   particular. */
+/* The help menu (#1552 D4 gave it a class; its geometry was inline before).
+   Anchored at the toolbar's right edge, where the `⋯` overflow that opens it
+   on a phone sits, and the same literal `zIndex: 209/210` pair it carried
+   inline is now the shared `--layer-navigation` tier its siblings use — the
+   retired literals were one below and one above nothing in particular. */
 .app-toolbar__help-menu {
   position: fixed;
   top: calc(
@@ -203,10 +203,9 @@
   width: min(280px, calc(100vw - 32px));
 }
 
-/* The avatar's menu (#1552 D1). Same anchor as the `⋯` overflow menu below and
-   the help menu beside it — fixed to the toolbar's occupied height at the row's
-   right edge — because all three belong to controls at that edge. Its visual
-   spec comes from `.menu-surface`. */
+/* The account menu (#1552 D1). Its trigger is the sidebar footer's account
+   control now, and `ProfileMenu` positions it above that trigger inline; this
+   rule keeps its tier and width. Its visual spec comes from `.menu-surface`. */
 .app-toolbar__profile-menu {
   position: fixed;
   top: calc(
@@ -427,7 +426,15 @@
 /* Inside a `.menu-row__glyph` the chip takes the family's 16px slot rather than
    its own 22px: the slot is what puts every label on one x, and a chip that
    overflows it is the misalignment #1552 D4 removes. */
-.menu-row__glyph .app-toolbar__overflow-initials {
+.menu-row__glyph /* The Live work row's state ("2 active"), trailing its label. */
+.app-toolbar__overflow-detail {
+  margin-left: auto;
+  padding-left: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.app-toolbar__overflow-initials {
   width: 100%;
   height: 100%;
   /* 10px, the size the 22px chip in the ⋯ menu has always used — not the 9px

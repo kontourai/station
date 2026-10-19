@@ -31,6 +31,20 @@ const harness = vi.hoisted(() => ({
   bottomOnly: true,
   isMobile: true,
   hasRegionModel: true,
+  sessions: {
+    data: [] as unknown[] | undefined,
+    isError: false,
+  },
+  showLiveWork: vi.fn(),
+}));
+
+// Live work's phone row reads the same session inventory the footer's tray
+// reads and opens Activity through `useShowSurface`.
+vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionsQuery: () => harness.sessions,
+}));
+vi.mock('../../../contexts/useShowSurface', () => ({
+  useShowSurface: () => harness.showLiveWork,
 }));
 
 vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
@@ -127,6 +141,8 @@ describe('OverflowMenu region section (#917)', () => {
     harness.bottomOnly = true;
     harness.isMobile = true;
     harness.hasRegionModel = true;
+    harness.sessions = { data: [], isError: false };
+    harness.showLiveWork.mockReset();
     onClose.mockReset();
   });
 
@@ -164,9 +180,61 @@ describe('OverflowMenu region section (#917)', () => {
       'Connections',
       'Profile',
       'Help',
+      'Live work, nothing active',
       'Hide Chat from the dock',
       'Show Activity in the dock',
     ]);
+  });
+
+  /**
+   * The footer's presence tray is inside the phone drawer, so with the drawer
+   * closed this row is Live work's route: it states the inventory's active
+   * count with the tray's own derivation and opens Activity.
+   */
+  test('Live work names the active sessions and opens Activity', () => {
+    harness.sessions = {
+      data: [
+        {
+          threadId: 'running',
+          lifecycleState: 'running',
+          hasActiveTurn: true,
+          controlMode: 'station-owned',
+        },
+        {
+          threadId: 'attached',
+          lifecycleState: 'running',
+          hasActiveTurn: true,
+          controlMode: 'read-only-attached',
+        },
+        {
+          threadId: 'done',
+          lifecycleState: 'completed',
+          hasActiveTurn: false,
+          controlMode: 'station-owned',
+        },
+      ],
+      isError: false,
+    };
+    renderMenu();
+
+    const row = screen.getByRole('button', { name: 'Live work, 1 active' });
+    fireEvent.click(row);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(harness.showLiveWork).toHaveBeenCalledWith('activity');
+  });
+
+  test('Live work says when the inventory has not answered', () => {
+    harness.sessions = { data: undefined, isError: false };
+    const { unmount } = renderMenu();
+    expect(
+      screen.getByRole('button', { name: 'Live work, not read yet' }),
+    ).toBeTruthy();
+    unmount();
+    harness.sessions = { data: [], isError: true };
+    renderMenu();
+    expect(
+      screen.getByRole('button', { name: 'Live work, unavailable' }),
+    ).toBeTruthy();
   });
 
   test('a fine pointer gets no region rows, because the toolbar still has them', () => {

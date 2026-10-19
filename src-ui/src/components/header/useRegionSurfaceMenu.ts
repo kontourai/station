@@ -12,6 +12,7 @@ import {
   isDockRegion,
   occupiedRegion,
   type RegionId,
+  type RegionState,
   type RegisteredSurface,
   regionLabel,
   resolveRegionSurface,
@@ -27,6 +28,21 @@ import type { DockMode } from '../../types';
  * model without deciding where its toggle goes reds rather than silently
  * leaving the region with no control.
  */
+/**
+ * Whether a region's toggle belongs in the default toolbar. The default shell
+ * is the workspace sidebar, Main, Related (Right) and Tools (Bottom); Left is
+ * an advanced placement reached from a pane's move menu or a region's
+ * chooser. A Left the user already uses — it holds a pane or is open, from a
+ * saved arrangement or a plugin placement — keeps its toggle, so hiding the
+ * default glyph never strands their layout.
+ */
+export function isDefaultRegionToggle(
+  region: DockRegionId,
+  state: Pick<RegionState, 'panes' | 'visible'>,
+): boolean {
+  return region !== 'left' || state.visible || state.panes.length > 0;
+}
+
 const TOGGLE_REGION_ORDER = [
   'left',
   'bottom',
@@ -142,6 +158,9 @@ interface RegionSurfaceMenu {
    * region this device cannot use) and the surface filter (`surfaceList`) are
    * the same rules the chords and the folded menu use; a second copy in the
    * toolbar is what drifted twice in #1420.
+   *
+   * Left is an advanced placement (`isDefaultRegionToggle`): it has a toggle
+   * only while it holds a pane or is open.
    */
   regionToggles: RegionToggle[];
 }
@@ -318,8 +337,10 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     // per-region control there.
     regionToggles: bottomOnly
       ? []
-      : TOGGLE_REGION_ORDER.filter((id) =>
-          (available as readonly RegionId[]).includes(id),
+      : TOGGLE_REGION_ORDER.filter(
+          (id) =>
+            (available as readonly RegionId[]).includes(id) &&
+            isDefaultRegionToggle(id, regions[id]),
         ).map(regionToggle),
   };
 }

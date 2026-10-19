@@ -248,7 +248,10 @@ describe('region model', () => {
       'workspace-agents': 'right',
       device: 'right',
       'coding:diff': 'right',
-      'coding:file-browser': 'left',
+      // Left is an advanced placement since the pane workspace contract
+      // (docs/design/pane-relationships.md): no surface defaults there, and
+      // Files joins the Related side. Explicit Left placements still hold.
+      'coding:file-browser': 'right',
       home: 'main',
       'pr:': 'right',
       'file-preview:': 'right',
@@ -260,6 +263,33 @@ describe('region model', () => {
       'board:': 'right',
       'layout:': 'right',
     });
+  });
+
+  test('Files lands Related by default, and an explicit or saved Left placement still holds', () => {
+    const shown = revealSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'coding:file-browser',
+      'right',
+    );
+    expect(shown.region).toBe('right');
+    expect(shown.arrangement.left.panes).toEqual([]);
+
+    const placedLeft = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'coding:file-browser',
+      'left',
+    );
+    expect(placedLeft.left).toMatchObject({
+      panes: ['coding:file-browser'],
+      occupant: 'coding:file-browser',
+      visible: true,
+    });
+    // Revealing a Files pane the user put in Left reveals it there rather
+    // than moving it to the new default.
+    const hidden = updateRegion(placedLeft, 'left', { visible: false });
+    const revealed = revealSurface(hidden, 'coding:file-browser', 'right');
+    expect(revealed.region).toBe('left');
+    expect(revealed.arrangement.left.visible).toBe(true);
   });
 
   test('revealSurface makes an occupied hidden surface visible without moving it', () => {
@@ -591,7 +621,7 @@ describe('region model', () => {
         title: 'Files',
         icon: 'files',
         regions: ['left', 'right', 'bottom'],
-        defaultRegion: 'left',
+        defaultRegion: 'right',
         exposure: 'catalog',
       }),
     ]);

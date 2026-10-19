@@ -11,6 +11,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import './ProjectSidebarFooter.css';
 import { destinationIcon } from './nav-items';
 import { ProjectSidebarPresenceTray } from './ProjectSidebarPresenceTray';
+import { SidebarAccountControl } from './SidebarAccountControl';
 import { SidebarPopover } from './SidebarPopover';
 
 const loadCustomizeDialog = () =>
@@ -103,23 +104,30 @@ export function ProjectSidebarFooter({
       )}
     </button>
   ));
-  const controls = (
-    <>
-      <ProjectSidebarPresenceTray
-        onOpenActivity={isMobile ? onAfterNavigate : undefined}
-      />
-      {collapsed ? (
-        <nav className="sidebar__utility-menu" aria-label="Sidebar navigation">
-          {utilityButtons}
-        </nav>
-      ) : (
-        <div className="sidebar__footer-actions">{utilityButtons}</div>
-      )}
-    </>
+  const controls = collapsed ? (
+    <nav className="sidebar__utility-menu" aria-label="Sidebar navigation">
+      {utilityButtons}
+    </nav>
+  ) : (
+    <div className="sidebar__footer-actions">{utilityButtons}</div>
   );
   return (
     <div className="sidebar__footer">
       <div className="sidebar__footer-meta">
+        {/* Live work and the account stay on the rail itself, outside the
+            collapsed utilities popover: presence is something to notice, and
+            the account is its own control rather than a utility row. */}
+        <div className="sidebar__footer-identity">
+          <ProjectSidebarPresenceTray
+            onOpenActivity={isMobile ? onAfterNavigate : undefined}
+          />
+          <SidebarAccountControl
+            activePath={activePath}
+            collapsed={collapsed}
+            onNavigate={go}
+            onDismissDrawer={isMobile ? onAfterNavigate : undefined}
+          />
+        </div>
         {collapsed ? (
           <button
             ref={moreTriggerRef}
@@ -128,7 +136,7 @@ export function ProjectSidebarFooter({
             aria-label="Sidebar utilities"
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
-            title="Live work, Schedule, Customize and Settings"
+            title="Schedule, Customize and Settings"
             onPointerDown={(event) => {
               if (moreOpen) event.preventDefault();
             }}

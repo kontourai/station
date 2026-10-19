@@ -221,6 +221,13 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   useAttentionQuery: () => ({ data: { items: [], pendingCount: 0 } }),
+  // The phone overflow's Live work row reads the session inventory.
+  useOrchestrationSessionsQuery: () => ({ data: [], isError: false }),
+}));
+
+// The sidebar footer's account control names the signed-in user's initials.
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { name: 'Station Tester' } }),
 }));
 
 /**
@@ -233,7 +240,6 @@ const viewModel = vi.hoisted(() => ({
   showHelp: false,
   showNotifications: false,
   showOverflow: false,
-  showProfileMenu: false,
 }));
 
 vi.mock('../components/header/useHeaderViewModel', () => ({
@@ -242,7 +248,6 @@ vi.mock('../components/header/useHeaderViewModel', () => ({
     closeHelp: () => {},
     closeNotifications: () => {},
     closeOverflow: () => {},
-    closeProfileMenu: () => {},
     goHome: () => {},
     handleHelpPrompt: () => {},
     helpPrompts: [
@@ -252,20 +257,18 @@ vi.mock('../components/header/useHeaderViewModel', () => ({
     openConnectionModal: () => {},
     openProfile: () => {},
     openHelp: () => {},
-    settingsShortcut: '⌘,',
     showHelp: viewModel.showHelp,
     showNotifications: viewModel.showNotifications,
     showOverflow: viewModel.showOverflow,
-    showProfileMenu: viewModel.showProfileMenu,
     toggleNotifications: () => {},
     toggleOverflow: () => {},
-    toggleProfileMenu: () => {},
     userInitials: 'ST',
   }),
 }));
 
 import { ChatDockHeaderMoreMenu } from '../components/chat-dock/ChatDockHeaderMoreMenu';
 import { Header } from '../components/header/Header';
+import { SidebarAccountControl } from '../components/project-sidebar/SidebarAccountControl';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { RegionChromeBar } from '../workspace-panes/RegionChromeBar';
 
@@ -330,6 +333,15 @@ const REGION_CHOOSER_CSS_PATH = resolve(
   HERE,
   '../workspace-panes/RegionEmptyChooser.css',
 );
+// The account menu's trigger is the sidebar footer's since it left the header.
+const SIDEBAR_CSS_PATH = resolve(
+  HERE,
+  '../components/project-sidebar/ProjectSidebar.css',
+);
+const SIDEBAR_FOOTER_CSS_PATH = resolve(
+  HERE,
+  '../components/project-sidebar/ProjectSidebarFooter.css',
+);
 
 type MenuId =
   | 'overflow'
@@ -381,13 +393,14 @@ const SHAPES: readonly Shape[] = [
     openerLabel: 'More actions',
   },
   {
-    name: 'the avatar’s profile menu on a desktop, where its trigger exists',
+    name: 'the sidebar account menu on a desktop, where its trigger exists',
     menu: 'profile',
     viewport: DESKTOP,
     device: 'desktop',
     backdropLabel: 'Close profile menu',
-    // The mirror of the overflow button: `.app-toolbar__action--secondary` is
-    // hidden at the mobile breakpoint, so the avatar is a fine-pointer control.
+    // The account control sits in the sidebar footer beside Live work. On a
+    // phone that footer is inside the closed drawer, so the desktop rail is
+    // where its trigger is chrome a press can land on.
     openerLabel: 'Profile and settings',
   },
   {
@@ -411,12 +424,13 @@ const SHAPES: readonly Shape[] = [
     menu: 'region',
     viewport: DESKTOP,
     device: 'desktop',
-    backdropLabel: 'Close the Add to Left region menu',
+    backdropLabel: 'Close the Add to Right region menu',
     // On a phone `commandsInOverflowMenu` renders no region control at all —
     // the commands move into the ⋯ menu — so this control is desktop-only.
     // Since #2155 every region toggle opens #2154's chooser on a hold or a
-    // right-click, whatever the region holds; the fixture opens `left`'s.
-    openerLabel: 'Left region',
+    // right-click, whatever the region holds; the fixture opens `right`'s
+    // (Left has no default toggle while it is unused).
+    openerLabel: 'Right region',
   },
   {
     // The folded "Regions" menu, and the reason it is a shape of its own
@@ -478,6 +492,8 @@ function buildFixtureCss(): string {
     resolveCssImports(CHAT_CSS_PATH),
     resolveCssImports(HEADER_MENU_CSS_PATH),
     resolveCssImports(REGION_CHOOSER_CSS_PATH),
+    resolveCssImports(SIDEBAR_CSS_PATH),
+    resolveCssImports(SIDEBAR_FOOTER_CSS_PATH),
   ].join('\n');
   assertNoImportsSurvive(css);
   return css;
@@ -516,7 +532,6 @@ async function renderShellMarkup(
   harness.bottomOnly = shape.device !== 'desktop';
   viewModel.showHelp = geometry !== null && shape.menu === 'help';
   viewModel.showOverflow = geometry !== null && shape.menu === 'overflow';
-  viewModel.showProfileMenu = geometry !== null && shape.menu === 'profile';
   viewModel.showNotifications = false;
 
   if (geometry) {
@@ -534,8 +549,26 @@ async function renderShellMarkup(
 
   render(
     <div className="app app--with-sidebar">
+      {/* The desktop rail's footer, where the account menu's trigger lives.
+          A phone's sidebar is the closed drawer, so it is not chrome there. */}
+      {shape.device === 'desktop' && (
+        <aside className="sidebar">
+          <div className="sidebar__body" />
+          <div className="sidebar__footer">
+            <div className="sidebar__footer-meta">
+              <div className="sidebar__footer-identity">
+                <SidebarAccountControl
+                  activePath="/"
+                  collapsed={false}
+                  onNavigate={() => {}}
+                />
+              </div>
+            </div>
+          </div>
+        </aside>
+      )}
       <div className="app__main">
-        <Header onNavigate={() => {}} onToggleSettings={() => {}} />
+        <Header onNavigate={() => {}} />
         <main className="main-content" id="station-main" tabIndex={-1}>
           <div className="content-view" />
         </main>
@@ -608,7 +641,8 @@ async function renderShellMarkup(
     } else if (
       shape.menu === 'region' ||
       shape.menu === 'folded-regions' ||
-      shape.menu === 'dock-more'
+      shape.menu === 'dock-more' ||
+      shape.menu === 'profile'
     ) {
       const opener = screen.getByLabelText(shape.openerLabel as string, {
         exact: false,
@@ -624,8 +658,8 @@ async function renderShellMarkup(
       if (shape.menu === 'region') fireEvent.contextMenu(opener);
       else fireEvent.click(opener);
     }
-    // The three header menus are behind `LazyBoundary`, so the portal does not
-    // exist on the render that flips their flag. Awaiting the backdrop by name
+    // The header menus and the account menu are behind `LazyBoundary`, so the
+    // portal does not exist on the render that opens them. Awaiting the backdrop by name
     // is what makes the serialized body contain an OPEN menu rather than a
     // suspended one.
     //
@@ -864,10 +898,11 @@ describe.skipIf(!chromiumAvailable)(
             };
 
             // Every control of the shell chrome a press could land on while
-            // this menu is open: the toolbar's row, and the dock header's.
+            // this menu is open: the toolbar's row, the dock header's, and the
+            // sidebar footer's.
             const controls = [
               ...document.querySelectorAll<HTMLElement>(
-                '.app-toolbar button, .chat-dock__header button',
+                '.app-toolbar button, .chat-dock__header button, .sidebar__footer button',
               ),
             ].filter((control) => {
               const rect = control.getBoundingClientRect();

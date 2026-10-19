@@ -1041,7 +1041,7 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     title: 'Files',
     icon: 'files',
     regions: DOCK_REGION_IDS,
-    defaultRegion: 'left',
+    defaultRegion: 'right',
     exposure: 'catalog',
   },
 ]);
