@@ -521,19 +521,28 @@ describe('drain', () => {
     link.onDrain((request) => {
       settled = request.connectionsSettled;
     });
+    const arrived = new Promise((resolve) => server.once('request', resolve));
     const hung = http.get({ host: HOST, port, path: '/', agent: false });
     hung.on('error', () => {});
     cleanups.push(() => hung.destroy());
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const drainedAt = Date.now();
-    channel.deliver({ type: 'drain', deadlineMs: 1_500 });
-    await expect(settled).resolves.toEqual({ lingering: 1 });
-    const waited = Date.now() - drainedAt;
-    // drainWaitBoundMs(1500, 100) is 1500 - 300.
+    await arrived;
+    // A request that never finishes, timed on a fake clock so the bound is
+    // exact: drainWaitBoundMs(1500, 100) is 1500 - 300.
     expect(drainWaitBoundMs(1_500, 100)).toBe(1_200);
-    expect(waited).toBeGreaterThanOrEqual(1_150);
-    // Upper bound only proves it stopped waiting at all; loose for CI load.
-    expect(waited).toBeLessThan(10_000);
+    vi.useFakeTimers();
+    try {
+      let result: { lingering: number } | undefined;
+      channel.deliver({ type: 'drain', deadlineMs: 1_500 });
+      void settled?.then((value) => {
+        result = value;
+      });
+      await vi.advanceTimersByTimeAsync(1_199);
+      expect(result).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(result).toEqual({ lingering: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('bounds its wait by the deadline itself, never past it', () => {

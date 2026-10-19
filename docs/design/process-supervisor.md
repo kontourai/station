@@ -145,8 +145,10 @@ product decisions.
   waiting for voice calls; a second signal shuts it down at once. A
   supervisor started with another `--kill-grace-ms` does not tell its
   generations; a shorter one kills mid-drain. If such a generation drains
-  and exits cleanly outside a handoff, the supervisor restarts it at once
-  without counting a failure; any other exit is a crash. It does not arm the older parent
+  and exits cleanly outside a handoff after serving stably (60 seconds by
+  default), the supervisor restarts it at once without counting a failure.
+  A clean exit sooner than that, or any other exit, counts as a crash, so
+  repeated signals reach the failure budget instead of looping. It does not arm the older parent
   watchdog: the closed IPC channel is how it learns its supervisor is gone. Terminal and engine
   processes it starts do not inherit the supervisor's generation variables.
 
@@ -564,5 +566,6 @@ verification, and fault injection.
   in a handoff; the working hypothesis is libuv's pre-posted `AcceptEx` on
   Windows, where a connection completed into the draining generation's
   pending accept is closed with its listener, while POSIX leaves it in the
-  shared backlog. A failed trial drains for at most the kill grace, so a
-  frozen trial delays the rollback by that long.
+  shared backlog. A failed trial drains for at most the kill grace and is
+  then killed outright, so a frozen trial delays the rollback by one kill
+  grace.

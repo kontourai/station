@@ -122,6 +122,31 @@ describe('lifecycle event journal', () => {
     },
   );
 
+  it('classifies a non-zero exit after a supervisor drain as a crash', () => {
+    const events = [
+      {
+        ...identity,
+        version: 1 as const,
+        type: 'shutdown_observed' as const,
+        reason: 'supervisor_drain' as const,
+        sender: 'unknown' as const,
+        timestamp: '2026-07-10T12:00:01.000Z',
+      },
+      {
+        ...identity,
+        version: 1 as const,
+        type: 'process_exit' as const,
+        exitCode: 1,
+        signal: null,
+        sender: 'unknown' as const,
+        timestamp: '2026-07-10T12:00:02.000Z',
+      },
+    ];
+    expect(classifyLifecycleExit(events, identity).classification).toBe(
+      'crash',
+    );
+  });
+
   it.each(['failed', 'expired', 'orphan'] as const)(
     'does not let a %s stop intent misclassify a later signal',
     (shape) => {

@@ -361,7 +361,11 @@ export interface ListenerAdoptMessage {
   name: string;
 }
 
-/** Stop accepting, finish in-flight work, and exit. */
+/**
+ * Stop accepting, finish in-flight work, and exit. `deadlineMs` bounds how
+ * long the core waits for in-flight work; the core treats a missing,
+ * non-numeric, or non-positive value as 0 and shuts down without waiting.
+ */
 export interface DrainMessage {
   type: 'drain';
   deadlineMs: number;

@@ -1253,7 +1253,17 @@ export function classifyLifecycleExit(
         (event.reason === 'supervisor_drain' ||
           event.reason === 'supervisor_disconnect'),
     );
-  if (supervisorShutdown && !actual.signal) {
+  // A drain the supervisor asked for ends in exit 0; a non-zero exit after
+  // it is a crash. A lost supervisor channel exits 1 by design, so any
+  // unsignalled exit after it is that disconnect.
+  const drainedCleanly =
+    supervisorShutdown?.reason === 'supervisor_drain' &&
+    (actual.type !== 'process_exit' || actual.exitCode === 0);
+  if (
+    supervisorShutdown &&
+    !actual.signal &&
+    (supervisorShutdown.reason === 'supervisor_disconnect' || drainedCleanly)
+  ) {
     return {
       classification:
         supervisorShutdown.reason === 'supervisor_drain'
