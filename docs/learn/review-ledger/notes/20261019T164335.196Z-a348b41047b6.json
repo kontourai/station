@@ -1,0 +1,7 @@
+{
+  "revision": "fa08748729eaaa67830668ab9c34982156ea20b7",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed the #342 turn-rail delta to ChatMessageList.tsx (turn landmarks from the row model, the viewport tracker, jumpToTurn and its revealRowId request, the Previous/Next steps composed with Scroll to bottom, and focus moving to the transcript when that control leaves). This document's ChatMessageList claims (form submission through submitForm and the existing sender with queueOnBusy, form draft scope, replay read-only) are untouched by the delta; no prose change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}
