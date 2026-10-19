@@ -11,6 +11,7 @@ import type {
   HomeViewNavigation,
   useHomeViewModel,
 } from '../../views/home/useHomeViewModel';
+import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
@@ -159,8 +160,10 @@ export function HomeContinueCard({
   model,
   id,
   onViewActivity,
+  childrenById,
 }: {
   model: HomeViewModel;
+  childrenById?: HomeWorkLanes['childrenById'];
   id?: string;
   /**
    * Given when Recent work is not shown (Continue holds the only item), so
@@ -170,6 +173,9 @@ export function HomeContinueCard({
 }) {
   const coarsePointer = useCoarsePointer();
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  const [expandedFamilies, setExpandedFamilies] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   // The lanes' own row inputs, so the row reads exactly as theirs do.
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
@@ -202,10 +208,14 @@ export function HomeContinueCard({
           task: { ...primary, stableId: `continue:${primary.id}` },
           isWoken: false,
           agents: model.agents,
-          onOpen: () => model.continueWork(primary),
+          onOpen: (item) =>
+            model.continueWork(item.id === primary.id ? primary : item),
           context: {
             now: Date.now(),
             workFacts: model.workFacts,
+            childrenById,
+            expandedFamilies,
+            setExpandedFamilies,
             detailsFor,
             setDetailsFor,
             chrome: coarsePointer ? 'touch' : 'hover',

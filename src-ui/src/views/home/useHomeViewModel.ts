@@ -103,6 +103,7 @@ function useHomeWorkData(): HomeWorkData {
       chats: {},
       sessions: sessions.data ?? [],
       tasks: tasks.data ?? [],
+      retainTaskChildren: true,
       agents,
       chatItems: openChatItems,
       remoteEnvironments,
@@ -258,7 +259,9 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
     // has none — nothing was ever sent — and stays reachable in its lane.
     primaryWorkItem: data.workItems.find(
       (task) =>
-        task.kind !== 'remote-session' && task.lifecycleLabel !== 'Draft',
+        task.kind !== 'remote-session' &&
+        task.lifecycleLabel !== 'Draft' &&
+        !data.workFacts?.get(task.id)?.runRootId,
     ),
     continueWork: createContinueWork(
       onNavigate,
