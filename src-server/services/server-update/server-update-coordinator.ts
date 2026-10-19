@@ -190,10 +190,21 @@ function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
-function readIntentFile(path: string): PersistedIntent {
+/**
+ * The persisted intent; null when the file exists but could not be read
+ * (EMFILE, EACCES), which says nothing about what it holds (round 3 item
+ * 8). A missing or malformed file holds no intent.
+ */
+function readIntentFile(path: string): PersistedIntent | null {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? {} : null;
+  }
   let value: unknown;
   try {
-    value = JSON.parse(readFileSync(path, 'utf8'));
+    value = JSON.parse(text);
   } catch {
     return {};
   }
@@ -332,6 +343,8 @@ export class ServerUpdateCoordinator {
 
   private readIntent(installRoot: string): PersistedIntent {
     const intent = readIntentFile(this.intentPath(installRoot));
+    // An unreadable file leaves the in-memory flag as it was.
+    if (!intent) return {};
     this.idleIntentPending = !!intent.applyWhenIdle;
     return intent;
   }
@@ -716,6 +729,8 @@ export class ServerUpdateCoordinator {
     // Only a verified answer changes the record: an unreachable manifest says
     // nothing about whether the version stopped being available.
     if (status.releaseCheck === 'verified') {
+      // Any verified check ends a run of failed deadline checks (item 7).
+      this.deadlineFailures = 0;
       const latest = status.updateAvailable ? status.latestVersion : undefined;
       if (latest && intent.availableSince?.version !== latest)
         this.tryWriteIntent(archive.installRoot, {
@@ -794,6 +809,8 @@ export class ServerUpdateCoordinator {
    * it. A check that fails or does not verify is retried after a backoff.
    */
   private armDownloadDeadline(due: number): void {
+    // Nothing is armed once stopped (round 3 item 2).
+    if (this.stopped) return;
     this.downloadDue?.cancel();
     const timer = this.setTimer(
       () => {
@@ -809,10 +826,12 @@ export class ServerUpdateCoordinator {
   private async downloadDeadlineReached(): Promise<void> {
     if (this.stopped) return;
     const status = await this.check('download-due', { force: true });
-    if (status?.releaseCheck === 'verified') {
-      this.deadlineFailures = 0;
-      return;
-    }
+    // A verified check reset the failure count and let the policy act.
+    if (status?.releaseCheck === 'verified' || this.stopped) return;
+    // While the check ran, the policy may have been set to `never`, or
+    // re-evaluated and armed a deadline of its own: the failure is then
+    // nobody's to retry (round 3 item 1).
+    if (this.downloadDue || (await this.policy()) === 'never') return;
     this.deadlineFailures += 1;
     const retryAt = this.now() + backoff(this.deadlineFailures);
     this.deps.logger.warn('Server update: the download deadline check failed', {

@@ -2133,3 +2133,107 @@ describe('the coordinator, review round 2 (#3851)', () => {
     });
   });
 });
+
+describe('the coordinator, review round 3 (#3851)', () => {
+  /** A fetch that waits until the test rejects it. */
+  function heldFetch() {
+    let reject: (error: Error) => void = () => undefined;
+    fetchFn.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    return (error: Error) => reject(error);
+  }
+
+  test('item 1: saving never while the deadline check runs leaves nothing to retry', async () => {
+    const install = makeInstall();
+    const { coordinator, advance, timers, setPolicy, request } =
+      coordinatorFor(install);
+    coordinator.start();
+    await coordinator.check('boot');
+    const fail = heldFetch();
+    await advance(24 * 60 * 60_000);
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(2));
+    // The person turns the download off while the check is in flight.
+    setPolicy('never');
+    await coordinator.settingsChanged();
+    fail(new Error('getaddrinfo EAI_AGAIN'));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const fetches = fetchFn.mock.calls.length;
+    await advance(31 * 60 * 60_000);
+    expect(fetchFn.mock.calls.length).toBe(fetches);
+    expect(request()).toBeNull();
+    coordinator.stop();
+  });
+
+  test('item 2: a stop while the deadline check runs arms nothing afterwards', async () => {
+    const install = makeInstall();
+    const { coordinator, advance, timers } = coordinatorFor(install);
+    await coordinator.check('boot');
+    const fail = heldFetch();
+    await advance(24 * 60 * 60_000);
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(2));
+    coordinator.stop();
+    fail(new Error('getaddrinfo EAI_AGAIN'));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(timers.live()).toEqual([]);
+  });
+
+  test('item 7: any verified check resets the deadline failure backoff', async () => {
+    const install = makeInstall();
+    const { coordinator, advance, timers, clock } = coordinatorFor(install);
+    await coordinator.check('boot');
+    fetchFn.mockRejectedValueOnce(new Error('EAI_AGAIN'));
+    await advance(24 * 60 * 60_000);
+    // First failure: the retry is 1 h out.
+    await vi.waitFor(() =>
+      expect(timers.live().map((timer) => timer.due - clock.now)).toEqual([
+        60 * 60_000,
+      ]),
+    );
+    // A client's check verifies meanwhile; it runs no policy.
+    const app = createApp(install, {
+      extraDeps: { serverUpdate: coordinator },
+    });
+    expect((await app.request('/core-update')).status).toBe(200);
+    fetchFn.mockRejectedValueOnce(new Error('EAI_AGAIN'));
+    await advance(60 * 60_000);
+    // The second failure counts from the reset: 1 h again, not 6 h.
+    await vi.waitFor(() =>
+      expect(timers.live().map((timer) => timer.due - clock.now)).toEqual([
+        60 * 60_000,
+      ]),
+    );
+    coordinator.stop();
+  });
+
+  test('item 8: an unreadable intent file does not clear the pending update when idle', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator, turnEnded, timers } = coordinatorFor(install, {
+      policy: 'never',
+      running: () => [{ sessionId: 's-1' }],
+    });
+    coordinator.start();
+    coordinator.markReady();
+    await coordinator.setApplyWhenIdle(NEWER);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const file = join(
+      serviceUpdatePaths(install.installRoot).runtime,
+      'server-update.json',
+    );
+    chmodSync(file, 0o000);
+    try {
+      await coordinator.state();
+      const before = timers.live().length;
+      turnEnded();
+      // Still pending in memory: the event arms the idle re-evaluation.
+      expect(timers.live().length).toBe(before + 1);
+    } finally {
+      chmodSync(file, 0o600);
+      coordinator.stop();
+    }
+  });
+});
