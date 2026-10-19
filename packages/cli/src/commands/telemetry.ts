@@ -1,4 +1,4 @@
-import { closeSync, existsSync, openSync, writeFileSync } from 'node:fs';
+import { closeSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import {
   TELEMETRY_TIERS,
   type TelemetryTierResolution,
@@ -27,17 +27,14 @@ interface ProducerView {
 }
 
 /**
- * Writes the secret to a new owner-only file. Refuses an existing path, so a
- * mistyped path never overwrites another file and a token is never written
- * into a file other users can already read.
+ * Opens the token file before the token exists: a path that cannot be
+ * created (exists, missing directory, no permission) is refused before
+ * Station mints a secret that would then be lost. `wx` refuses an existing
+ * path, so a mistyped path never overwrites another file, and the file is
+ * owner-only from creation.
  */
-function writeTokenFile(path: string, token: string): void {
-  const descriptor = openSync(path, 'wx', 0o600);
-  try {
-    writeFileSync(descriptor, `${token}\n`, { encoding: 'utf8' });
-  } finally {
-    closeSync(descriptor);
-  }
+function openTokenFile(path: string): number {
+  return openSync(path, 'wx', 0o600);
 }
 
 async function runProducersCommand(parsed: ParsedCoreArgs): Promise<void> {
@@ -109,25 +106,45 @@ async function runProducersCommand(parsed: ParsedCoreArgs): Promise<void> {
   const tokenFile = parsed.flags['token-file'];
   if (tokenFile !== undefined && (typeof tokenFile !== 'string' || !tokenFile))
     throw new Error('--token-file=<path> requires a path.');
-  if (typeof tokenFile === 'string' && existsSync(tokenFile))
-    throw new Error(
-      `${tokenFile} already exists; choose a new path for the token file.`,
-    );
-  const data = (await requestJson<{ producer: ProducerView; token: string }>(
-    resolved.apiBase,
-    '/api/telemetry-producers',
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        name,
-        allowRemote: parsed.flags['allow-remote'] === true,
-        expiresInDays,
-      }),
-    },
-  )) as { producer: ProducerView; token: string };
+  let descriptor: number | undefined;
+  if (typeof tokenFile === 'string') {
+    try {
+      descriptor = openTokenFile(tokenFile);
+    } catch (error) {
+      throw new Error(
+        `Cannot create ${tokenFile} (${(error as NodeJS.ErrnoException).code ?? 'error'}); choose a new path in an existing directory.`,
+      );
+    }
+  }
+  let data: { producer: ProducerView; token: string };
+  try {
+    data = (await requestJson<{ producer: ProducerView; token: string }>(
+      resolved.apiBase,
+      '/api/telemetry-producers',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          allowRemote: parsed.flags['allow-remote'] === true,
+          expiresInDays,
+        }),
+      },
+    )) as { producer: ProducerView; token: string };
+    if (descriptor !== undefined)
+      writeFileSync(descriptor, `${data.token}\n`, { encoding: 'utf8' });
+  } catch (error) {
+    if (descriptor !== undefined) {
+      closeSync(descriptor);
+      descriptor = undefined;
+      // Only the empty file this command created; the path was new.
+      if (typeof tokenFile === 'string') rmSync(tokenFile, { force: true });
+    }
+    throw error;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
   const endpoint = `${resolved.apiBase}/v1/agent-events`;
   if (typeof tokenFile === 'string') {
-    writeTokenFile(tokenFile, data.token);
     if (json)
       console.log(
         JSON.stringify({ producer: data.producer, tokenFile, endpoint }),

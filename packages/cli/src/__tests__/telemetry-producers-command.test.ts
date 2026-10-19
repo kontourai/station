@@ -5,7 +5,7 @@
  * `src-server/monitoring/__tests__/telemetry-producer-ingest.routes.test.ts`.
  */
 import { spawn } from 'node:child_process';
-import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join, resolve } from 'node:path';
@@ -169,6 +169,31 @@ describe('station telemetry producers', () => {
     expect(result.status).not.toBe(0);
     expect(seen).toHaveLength(0);
     expect(readFileSync(tokenFile, 'utf8')).toBe('keep me');
+  }, 60_000);
+
+  test('create refuses a token file it cannot create before minting', async () => {
+    reply = () => ({ status: 500, body: { success: false } });
+    const directory = makeTempDir('station-cli-token-file-');
+    const tokenFile = join(directory, 'missing-directory', 'token');
+    const result = await run(['create', 'x', `--token-file=${tokenFile}`]);
+
+    expect(result.status).not.toBe(0);
+    expect(seen).toHaveLength(0);
+    expect(existsSync(tokenFile)).toBe(false);
+  }, 60_000);
+
+  test('a refused create removes the token file it opened', async () => {
+    reply = () => ({
+      status: 409,
+      body: { success: false, error: 'exists', code: 'producer_exists' },
+    });
+    const directory = makeTempDir('station-cli-token-file-');
+    const tokenFile = join(directory, 'token');
+    const result = await run(['create', 'x', `--token-file=${tokenFile}`]);
+
+    expect(result.status).not.toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(existsSync(tokenFile)).toBe(false);
   }, 60_000);
 
   test('a refused create exits non-zero with the server message', async () => {

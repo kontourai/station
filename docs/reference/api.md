@@ -1819,7 +1819,8 @@ Two credentials are accepted, checked in the
 
 - a **telemetry producer token** (`sti_…`), sent as
   `Authorization: Bearer <token>`. It is admitted only on these three exact
-  `POST` leaves; on any other route it authenticates nothing (`401`);
+  `POST` leaves. Anywhere else it is not a credential, and the request is
+  refused (`401`, or `403` for a path no route declares);
 - a paired credential with the `orchestration:operate` tier, as before.
 
 Responses for a producer token:
@@ -1828,10 +1829,11 @@ Responses for a producer token:
 | --- | --- | --- |
 | `200` | | Accepted. Each row carries `station.telemetry.producer: <token name>` |
 | `400` | `invalid_json`, `unsupported_schema_version`, `invalid_agent_event` | Body refused (agent events); nothing was written |
-| `401` | `authentication_required` | No credential, or an unknown or revoked token |
+| `401` | `authentication_required` | No credential, an unknown or revoked token, or a credential in the query string |
 | `403` | `telemetry_producer_expired` | The token passed its expiry |
 | `403` | `telemetry_producer_remote_not_allowed` | The sender is not on this machine and the token was not created with remote access |
-| `413`, `429` | | The ordinary per-credential body and rate budgets |
+| `429` | `authentication_rate_limited` | Too many unknown tokens from this address; `Retry-After` says when to try again. A recognized token is never limited this way |
+| `413`, `429` | `rate_limited` (429) | The ordinary per-credential body and rate budgets; `429` carries `Retry-After` |
 | `503` | `telemetry_producers_unavailable` | The token file is unsafe or unreadable; no token is admitted |
 
 `POST /v1/agent-events` validates the body before reading it: `schema_version`

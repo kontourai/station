@@ -568,9 +568,12 @@ caught, though the person's devices are gone by then).
 Telemetry producer tokens (`sti_…`) are a separate, write-only credential for
 programs that report activity, such as Flow Agents' telemetry hooks. The auth
 boundary recognizes one only on the exact leaves `POST /v1/agent-events`,
-`/v1/traces` and `/v1/logs`; anywhere else it is an unknown bearer (`401`).
-A presented producer token never falls through to the paired-credential
-checks. It is refused when expired (`403`), and when the sender is not on this
+`/v1/traces` and `/v1/logs`; anywhere else it is an unknown bearer (`401`, or
+`403` for an undeclared path). A presented producer token never falls through
+to the paired-credential checks, and is refused beside a credential in the
+query string. Only unknown tokens spend the per-address failure budget, so a
+stale or misplaced token cannot lock out the other producers on that address
+(Tailscale Serve senders share the loopback address). It is refused when expired (`403`), and when the sender is not on this
 machine unless the token was created with remote access (`403`). "This
 machine" is the same position test used for raw operator-credential use:
 loopback socket and `Host`, no forwarding, Tailscale or ingress-identity

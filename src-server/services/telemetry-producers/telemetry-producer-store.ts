@@ -161,6 +161,8 @@ export class TelemetryProducerStore {
   readonly #path: string;
   readonly #now: () => number;
   #cache: { key: string; loaded: LoadedProducers } | undefined;
+  /** Bounded by the store's record limit: one entry per producer touched. */
+  readonly #touchedAt = new Map<string, number>();
 
   constructor(options: { securityDir: string; now?: () => number }) {
     this.#directory = options.securityDir;
@@ -271,6 +273,7 @@ export class TelemetryProducerStore {
       producers.filter((producer) => {
         if (producer.name !== name) return true;
         found = true;
+        this.#touchedAt.delete(producer.credentialHash);
         return false;
       }),
     );
@@ -284,11 +287,14 @@ export class TelemetryProducerStore {
    */
   touch(producer: StoredTelemetryProducer): void {
     const at = this.#now();
-    if (
-      producer.lastUsedAt !== null &&
-      at - producer.lastUsedAt < TOUCH_INTERVAL_MS
-    )
-      return;
+    // The in-memory mark stops a burst that arrives before the first write
+    // lands from queueing one locked rewrite per request.
+    const last = Math.max(
+      producer.lastUsedAt ?? Number.NEGATIVE_INFINITY,
+      this.#touchedAt.get(producer.credentialHash) ?? Number.NEGATIVE_INFINITY,
+    );
+    if (at - last < TOUCH_INTERVAL_MS) return;
+    this.#touchedAt.set(producer.credentialHash, at);
     void this.#mutate((producers) =>
       producers.map((held) =>
         held.name === producer.name &&

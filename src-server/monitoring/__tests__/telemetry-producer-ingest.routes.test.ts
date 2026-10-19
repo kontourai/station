@@ -4,7 +4,7 @@
  * ingest routes). The producer seam lives in `runtime-http.ts`; these tests
  * reach it through requests, not through the store.
  */
-import { readFileSync, statSync } from 'node:fs';
+import { chmodSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -27,6 +27,8 @@ import type { MonitoringEvent } from '../schema.js';
 const OPERATE_DEVICE = 'A'.repeat(43);
 const READ_DEVICE = 'B'.repeat(43);
 const OPERATOR = 'C'.repeat(43);
+/** Holds access:manage but is a paired device, not the Station operator. */
+const MANAGE_DEVICE = 'D'.repeat(43);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type TestBindings = HttpBindings & {
@@ -63,7 +65,12 @@ const agentEvent = (overrides: Record<string, unknown> = {}) => ({
 
 const makeTempDir = trackTempDirs();
 
-function harness() {
+function harness(
+  budget: {
+    maxMutationsPerWindow?: number;
+    maxMutationBodyBytes?: number;
+  } = {},
+) {
   const home = makeTempDir('station-telemetry-producers-');
   let now = Date.UTC(2026, 9, 1);
   const store = new TelemetryProducerStore({
@@ -78,16 +85,19 @@ function harness() {
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
       verifyCredential: (credential: string) =>
-        [OPERATE_DEVICE, READ_DEVICE, OPERATOR].includes(credential),
+        [OPERATE_DEVICE, READ_DEVICE, OPERATOR, MANAGE_DEVICE].includes(
+          credential,
+        ),
       resolveGrantedScope: (credential: string) =>
         credential === READ_DEVICE
           ? 'orchestration:read'
-          : credential === OPERATOR
+          : credential === OPERATOR || credential === MANAGE_DEVICE
             ? 'access:manage'
             : 'orchestration:operate',
       resolveCredentialAuthority: (credential: string) =>
         credential === OPERATOR ? 'operator-credential' : 'device-credential',
       telemetryProducers: store,
+      ...budget,
     },
   } as Parameters<typeof configureRuntimeHttp>[0]);
   app.route(
@@ -470,5 +480,124 @@ describe('telemetry producer management routes', () => {
       body: { name: 'one-too-many' },
     });
     expect(response.status).toBe(409);
+  });
+});
+
+describe('telemetry producer admission edges (review round 1)', () => {
+  test('unknown tokens from an address do not lock out a valid producer', async () => {
+    const h = harness();
+    const token = await h.create('flow-agents');
+    for (let attempt = 0; attempt < 10; attempt += 1)
+      expect(
+        (
+          await h.send('/v1/agent-events', {
+            token: `sti_${String(attempt).padStart(43, 'x')}`,
+            body: agentEvent(),
+          })
+        ).status,
+      ).toBe(401);
+    // The address's failure budget is spent: an eleventh guess is limited.
+    expect(
+      (
+        await h.send('/v1/agent-events', {
+          token: `sti_${'y'.repeat(43)}`,
+          body: agentEvent(),
+        })
+      ).status,
+    ).toBe(429);
+    const valid = await h.send('/v1/agent-events', {
+      token,
+      body: agentEvent(),
+    });
+    expect(valid.status).toBe(200);
+  });
+
+  test('refused known tokens do not lock out other producers', async () => {
+    const h = harness();
+    const expired = await h.create('old', { expiresInDays: 1 });
+    const localOnly = await h.create('local-only');
+    const valid = await h.create('current');
+    h.advance(DAY_MS + 1);
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      expect(
+        (
+          await h.send('/v1/agent-events', {
+            token: expired,
+            body: agentEvent(),
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await h.send('/v1/agent-events', {
+            token: localOnly,
+            body: agentEvent(),
+            headers: { 'x-forwarded-for': '100.64.1.2' },
+          })
+        ).status,
+      ).toBe(403);
+    }
+    expect(
+      (await h.send('/v1/agent-events', { token: valid, body: agentEvent() }))
+        .status,
+    ).toBe(200);
+  });
+
+  test('a token in the query string is refused even with a valid bearer', async () => {
+    const h = harness();
+    const token = await h.create('flow-agents');
+    const response = await h.send(`/v1/agent-events?token=${token}`, {
+      token,
+      body: agentEvent(),
+    });
+    expect(response.status).toBe(401);
+    expect(h.emitted).toHaveLength(0);
+  });
+
+  test('an unsafe token file admits no producer (503)', async () => {
+    const h = harness();
+    const token = await h.create('flow-agents');
+    if (process.platform === 'win32') return;
+    chmodSync(join(h.home, 'security', TELEMETRY_PRODUCERS_FILE), 0o644);
+    const response = await h.send('/v1/agent-events', {
+      token,
+      body: agentEvent(),
+    });
+    expect(response.status).toBe(503);
+    expect(h.emitted).toHaveLength(0);
+  });
+
+  test('the mutation budget bounds a producer: rate (429) and body size (413)', async () => {
+    const h = harness({ maxMutationsPerWindow: 2, maxMutationBodyBytes: 4096 });
+    const token = await h.create('flow-agents');
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 3; attempt += 1)
+      statuses.push(
+        (await h.send('/v1/agent-events', { token, body: agentEvent() }))
+          .status,
+      );
+    expect(statuses).toEqual([200, 200, 429]);
+
+    const small = harness({ maxMutationBodyBytes: 4096 });
+    const smallToken = await small.create('flow-agents');
+    const large = await small.send('/v1/agent-events', {
+      token: smallToken,
+      body: agentEvent({ tool: { name: 'shell', input: 'x'.repeat(8192) } }),
+    });
+    expect(large.status).toBe(413);
+    expect(small.emitted).toHaveLength(0);
+  });
+
+  test('a paired device with access:manage that is not the operator cannot manage producers', async () => {
+    const h = harness();
+    const response = await h.send('/api/telemetry-producers', {
+      token: MANAGE_DEVICE,
+      body: { name: 'x' },
+    });
+    expect(response.status).toBe(403);
+    expect(((await response.json()) as { code: string }).code).toBe(
+      'operator_required',
+    );
+    expect(h.store.list()).toHaveLength(0);
   });
 });

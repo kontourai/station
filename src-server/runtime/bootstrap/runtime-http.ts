@@ -539,7 +539,8 @@ function telemetryProducerBearer(c: Context): string | undefined {
 /**
  * The one telemetry producer admission path. A presented producer token never
  * falls through to the paired-credential checks: it is admitted here or
- * refused here. Order: rate limit, store usable, token known (401), not
+ * refused here. Order: no credential in the query (401), store usable (503),
+ * token known (401, or 429 once the address's failure budget is spent), not
  * expired (403), sender position allowed (403).
  *
  * "Same machine" is `classifyOperatorCredentialPosition`: a direct loopback
@@ -579,10 +580,11 @@ async function admitTelemetryProducerRequest(call: {
     });
     return c.json({ error: { code } }, status);
   };
-  const retryAfter = limiter.retryAfterSeconds(limiterKey);
-  if (retryAfter !== undefined) {
-    c.header('Retry-After', String(retryAfter));
-    return refused(429, AUTH_RATE_LIMITED_ERROR_CODE, 'too_many_failures');
+  // The same refusal every other credential gets: a secret in a URL lands
+  // in logs and history, so it is never accepted alongside one.
+  if (hasCredentialQuery(c.req.url)) {
+    limiter.recordFailure(limiterKey);
+    return refused(401, 'authentication_required', 'query_credential_rejected');
   }
   const producers = security.telemetryProducers;
   if (producers && !producers.usable())
@@ -593,29 +595,36 @@ async function admitTelemetryProducerRequest(call: {
     );
   const producer = producers?.find(call.secret);
   if (!producers || !producer) {
+    // Only an unknown token consumes the per-address failure budget, as in
+    // the paired-credential path. The address is shared: Tailscale Serve
+    // dials from loopback, so every tailnet sender counts against it too.
+    const retryAfter = limiter.retryAfterSeconds(limiterKey);
+    if (retryAfter !== undefined) {
+      c.header('Retry-After', String(retryAfter));
+      return refused(429, AUTH_RATE_LIMITED_ERROR_CODE, 'too_many_failures');
+    }
     limiter.recordFailure(limiterKey);
     return refused(401, 'authentication_required', 'credential_invalid');
   }
-  if (producers.isExpired(producer)) {
-    limiter.recordFailure(limiterKey);
+  // A recognized token is not a guess. Refusing it for expiry or position
+  // must not lock out the other producers on this address, so it clears the
+  // budget like a recognized-but-refused paired credential does.
+  limiter.clear(limiterKey);
+  if (producers.isExpired(producer))
     return refused(
       403,
       'telemetry_producer_expired',
       'telemetry_producer_expired',
     );
-  }
   if (
     !producer.allowRemote &&
     classifyOperatorCredentialPosition(c) === 'off-host'
-  ) {
-    limiter.recordFailure(limiterKey);
+  )
     return refused(
       403,
       'telemetry_producer_remote_not_allowed',
       'telemetry_producer_remote_not_allowed',
     );
-  }
-  limiter.clear(limiterKey);
   bindAdmittedTelemetryProducer(c, producer.name);
   // The existing mutation budget keys on this principal, so a producer's
   // event rate is bounded like any other credential's.
