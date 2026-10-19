@@ -1,28 +1,18 @@
 import { spawnSync } from 'node:child_process';
-import {
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 /**
  * #3851: the gate as a child process, against a temp desktop root that holds
  * the real default capability plus one way of granting the webview updater
  * or process authority. Each shape is one Tauri really loads.
  */
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true });
-});
+const tempDir = trackTempDirs();
 
 function desktopRoot(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-native-boundary-'));
-  roots.push(root);
+  const root = tempDir('station-native-boundary-');
   mkdirSync(join(root, 'capabilities'));
   copyFileSync(
     'src-desktop/capabilities/default.json',
