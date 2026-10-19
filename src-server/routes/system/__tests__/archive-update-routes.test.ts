@@ -2264,9 +2264,17 @@ describe('the coordinator, review round 4 (#3851)', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     const before = readFileSync(intentFile(install), 'utf8');
     expect(JSON.parse(before)).toHaveProperty('applyWhenIdle');
+    // A forced check runs every write path the record has (availableSince).
     chmodSync(intentFile(install), 0o000);
     try {
       await coordinator.check('newer-client', { force: true });
+    } finally {
+      chmodSync(intentFile(install), 0o600);
+    }
+    expect(readFileSync(intentFile(install), 'utf8')).toBe(before);
+    // A cancel over an unreadable file says so instead of claiming it.
+    chmodSync(intentFile(install), 0o000);
+    try {
       expect(await coordinator.cancelApplyWhenIdle()).toMatchObject({
         ok: false,
         status: 500,
