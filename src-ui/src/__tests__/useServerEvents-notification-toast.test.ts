@@ -80,6 +80,27 @@ describe('handleNotificationDeliveredToast (station#1100 review fix, HIGH)', () 
     expect(show).not.toHaveBeenCalled();
   });
 
+  // The client's own end-of-turn toast (turnAttentionNotifications.ts) owns
+  // these: it toasts a background chat and stays quiet for the chat in front
+  // of the user. The server record must not add a second toast.
+  test.each(['turn-completed', 'turn-failed', 'turn-stopped'])(
+    'a %s delivery is not toasted (the client surfaces turn ends itself)',
+    (category) => {
+      handleNotificationDeliveredToast({
+        category,
+        title: 'Your agent finished',
+        body: 'Agent finished in session thread-1',
+        metadata: { sessionId: 'thread-1', turnId: 'turn-1' },
+      });
+
+      expect(show).not.toHaveBeenCalled();
+      expect(playDeliveredNotificationSound).toHaveBeenCalledWith(
+        category,
+        expect.any(Object),
+      );
+    },
+  );
+
   test('a delivery with no title is a no-op (nothing to show)', () => {
     handleNotificationDeliveredToast({ category: 'job-failure', body: 'x' });
     expect(show).not.toHaveBeenCalled();

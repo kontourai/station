@@ -47,10 +47,24 @@ function reloadPluginRegistry(): void {
 export const NOTIFICATION_TOAST_DISPLAY_MS = 8000;
 
 /**
+ * Categories written only by the server's turn-completion listener
+ * (`turn-completion-notifications.ts`). A connected client already surfaces
+ * a turn ending itself (`turnAttentionNotifications.ts`: a toast for a
+ * background chat, nothing for the chat in front of the user), so toasting
+ * the record as well would show the same news twice.
+ */
+const CLIENT_SURFACED_TURN_CATEGORIES: ReadonlySet<string> = new Set([
+  'turn-completed',
+  'turn-failed',
+  'turn-stopped',
+]);
+
+/**
  * NOTIFICATION_DELIVERED data handler: shows a toast for every delivered
  * notification except `approval-request` (which has its own dedicated
- * approval UI and would otherwise double-surface). Exported so it's
- * directly unit-testable without standing up the full SSE hook.
+ * approval UI) and the turn-completion categories (which the client's own
+ * end-of-turn toast owns) — either would otherwise double-surface. Exported
+ * so it's directly unit-testable without standing up the full SSE hook.
  */
 export function handleNotificationDeliveredToast(
   data: Record<string, unknown>,
@@ -62,7 +76,11 @@ export function handleNotificationDeliveredToast(
       deviceSettingsStore.get('featureSettings').notificationSounds,
     );
   }
-  if (data.category === 'approval-request') {
+  if (
+    data.category === 'approval-request' ||
+    (typeof category === 'string' &&
+      CLIENT_SURFACED_TURN_CATEGORIES.has(category))
+  ) {
     return;
   }
   const title = data.title as string | undefined;

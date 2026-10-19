@@ -7743,8 +7743,9 @@ describe('OrchestrationService', () => {
       ),
     ).toThrow('Unknown hosted tenant read authority');
 
-    // Completion notification suppression resolves from the completed
-    // session's private persisted binding, not its shared owner alone.
+    // A session's presence subject (the completion listener's recipient
+    // check) resolves from its private persisted binding, not its shared
+    // owner alone.
     const alphaPresence = hosted.resolveSessionPresenceSubject('alpha-thread');
     const bravoPresence = hosted.resolveSessionPresenceSubject('bravo-thread');
     expect(alphaPresence).toBeDefined();
@@ -11134,7 +11135,6 @@ describe('OrchestrationService', () => {
       notificationsDir,
       999_999,
     );
-    const presence = new OrchestrationStreamPresence();
     const logger = { warn: vi.fn() };
     const restartService = new OrchestrationService({
       adapterRegistry: createRegistry([adapter]),
@@ -11147,7 +11147,6 @@ describe('OrchestrationService', () => {
     wireTurnCompletionNotifications(
       notificationBus,
       restartService,
-      presence,
       notificationService,
       logger,
     );
@@ -11317,7 +11316,6 @@ describe('OrchestrationService', () => {
       notificationsDir,
       999_999,
     );
-    const presence = new OrchestrationStreamPresence();
     const logger = { warn: vi.fn() };
     const restartService = new OrchestrationService({
       adapterRegistry: createRegistry([adapter]),
@@ -11328,14 +11326,12 @@ describe('OrchestrationService', () => {
     wireTurnCompletionNotifications(
       notificationBus,
       restartService,
-      presence,
       notificationService,
       logger,
     );
     wireInternalStopRedispatchFailureNotifications(
       notificationBus,
       restartService,
-      presence,
       notificationService,
       logger,
     );
@@ -11609,7 +11605,6 @@ describe('OrchestrationService', () => {
       notificationsDir,
       999_999,
     );
-    const presence = new OrchestrationStreamPresence();
     const logger = { warn: vi.fn() };
     const restartService = new OrchestrationService({
       adapterRegistry: createRegistry([adapter]),
@@ -11620,14 +11615,12 @@ describe('OrchestrationService', () => {
     wireTurnCompletionNotifications(
       notificationBus,
       restartService,
-      presence,
       notificationService,
       logger,
     );
     wireInternalStopRedispatchFailureNotifications(
       notificationBus,
       restartService,
-      presence,
       notificationService,
       logger,
     );
@@ -11804,7 +11797,6 @@ describe('OrchestrationService', () => {
       notificationsDir,
       999_999,
     );
-    const presence = new OrchestrationStreamPresence();
     const logger = { warn: vi.fn() };
     const restartService = new OrchestrationService({
       adapterRegistry: createRegistry([adapter]),
@@ -11815,14 +11807,12 @@ describe('OrchestrationService', () => {
     wireTurnCompletionNotifications(
       notificationBus,
       restartService,
-      presence,
       notificationService,
       logger,
     );
     wireInternalStopRedispatchFailureNotifications(
       notificationBus,
       restartService,
-      presence,
       notificationService,
       logger,
     );

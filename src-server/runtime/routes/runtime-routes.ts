@@ -913,11 +913,10 @@ export interface ConfigureRuntimeRoutesContext {
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
     'quiesce' | 'reconcile'
   >;
-  // station#1225: shared per-user live-`/events`-subscriber presence — read
-  // by `createOrchestrationRoutes` (connect/disconnect bookkeeping) and by
-  // `configureRuntimeSupportServices`'s push-on-completion wiring
-  // (`wireTurnCompletionNotifications`), so both sides observe the SAME
-  // connection state instead of two independently-tracked counts.
+  // station#1225: shared per-user live-`/events`-subscriber presence —
+  // written by `createOrchestrationRoutes` (connect/disconnect bookkeeping)
+  // and read back by its `/presence/summary` roster. Notification delivery
+  // reads focus and `clientStreamPresence` instead (#2620).
   orchestrationStreamPresence: OrchestrationStreamPresence;
   /**
    * #2585: focus presence written by `POST /api/presence/focus`. The runtime

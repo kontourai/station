@@ -1,25 +1,25 @@
 /**
  * wireTurnCompletionNotifications — archive#1225 (offline):
  * push-on-completion, the second half of "the differentiator". A turn that
- * completes or fails while its owning user is NOT actively connected to
- * `/api/orchestration/events` gets a Web Push notification ("Your agent
- * finished") through the exact SAME pipeline `wireApprovalInboxNotifications`
+ * completes or fails gets a notification record ("Your agent finished")
+ * through the exact SAME pipeline `wireApprovalInboxNotifications`
  * (`../approvals/approval-inbox.ts`) and the notification delivery router
  * (`../notifications/delivery/router.ts`, #2586) already provide for
  * approval-request/job-failure notifications — this module only decides
- * WHEN to call `NotificationService.schedule()`, never how a scheduled
+ * WHETHER to call `NotificationService.schedule()`, never how a scheduled
  * notification reaches a device.
  *
- * The "is anyone watching?" gate (never double-notify a connected client):
- * `OrchestrationStreamPresence` tracks live `/events` subscribers per user
- * (wired in `orchestration.ts`'s `/events` route); this listener resolves the
- * completed session's private presence subject through
- * `OrchestrationService.resolveSessionPresenceSubject` and skips scheduling
- * only when that exact subject holds a live stream. Hosted subjects include
- * the persisted tenant binding; an incomplete hosted binding never borrows a
- * same-user stream from another tenant. A session that resolves no subject
- * (it has no recorded owner, or a hosted one lacks a valid binding) has no
- * one who may read it, so nothing is scheduled for it at all.
+ * "Is anyone watching?" is the router's decision, per surface, not this
+ * module's: a focused surface with a live in-app stream skips its OS/push
+ * channels and quiets the same person's other surfaces (`policy.ts`). This
+ * listener used to skip scheduling whenever the owner held ANY live
+ * `/api/orchestration/events` stream; a desktop app idling in the tray keeps
+ * one open, so that gate silenced every completion on every device. The
+ * listener still resolves the completed session's private presence subject
+ * through `OrchestrationService.resolveSessionPresenceSubject`: a session
+ * that resolves no subject (it has no recorded owner, or a hosted one lacks
+ * a valid binding) has no one who may read it, so nothing is scheduled for
+ * it at all.
  *
  * Body is deliberately minimal (`Agent finished in session <threadId>`) —
  * never the turn's `outputText` — matching archive#1225's guardrail against
@@ -41,10 +41,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import { ON_ACTIVITY_CARD_METADATA_KEY } from '../notifications/delivery/card-alerted-categories.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import type { EventBus } from './event-bus.js';
-import type {
-  OrchestrationStreamPresence,
-  OrchestrationStreamPresenceSubject,
-} from './orchestration-stream-presence.js';
+import type { OrchestrationStreamPresenceSubject } from './orchestration-stream-presence.js';
 import {
   acceptsTurnTerminalEvent,
   isDeferredRetriableTurnError,
@@ -135,14 +132,13 @@ interface TurnCompletionEventMessage {
 }
 
 /**
- * archive#3525 fix round: the "resolve presence, decide, schedule" body
+ * archive#3525 fix round: the "resolve recipient, decide, schedule" body
  * shared by `wireTurnCompletionNotifications` and
  * `wireInternalStopRedispatchFailureNotifications` — one push-delivery
  * decision, not two copies that could drift on title/category/dedupeTag.
  */
 async function deliverTurnCompletionPush(input: {
   orchestrationService: TurnCompletionOrchestrationService;
-  presence: OrchestrationStreamPresence;
   notificationService: NotificationService;
   threadId: string;
   turnId: string;
@@ -153,15 +149,9 @@ async function deliverTurnCompletionPush(input: {
    * not a terminal event the card folds.
    */
   onActivityCard?: boolean;
-}): Promise<
-  | 'scheduled'
-  | 'skipped_connected'
-  | 'skipped_no_recipient'
-  | 'skipped_external'
-> {
+}): Promise<'scheduled' | 'skipped_no_recipient' | 'skipped_external'> {
   const {
     orchestrationService,
-    presence,
     notificationService,
     threadId,
     turnId,
@@ -175,7 +165,9 @@ async function deliverTurnCompletionPush(input: {
   // No subject means no one may read this session: a push would announce a
   // turn to devices whose owner cannot open it.
   if (presenceSubject === undefined) return 'skipped_no_recipient';
-  if (presence.isConnected(presenceSubject)) return 'skipped_connected';
+  // No live-stream check here: the delivery router decides per surface
+  // (focused + live in-app stream → in-app only). Skipping on any open
+  // stream silenced every surface while one idle client stayed connected.
 
   await notificationService.schedule(TURN_COMPLETION_SOURCE, {
     category:
@@ -229,9 +221,10 @@ export function resolveTurnCompletionOutcome(
   // attention path schedules no offline push, so this is the crash's ONLY
   // offline signal ("Agent failed in session …"), the same payoff
   // archive#3473 claims for the codex-crash push above. The in-app copy is
-  // owned by the interrupted-turn banner, and connected clients never see
-  // this push (the presence gate below skips live subscribers) — so the two
-  // framings never meet on one surface.
+  // owned by the interrupted-turn banner: the delivery router keeps a
+  // focused, live surface to its in-app step, and the client does not toast
+  // these records (`handleNotificationDeliveredToast`), so the two framings
+  // do not meet as two toasts on one surface.
   if (event.method === 'turn.aborted') return 'failed';
   // archive#3442: `runtime.error` is the ONLY canonical event a genuine
   // turn/stream failure publishes while a turnId is still known — see
@@ -391,7 +384,6 @@ function isAnchorRelevantEvent(
 export function wireTurnCompletionNotifications(
   eventBus: EventBus,
   orchestrationService: TurnCompletionOrchestrationService,
-  presence: OrchestrationStreamPresence,
   notificationService: NotificationService,
   logger: TurnCompletionLogger,
 ): () => void {
@@ -591,7 +583,6 @@ export function wireTurnCompletionNotifications(
 
           const result = await deliverTurnCompletionPush({
             orchestrationService,
-            presence,
             notificationService,
             threadId: event.threadId,
             turnId: event.turnId,
@@ -660,13 +651,12 @@ export function wireTurnCompletionNotifications(
  * unrelated notifications is that nothing in this task `await`s the restart
  * itself — by the time `INTERNAL_STOP_REDISPATCH_FAILED` fires, the restart
  * has already concluded (successfully or not), so this dispatched task only
- * does a presence check and one `schedule()` call, the same bounded work
+ * does a recipient check and one `schedule()` call, the same bounded work
  * `wireTurnCompletionNotifications`'s own task does.
  */
 export function wireInternalStopRedispatchFailureNotifications(
   eventBus: EventBus,
   orchestrationService: TurnCompletionOrchestrationService,
-  presence: OrchestrationStreamPresence,
   notificationService: NotificationService,
   logger: TurnCompletionLogger,
 ): () => void {
@@ -684,7 +674,6 @@ export function wireInternalStopRedispatchFailureNotifications(
           }
           const result = await deliverTurnCompletionPush({
             orchestrationService,
-            presence,
             notificationService,
             threadId: message.data.threadId,
             turnId: message.data.turnId,

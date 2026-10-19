@@ -2072,9 +2072,9 @@ export function createOrchestrationRoutes(
     hostedTenantRegistry?: HostedTenantRegistry;
     /**
      * archive#1225: per-user live-subscriber presence for the `/events`
-     * stream, shared with the push-on-completion gate
-     * (`turn-completion-notifications.ts`) so it knows whether the owning
-     * user is actually watching before scheduling a push. Optional and
+     * stream, read back by `/presence/summary` below (the runtime shares
+     * one instance). Turn-completion notifications no longer consult it:
+     * the delivery router decides per surface. Optional and
      * defaulted to a private, route-local instance so every existing test
      * that constructs this route without one keeps working unchanged — a
      * route-local fallback still tracks connect/disconnect correctly within
@@ -6044,9 +6044,9 @@ export function createOrchestrationRoutes(
       // `stream.close()` in its own outer `finally` on an uncaught throw; it
       // has no idea this route registered presence/eventBus state that also
       // needs releasing. Without this, a setup-time throw would leak this
-      // user's presence count forever — `isConnected(userId)` would stay
-      // `true` and silently disable push-on-completion for that user for
-      // the rest of the process lifetime.
+      // user's presence count forever — `isConnected(userId)` and the
+      // `/presence/summary` roster would report them connected for the rest
+      // of the process lifetime.
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
       let stopActivityFlush: (() => void) | undefined;

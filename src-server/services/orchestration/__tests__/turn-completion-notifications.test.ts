@@ -7,7 +7,6 @@ import { isCardAlerted } from '../../notifications/delivery/card-alerted-categor
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../event-bus.js';
 import {
-  OrchestrationStreamPresence,
   type OrchestrationStreamPresenceSubject,
   orchestrationStreamPresenceSubjectForSession,
 } from '../orchestration-stream-presence.js';
@@ -186,7 +185,6 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     bus.emit(event, data);
     await notificationService.drainAsyncDispatch();
   }
-  let presence: OrchestrationStreamPresence;
   let resolveSessionPresenceSubject: (
     threadId: string,
   ) => OrchestrationStreamPresenceSubject | undefined;
@@ -200,7 +198,6 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     dir = mkdtempSync(join(tmpdir(), 'turn-completion-notifications-'));
     bus = new EventBus();
     notificationService = new NotificationService(bus, dir, 999_999);
-    presence = new OrchestrationStreamPresence();
     resolveSessionPresenceSubject = () =>
       orchestrationStreamPresenceSubjectForSession('owner-1');
     logger = {
@@ -220,7 +217,6 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
         resolveSessionPresenceSubject: (threadId) =>
           resolveSessionPresenceSubject(threadId),
       },
-      presence,
       notificationService,
       logger,
     );
@@ -695,50 +691,10 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     );
   });
 
-  test('does NOT schedule a notification when the owning user is actively connected', async () => {
-    const disconnect = presence.connect('owner-1');
-    await emit('orchestration:event', { event: baseEvent() });
-    expect(await notificationService.list()).toHaveLength(0);
-    disconnect();
-  });
-
-  test('schedules nothing for a session with no owner, connected or not: nobody may read it', async () => {
+  test('schedules nothing for a session with no owner: nobody may read it', async () => {
     resolveSessionPresenceSubject = () => undefined;
     await emit('orchestration:event', { event: baseEvent() });
     expect(await notificationService.list()).toHaveLength(0);
-
-    // Someone else's live stream changes nothing either.
-    const disconnect = presence.connect('some-other-connected-user');
-    await emit('orchestration:event', {
-      event: baseEvent({ turnId: 'turn-2' }),
-    });
-    expect(await notificationService.list()).toHaveLength(0);
-    disconnect();
-  });
-
-  test('does not let alpha presence suppress a bravo completion for the same user', async () => {
-    const alpha = orchestrationStreamPresenceSubjectForSession('shared-user', {
-      tenantId: 'alpha' as any,
-      source: 'session',
-    });
-    const bravo = orchestrationStreamPresenceSubjectForSession('shared-user', {
-      tenantId: 'bravo' as any,
-      source: 'session',
-    });
-    resolveSessionPresenceSubject = (threadId) =>
-      threadId === 'alpha-thread' ? alpha : bravo;
-    const disconnectAlpha = presence.connect(alpha);
-
-    await emit('orchestration:event', {
-      event: baseEvent({ threadId: 'bravo-thread' }),
-    });
-    expect(await notificationService.list()).toHaveLength(1);
-
-    await emit('orchestration:event', {
-      event: baseEvent({ threadId: 'alpha-thread', turnId: 'turn-2' }),
-    });
-    expect(await notificationService.list()).toHaveLength(1);
-    disconnectAlpha();
   });
 
   test('never leaks response text into the push body', async () => {
@@ -815,7 +771,6 @@ describe('wireTurnCompletionNotifications station#3525 internal-stop suppression
   let bus: EventBus;
   let dir: string;
   let notificationService: NotificationService;
-  let presence: OrchestrationStreamPresence;
   let logger: {
     warn: ReturnType<
       typeof vi.fn<(message: string, meta?: Record<string, unknown>) => void>
@@ -835,7 +790,6 @@ describe('wireTurnCompletionNotifications station#3525 internal-stop suppression
     dir = mkdtempSync(join(tmpdir(), 'turn-completion-notifications-stop-'));
     bus = new EventBus();
     notificationService = new NotificationService(bus, dir, 999_999);
-    presence = new OrchestrationStreamPresence();
     logger = {
       warn: vi.fn<(message: string, meta?: Record<string, unknown>) => void>(),
     };
@@ -851,7 +805,6 @@ describe('wireTurnCompletionNotifications station#3525 internal-stop suppression
         consumeInternalStopSuppression: (turnId) =>
           consumeInternalStopSuppression(turnId),
       },
-      presence,
       notificationService,
       logger,
     );
@@ -1005,7 +958,6 @@ describe('wireInternalStopRedispatchFailureNotifications (station#3525 fix round
   let bus: EventBus;
   let dir: string;
   let notificationService: NotificationService;
-  let presence: OrchestrationStreamPresence;
   let logger: {
     warn: ReturnType<
       typeof vi.fn<(message: string, meta?: Record<string, unknown>) => void>
@@ -1027,7 +979,6 @@ describe('wireInternalStopRedispatchFailureNotifications (station#3525 fix round
     dir = mkdtempSync(join(tmpdir(), 'internal-stop-redispatch-failed-'));
     bus = new EventBus();
     notificationService = new NotificationService(bus, dir, 999_999);
-    presence = new OrchestrationStreamPresence();
     logger = {
       warn: vi.fn<(message: string, meta?: Record<string, unknown>) => void>(),
     };
@@ -1042,7 +993,6 @@ describe('wireInternalStopRedispatchFailureNotifications (station#3525 fix round
         resolveSessionPresenceSubject: (threadId) =>
           resolveSessionPresenceSubject(threadId),
       },
-      presence,
       notificationService,
       logger,
     );
@@ -1073,17 +1023,6 @@ describe('wireInternalStopRedispatchFailureNotifications (station#3525 fix round
         }),
       }),
     );
-  });
-
-  test('does not push when the owner is actively connected', async () => {
-    const disconnect = presence.connect('owner-1');
-    await emit('orchestration:internal-stop-redispatch-failed', {
-      threadId: 'thread-1',
-      turnId: 'turn-2',
-      provider: 'codex',
-    });
-    expect(await notificationService.list()).toHaveLength(0);
-    disconnect();
   });
 
   test('ignores an unrelated event on the same bus', async () => {
@@ -1140,7 +1079,6 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
   let bus: EventBus;
   let dir: string;
   let notificationService: NotificationService;
-  let presence: OrchestrationStreamPresence;
 
   async function emit(
     event: Parameters<EventBus['emit']>[0],
@@ -1154,7 +1092,6 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
     dir = mkdtempSync(join(tmpdir(), 'turn-completion-notifications-timers-'));
     bus = new EventBus();
     notificationService = new NotificationService(bus, dir, 999_999);
-    presence = new OrchestrationStreamPresence();
   });
 
   afterEach(async () => {
@@ -1184,7 +1121,6 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
           resolveSessionPresenceSubject: () =>
             orchestrationStreamPresenceSubjectForSession('owner-1'),
         },
-        presence,
         notificationService,
         { warn: vi.fn() },
       );
@@ -1258,7 +1194,6 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
           resolveSessionPresenceSubject: () =>
             orchestrationStreamPresenceSubjectForSession('owner-1'),
         },
-        presence,
         notificationService,
         { warn: vi.fn() },
       );
