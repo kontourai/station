@@ -102,13 +102,21 @@ export class ConnectionHealthCoordinator {
     };
   };
 
-  trigger = (): void => {
+  /** Reports whether a probe was started, queued behind a running probe, or skipped. */
+  trigger = (): 'started' | 'queued' | 'skipped' => {
     this.clearTimer();
+    if (
+      typeof document !== 'undefined' &&
+      document.visibilityState === 'hidden'
+    )
+      return 'skipped';
+    if (this.listeners.size === 0) return 'skipped';
     if (this.inFlight) {
       this.rerunRequested = true;
-      return;
+      return 'queued';
     }
     void this.run();
+    return 'started';
   };
 
   stop(): void {
@@ -285,6 +293,12 @@ export class ConnectionHealthCoordinator {
 
   private schedule(delay: number): void {
     this.clearTimer();
+    // useConnectionStatus owns foreground recovery, including native resumes.
+    if (
+      typeof document !== 'undefined' &&
+      document.visibilityState === 'hidden'
+    )
+      return;
     this.timer = setTimeout(this.trigger, delay);
   }
 

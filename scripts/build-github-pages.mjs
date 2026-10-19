@@ -11,6 +11,7 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { headingId } from './lib/documentation-model.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const repoRoot = path.resolve(
@@ -221,6 +222,7 @@ function extractDescription(source) {
 export function renderMarkdown(source) {
   const lines = source.split('\n');
   const html = [];
+  const headingIds = new Set();
   let inFence = false;
   let inTable = false;
   let tableRows = [];
@@ -312,12 +314,28 @@ export function renderMarkdown(source) {
       continue;
     }
 
-    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       closeParagraph();
       closeList();
       const level = heading[1].length;
-      html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+      const content = renderInline(heading[2]);
+      // Remove generated tags before decoding the entities escapeHtml emits.
+      const title = content
+        .replace(/<[^>]*>/g, '')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&amp;', '&');
+      const base = headingId(title);
+      let id = base;
+      let suffix = 0;
+      while (headingIds.has(id)) id = `${base}-${++suffix}`;
+      headingIds.add(id);
+      html.push(
+        `<h${level} id="${escapeAttribute(id)}">${content}</h${level}>`,
+      );
       continue;
     }
 

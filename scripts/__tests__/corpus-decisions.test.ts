@@ -21,7 +21,7 @@ describe('Corpus decisions wrapper', () => {
   });
 
   it('pins the Corpus commit docs-kit.yml and pages.yml use', () => {
-    expect(CORPUS_PIN).toBe('08c62ccd72880ff4bd4c378ae252ad437b4b4fb5');
+    expect(CORPUS_PIN).toBe('b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05');
     const docsKit = readFileSync('.github/workflows/docs-kit.yml', 'utf8');
     expect(docsKit.match(/corpus-ref:\s*([0-9a-f]{40})/)?.[1]).toBe(CORPUS_PIN);
     const pages = readFileSync('.github/workflows/pages.yml', 'utf8');

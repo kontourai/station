@@ -10,6 +10,7 @@ import {
   readCredential,
 } from './lib/agent-smoke-client.mjs';
 import { renderMatrix, runMatrix } from './lib/engine-matrix.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export async function main() {
   if (!process.argv.includes('--confirm-billable-engine-matrix')) {
@@ -109,8 +110,4 @@ export async function main() {
   }
 }
 
-if (
-  process.argv[1] &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url
-)
-  await main();
+if (invokedDirectly(import.meta.url)) await main();

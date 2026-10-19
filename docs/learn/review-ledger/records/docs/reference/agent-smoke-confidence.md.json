@@ -56,12 +56,6 @@
 
     "scripts/__tests__/station-engine-matrix.test.ts",
 
-    "scripts/engine-delivery-probes.ts",
-
-    "scripts/fixtures/delivery-probe-mcp.mjs",
-
-    "scripts/__tests__/engine-delivery-probes.test.ts",
-
     "src-server/providers/adapter-shape.ts",
 
     "src-server/services/orchestration/model-launch-planning.ts",
@@ -70,30 +64,6 @@
 
     "src-server/routes/orchestration/__tests__/orchestration.routes.test.ts",
 
-    "scripts/__tests__/engine-delivery-routes.test.ts",
-
-    "scripts/fixtures/capture-skill-delivery.mjs",
-
-    "src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl",
-
-    "src-server/providers/__tests__/fixtures/claude-2.1.296-script-read-local.jsonl",
-
-    "src-server/providers/__tests__/fixtures/claude-2.1.296-skill-local.meta.json",
-
-    "src-server/providers/adapters/claude-adapter-events.ts",
-
-    "src-server/routes/agents/skills.ts",
-
-    "src-server/routes/agents/tools.ts",
-
-    "src-server/routes/agents/agents.ts",
-
-    "src-server/routes/schemas/schema-definitions/content.ts",
-
-    "src-server/routes/schemas/schema-definitions/runtime.ts",
-
-    "src-server/routes/schemas/schema-validation.ts",
-
     "src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts",
 
     "src-server/routes/orchestration/orchestration.ts",
@@ -101,8 +71,6 @@
     "src-server/tools/station-control-delegation.ts",
 
     "packages/sdk/src/client/execution.ts",
-
-    "src-server/domain/validator.ts",
 
     "src-server/runtime/bootstrap/runtime-http.ts",
 
@@ -116,9 +84,11 @@
 
     "packages/contracts/src/provider.ts",
 
-    "scripts/lib/matrix-cleanup.mjs",
+    "src-server/routes/agents/tools.ts",
 
-    "src-server/providers/__tests__/claude-adapter-events.test.ts",
+    "src-server/routes/agents/skills.ts",
+
+    "src-server/routes/agents/agents.ts",
 
     "src-server/routes/agents/enriched-agents.ts",
 
@@ -130,7 +100,9 @@
 
     "src-server/services/agents/agent-service.ts",
 
-    "src-server/providers/__tests__/claude-adapter.test.ts"
+    "src-server/routes/schemas/schema-definitions/content.ts",
+
+    "src-server/routes/schemas/schema-definitions/runtime.ts"
   ],
 
   "checks": [

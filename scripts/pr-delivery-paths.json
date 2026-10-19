@@ -57,6 +57,7 @@
     "scripts/station-cli-implementation.ts",
     "scripts/source-bootstrap.ts",
     "scripts/lib/bounded-capture.mjs",
+    "scripts/lib/author-telemetry-build.mjs",
     "scripts/lib/container-release-metadata.mjs",
     "scripts/lib/desktop-build-manifest.mjs",
     "scripts/lib/bundled-registry.mjs",

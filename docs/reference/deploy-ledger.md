@@ -28,6 +28,11 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-19T07:02:52Z | nightly-npm | 0.8.0-nightly.2483.39212464623 | `71d58bd` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39212464623) |
+| 2026-10-19T00:27:00Z | nightly-desktop | 0.1.11-nightly.2482.3 | `45e3cf6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39177501369) |
+| 2026-10-19T00:26:57Z | nightly-android | 0.1.11-nightly.2482.3 | `45e3cf6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39177501369) |
+| 2026-10-18T23:50:07Z | nightly-npm | 0.8.0-nightly.2482.39177501369 | `45e3cf6` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39177501369) |
+| 2026-10-18T21:11:16Z | nightly-npm | 0.8.0-nightly.2482.39166037433 | `a4baa7c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39166037433) |
 | 2026-10-18T12:42:31Z | nightly-desktop | 0.1.11-nightly.2482.1 | `b28c84d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39124399487) |
 | 2026-10-18T12:42:28Z | nightly-android | 0.1.11-nightly.2482.1 | `b28c84d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39124399487) |
 | 2026-10-18T11:55:55Z | nightly-npm | 0.8.0-nightly.2482.39124399487 | `b28c84d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39124399487) |
@@ -300,6 +305,125 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-19T07:02:52Z · nightly-npm · 0.8.0-nightly.2483.39212464623
+
+- Ship SHA: `71d58bde8d45c5d780c123c440ffa89e413f4416`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.8.0-nightly.2483.39212464623 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `45e3cf6` ([full sha](https://github.com/kontourai/station/commit/45e3cf69687d6d3dab0da9763241593c307952e0)):
+
+**Features**
+
+- [#3790](https://github.com/kontourai/station/pull/3790) feat(telemetry-broker): exact operator and weekly noisy analytics
+
+**Fixes**
+
+- [#3842](https://github.com/kontourai/station/pull/3842) fix(test): keep the adapter registration guard fast under full-regression load
+- [#3839](https://github.com/kontourai/station/pull/3839) fix(ci): align Corpus pin and startup font fixtures
+
+**CI / workflow**
+
+- [#3788](https://github.com/kontourai/station/pull/3788) ci(telemetry): inject the author endpoint only in official builds
+
+**Other**
+
+- [#3778](https://github.com/kontourai/station/pull/3778) perf: bound file reads and reduce background data churn
+
+## 2026-10-19T00:27:00Z · nightly-desktop · 0.1.11-nightly.2482.3
+
+- Ship SHA: `45e3cf69687d6d3dab0da9763241593c307952e0`
+- Artifact built at: `2026-10-18T23:49:45.369Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 39177501369)
+
+### Changelog
+
+Commits since `b28c84d` ([full sha](https://github.com/kontourai/station/commit/b28c84df811e27f9de6d28e7cd40cd541d89f68e)):
+
+**Fixes**
+
+- [#3829](https://github.com/kontourai/station/pull/3829) fix(settings): unify typography, spacing, and concise copy
+- [#3819](https://github.com/kontourai/station/pull/3819) fix(sdk): type session structural sharing without wire-shape casts
+- [#3738](https://github.com/kontourai/station/pull/3738) fix(docs): preserve heading links on the public Pages site
+- [#3792](https://github.com/kontourai/station/pull/3792) fix(ui): keep transcript readers in control during updates
+- [#3771](https://github.com/kontourai/station/pull/3771) fix(runtime): narrow preview and chat invalidations
+
+**Other**
+
+- [#3833](https://github.com/kontourai/station/pull/3833) test(providers): add deterministic adapter conformance suite
+- [#3770](https://github.com/kontourai/station/pull/3770) perf(notifications): avoid cloning history for single-row routes
+- [#3775](https://github.com/kontourai/station/pull/3775) perf(ui): reduce shell layout shifts and background work
+- [#3773](https://github.com/kontourai/station/pull/3773) perf(orchestration): stabilize session rows and scope thread snapshots
+
+## 2026-10-19T00:26:57Z · nightly-android · 0.1.11-nightly.2482.3
+
+- Ship SHA: `45e3cf69687d6d3dab0da9763241593c307952e0`
+- Artifact built at: `2026-10-18T23:50:39.884Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 39177501369)
+
+### Changelog
+
+Commits since `b28c84d` ([full sha](https://github.com/kontourai/station/commit/b28c84df811e27f9de6d28e7cd40cd541d89f68e)):
+
+**Fixes**
+
+- [#3829](https://github.com/kontourai/station/pull/3829) fix(settings): unify typography, spacing, and concise copy
+- [#3819](https://github.com/kontourai/station/pull/3819) fix(sdk): type session structural sharing without wire-shape casts
+- [#3738](https://github.com/kontourai/station/pull/3738) fix(docs): preserve heading links on the public Pages site
+- [#3792](https://github.com/kontourai/station/pull/3792) fix(ui): keep transcript readers in control during updates
+- [#3771](https://github.com/kontourai/station/pull/3771) fix(runtime): narrow preview and chat invalidations
+
+**Other**
+
+- [#3833](https://github.com/kontourai/station/pull/3833) test(providers): add deterministic adapter conformance suite
+- [#3770](https://github.com/kontourai/station/pull/3770) perf(notifications): avoid cloning history for single-row routes
+- [#3775](https://github.com/kontourai/station/pull/3775) perf(ui): reduce shell layout shifts and background work
+- [#3773](https://github.com/kontourai/station/pull/3773) perf(orchestration): stabilize session rows and scope thread snapshots
+
+## 2026-10-18T23:50:07Z · nightly-npm · 0.8.0-nightly.2482.39177501369
+
+- Ship SHA: `45e3cf69687d6d3dab0da9763241593c307952e0`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.8.0-nightly.2482.39177501369 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `a4baa7c` ([full sha](https://github.com/kontourai/station/commit/a4baa7c402eccc901465b0e55e66565230c00a8b)):
+
+_No user-visible changes recorded for this slice._
+
+## 2026-10-18T21:11:16Z · nightly-npm · 0.8.0-nightly.2482.39166037433
+
+- Ship SHA: `a4baa7c402eccc901465b0e55e66565230c00a8b`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.8.0-nightly.2482.39166037433 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `b28c84d` ([full sha](https://github.com/kontourai/station/commit/b28c84df811e27f9de6d28e7cd40cd541d89f68e)):
+
+**Fixes**
+
+- [#3829](https://github.com/kontourai/station/pull/3829) fix(settings): unify typography, spacing, and concise copy
+- [#3819](https://github.com/kontourai/station/pull/3819) fix(sdk): type session structural sharing without wire-shape casts
+- [#3738](https://github.com/kontourai/station/pull/3738) fix(docs): preserve heading links on the public Pages site
+- [#3792](https://github.com/kontourai/station/pull/3792) fix(ui): keep transcript readers in control during updates
+- [#3771](https://github.com/kontourai/station/pull/3771) fix(runtime): narrow preview and chat invalidations
+
+**Other**
+
+- [#3833](https://github.com/kontourai/station/pull/3833) test(providers): add deterministic adapter conformance suite
+- [#3770](https://github.com/kontourai/station/pull/3770) perf(notifications): avoid cloning history for single-row routes
+- [#3775](https://github.com/kontourai/station/pull/3775) perf(ui): reduce shell layout shifts and background work
+- [#3773](https://github.com/kontourai/station/pull/3773) perf(orchestration): stabilize session rows and scope thread snapshots
 
 ## 2026-10-18T12:42:31Z · nightly-desktop · 0.1.11-nightly.2482.1
 

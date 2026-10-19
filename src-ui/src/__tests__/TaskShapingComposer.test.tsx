@@ -40,6 +40,10 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
+  useNavigationActions: () => ({
+    setActiveChat: host.navigate,
+    setDockState: vi.fn(),
+  }),
   useNavigation: () => ({
     setActiveChat: host.navigate,
     setDockState: vi.fn(),

@@ -1,3 +1,8 @@
+.settings {
+  font-size: var(--k-text-md);
+  line-height: var(--k-leading-normal);
+}
+
 /* ═══ Settings View ═══ */
 
 /* ── Page Header ── */
@@ -11,7 +16,7 @@
 }
 .settings__title {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: var(--k-text-xl);
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
@@ -23,7 +28,7 @@
 }
 .settings__save-btn {
   padding: 0.5rem 1.25rem;
-  font-size: 0.8rem;
+  font-size: var(--k-text-md);
   font-weight: 600;
   font-family: var(--font-sans);
   background: var(--accent-primary);
@@ -43,7 +48,7 @@
 }
 .settings__secondary-btn {
   padding: 0.5rem 1rem;
-  font-size: 0.8rem;
+  font-size: var(--k-text-md);
   font-weight: 500;
   font-family: var(--font-sans);
   background: transparent;
@@ -65,7 +70,7 @@
   padding: 0.6rem 0.75rem;
   margin-bottom: 1rem;
   border-radius: 0.375rem;
-  font-size: 0.8rem;
+  font-size: var(--k-text-sm);
   background: var(--error-bg);
   border: 1px solid var(--error-border);
   color: var(--error-text);
@@ -90,22 +95,22 @@
   border-left-color: var(--error-text);
 }
 .settings__env-icon {
-  font-size: 1rem;
+  font-size: var(--k-text-sm);
   flex-shrink: 0;
   line-height: 1;
 }
 .settings__env-label {
-  font-size: 0.8rem;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   color: var(--text-primary);
   flex: 1;
 }
 .settings__env-detail {
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
 .settings__env-toggle {
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--accent-primary);
   background: none;
   border: none;
@@ -125,7 +130,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: 0.5rem;
-  font-size: 0.8rem;
+  font-size: var(--k-text-sm);
 }
 .settings__env-item {
   display: flex;
@@ -161,7 +166,7 @@
   margin-left: 0.25rem;
 }
 .settings__env-category {
-  font-size: 0.65rem;
+  font-size: var(--k-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
@@ -173,7 +178,7 @@
   margin-top: 0;
 }
 .settings__env-source {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   color: var(--text-secondary);
   padding: 0.35rem 0;
@@ -185,13 +190,13 @@
   margin-top: 0;
 }
 .settings__env-optional {
-  font-size: 0.65rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   font-style: italic;
 }
 .settings__env-guide {
   margin: 0.4rem 0 0 1.25rem;
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
 .settings__env-guide ol {
@@ -217,7 +222,7 @@
   border: 1px solid var(--error-border);
   border-left: 3px solid var(--error-text);
   border-radius: 0.5rem;
-  font-size: 0.8rem;
+  font-size: var(--k-text-sm);
 }
 .host-runtime__alert-title {
   font-weight: 600;
@@ -225,7 +230,7 @@
   margin-bottom: 0.4rem;
 }
 .host-runtime__disclosure {
-  font-size: 0.8rem;
+  font-size: var(--k-text-sm);
 }
 .host-runtime__summary {
   display: flex;
@@ -237,7 +242,7 @@
   user-select: none;
 }
 .host-runtime__summary-status {
-  font-size: 0.9rem;
+  font-size: var(--k-text-sm);
   line-height: 1;
   flex-shrink: 0;
 }
@@ -255,16 +260,12 @@
   margin-top: 0.5rem;
 }
 
-/* ── Agent defaults (workspace-wide fallback values) ──
-   The disclosure these fields used to sit behind is gone, and with it the
-   `__disclosure` / `__summary` / `__summary-label` rules. The 0.8rem the
-   disclosure imposed went with them: the section is a top-level scope, not a
-   de-emphasized footnote, so it reads at the page's own size. */
+/* ── Agent defaults ── */
 .agent-defaults__intro {
   margin-bottom: 0.75rem;
 }
 .agent-defaults__panel {
-  margin-top: 0.75rem;
+  margin-top: 0;
 }
 
 /* ── Core Update Status ── */
@@ -281,7 +282,7 @@
 /* ── Character Counter ── */
 .settings__char-count {
   text-align: right;
-  font-size: 0.65rem;
+  font-size: var(--k-text-sm);
   font-family: var(--font-mono);
   color: var(--text-secondary);
   margin-top: 0.25rem;
@@ -291,7 +292,7 @@
 .settings__field-warning {
   display: block;
   margin-top: 0.25rem;
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   color: var(--warning-text);
 }
 
@@ -371,7 +372,7 @@
   padding: 0;
 }
 .settings__accent-reset {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   padding: 0.25rem 0.5rem;
   background: transparent;
   color: var(--text-muted);
@@ -408,8 +409,8 @@
 }
 
 .settings__scope-caption {
-  margin: 0 0 0.6rem;
-  font-size: 0.78rem;
+  margin: 0 0 var(--k-space-3);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
 
@@ -418,7 +419,7 @@
    second section — navigation is owned by the section registry. */
 .settings__group-title {
   margin: 1rem 0 0.4rem;
-  font-size: 0.82rem;
+  font-size: var(--k-text-md);
   font-weight: 600;
   color: var(--text-muted);
 }
@@ -448,7 +449,7 @@
   background: none;
 }
 .settings__section > .page-section__header {
-  padding: 0 0.25rem 0.5rem;
+  padding: 0 0 var(--k-space-2);
   border-bottom: 0;
 }
 /* #3557: a section's one header action stays on the title line, compact,
@@ -485,13 +486,9 @@
   font-size: var(--k-text-md);
   font-weight: 600;
 }
-.settings__section-icon {
-  font-size: 0.9rem;
-  line-height: 1;
-  opacity: 0.7;
-}
-.settings__section-body {
-  padding: 0 var(--k-space-4);
+.settings__section-body,
+.settings__section > .page-section__body {
+  padding: var(--k-space-4);
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-md);
   background: var(--k-panel);
@@ -499,15 +496,15 @@
 
 /* ── Field Rows ── */
 .settings__field {
-  margin-bottom: 1.25rem;
+  margin-bottom: var(--k-space-5);
 }
 .settings__field:last-child {
   margin-bottom: 0;
 }
 .settings__field-label {
   display: block;
-  margin-bottom: 0.35rem;
-  font-size: 0.8rem;
+  margin-bottom: var(--k-space-2);
+  font-size: var(--k-text-md);
   font-weight: 500;
   color: var(--text-secondary);
 }
@@ -524,13 +521,13 @@
 .settings__field select,
 .voice-provider-section__select {
   width: 100%;
-  padding: 0.5rem 0.65rem;
+  padding: var(--k-space-2) var(--k-space-3);
   border: 1px solid var(--border-primary);
   border-radius: 0.375rem;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 0.8rem;
+  font-size: var(--k-text-md);
 }
 .settings__field input:focus,
 .settings__field textarea:focus,
@@ -543,7 +540,7 @@
   resize: vertical;
   min-height: 100px;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
 }
 .settings__field input::placeholder,
 .settings__field textarea::placeholder {
@@ -564,7 +561,7 @@
   align-items: center;
   gap: 8px;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-md);
 }
 
 .settings__range-row {
@@ -580,7 +577,7 @@
   min-width: 2.5rem;
   text-align: right;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
 }
 
@@ -604,12 +601,12 @@
   border-color: var(--accent-primary);
 }
 .settings__toggle-label {
-  font-size: 0.8rem;
+  font-size: var(--k-text-md);
   font-weight: 500;
   color: var(--text-primary);
 }
 .settings__toggle-desc {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   margin-top: 0.15rem;
 }
@@ -622,13 +619,13 @@
    said --text-secondary. The two only agreed by accident while the token was
    an alias of --text-primary. */
 .voice-provider-section__label {
-  font-size: 0.8125rem;
+  font-size: var(--k-text-md);
   font-weight: 500;
   margin-bottom: 0.25rem;
   color: var(--text-secondary);
 }
 .voice-provider-section__hint {
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
   margin-top: 0.25rem;
 }
@@ -640,7 +637,7 @@
 /* Group label over the toggle list — subordinate to the toggles' own names,
    which keep --text-primary below. */
 .context-provider-section__label {
-  font-size: 0.8125rem;
+  font-size: var(--k-text-md);
   font-weight: 500;
   margin-bottom: 0.5rem;
   color: var(--text-secondary);
@@ -660,7 +657,7 @@
 .settings__var-row input,
 .settings__var-row select {
   padding: 0.4rem 0.5rem;
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   border: 1px solid var(--border-primary);
   border-radius: 0.25rem;
   background: var(--bg-primary);
@@ -672,7 +669,7 @@
 }
 .settings__var-remove {
   padding: 0.3rem 0.5rem;
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   background: transparent;
   color: var(--error-text);
@@ -686,7 +683,7 @@
 }
 .settings__var-add {
   padding: 0.35rem 0.75rem;
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   font-weight: 500;
   background: transparent;
   color: var(--text-secondary);
@@ -711,12 +708,12 @@
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
   border-radius: 0.375rem;
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
 .settings__var-ref strong {
   color: var(--text-secondary);
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
 }
 .settings__var-ref ul {
   margin: 0.35rem 0 0;
@@ -733,7 +730,7 @@
 }
 .settings__var-ref code {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: var(--k-text-sm);
   padding: 0.1rem 0.3rem;
   background: var(--bg-secondary);
   border-radius: 0.2rem;
@@ -749,7 +746,7 @@
 }
 .settings__update-btn {
   padding: 0.4rem 0.75rem;
-  font-size: 0.75rem;
+  font-size: var(--k-text-md);
   font-weight: 500;
   border-radius: 0.25rem;
   cursor: pointer;
@@ -783,7 +780,7 @@
   opacity: 0.85;
 }
 .settings__update-meta {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   font-family: var(--font-mono);
   display: flex;
@@ -795,7 +792,7 @@
   white-space: nowrap;
 }
 .settings__update-msg {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   margin-top: 0.3rem;
 }
 
@@ -807,7 +804,7 @@
 }
 .settings__danger-btn {
   padding: 0.4rem 0.75rem;
-  font-size: 0.75rem;
+  font-size: var(--k-text-md);
   font-weight: 600;
   background: transparent;
   color: var(--error-text);
@@ -856,13 +853,13 @@
   }
 }
 .settings__save-pill-text {
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
   white-space: nowrap;
 }
 .settings__save-pill-discard {
   padding: 0.35rem 0.75rem;
-  font-size: 0.75rem;
+  font-size: var(--k-text-md);
   font-weight: 500;
   font-family: var(--font-sans);
   background: transparent;
@@ -880,7 +877,7 @@
 }
 .settings__save-pill-btn {
   padding: 0.35rem 1rem;
-  font-size: 0.75rem;
+  font-size: var(--k-text-md);
   font-weight: 600;
   font-family: var(--font-sans);
   background: var(--accent-primary);
@@ -904,7 +901,7 @@
 .settings__guardian-instructions {
   margin-top: 0.5rem;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   min-height: 120px;
 }
 
@@ -926,7 +923,7 @@
 }
 .settings__provenance-list dt {
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
 }
 .settings__provenance-list dd {
   margin: 0.125rem 0 0;
@@ -937,9 +934,9 @@
   font-family: var(--font-mono);
 }
 
-/* ── Feature Toggle fix: override .form-group global styles ── */
+/* ── Feature toggles ── */
 .settings__feature-toggle {
-  display: flex !important;
+  display: flex;
   width: 100%;
   align-items: flex-start;
   gap: 0.75rem;
@@ -952,23 +949,24 @@
   margin-bottom: 0;
 }
 .settings__feature-toggle input[type="checkbox"] {
-  width: auto !important;
+  width: auto;
   margin-top: 0.1875rem;
   flex-shrink: 0;
 }
 
 /* ── Toggle text ── */
 .settings__toggle-name {
+  font-size: var(--k-text-md);
   font-weight: 500;
   margin-bottom: 0.125rem;
 }
 .settings__toggle-detail {
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
   line-height: 1.5;
 }
 .settings__toggle-privacy {
-  font-size: 0.6875rem;
+  font-size: var(--k-text-sm);
   color: var(--warning-text);
   margin-top: 0.1875rem;
 }
@@ -983,48 +981,70 @@
   gap: 0.5rem;
 }
 .settings__notif-status {
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--success-text, #22c55e);
 }
 .settings__notif-error {
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--error-text, #ef4444);
   margin-top: 0.25rem;
 }
 
-/* ── Notification sounds ── */
+/* ── Notification groups ── */
 .settings__notification-sounds {
-  margin: 0.75rem 0 0;
-  padding: 0.75rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 0.375rem;
+  min-width: 0;
+  margin: var(--k-space-4) 0 0;
+  padding: 0;
+  border: 0;
 }
 .settings__notification-sounds legend {
-  padding: 0 0.25rem;
-  font-size: 0.8rem;
+  padding: 0;
+  margin-bottom: var(--k-space-2);
+  font-size: var(--k-text-md);
   font-weight: 500;
   color: var(--text-primary);
 }
 .settings__notification-sounds-help {
   margin: 0 0 0.75rem;
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
 }
 .settings__notification-sounds-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--k-space-3) var(--k-space-5);
 }
 .settings__notification-sound {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(6rem, 45%);
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  font-size: var(--k-text-md);
+  color: var(--k-text-muted);
+}
+.settings__notification-sound > span {
+  overflow-wrap: anywhere;
+}
+.settings__notification-sound > :is(select, input[type="time"]) {
+  width: 100%;
+  min-height: 36px;
+  padding: var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text);
+  background: var(--k-bg);
+}
+.settings__notification-sound > input[type="checkbox"] {
+  justify-self: end;
+}
+.settings__notification-sound > label {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-.settings__notification-sound select {
-  min-width: 5.5rem;
+  justify-self: end;
+  gap: var(--k-space-2);
+  font-size: var(--k-text-sm);
 }
 
 /* ── Form help block ── */
@@ -1041,7 +1061,7 @@
   padding: 0.6rem 0.75rem;
   margin-bottom: 1rem;
   border-radius: 0.375rem;
-  font-size: 0.8rem;
+  font-size: var(--k-text-sm);
   background: var(--error-bg);
   border: 1px solid var(--error-border);
   color: var(--error-text);
@@ -1051,7 +1071,7 @@
 }
 .settings__error-banner-retry {
   padding: 0.25rem 0.5rem;
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   font-weight: 500;
   background: transparent;
   color: var(--error-text);
@@ -1068,7 +1088,7 @@
 .settings__field-error {
   display: block;
   margin-top: 0.25rem;
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   color: var(--error-text);
 }
 .settings__field input.settings__field--invalid,
@@ -1077,7 +1097,38 @@
 }
 
 /* ── Mobile touch targets ── */
+.settings__section .page-row__aside {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--k-space-2);
+  max-width: 50%;
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .settings__section .page-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .settings__section .page-row__aside,
+  .settings__section .page-row__control {
+    width: 100%;
+  }
+
+  .settings__section .page-row__aside {
+    max-width: none;
+    justify-content: space-between;
+  }
+  .settings__range-row {
+    flex-wrap: wrap;
+  }
+  .settings__range-row input[type="range"] {
+    min-width: 8rem;
+  }
+  .settings__account-help summary,
+  .settings__subsection > summary {
+    min-height: 44px;
+    align-content: center;
+  }
   .settings .settings__section-nav {
     display: none;
   }
@@ -1240,7 +1291,7 @@
 
 .settings__section .page-row {
   padding-block: var(--k-space-4);
-  gap: var(--k-space-5);
+  gap: var(--k-space-4);
 }
 .settings__section .page-row__label {
   font-size: var(--k-text-md);
@@ -1292,4 +1343,91 @@
 .settings__project-scope select {
   width: auto;
   max-width: 100%;
+}
+
+.settings__section .page-row:first-child {
+  padding-top: 0;
+}
+.settings__section .page-row:last-child {
+  padding-bottom: 0;
+}
+.settings__section .page-row__control {
+  min-width: 0;
+  max-width: 100%;
+}
+.settings__section .page-row__status,
+.settings__row-scope {
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+}
+.settings__section .editor-input,
+.settings__section .editor-select,
+.settings__section .editor-textarea,
+.settings__notification-sound :is(select, input:not([type="checkbox"])) {
+  min-width: 0;
+  max-width: 100%;
+  font-family: inherit;
+  font-size: var(--k-text-md);
+}
+.settings__section-body > p,
+.settings__section-body > .form-help {
+  margin: 0 0 var(--k-space-3);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+.settings__section-body > :last-child {
+  margin-bottom: 0;
+}
+.settings__subsection {
+  margin-top: var(--k-space-4);
+  padding-top: var(--k-space-4);
+  border-top: 1px solid var(--k-line);
+}
+.settings__subsection > summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: var(--k-text-md);
+  font-weight: 500;
+}
+.settings__subsection > summary:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+.settings__account-help {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2) var(--k-space-4);
+  margin-bottom: var(--k-space-4);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+.settings__account-help details {
+  flex: 1 1 15rem;
+}
+.settings__account-help summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.settings__account-help p {
+  margin: var(--k-space-2) 0 0;
+}
+
+.settings__section .provenance-badge {
+  font-size: var(--k-text-xs);
+}
+
+.settings__section :is(h3, h4),
+.settings__section .usage-telemetry-disclosure > h2 {
+  margin-block: var(--k-space-4) var(--k-space-2);
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+.settings__section .button {
+  font-size: var(--k-text-md);
+}
+.settings__section .page-section__description {
+  font-size: var(--k-text-sm);
+}
+.settings__notification-sound input[type="checkbox"] {
+  accent-color: var(--k-action);
 }
