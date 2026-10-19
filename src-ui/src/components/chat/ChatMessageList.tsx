@@ -1295,23 +1295,48 @@ function ChatMessageListComponent({
   const nextTurn = turnStepTarget(turnViewport, 1, turnLandmarks.length);
   // A step keeps focus on itself, so where it landed is said aloud: the
   // rail's ticks are named by focus, the steps have only this.
+  // Clear-then-set: the region empties, then takes the new text a frame
+  // later, so stepping to the same turn twice is announced twice.
   const [turnAnnouncement, setTurnAnnouncement] = useState('');
+  const announceFrameRef = useRef<number | undefined>(undefined);
   const stepToTurn = useCallback(
     (turnIndex: number) => {
       const landmarks = turnLandmarksRef.current;
       const landmark = landmarks[turnIndex];
       if (!landmark) return;
       jumpToTurn(turnIndex);
-      setTurnAnnouncement(
-        turnLabel(
-          landmark,
-          turnIndex,
-          landmarks.length,
-          Boolean(hasOlderMessages),
-        ),
+      const text = turnLabel(
+        landmark,
+        turnIndex,
+        landmarks.length,
+        Boolean(hasOlderMessages),
       );
+      if (announceFrameRef.current !== undefined)
+        cancelAnimationFrame(announceFrameRef.current);
+      setTurnAnnouncement('');
+      announceFrameRef.current = requestAnimationFrame(() => {
+        announceFrameRef.current = undefined;
+        setTurnAnnouncement(text);
+      });
     },
     [jumpToTurn, hasOlderMessages],
+  );
+  // What was said names a position in one chat's loaded window: a chat
+  // switch or a change in what is loaded makes it stale, so it goes.
+  useEffect(() => {
+    void activeSession.id;
+    void hasOlderMessages;
+    if (announceFrameRef.current !== undefined)
+      cancelAnimationFrame(announceFrameRef.current);
+    announceFrameRef.current = undefined;
+    setTurnAnnouncement('');
+  }, [activeSession.id, hasOlderMessages]);
+  useEffect(
+    () => () => {
+      if (announceFrameRef.current !== undefined)
+        cancelAnimationFrame(announceFrameRef.current);
+    },
+    [],
   );
 
   // A glide belongs to the chat it started in; a switch or unmount ends it

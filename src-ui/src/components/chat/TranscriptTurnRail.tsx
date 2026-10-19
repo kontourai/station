@@ -451,6 +451,11 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
             id={previewId}
             ref={previewRef}
             role="tooltip"
+            // While it shows, Escape is this preview's: the app's shortcut
+            // dispatcher defers (`shouldIgnoreShortcut`), so its "go up one
+            // level" and a layout's own Escape do not run first and leave
+            // the preview open.
+            data-escape-owner=""
           >
             <span className="transcript-turn-rail__preview-turn">
               {turnPosition(preview, landmarks.length, olderHistory)}

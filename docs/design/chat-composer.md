@@ -338,8 +338,10 @@ message row starts a turn.
   the rows. The rows on screen are drawn as a band, and their turns' ticks are
   highlighted; both are written from the scroll handler, once per frame. Hover
   or keyboard focus previews a turn: its prompt and the start of its first
-  reply. Escape dismisses the preview without moving focus or the pointer;
-  pointing at or focusing another turn shows previews again. A press or drag jumps to the nearest turn without taking focus from
+  reply. Escape dismisses the preview without moving focus or the pointer:
+  while it shows, the preview carries `data-escape-owner`, so the app's
+  shortcuts (such as "Go up one level") leave that Escape to it. Pointing at
+  or focusing another turn shows previews again. A press or drag jumps to the nearest turn without taking focus from
   the composer. The ticks are one tab stop: arrow keys move between turns
   (jumping as they go), Home and End reach the ends. The rail is hidden when
   the transcript column is narrower than 560px or shorter than 200px
@@ -354,7 +356,9 @@ message row starts a turn.
   navigation. Previous goes to the start of the turn in view when its prompt
   is above the screen, otherwise to the turn before. The steps stay focusable
   at either end, and announce the turn they reached (its position and prompt)
-  in a polite status region.
+  in a polite status region. Only a step announces; the region empties before
+  each announcement, so a repeat step is said again, and it is cleared on a
+  chat switch or when the loaded history changes.
 - **Positions.** A turn is named "Turn N of M". While older history is not
   loaded, the map covers only the loaded window, so it is named "Loaded turn
   N of M" instead, and the numbers change as earlier history loads.

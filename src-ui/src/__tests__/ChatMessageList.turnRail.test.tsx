@@ -50,6 +50,8 @@ vi.mock('../components/chat/TranscriptVirtualizer', () => ({
 }));
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
+import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 
 const SESSION_ID = 'turn-rail-session';
 const rowId = (turn: number) => `${SESSION_ID}:message:u-${turn}`;
@@ -122,14 +124,14 @@ function renderList(
   activeSession: Session,
   extra: { hasOlderMessages?: boolean } = {},
 ) {
-  const element = (next: Session) => (
+  const element = (next: Session, nextExtra = extra) => (
     <ChatMessageList
       activeSession={next}
       fontSize={14}
       showReasoning={false}
       showToolDetails={false}
       renderOverride={(message) => <>{message.content}</>}
-      {...extra}
+      {...nextExtra}
     />
   );
   const view = render(element(activeSession));
@@ -154,7 +156,8 @@ function renderList(
   return {
     scroller,
     geometry,
-    rerender: (next: Session) => view.rerender(element(next)),
+    rerender: (next: Session, nextExtra = extra) =>
+      view.rerender(element(next, nextExtra)),
   };
 }
 
@@ -171,6 +174,22 @@ const tick = (turn: number) =>
   within(turnRail()!).getByRole('button', {
     name: new RegExp(`^(Loaded turn|Turn) ${turn + 1} of `),
   });
+
+/** The browser's scroll event and the frames after it. */
+function settle(scroller: HTMLElement) {
+  fireEvent.scroll(scroller);
+  act(() => {
+    vi.advanceTimersByTime(32);
+  });
+}
+
+/** Press a turn step and let its announcement frame run. */
+function step(name: 'Previous turn' | 'Next turn') {
+  fireEvent.click(screen.getByRole('button', { name }));
+  act(() => {
+    vi.advanceTimersByTime(32);
+  });
+}
 
 const announcement = () =>
   screen.getByTestId('transcript-turn-announcement').textContent;
@@ -375,28 +394,119 @@ describe('the turn preview and announcements', () => {
       screen.getByTestId('transcript-turn-announcement').getAttribute('role'),
     ).toBe('status');
     fireEvent.click(tick(5));
-    fireEvent.scroll(scroller);
-    act(() => {
-      vi.advanceTimersByTime(32);
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Previous turn' }));
+    settle(scroller);
+    step('Previous turn');
     expect(announcement()).toBe('Turn 5 of 10: Question 4');
-    fireEvent.scroll(scroller);
-    act(() => {
-      vi.advanceTimersByTime(32);
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Next turn' }));
+    settle(scroller);
+    step('Next turn');
     expect(announcement()).toBe('Turn 6 of 10: Question 5');
   });
 
   test('with older history unloaded, an announcement claims only a loaded position', () => {
     const { scroller } = renderList(session(10), { hasOlderMessages: true });
     fireEvent.click(tick(5));
-    fireEvent.scroll(scroller);
+    settle(scroller);
+    step('Previous turn');
+    expect(announcement()).toBe('Loaded turn 5 of 10: Question 4');
+  });
+
+  test('scrolling, ticks and arrow keys announce nothing; only a step does', () => {
+    const { scroller } = renderList(session(10));
+    for (const top of [1_600, 1_100, 700, 300, 0, 900]) {
+      readerScrollsTo(scroller, top);
+      settle(scroller);
+      expect(announcement()).toBe('');
+    }
+    fireEvent.click(tick(2));
+    settle(scroller);
+    act(() => tick(2).focus());
+    fireEvent.keyDown(tick(2), { key: 'ArrowDown' });
+    settle(scroller);
+    expect(announcement()).toBe('');
+    step('Next turn');
+    expect(announcement()).toBe('Turn 5 of 10: Question 4');
+    // A later reader scroll does not replace what the step said.
+    readerScrollsTo(scroller, 200);
+    settle(scroller);
+    expect(announcement()).toBe('Turn 5 of 10: Question 4');
+  });
+
+  test('a repeat step to the same turn empties the region first, so it is said again', () => {
+    const { scroller } = renderList(session(10));
+    fireEvent.click(tick(5));
+    settle(scroller);
+    step('Previous turn');
+    expect(announcement()).toBe('Turn 5 of 10: Question 4');
+    fireEvent.click(tick(5));
+    settle(scroller);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous turn' }));
+    expect(announcement()).toBe('');
     act(() => {
       vi.advanceTimersByTime(32);
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Previous turn' }));
-    expect(announcement()).toBe('Loaded turn 5 of 10: Question 4');
+    expect(announcement()).toBe('Turn 5 of 10: Question 4');
+  });
+
+  test('a chat switch or a change in loaded history clears a stale announcement', () => {
+    const { scroller, rerender } = renderList(session(10));
+    fireEvent.click(tick(5));
+    settle(scroller);
+    step('Previous turn');
+    expect(announcement()).toBe('Turn 5 of 10: Question 4');
+    rerender(session(10), { hasOlderMessages: true });
+    expect(announcement()).toBe('');
+
+    step('Next turn');
+    expect(announcement()).not.toBe('');
+    rerender({ ...session(10), id: 'another-chat' });
+    expect(announcement()).toBe('');
+  });
+});
+
+describe('Escape with the app shortcut dispatcher', () => {
+  /** App.tsx's "Go up one level": a window Escape at priority -100. */
+  function GoUp({ onUp }: { onUp: () => void }) {
+    useKeyboardShortcut(
+      'app.escapeUp',
+      'Escape',
+      [],
+      'Go up one level',
+      onUp,
+      true,
+      -100,
+    );
+    return null;
+  }
+
+  test('with focus on the page, Escape closes a hover preview before it goes up a level', () => {
+    const onUp = vi.fn();
+    render(
+      <KeyboardShortcutsProvider>
+        <GoUp onUp={onUp} />
+        <ChatMessageList
+          activeSession={session(30)}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+          renderOverride={(message) => <>{message.content}</>}
+        />
+      </KeyboardShortcutsProvider>,
+    );
+    const rail = turnRail()!;
+    rail.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 600, height: 600 }) as DOMRect;
+    // 60 rows over 600px: turn 10's prompt (row 20) is at 200px.
+    fireEvent.pointerMove(rail, { clientY: 200, pointerId: 1 });
+    expect(screen.getByRole('tooltip').textContent).toContain('Question 10');
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(onUp).toHaveBeenCalledTimes(0);
+
+    // With no preview showing, Escape is the app's again.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onUp).toHaveBeenCalledTimes(1);
   });
 });
