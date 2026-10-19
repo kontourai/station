@@ -282,7 +282,9 @@ permissions. Device settings still save immediately; Station and Project drafts
 keep their existing Save and discard guard.
 
 The sidebar footer groups **Schedule**, **Customize**, and **Settings** beside
-live work in one compact row. A collapsed workspace map puts these utilities
+live work in one compact row. In the desktop app, a desktop-update control sits
+above that row while an update is available, downloading or ready to install
+(#3851); it is hidden otherwise. A collapsed workspace map puts these utilities
 in its Sidebar utilities popup. The obsolete Open chats/Drafts section toggles
 no longer appear in Appearance; existing device values remain compatible.
 Customize opens Agents, Skills, Connections, and Plugins at their existing
