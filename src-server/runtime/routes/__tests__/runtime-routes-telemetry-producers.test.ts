@@ -207,8 +207,9 @@ describe('telemetry producer management over the production composition', () => 
             event_id: `event-${sessionId}`,
             event_type: 'tool.invoke',
             agent: { name: 'codex', runtime: 'codex', version: '1.0.0' },
-            ...overrides,
             tool: { name: 'shell', input: { command: 'ls' } },
+            // Last: the claims under test must win over the defaults above.
+            ...overrides,
           }),
         },
         { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
@@ -217,6 +218,7 @@ describe('telemetry producer management over the production composition', () => 
       token: string,
       conversationId: string,
       extraAttributes: { key: string; value: { stringValue: string } }[] = [],
+      end = false,
     ) =>
       app.request(
         `${ORIGIN}/v1/traces`,
@@ -239,7 +241,11 @@ describe('telemetry producer management over the production composition', () => 
                         name: 'tool',
                         kind: 1,
                         startTimeUnixNano: '1',
+                        ...(end ? { endTimeUnixNano: '2' } : {}),
                         attributes: [
+                          // First: the receiver reads the first match, so the
+                          // claims under test win over the defaults below.
+                          ...extraAttributes,
                           {
                             key: K.CONVERSATION_ID,
                             value: { stringValue: conversationId },
@@ -252,7 +258,6 @@ describe('telemetry producer management over the production composition', () => 
                             key: K.TOOL_NAME,
                             value: { stringValue: 'injected' },
                           },
-                          ...extraAttributes,
                         ],
                       },
                     ],
@@ -647,14 +652,14 @@ describe('telemetry producer management over the production composition', () => 
             [K.AGENT_SLUG]: 'default',
             [K.MODEL]: 'claude-opus-4',
             [K.PROVIDER]: 'station',
-            [K.TOOL_NAME]: 'Bash',
           }),
+          true,
         )
       ).status,
     ).toBe(200);
-    // Slug-less: no agent at all.
+    // Slug-less: an agent turn naming no agent at all.
     expect(
-      (await h.ingestSpan(token, 'p3', span({ [K.OP_NAME]: 'execute_tool' })))
+      (await h.ingestSpan(token, 'p3', span({ [K.OP_NAME]: 'invoke_agent' })))
         .status,
     ).toBe(200);
     await h.flush();
@@ -667,13 +672,16 @@ describe('telemetry producer management over the production composition', () => 
     // Named, the producer's activity is visible, and only its own.
     const scoped = await insights('&producer=claimer');
     expect(scoped.agentUsage.default).toBeUndefined();
-    expect(scoped.toolUsage.Bash).toBeUndefined();
+    // The producer's own Bash call, without Station's failed one.
+    expect(scoped.toolUsage.Bash).toMatchObject({ calls: 1, errors: 0 });
     expect(
       Object.keys(scoped.agentUsage).every((agent) =>
         agent.startsWith('producer:claimer:'),
       ),
     ).toBe(true);
     expect(scoped.totalToolCalls).toBeGreaterThan(0);
+    expect(scoped.agentUsage['producer:claimer:(unnamed)']?.chats).toBe(1);
+    expect(scoped.modelUsage['claude-opus-4']).toBe(1);
 
     const rows = async (query: string) => {
       const response = await h.read(
