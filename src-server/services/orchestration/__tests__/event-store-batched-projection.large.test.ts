@@ -195,6 +195,38 @@ describe('EventStore high-cardinality batched projection', () => {
       );
     }
     const profilePath = join(profileDirectory, 'projection.cpuprofile');
+    const retainProfile = (profileBytes: Buffer): void => {
+      const currentDirectory = lstatSync(profileDirectory);
+      if (
+        !currentDirectory.isDirectory() ||
+        currentDirectory.uid !== ownerUid ||
+        currentDirectory.dev !== directoryIdentity.dev ||
+        currentDirectory.ino !== directoryIdentity.ino ||
+        realpathSync(profileDirectory) !== profileDirectory
+      ) {
+        throw new Error('Profile artifact directory identity changed.');
+      }
+      writeFileSync(profilePath, profileBytes, { flag: 'wx', mode: 0o600 });
+      const fileIdentity = lstatSync(profilePath);
+      const retainedBytes = readFileSync(profilePath);
+      if (
+        !fileIdentity.isFile() ||
+        fileIdentity.uid !== ownerUid ||
+        fileIdentity.nlink !== 1 ||
+        fileIdentity.size !== profileBytes.length ||
+        !retainedBytes.equals(profileBytes)
+      ) {
+        throw new Error('Profile artifact file ownership or bytes mismatch.');
+      }
+      trace('exit', {
+        profilePath,
+        profileBytes: retainedBytes.length,
+        profileSHA256: createHash('sha256').update(retainedBytes).digest('hex'),
+        fileDevice: fileIdentity.dev,
+        fileInode: fileIdentity.ino,
+        ownerUid: fileIdentity.uid,
+      });
+    };
     let profiling = false;
     try {
       trace('entry', {
@@ -251,41 +283,7 @@ describe('EventStore high-cardinality batched projection', () => {
       try {
         if (profiling) {
           const { profile } = await profiler.post('Profiler.stop');
-          const currentDirectory = lstatSync(profileDirectory);
-          if (
-            !currentDirectory.isDirectory() ||
-            currentDirectory.uid !== ownerUid ||
-            currentDirectory.dev !== directoryIdentity.dev ||
-            currentDirectory.ino !== directoryIdentity.ino ||
-            realpathSync(profileDirectory) !== profileDirectory
-          ) {
-            throw new Error('Profile artifact directory identity changed.');
-          }
-          const profileBytes = Buffer.from(JSON.stringify(profile));
-          writeFileSync(profilePath, profileBytes, { flag: 'wx', mode: 0o600 });
-          const fileIdentity = lstatSync(profilePath);
-          const retainedBytes = readFileSync(profilePath);
-          if (
-            !fileIdentity.isFile() ||
-            fileIdentity.uid !== ownerUid ||
-            fileIdentity.nlink !== 1 ||
-            fileIdentity.size !== profileBytes.length ||
-            !retainedBytes.equals(profileBytes)
-          ) {
-            throw new Error(
-              'Profile artifact file ownership or bytes mismatch.',
-            );
-          }
-          trace('exit', {
-            profilePath,
-            profileBytes: retainedBytes.length,
-            profileSHA256: createHash('sha256')
-              .update(retainedBytes)
-              .digest('hex'),
-            fileDevice: fileIdentity.dev,
-            fileInode: fileIdentity.ino,
-            ownerUid: fileIdentity.uid,
-          });
+          retainProfile(Buffer.from(JSON.stringify(profile)));
         }
       } finally {
         profiler.disconnect();
