@@ -203,7 +203,9 @@ joined onto one line with " ⏎ ". A device's hide-content preference
 substitutes generic title/body text. The
 browser still receives category, notification ID and destination URL. For
 routing, Session metadata is tried first (`sessionId` or `conversationId`), then
-a validated relative `metadata.link`, then `/notifications`. Managed Sessions
+a validated relative `metadata.link`, then `/notifications`; the URL also carries
+`openedNotification=<id>`, which the loaded page uses to mark that record read
+and then removes. Managed Sessions
 legitimately use `/?chat=...&dock=open`; the root route with these parameters is
 not an error. The current composed payload does not carry the legacy service
 worker's approval-action fields, so those old action branches are not this
