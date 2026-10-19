@@ -3,10 +3,12 @@
    header), so it is kept to the chip itself. */
 .session-context-chip {
   display: inline-flex;
-  flex: 0 1 auto;
+  /* The chat title keeps the bar: in a crowded header the chip gives up its
+     word (down to its dot) before the title does. */
+  flex: 0 4 auto;
   align-items: center;
   gap: var(--k-space-1);
-  min-width: 0;
+  min-width: 28px;
   min-height: 28px;
   margin-left: var(--k-space-2);
   padding: 0 var(--k-space-2);
@@ -57,15 +59,4 @@
 }
 .session-context-chip[data-tone="broken"] .session-context-chip__dot {
   background: var(--status-error);
-}
-
-/* In the phone header: a 44px target that gives up its word first, so the
-   chat title keeps the bar. */
-.chat-dock__mobile-session-chip {
-  min-width: 44px;
-  min-height: 44px;
-  max-width: 108px;
-  margin-left: 0;
-  justify-content: center;
-  border-color: transparent;
 }

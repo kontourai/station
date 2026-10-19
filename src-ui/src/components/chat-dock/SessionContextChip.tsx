@@ -13,19 +13,17 @@ export function SessionContextChip({
   triggerRef,
   expanded,
   onOpen,
-  className = '',
 }: {
   status: { word: string; text: string; tone: WorkStatusTone } | null;
   triggerRef: RefObject<HTMLButtonElement | null>;
   expanded: boolean;
   onOpen: () => void;
-  className?: string;
 }) {
   return (
     <button
       ref={triggerRef}
       type="button"
-      className={`session-context-chip ${className}`.trim()}
+      className="session-context-chip"
       aria-haspopup="dialog"
       aria-expanded={expanded}
       aria-label={status ? `This chat — ${status.text}` : 'This chat'}

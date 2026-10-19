@@ -1,6 +1,5 @@
 import type {
   MouseEvent as ReactMouseEvent,
-  ReactNode,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
@@ -69,6 +68,16 @@ export interface ChatDockMobileOverflowActions {
    */
   onOpenBackgroundTasks?: () => void;
   backgroundTasksRunningCount?: number;
+  /**
+   * The session context sheet (the desktop card's rows). A row of this sheet
+   * rather than a third control in the bar: the bar's edge reserve holds two
+   * 44px controls beside the chat title, and a third wrapped the header onto
+   * a second line. `returnFocus` is the ⋯ trigger, so closing the context
+   * sheet lands where the reader started. Absent: no row.
+   */
+  onOpenSessionContext?: (returnFocus: HTMLElement | null) => void;
+  /** The chat's ladder line, named on the row ("This chat — Running"). */
+  sessionContextStatus?: string;
 }
 
 export interface ChatDockMobileProjectSwitcher {
@@ -103,8 +112,6 @@ interface ChatDockMobileHeaderProps {
   onDragClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
   dockToggle: ChatDockMobileDockToggle | null;
   onNewChat: () => void;
-  /** Opens the session context sheet (the card's rows on a phone). */
-  sessionContextChip?: ReactNode;
   overflow: ChatDockMobileOverflowActions;
 }
 
@@ -127,7 +134,6 @@ export function ChatDockMobileHeader({
   onDragClickCapture,
   dockToggle,
   onNewChat,
-  sessionContextChip,
   overflow,
 }: ChatDockMobileHeaderProps) {
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
@@ -261,7 +267,6 @@ export function ChatDockMobileHeader({
         </span>
       </button>
       <div className="chat-dock__mobile-actions">
-        {sessionContextChip ?? null}
         <button
           ref={chatActionsTriggerRef}
           type="button"

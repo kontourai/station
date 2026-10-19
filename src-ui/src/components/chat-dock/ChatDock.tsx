@@ -1626,6 +1626,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const [isSessionContextSheetOpen, setIsSessionContextSheetOpen] =
     useState(false);
   const sessionContextChipRef = useRef<HTMLButtonElement>(null);
+  // On a phone the sheet opens from the ⋯ sheet's row, which is gone by the
+  // time this one closes; focus returns to the ⋯ trigger it names.
+  const [sessionContextReturnFocus, setSessionContextReturnFocus] =
+    useState<HTMLElement | null>(null);
   // The sheet answers for the chat it opened over; it does not follow a
   // switch, and it gives way to the card when the dock widens under it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeSessionId is the reset signal
@@ -2636,17 +2640,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               }
               // Shared creation action opens a draft without starting an engine.
               onNewChat={openNewChatDirect}
-              sessionContextChip={
-                sessionContextAvailable && isPaneOpen ? (
-                  <SessionContextChip
-                    className="chat-dock__mobile-session-chip"
-                    status={sessionContextStatus}
-                    triggerRef={sessionContextChipRef}
-                    expanded={isSessionContextSheetOpen}
-                    onOpen={() => setIsSessionContextSheetOpen(true)}
-                  />
-                ) : null
-              }
               overflow={{
                 onTurnIntoTask: turnIntoTask,
                 onOpenConversation: () => setShowSessionPicker(true),
@@ -2705,6 +2698,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     ? showBackgroundTasks
                     : undefined,
                 backgroundTasksRunningCount,
+                onOpenSessionContext: sessionContextAvailable
+                  ? (returnFocus) => {
+                      setSessionContextReturnFocus(returnFocus);
+                      setIsSessionContextSheetOpen(true);
+                    }
+                  : undefined,
+                sessionContextStatus: sessionContextStatus?.text,
               }}
             />
           ) : (
@@ -3275,7 +3275,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             componentProps={{
               ...sessionContextCardProps,
               anchorRef: sessionContextChipRef,
-              returnFocusTarget: sessionContextChipRef.current,
+              returnFocusTarget: isMobile
+                ? sessionContextReturnFocus
+                : sessionContextChipRef.current,
               onClose: () => setIsSessionContextSheetOpen(false),
             }}
             pending={null}

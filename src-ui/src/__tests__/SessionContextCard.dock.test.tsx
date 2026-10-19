@@ -679,12 +679,26 @@ describe('on a phone', () => {
     stubPhone();
   });
 
-  test('never shows the card inline, whatever the width; the chip opens a bottom sheet', async () => {
+  async function openFromActions() {
+    const actions = await screen.findByRole('button', { name: 'Chat actions' });
+    fireEvent.click(actions);
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'This chat — Running' }),
+    );
+    return actions;
+  }
+
+  test('never shows the card inline, whatever the width, and adds no third control to the bar', async () => {
     fixture.surfaceWidth = 1200;
     renderDock();
-    await waitFor(() => expect(chip()).not.toBeNull());
+    await screen.findByRole('button', { name: 'Chat actions' });
     expect(card()).toBeNull();
-    fireEvent.click(chip()!);
+    expect(chip()).toBeNull();
+  });
+
+  test('the actions sheet row opens a bottom sheet; closing it returns to ⋯', async () => {
+    renderDock();
+    const actions = await openFromActions();
     const dialog = await screen.findByRole('dialog', { name: 'This chat' });
     expect(
       dialog.closest('.responsive-surface-overlay')?.hasAttribute('data-sheet'),
@@ -696,5 +710,23 @@ describe('on a phone', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'This chat' })).toBeNull(),
     );
+    await waitFor(() => expect(document.activeElement).toBe(actions));
+  });
+
+  test('a row in the sheet closes it before opening its surface', async () => {
+    renderDock();
+    await openFromActions();
+    await screen.findByRole('dialog', { name: 'This chat' });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /^Changed files — 2 on feature\/parser/,
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'This chat' })).toBeNull(),
+    );
+    expect(
+      await screen.findByRole('dialog', { name: 'Active work files' }),
+    ).not.toBeNull();
   });
 });
