@@ -469,14 +469,14 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     // its window...
     const sessionRefreshes = () =>
       invalidateQueries.mock.calls.filter(
-        ([filters]) =>
+        ([filters]: unknown[]) =>
           JSON.stringify(filters) ===
           JSON.stringify({ queryKey: ['orchestration-sessions'] }),
       );
     expect(sessionRefreshes()).toHaveLength(1);
     expect(
       invalidateQueries.mock.calls.filter(
-        ([filters]) =>
+        ([filters]: unknown[]) =>
           JSON.stringify(filters) ===
           JSON.stringify({
             queryKey: [
