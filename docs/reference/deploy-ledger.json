@@ -1,5 +1,56 @@
 [
   {
+    "timestampUtc": "2026-10-19T21:59:06Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2483.2",
+    "sha": "cd1929819a5dba3ab71596d37e2df7dcd1f4cb55",
+    "artifactBuiltAt": "2026-10-19T20:53:06.070Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39321642672",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39321642672)"
+    ],
+    "changelog": {
+      "previousSha": "45e3cf69687d6d3dab0da9763241593c307952e0",
+      "groups": {
+        "feat": [
+          "[#3780](https://github.com/kontourai/station/pull/3780) feat(chat): publish sandboxed HTML replies end to end",
+          "[#3831](https://github.com/kontourai/station/pull/3831) feat(providers): engine-neutral failure kinds and computed retryability",
+          "[#3849](https://github.com/kontourai/station/pull/3849) feat(telemetry-broker): trusted proxy client address, feedback ingest and sender interoperability",
+          "[#3783](https://github.com/kontourai/station/pull/3783) feat(mcp): preview declared apps inline in chat",
+          "[#3785](https://github.com/kontourai/station/pull/3785) feat(review): add shared pull request guides",
+          "[#3843](https://github.com/kontourai/station/pull/3843) feat(ui): keep inbox sessions under recorded parents and add scope filters",
+          "[#3832](https://github.com/kontourai/station/pull/3832) feat(engines): add nonce-based delivery probes",
+          "[#3605](https://github.com/kontourai/station/pull/3605) feat(ui): offer a server update when the connected server is older than this app (#2675)",
+          "[#3830](https://github.com/kontourai/station/pull/3830) feat(delegation): attach exact-value files to local tasks",
+          "[#3828](https://github.com/kontourai/station/pull/3828) feat(engines): add opt-in verification matrix",
+          "[#3790](https://github.com/kontourai/station/pull/3790) feat(telemetry-broker): exact operator and weekly noisy analytics"
+        ],
+        "fix": [
+          "[#3850](https://github.com/kontourai/station/pull/3850) fix(telemetry): prevent disclosure loops and diagnose config refusals",
+          "[#3841](https://github.com/kontourai/station/pull/3841) fix(ci): catch PR failures early and bound title API recovery",
+          "[#3845](https://github.com/kontourai/station/pull/3845) fix(ui): resume session follow on interleaved tail growth",
+          "[#3842](https://github.com/kontourai/station/pull/3842) fix(test): keep the adapter registration guard fast under full-regression load",
+          "[#3839](https://github.com/kontourai/station/pull/3839) fix(ci): align Corpus pin and startup font fixtures"
+        ],
+        "ci": [
+          "[#3788](https://github.com/kontourai/station/pull/3788) ci(telemetry): inject the author endpoint only in official builds"
+        ],
+        "docs": [],
+        "other": [
+          "[#3848](https://github.com/kontourai/station/pull/3848) chore(release): version packages with accurate compatibility docs",
+          "[#3844](https://github.com/kontourai/station/pull/3844) build(deps): integrate follow-up runtime and action updates",
+          "[#3778](https://github.com/kontourai/station/pull/3778) perf: bound file reads and reduce background data churn"
+        ]
+      },
+      "note": null,
+      "commitCount": 20
+    }
+  },
+  {
     "timestampUtc": "2026-10-19T21:59:01Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2483.2",
