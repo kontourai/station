@@ -51,9 +51,11 @@ export function startWebSocketListener(
   });
   const wss = new StableWebSocketServer({ ...options, server });
   const link = listenerLink();
-  // An upgraded socket is this WebSocket server's to end; a drain stops
-  // waiting for it. This server already has ws's 'upgrade' listener.
-  server.on('upgrade', (_req, socket) => link.upgraded(socket as Socket));
+  // A socket ws upgraded is this WebSocket server's to end, so a drain stops
+  // waiting for it. Reported from ws's own 'connection' event, not a second
+  // 'upgrade' listener on the server: one that outlived ws's (removed on
+  // close) would leave later Upgrade requests unanswered.
+  wss.on('connection', (_ws, req) => link.upgraded(req.socket as Socket));
   // A bind failure reaches the WebSocket server's 'error' event, which `ws`
   // forwards from the HTTP server exactly as it does for a port it owns.
   void link.listen(name, server, address).catch(() => {});
