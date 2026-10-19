@@ -501,6 +501,10 @@ describe('drain', () => {
         if (text.includes('\r\n\r\n')) resolve(text);
       });
       socket.on('error', reject);
+      // A request Node handed to an absent upgrade handler is never answered.
+      socket.setTimeout(5_000, () =>
+        reject(new Error(`no response to the Upgrade request: ${text}`)),
+      );
       socket.write(
         'GET / HTTP/1.1\r\nHost: x\r\nConnection: Upgrade, HTTP2-Settings\r\nUpgrade: h2c\r\nHTTP2-Settings: AAMAAABkAARAAAAAAAIAAAAA\r\n\r\n',
       );
