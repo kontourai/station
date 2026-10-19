@@ -35,6 +35,13 @@ export const STATION_HOME_SCHEMA_FILE = '.station-home-schema.json';
 const MINIMUM_MIGRATABLE_STATION_HOME_SCHEMA_VERSION = 2;
 
 /**
+ * `<home>/run`, where the process supervisor (`packages/supervisor`) keeps
+ * its instance lock, control socket, and token. Must match the supervisor's
+ * `resolveControlEndpoint`; a test pins the two together.
+ */
+export const STATION_HOME_SUPERVISOR_RUN_DIR = 'run';
+
+/**
  * install.sh claims a portable install's data root before any Station process
  * exists (uninstall refuses to touch an unclaimed root). The exact marker
  * name and signature are pinned to install.sh by a cross-file test; drift on
@@ -449,6 +456,15 @@ function isBootstrapScaffolding(homeDir: string): boolean {
       } catch {
         // fall through to the refusal below
       }
+      return false;
+    }
+    if (entry === STATION_HOME_SUPERVISOR_RUN_DIR) {
+      // The process supervisor creates this directory for its instance lock,
+      // control socket, and token before its first core generation boots, so
+      // a fresh supervised home reaches the gate holding it. It is runtime
+      // state, never application data: scaffolding as a real directory only.
+      const stats = lstatSync(join(homeDir, entry));
+      if (stats.isDirectory() && !stats.isSymbolicLink()) continue;
       return false;
     }
     if (entry !== 'config') return false;

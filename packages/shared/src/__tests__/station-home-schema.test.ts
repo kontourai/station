@@ -23,6 +23,7 @@ import {
   STATION_HOME_SCHEMA_FILE,
   STATION_HOME_SCHEMA_MIGRATIONS,
   STATION_HOME_SCHEMA_VERSION,
+  STATION_HOME_SUPERVISOR_RUN_DIR,
   StationHomeMigrationRequiredError,
   StationHomeResetRequiredError,
   StationHomeSchemaDowngradeError,
@@ -103,6 +104,58 @@ describe('stationHomeSchemaNeedsReset (station#1913)', () => {
     );
 
     expect(stationHomeSchemaNeedsReset(home)).toBe(false);
+  });
+});
+
+describe('process supervisor run directory', () => {
+  function supervisedFreshHome(): string {
+    const home = makeHome();
+    mkdirSync(join(home, STATION_HOME_SUPERVISOR_RUN_DIR), {
+      recursive: true,
+      mode: 0o700,
+    });
+    // What the supervisor writes before its first generation boots.
+    writeFileSync(
+      join(home, STATION_HOME_SUPERVISOR_RUN_DIR, 'instance-default.lock.1'),
+      '{}',
+    );
+    return home;
+  }
+
+  it('pins the directory name', () => {
+    expect(STATION_HOME_SUPERVISOR_RUN_DIR).toBe('run');
+  });
+
+  it('bootstraps a fresh home whose only content is the supervisor run directory', () => {
+    const home = supervisedFreshHome();
+    expect(stationHomeSchemaNeedsReset(home)).toBe(false);
+    ensureStationHomeSchemaSync(home, { acquireMutationLock: () => () => {} });
+    expect(readStationHomeSchemaVersion(home)).toBe(
+      STATION_HOME_SCHEMA_VERSION,
+    );
+  });
+
+  it('still resets a marker-less home with application data beside the run directory', () => {
+    const home = supervisedFreshHome();
+    mkdirSync(join(home, 'agents'));
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+    expect(() => ensureStationHomeSchemaSync(home)).toThrow(
+      StationHomeResetRequiredError,
+    );
+  });
+
+  it('resets when run is a file or a symlink, not a real directory', () => {
+    const fileHome = makeHome();
+    mkdirSync(fileHome, { recursive: true });
+    writeFileSync(join(fileHome, STATION_HOME_SUPERVISOR_RUN_DIR), 'data');
+    expect(stationHomeSchemaNeedsReset(fileHome)).toBe(true);
+
+    const linkHome = makeHome();
+    mkdirSync(linkHome, { recursive: true });
+    const elsewhere = join(dirname(linkHome), 'elsewhere');
+    mkdirSync(elsewhere);
+    symlinkSync(elsewhere, join(linkHome, STATION_HOME_SUPERVISOR_RUN_DIR));
+    expect(stationHomeSchemaNeedsReset(linkHome)).toBe(true);
   });
 });
 
