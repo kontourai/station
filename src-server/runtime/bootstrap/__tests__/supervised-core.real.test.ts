@@ -3,35 +3,56 @@
  * Journeys over real processes: the built supervisor bundle runs the built
  * core server bundle against an isolated Station home on loopback ports.
  *
- * - A parked generation leaves the home untouched until it is promoted.
- * - A handoff from generation 1 to 2 under continuous HTTP load refuses and
- *   resets nothing, keeps every port, and leaves the terminal, voice, and
- *   consent listeners served by the new generation.
+ * - A parked generation leaves the home, the temp root, and the engine
+ *   registry untouched until it is promoted.
+ * - A handoff from generation 1 to 2 under continuous HTTP load, including
+ *   requests whose headers are still arriving when generation 1 drains,
+ *   refuses and resets nothing, keeps every port, and leaves the terminal,
+ *   voice, and consent listeners served by the new generation.
+ * - The supervisor (from source, with its fixture core) leaves a fresh home
+ *   untouched, and keeps its socket, token, and lock through a home schema
+ *   migration, since its run directory is beside the home.
  */
-import { type ChildProcess, execFile, fork, spawn } from 'node:child_process';
+import {
+  type ChildProcess,
+  execFile,
+  fork,
+  spawn,
+  spawnSync,
+} from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  utimesSync,
+  writeFileSync,
 } from 'node:fs';
 import http from 'node:http';
-import { createConnection } from 'node:net';
+import { createConnection, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import {
-  type ControlServerMessage,
+  ensureStationHomeSchemaSync,
+  readStationHomeSchemaVersion,
+  stationHomeSchemaNeedsReset,
+} from '@kontourai/station-shared/station-home-schema';
+import {
   resolveControlEndpoint,
-  SUPERVISOR_PROTOCOL,
   type SupervisorStatus,
 } from '@kontourai/station-supervisor/protocol';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
+import {
+  type ControlConnection,
+  connectControl,
+} from '../../../__test-utils__/supervisor-control.js';
 
 const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -68,6 +89,9 @@ function isolatedEnv(home: string, extra: NodeJS.ProcessEnv = {}) {
     STATION_HOME: home,
     STATION_HOST: '127.0.0.1',
     PORT: '0',
+    // Boot sweeps these; keep them off the host's shared ones.
+    STATION_TEMP_ROOT: join(dirname(home), 'temp-root'),
+    STATION_OWNED_PROCESS_REGISTRY: join(dirname(home), 'owned-processes'),
     ...extra,
   };
 }
@@ -140,80 +164,6 @@ async function waitFor<T>(
   }
 }
 
-/**
- * A minimal control-channel client. The package's own client is not imported:
- * its sources use `.ts` import specifiers that this tsconfig does not accept,
- * while the `/protocol` subpath (types and constants) has none.
- */
-interface ControlConnection {
-  request(
-    message: { type: string; id: string },
-    until: string[],
-  ): Promise<ControlServerMessage>;
-  close(): void;
-}
-
-function connectControl(
-  path: string,
-  tokenPath: string,
-): Promise<ControlConnection> {
-  return new Promise((resolveConnection, reject) => {
-    const socket = createConnection(path);
-    const waiters = new Set<(message: ControlServerMessage) => void>();
-    let buffer = '';
-    let welcomed = false;
-    socket.setEncoding('utf8');
-    socket.once('error', reject);
-    socket.on('data', (chunk: string) => {
-      buffer += chunk;
-      for (
-        let newline = buffer.indexOf('\n');
-        newline >= 0;
-        newline = buffer.indexOf('\n')
-      ) {
-        const message = JSON.parse(
-          buffer.slice(0, newline),
-        ) as ControlServerMessage;
-        buffer = buffer.slice(newline + 1);
-        if (!welcomed) {
-          if (message.type !== 'welcome') {
-            reject(new Error(`control refused: ${JSON.stringify(message)}`));
-            socket.destroy();
-            return;
-          }
-          welcomed = true;
-          resolveConnection({
-            request: (request, until) =>
-              new Promise((resolveReply) => {
-                const waiter = (reply: ControlServerMessage) => {
-                  if ((reply as { id?: string }).id !== request.id) return;
-                  if (!until.includes(reply.type) && reply.type !== 'error')
-                    return;
-                  waiters.delete(waiter);
-                  resolveReply(reply);
-                };
-                waiters.add(waiter);
-                socket.write(`${JSON.stringify(request)}\n`);
-              }),
-            close: () => socket.end(),
-          });
-          continue;
-        }
-        for (const waiter of [...waiters]) waiter(message);
-      }
-    });
-    socket.write(
-      `${JSON.stringify({
-        type: 'hello',
-        protocol: { ...SUPERVISOR_PROTOCOL },
-        token: readFileSync(tokenPath, 'utf8').trim(),
-        client: { kind: 'test', version: '0.0.0' },
-        capabilities: [],
-      })}\n`,
-    );
-  });
-}
-
 beforeAll(async () => {
   await execFileAsync(process.execPath, ['esbuild.config.mjs'], {
     cwd: repoRoot,
@@ -238,16 +188,49 @@ afterAll(() => {
 
 describe('a parked core generation', () => {
   it(
-    'touches nothing in the home until promoted, then boots into it',
+    'touches nothing in the home, temp root, or engine registry until promoted, then boots into them',
     async () => {
       const root = makeHomeRoot();
       const home = join(root, 'home');
+      // Boot sweeps two places outside the home. Give each something the
+      // sweep removes, so the test sees whether it ran.
+      const tempRoot = join(root, 'temp-root');
+      const staleTemp = join(tempRoot, 'stale-entry');
+      mkdirSync(staleTemp, { recursive: true });
+      const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60_000);
+      utimesSync(staleTemp, twoDaysAgo, twoDaysAgo);
+      const registry = join(root, 'owned-processes');
+      mkdirSync(registry, { mode: 0o700 });
+      const gonePid = spawnSync(process.execPath, ['-e', ''], {
+        windowsHide: true,
+      }).pid;
+      const staleRecord = join(registry, 'engine-journey.json');
+      // Owner gone and no engine birth recorded: the sweep drops the record
+      // without signalling anything.
+      writeFileSync(
+        staleRecord,
+        JSON.stringify({
+          schemaVersion: 1,
+          enginePid: gonePid,
+          engineBirth: null,
+          owner: {
+            pid: gonePid,
+            instanceId: 'journey',
+            bootId: 'journey',
+            birth: null,
+          },
+          command: 'journey',
+          spawnedAt: new Date().toISOString(),
+        }),
+      );
       const core = fork(CORE, [], {
         env: isolatedEnv(home, {
           STATION_SUPERVISOR_IPC: '1',
           STATION_SUPERVISOR_GENERATION: '1',
           // Telemetry writes the home at import when an endpoint is set.
           OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:9',
+          STATION_TEMP_ROOT: tempRoot,
+          STATION_OWNED_PROCESS_REGISTRY: registry,
         }),
         execArgv: [],
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
@@ -268,7 +251,12 @@ describe('a parked core generation', () => {
       // Give any import-time or deferred work time to reach the disk.
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 3_000));
       expect(existsSync(home)).toBe(false);
-      expect(readdirSync(root)).toEqual([]);
+      expect(readdirSync(root).sort()).toEqual([
+        'owned-processes',
+        'temp-root',
+      ]);
+      expect(existsSync(staleTemp)).toBe(true);
+      expect(existsSync(staleRecord)).toBe(true);
 
       // Positive control: the same observation sees the home once promoted.
       core.send({ type: 'promote', listeners: [] });
@@ -281,6 +269,13 @@ describe('a parked core generation', () => {
             : undefined,
         output,
       );
+      await waitFor(
+        'the boot sweeps after promote',
+        BOOT_TIMEOUT_MS,
+        () =>
+          !existsSync(staleTemp) && !existsSync(staleRecord) ? true : undefined,
+        output,
+      );
 
       // Losing the supervisor's channel ends the generation.
       const exited = exitOf(core);
@@ -288,7 +283,8 @@ describe('a parked core generation', () => {
       await expect(exited).resolves.not.toBeUndefined();
       expect(core.exitCode ?? core.signalCode).not.toBeNull();
     },
-    BOOT_TIMEOUT_MS * 2,
+    // Above the sum of its three bounded waits, so a stuck one names itself.
+    BOOT_TIMEOUT_MS * 4,
   );
 });
 
@@ -297,6 +293,56 @@ interface PollStats {
   okAfterHandoff: number;
   errors: Record<string, number>;
   statuses: Record<string, number>;
+  /** Requests whose headers were sent slowly, over TRICKLE_MS. */
+  trickled: number;
+}
+
+const TRICKLE_MS = 2_500;
+const TRICKLE_LINES = 10;
+
+/**
+ * One request whose headers arrive a line at a time over TRICKLE_MS, as a
+ * slow client sends them. Resolves with its status line, or rejects.
+ */
+function trickledRequest(port: number): Promise<string> {
+  return new Promise((resolveRequest, reject) => {
+    const socket = createConnection(port, '127.0.0.1');
+    let reply = '';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    socket.setEncoding('utf8');
+    socket.setTimeout(REQUEST_TIMEOUT_MS, () =>
+      socket.destroy(Object.assign(new Error('timeout'), { code: 'TIMEOUT' })),
+    );
+    socket.on('data', (chunk: string) => {
+      reply += chunk;
+    });
+    socket.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    socket.on('close', () => {
+      clearTimeout(timer);
+      resolveRequest(reply.split('\r\n')[0] ?? '');
+    });
+    const lines = [
+      'GET /api/system/liveness HTTP/1.1',
+      'Host: 127.0.0.1',
+      ...Array.from({ length: TRICKLE_LINES - 3 }, (_, i) => `X-Slow-${i}: 1`),
+      'Connection: close',
+    ];
+    let index = 0;
+    const next = () => {
+      const line = lines[index];
+      index += 1;
+      if (line === undefined) {
+        socket.write('\r\n');
+        return;
+      }
+      socket.write(`${line}\r\n`);
+      timer = setTimeout(next, TRICKLE_MS / TRICKLE_LINES);
+    };
+    socket.once('connect', next);
+  });
 }
 
 /**
@@ -311,6 +357,7 @@ function startPoller(port: number) {
     okAfterHandoff: 0,
     errors: {},
     statuses: {},
+    trickled: 0,
   };
   let running = true;
   let handedOff = false;
@@ -358,6 +405,21 @@ function startPoller(port: number) {
   ].map(async (agent) => {
     while (running) await request(agent);
   });
+  // A new slow-header request every 500ms, so some are always partway
+  // through their headers whenever the drain begins.
+  const trickles: Promise<void>[] = [];
+  const launcher = setInterval(() => {
+    trickles.push(
+      trickledRequest(port).then(
+        (status) => {
+          if (status === 'HTTP/1.1 200 OK') stats.trickled += 1;
+          else count(stats.errors, `trickled:${status || 'no-response'}`);
+        },
+        (error: NodeJS.ErrnoException) =>
+          count(stats.errors, `trickled:${error.code ?? error.message}`),
+      ),
+    );
+  }, 500);
   return {
     stats,
     markHandedOff() {
@@ -365,7 +427,8 @@ function startPoller(port: number) {
     },
     async stop() {
       running = false;
-      await Promise.all(loops);
+      clearInterval(launcher);
+      await Promise.all([...loops, ...trickles]);
       keepAlive.destroy();
       return stats;
     },
@@ -495,6 +558,8 @@ describe('a supervised core handoff', () => {
         );
         const stats = await poller.stop();
         expect(stats.errors, output()).toEqual({});
+        // Slow-header requests were in flight across the drain and finished.
+        expect(stats.trickled).toBeGreaterThanOrEqual(10);
         expect(Object.keys(stats.statuses)).toEqual(['200']);
 
         const second = await status();
@@ -537,5 +602,184 @@ describe('a supervised core handoff', () => {
       await expect(exited).resolves.toBe(0);
     },
     BOOT_TIMEOUT_MS * 4,
+  );
+});
+
+// The supervisor from source, with its fixture core, beside a real home.
+
+const SUPERVISOR_MAIN = join(repoRoot, 'packages/supervisor/src/main.ts');
+const FAKE_CORE = join(
+  repoRoot,
+  'packages/supervisor/src/__tests__/__fixtures__/fake-core.mjs',
+);
+const SOURCE_INSTANCE = 'home';
+const SERVING_TIMEOUT_MS = scaleLivenessMs(30_000);
+/** Longer than the supervisor's 5-second lock and socket self-check. */
+const SELF_CHECK_WAIT_MS = 6_500;
+
+const sourceRoots: string[] = [];
+const sourceChildren: ChildProcess[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    sourceChildren.splice(0).map(
+      (child) =>
+        new Promise<void>((resolveExit) => {
+          if (child.exitCode !== null || child.signalCode !== null)
+            return resolveExit();
+          const killer = setTimeout(() => child.kill('SIGKILL'), 10_000);
+          child.once('exit', () => {
+            clearTimeout(killer);
+            resolveExit();
+          });
+          child.kill('SIGTERM');
+        }),
+    ),
+  );
+  for (const root of sourceRoots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+async function freeLoopbackPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolveListen) =>
+    server.listen(0, '127.0.0.1', resolveListen),
+  );
+  const address = server.address();
+  await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+  if (typeof address !== 'object' || !address) throw new Error('no port');
+  return address.port;
+}
+
+async function startSourceSupervisor(home: string) {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith('STATION_')) env[key] = value;
+  }
+  const child = spawn(
+    process.execPath,
+    [
+      SUPERVISOR_MAIN,
+      '--entry',
+      FAKE_CORE,
+      '--home',
+      home,
+      '--instance',
+      SOURCE_INSTANCE,
+    ],
+    {
+      env: { ...env, FAKE_CORE_PORT: String(await freeLoopbackPort()) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  sourceChildren.push(child);
+  let output = '';
+  child.stdout?.on('data', (chunk: Buffer) => {
+    output += chunk.toString('utf8');
+  });
+  child.stderr?.on('data', (chunk: Buffer) => {
+    output += chunk.toString('utf8');
+  });
+  const endpoint = resolveControlEndpoint({ home, instance: SOURCE_INSTANCE });
+  const status = async (): Promise<SupervisorStatus> => {
+    const connection = await connectControl(endpoint.path, endpoint.tokenPath);
+    try {
+      const reply = await connection.request({ type: 'status', id: 's' }, [
+        'status.result',
+      ]);
+      if (reply.type !== 'status.result')
+        throw new Error(JSON.stringify(reply));
+      return reply.status;
+    } finally {
+      connection.close();
+    }
+  };
+  const deadline = Date.now() + SERVING_TIMEOUT_MS;
+  for (;;) {
+    if (child.exitCode !== null) {
+      throw new Error(`supervisor exited early:\n${output}`);
+    }
+    try {
+      if ((await status()).state === 'serving') break;
+    } catch {
+      // Not listening yet.
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`supervisor never served:\n${output}`);
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+  }
+  return { child, endpoint, status, output: () => output };
+}
+
+function makeSourceRoot(): string {
+  // Short, so the control socket path fits beside the home on macOS.
+  const root = mkdtempSync(join(tmpdir(), 'svh-'));
+  sourceRoots.push(root);
+  return root;
+}
+
+describe('the supervisor beside a Station home', () => {
+  it(
+    'leaves a fresh home untouched, so the schema gate admits it as fresh',
+    async () => {
+      const home = join(makeSourceRoot(), 'home');
+      const supervisor = await startSourceSupervisor(home);
+      expect(existsSync(home)).toBe(false);
+      expect(stationHomeSchemaNeedsReset(home)).toBe(false);
+      ensureStationHomeSchemaSync(home);
+      expect(readStationHomeSchemaVersion(home)).toBe(2);
+      expect((await supervisor.status()).state).toBe('serving');
+    },
+    SERVING_TIMEOUT_MS * 2,
+  );
+
+  it(
+    'keeps its control socket, token, and lock through a home schema migration',
+    async () => {
+      const home = join(makeSourceRoot(), 'home');
+      const supervisor = await startSourceSupervisor(home);
+      ensureStationHomeSchemaSync(home);
+      writeFileSync(join(home, 'data.json'), '{}');
+      const runDir = dirname(supervisor.endpoint.tokenPath);
+      const token = readFileSync(supervisor.endpoint.tokenPath, 'utf8');
+      const locks = readdirSync(runDir).filter((name) =>
+        name.startsWith(`instance-${SOURCE_INSTANCE}.lock.`),
+      );
+      expect(locks.length).toBeGreaterThan(0);
+
+      // A real migration through the gate: copy aside, migrate, replace.
+      ensureStationHomeSchemaSync(home, {
+        targetVersion: 3,
+        migrations: [
+          {
+            fromVersion: 2,
+            migrate: (staged) => writeFileSync(join(staged, 'migrated'), '1'),
+          },
+        ],
+      });
+      expect(readStationHomeSchemaVersion(home)).toBe(3);
+      expect(existsSync(join(home, 'migrated'))).toBe(true);
+      expect(existsSync(join(home, 'data.json'))).toBe(true);
+
+      const pid = supervisor.child.pid;
+      expect(await supervisor.status()).toMatchObject({
+        state: 'serving',
+        supervisor: { pid },
+      });
+      expect(readFileSync(supervisor.endpoint.tokenPath, 'utf8')).toBe(token);
+      for (const lock of locks)
+        expect(existsSync(join(runDir, lock))).toBe(true);
+      // Past a self-check: it still holds its lock and socket, and serves.
+      await new Promise((resolveDelay) =>
+        setTimeout(resolveDelay, SELF_CHECK_WAIT_MS),
+      );
+      expect(supervisor.child.exitCode).toBeNull();
+      expect((await supervisor.status()).state).toBe('serving');
+      expect(supervisor.output()).not.toMatch(/re-binding|superseded/);
+    },
+    SERVING_TIMEOUT_MS * 2 + SELF_CHECK_WAIT_MS,
   );
 });
