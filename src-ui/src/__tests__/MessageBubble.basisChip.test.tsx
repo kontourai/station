@@ -341,10 +341,39 @@ describe('MessageBubble answer Basis chip', () => {
       mocks.realLauncher = false;
     });
 
-    it('opens Basis in front, in the launcher dialog, when no chat host owns the session', async () => {
-      // Phones mount no session-inventory host today, so the occurrence
-      // handoff is refused. The chip must still open this answer's Basis,
-      // not do nothing.
+    it("opens through the phone dock's one inventory host when it is registered", async () => {
+      // The dock mounts exactly one host per chat on a phone too (its
+      // full-height sheet); the chip's occurrence goes to that host, never to
+      // the launcher's own dialog beside it.
+      mocks.isMobile = true;
+      mocks.realLauncher = true;
+      const unregister = registerSessionInventoryHost('phone-dock-host', {
+        authorityKey: mocks.authority.authorityKey,
+        chatStoreId: CHAT_STORE,
+        executionId: SESSION,
+      });
+      try {
+        renderTranscript([answer('turn-7')]);
+        fireEvent.click(await screen.findByRole('button', { name: CHIP }));
+
+        const occurrence = renderHook(() =>
+          useSessionInventoryOccurrence('phone-dock-host'),
+        ).result.current;
+        expect(occurrence?.requestedScope).toEqual({
+          kind: 'current-answer',
+          sessionId: SESSION,
+          turnId: 'turn-7',
+        });
+        expect(screen.queryByRole('dialog', { name: 'Basis' })).toBeNull();
+      } finally {
+        unregister();
+      }
+    });
+
+    it('falls back to the launcher dialog, in front, while no chat host is registered', async () => {
+      // Before the dock's host has registered (or where no dock hosts this
+      // chat), the handoff is refused. The chip must still open this
+      // answer's Basis, not do nothing.
       mocks.isMobile = true;
       mocks.realLauncher = true;
       renderTranscript([answer('turn-7')]);
