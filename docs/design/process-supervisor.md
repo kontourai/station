@@ -106,19 +106,27 @@ product decisions.
   3. When N has exited, `promote` N+1 and send it each held handle with
      `listener.adopt`. N+1 boots and reports `ready` with its boot id.
   4. Commit, once N+1 has stayed up for a short grace after `ready`. If N+1
-     exits before then or misses its readiness timeout, the supervisor kills
+     exits before then or misses its readiness timeout, the supervisor ends
      it, starts N's entry again as a new generation, and reports
-     `rolled-back`.
+     `rolled-back`. A promoted N+1 may already be serving the held
+     listeners, so it is drained like N (without the voice extension) and
+     signalled only after the drain deadline; a trial that never left
+     `parked` is signalled at once.
 
   Clients wait during the swap but are not refused. Draining sets
   `Connection: close` on every response, so busy keep-alive connections
-  close after their response and reconnect into the backlog. Connections
-  still idle after a short grace are then closed with
-  `closeIdleConnections()`. Closing idle connections immediately, which
-  `http.Server.close()` does on Node 19 and later, resets keep-alive clients
-  whose next request is already in flight: the fixture saw every
-  connection reset on every handoff until the grace was added. SSE and
-  terminal clients reconnect and resume.
+  close after their response and reconnect into the backlog, and ends
+  server-sent event streams cleanly so their clients reconnect too. After a
+  short grace, connections with no request in progress are closed with
+  `closeIdleConnections()`, repeatedly as more go idle; a connection whose
+  next request has started arriving, even partially, is left to finish.
+  Closing idle connections immediately, which `http.Server.close()` does on
+  Node 19 and later, resets keep-alive clients whose next request is
+  already in flight: the fixture saw every connection reset on every
+  handoff until the grace was added. The generation shuts down once every
+  HTTP connection has closed, or when the drain deadline less a margin
+  passes; a request still running then is cut off when it exits. Terminal
+  clients reconnect and resume.
 
   On the core server's side, a generation started with
   `STATION_SUPERVISOR_IPC=1` parks before its temp and orphan sweeps, the
@@ -130,8 +138,12 @@ product decisions.
   `listener.bound`. A later generation takes its base port from the held API
   socket, so `PORT=0` keeps one block across generations. `ready` carries a
   boot id generated per generation; `STATION_BOOT_ID` is inherited unchanged
-  by every generation. Draining reports live voice calls, waits for them to
-  end, then runs the ordinary graceful shutdown. Terminal and engine
+  by every generation. Draining reports live voice calls, waits for HTTP
+  connections as above and for voice calls to end, then runs the ordinary
+  graceful shutdown. A supervised generation given SIGTERM drains the same
+  way within the supervisor's kill grace, without waiting for voice calls;
+  a second signal shuts it down at once. It does not arm the older parent
+  watchdog: the closed IPC channel is how it learns its supervisor is gone. Terminal and engine
   processes it starts do not inherit the supervisor's generation variables.
 
   Overlapping generations, where N+1 boots while N still serves, need a
@@ -152,7 +164,7 @@ product decisions.
   One supervisor runs per home and instance, enforced by lock epochs and
   process identity. The argument is written out in
   [`instance-lock.ts`](../../packages/supervisor/src/instance-lock.ts).
-  - Lock files are `<home>/run/instance-<instance>.lock.<n>`, with n written
+  - Lock files are `<run>/instance-<instance>.lock.<n>`, with n written
     without leading zeros, created only with `wx`, so each epoch n has
     exactly one winner. The highest n is the current lock. Its content is
     the holder's pid, a random nonce, its process start fingerprint, its
@@ -261,21 +273,26 @@ product decisions.
 - **Registry.** It holds the home's single-owner claim and the
   `instances.json` record. Because it owns every engine, the boot sweep only
   matters after a supervisor crash.
-- **Control channel.** A versioned protocol on a local socket in the Station
-  home (mode 0600 on Unix), or a named pipe on Windows. The core server, the CLI, and
+- **Control channel.** A versioned protocol on a local socket beside the
+  Station home (mode 0600 on Unix), or a named pipe on Windows. The core server, the CLI, and
   the tray are its clients.
-  - The socket is `<home>/run/supervisor-<instance>.sock`. The supervisor
-    creates `<home>/run` before the first generation boots, so the home
-    schema gate treats a real `run` directory as bootstrap scaffolding: a
-    fresh supervised home bootstraps instead of asking for a reset. When that path
+  - The supervisor's run directory, `<run>` above, is
+    `<parent>/.<home name>.station-supervisor`, a sibling of the home and
+    never inside it. A home schema migration copies the home aside and
+    replaces it, which would move a live lock and socket out from under the
+    supervisor (a copy skips the socket). The home's parent is already
+    writable wherever Station runs, because the schema gate keeps its
+    mutation lock there. A fresh home therefore stays empty until the first
+    generation's schema gate creates it.
+  - The socket is `<run>/supervisor-<instance>.sock`. When that path
     exceeds the platform's socket path limit (104 bytes on macOS), a hashed
     path in a private temporary directory is used instead. Clients derive the
     same path.
   - On Windows the pipe is `\\.\pipe\station-supervisor-<hash>`, named from
     a hash of the home and instance.
   - Every connection starts with `hello`, carrying the protocol version and
-    the token from `<home>/run/supervisor-<instance>.token` (mode 0600 on
-    Unix; Windows relies on the home directory's ACL). A different major
+    the token from `<run>/supervisor-<instance>.token` (mode 0600 on
+    Unix; Windows relies on the parent directory's ACL). A different major
     version or a wrong token is refused, and the supervisor disconnects a
     refused client promptly so it cannot hold a connection slot.
   - The supervisor creates its run directories at 0700 and refuses an
@@ -519,11 +536,18 @@ verification, and fault injection.
 - **Phase 1 evidence:** the package's real-process tests run a fixture core
   server that speaks the IPC protocol. Under keep-alive HTTP load and an SSE
   client, repeated handoffs, rollbacks, and crash restarts produce no refused
-  connection, and handoffs produce no reset connection, on one port
-  throughout. A journey of the built supervisor and core server bundles
+  connection, and the tested handoffs and rollbacks reset no connection, on
+  one port throughout. A journey of the built supervisor and core server
+  bundles
   ([`supervised-core.real.test.ts`](../../src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts))
-  hands generation 1 to 2 under keep-alive and fresh-connection HTTP load
-  with no refused or reset connection, on the same four ports, and checks the
-  terminal, voice, and consent listeners on the new generation. It also
-  checks that a parked generation leaves the home untouched. Neither covers
-  Windows, nor a drain held open by a live voice call.
+  hands generation 1 to 2 under keep-alive, fresh-connection, and
+  slow-header HTTP load (requests whose headers are still arriving when
+  generation 1 drains) with no refused or reset connection, on the same four
+  ports, and checks the terminal, voice, and consent listeners on the new
+  generation. It also checks that a parked generation leaves the home, the
+  temp root, and the engine registry untouched, and that the supervisor
+  keeps its socket, token, and lock through a home schema migration. These
+  are the cases tested, not a guarantee for every request: one still running
+  at the drain bound is cut off. None covers Windows, a drain held open by a
+  live voice call, or an event stream on the real core server (its streams
+  need credentials; ending them is tested against a plain server).
