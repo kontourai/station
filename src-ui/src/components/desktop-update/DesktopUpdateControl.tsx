@@ -19,7 +19,7 @@ const loadRestartDialog = () =>
   }));
 
 /** A determinate ring for a known percent, an indeterminate spin otherwise. */
-export function ProgressRing({ percent }: { percent: number | null }) {
+function ProgressRing({ percent }: { percent: number | null }) {
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
   return (
@@ -51,7 +51,7 @@ export function ProgressRing({ percent }: { percent: number | null }) {
  * The control itself, for every visible state. Collapsed (icon-only) keeps
  * the same accessible name and puts the label in the tooltip.
  */
-export function DesktopUpdateControlButton({
+function DesktopUpdateControlButton({
   view,
   collapsed = false,
   onDownload,

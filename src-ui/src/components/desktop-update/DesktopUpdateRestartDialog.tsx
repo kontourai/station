@@ -100,7 +100,7 @@ function TurnsCopy({ turns }: { turns: TurnsRead }) {
 }
 
 /** Presentation only; {@link DesktopUpdateRestartDialog} supplies the facts. */
-export function DesktopUpdateRestartDialogView({
+function DesktopUpdateRestartDialogView({
   version,
   currentVersion,
   impact,
