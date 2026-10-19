@@ -447,6 +447,7 @@ const offPublishers = {
 async function renderPairedDisclosure(options: {
   endpointConfigured: boolean;
   writeError?: string;
+  dnt?: boolean;
 }) {
   harness = createHarness();
   installFetchDouble(harness);
@@ -476,7 +477,12 @@ async function renderPairedDisclosure(options: {
         ...DISCLOSURE_BODY,
         endpointConfigured: options.endpointConfigured,
         telemetryEnabled: false,
-        publishers: offPublishers,
+        publishers: options.dnt
+          ? {
+              kontour: { tier: 'off', reason: 'DNT', userChoice: 'lite' },
+              operator: { tier: 'off', reason: 'DNT', userChoice: 'full' },
+            }
+          : offPublishers,
       }),
     );
   });
@@ -485,26 +491,36 @@ async function renderPairedDisclosure(options: {
 }
 
 describe('paired-device disclosure decisions', () => {
-  it('does not nag when both effective publishers are Off and no endpoint exists', async () => {
-    const { view } = await renderPairedDisclosure({
-      endpointConfigured: false,
-    });
-    await waitFor(() =>
-      expect(
-        harness.recoveryClient?.getQueryData(
-          recoveryDisclosureKey(
-            harness.scopes.at(-1)!.apiBase,
-            harness.scopes.at(-1)!.identityKey,
+  it.each([false, true])(
+    'does not nag when both effective publishers are Off and no endpoint exists (DNT: %s)',
+    async (dnt) => {
+      const { view } = await renderPairedDisclosure({
+        endpointConfigured: false,
+        dnt,
+      });
+      await waitFor(() =>
+        expect(
+          harness.recoveryClient?.getQueryData(
+            recoveryDisclosureKey(
+              harness.scopes.at(-1)!.apiBase,
+              harness.scopes.at(-1)!.identityKey,
+            ),
           ),
-        ),
-      ).toMatchObject({ publishers: offPublishers }),
-    );
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(harness.fetchLog.filter((entry) => entry.method !== 'GET')).toEqual(
-      [],
-    );
-    view.unmount();
-  });
+        ).toMatchObject({
+          endpointConfigured: false,
+          publishers: {
+            kontour: { tier: 'off', reason: dnt ? 'DNT' : 'user' },
+            operator: { tier: 'off', reason: dnt ? 'DNT' : 'user' },
+          },
+        }),
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(
+        harness.fetchLog.filter((entry) => entry.method !== 'GET'),
+      ).toEqual([]);
+      view.unmount();
+    },
+  );
 
   it('keeps Off and remembers a non-acknowledging decision when a standard device cannot acknowledge', async () => {
     const { view, home } = await renderPairedDisclosure({
