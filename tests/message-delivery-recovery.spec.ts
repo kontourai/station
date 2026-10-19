@@ -474,9 +474,14 @@ test.describe('A send whose app closed before Station answered', () => {
             ),
           ).toBe(true);
           const name = `server-inbox-${viewport.width}-${theme}.png`;
-          const path = testInfo.outputPath(name);
-          await observer.screenshot({ path, animations: 'disabled' });
-          await testInfo.attach(name, { path, contentType: 'image/png' });
+          await observer.screenshot({
+            path: testInfo.outputPath(name),
+            animations: 'disabled',
+          });
+          await testInfo.attach(name, {
+            path: testInfo.outputPath(name),
+            contentType: 'image/png',
+          });
         }
       }
       if (initialViewport) await observer.setViewportSize(initialViewport);
