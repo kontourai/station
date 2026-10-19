@@ -546,7 +546,7 @@ describe('systemRuntimeRequests', () => {
         expected,
       );
       expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toBe(
-        'http://custom.test/api/system/core-update/service-update',
+        'http://custom.test/api/system/core-update/service-update?staged=1',
       );
     });
 
@@ -771,7 +771,7 @@ describe('systemRuntimeRequests', () => {
       await requestCoreUpdateStatus('http://custom.test', controller.signal);
       expect(fetch).toHaveBeenNthCalledWith(
         1,
-        'http://custom.test/api/system/core-update',
+        'http://custom.test/api/system/core-update?staged=1',
         {
           signal: controller.signal,
           headers: { 'X-Station-Client-Protocol': '2' },
@@ -1223,6 +1223,77 @@ describe('systemRuntimeRequests', () => {
       expect(caught).toBeInstanceOf(Error);
       expect(caught).not.toBeInstanceOf(StationHttpError);
       expect((caught as Error).message).toBe('no data yet');
+    });
+  });
+});
+
+describe('the server update state (#3851)', () => {
+  it('a pushed state is written into its server’s query, parsed', async () => {
+    const { QueryClient } = await import('@tanstack/react-query');
+    const { applyServerUpdateStateEvent, serverUpdateStateQueryKey } =
+      await import('../query-domains/systemRuntime');
+    const client = new QueryClient();
+    applyServerUpdateStateEvent(client, 'https://a.test', {
+      supported: true,
+      currentVersion: '1.0.0',
+      availability: null,
+      progress: {
+        state: 'staging',
+        requestId: 'r-1',
+        intent: 'stage',
+        stagePhase: 'downloading',
+        downloadedBytes: 5,
+        totalBytes: 10,
+      },
+      downloadPolicy: 'never',
+      autoDownloadAt: null,
+      applyWhenIdle: null,
+    });
+    expect(
+      client.getQueryData(serverUpdateStateQueryKey('https://a.test')),
+    ).toMatchObject({
+      supported: true,
+      downloadPolicy: 'never',
+      progress: { state: 'staging', downloadedBytes: 5, totalBytes: 10 },
+    });
+    expect(
+      client.getQueryData(serverUpdateStateQueryKey('https://b.test')),
+    ).toBeUndefined();
+    // Unreadable reads as unsupported, which offers nothing.
+    applyServerUpdateStateEvent(client, 'https://a.test', { supported: 'yes' });
+    expect(
+      client.getQueryData(serverUpdateStateQueryKey('https://a.test')),
+    ).toMatchObject({ supported: false });
+  });
+
+  it('progress parsing keeps staged and drops byte counts that are not progress', async () => {
+    const { parseServiceUpdateProgress } = await import(
+      '../system-update-status-parser'
+    );
+    expect(
+      parseServiceUpdateProgress({
+        state: 'staged',
+        requestId: 'r',
+        version: '1.1.0',
+        stagedAt: '2026-10-19T10:00:00Z',
+      }),
+    ).toEqual({
+      state: 'staged',
+      requestId: 'r',
+      version: '1.1.0',
+      stagedAt: '2026-10-19T10:00:00Z',
+    });
+    expect(
+      parseServiceUpdateProgress({
+        state: 'staging',
+        requestId: 'r',
+        stagePhase: 'downloading',
+        downloadedBytes: 11,
+        totalBytes: 10,
+      }),
+    ).toEqual({ state: 'staging', requestId: 'r', stagePhase: 'downloading' });
+    expect(parseServiceUpdateProgress({ state: 'staged' })).toEqual({
+      state: 'unavailable',
     });
   });
 });

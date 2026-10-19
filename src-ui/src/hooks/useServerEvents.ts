@@ -4,7 +4,7 @@
  */
 
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { fetchSSE } from '@kontourai/station-sdk';
+import { applyServerUpdateStateEvent, fetchSSE } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import {
@@ -297,6 +297,20 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
               .catch(() => {});
           } catch {
             // A malformed scoped notification has no cache effect.
+          }
+          return;
+        }
+        if (event === SERVER_EVENTS.SERVER_UPDATE_CHANGED) {
+          // #3851: the payload IS the server's update state; written straight
+          // into its query, so clients follow a download without polling.
+          try {
+            applyServerUpdateStateEvent(
+              queryClient,
+              apiBase,
+              JSON.parse(message.data),
+            );
+          } catch {
+            // A malformed payload leaves the last known state.
           }
           return;
         }
