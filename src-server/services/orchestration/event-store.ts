@@ -1994,6 +1994,9 @@ export class EventStore {
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
   private readonly db: InstanceType<typeof DatabaseSync>;
+  private appendEventInsert?: ReturnType<EventStore['db']['prepare']>;
+  private appendEventInsertOrIgnore?: ReturnType<EventStore['db']['prepare']>;
+  private appendEventHighWaterUpdate?: ReturnType<EventStore['db']['prepare']>;
   /** Persisted with this store so issued cursors survive a Station restart. */
   private readonly declaredOutputCursorKey: Buffer;
   private readonly sessionInventoryCursorKey: Buffer;
@@ -3717,26 +3720,28 @@ export class EventStore {
       workItemAdmission = this.takeSessionWorkItemAdmission(event, observedAt);
       nextSequence = this.nextSequence(event.threadId);
       globalSequence = this.nextGlobalSequence();
-      const insert = this.db
-        .prepare(
-          `${declaredOutputs.length || event.method === 'tool.completed' ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
+      const insertSlot =
+        declaredOutputs.length || event.method === 'tool.completed'
+          ? 'appendEventInsertOrIgnore'
+          : 'appendEventInsert';
+      const insert = (this[insertSlot] ??= this.db.prepare(
+        `${declaredOutputs.length || event.method === 'tool.completed' ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
           (id, provider, thread_id, turn_id, method, request_id, session_state, payload, created_at, observed_at, sequence, global_sequence)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          event.eventId,
-          event.provider,
-          event.threadId,
-          event.turnId ?? null,
-          event.method,
-          requestId,
-          event.sessionState ?? null,
-          serializedPayload,
-          event.createdAt,
-          observedAt,
-          nextSequence,
-          globalSequence,
-        ) as { changes: number };
+      )).run(
+        event.eventId,
+        event.provider,
+        event.threadId,
+        event.turnId ?? null,
+        event.method,
+        requestId,
+        event.sessionState ?? null,
+        serializedPayload,
+        event.createdAt,
+        observedAt,
+        nextSequence,
+        globalSequence,
+      ) as { changes: number };
       if (insert.changes === 0) {
         // Exact terminal event replay is idempotent only when every opaque
         // handle was already consumed by that same event. A different event
@@ -3822,11 +3827,9 @@ export class EventStore {
         this.db.exec('RELEASE SAVEPOINT append_event_history');
         replayedSequence = Number(existing.sequence);
       } else {
-        this.db
-          .prepare(
-            'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
-          )
-          .run(globalSequence);
+        (this.appendEventHighWaterUpdate ??= this.db.prepare(
+          'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
+        )).run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
