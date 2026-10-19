@@ -7,6 +7,7 @@ import {
   type AuthenticatedE2ERequest,
   createAuthenticatedE2ERequest,
 } from './helpers/authenticated-request';
+import { resolveE2EApiBase } from './helpers/e2e-target';
 import { test } from './helpers/fixture-audit';
 import {
   closeFixtureServer,
@@ -295,8 +296,8 @@ test.describe('A send whose app closed before Station answered', () => {
         },
       );
       const home = process.env.STATION_E2E_HOME;
-      const apiBase = process.env.PW_API_BASE_URL;
-      if (process.env.STATION_E2E_RUNNER !== '1' || !home || !apiBase)
+      const apiBase = resolveE2EApiBase();
+      if (process.env.STATION_E2E_RUNNER !== '1' || !home)
         throw new Error('The isolated E2E runner must own this Station home.');
       const registryDir = join(process.cwd(), '.station', 'instances');
       const instances = readdirSync(registryDir)
