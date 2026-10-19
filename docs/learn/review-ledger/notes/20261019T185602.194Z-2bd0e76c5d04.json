@@ -1,0 +1,7 @@
+{
+  "revision": "338e04ed595cf445134a53faefe304bcecfeae64",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed the Turn navigation subsection after the review round: Escape dismissal of hover and focus previews (TranscriptTurnRail onKeyDown and window listener), the polite status announcement from Previous/Next (ChatMessageList stepToTurn), and 'Loaded turn N of M' while hasOlderMessages is set (turnPosition). Pinned by ChatMessageList.turnRail.test.tsx and transcript-turn-rail.browser.test.tsx, each fault-injected.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}
