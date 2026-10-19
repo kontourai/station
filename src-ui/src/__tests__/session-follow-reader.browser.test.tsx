@@ -591,12 +591,14 @@ test('DOM growth keeps follow pinned at the next microtask before ResizeObserver
     await page.waitForFunction(
       () => document.querySelector('#scroll')?.scrollTop === 1700,
     );
-    const gap = await page.locator('#content').evaluate(async (content) => {
-      content.style.height = `${content.offsetHeight + 20}px`;
-      await Promise.resolve();
-      const scroll = document.querySelector('#scroll')!;
-      return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
-    });
+    const gap = await page
+      .locator('#content')
+      .evaluate(async (content: HTMLElement) => {
+        content.style.height = `${content.offsetHeight + 20}px`;
+        await Promise.resolve();
+        const scroll = document.querySelector('#scroll')!;
+        return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+      });
     expect(gap).toBe(0);
     expect(
       await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
