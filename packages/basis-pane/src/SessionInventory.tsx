@@ -171,7 +171,7 @@ export function SessionInventory({
         <div>
           <p className="session-inventory__eyebrow">Session context</p>
           <h2 id={`${occurrenceId}-session-inventory-heading`} tabIndex={-1}>
-            Session inventory
+            Chat inventory
           </h2>
           <p className="session-inventory__header-copy">
             A navigable record of the context Station is authorized to show.

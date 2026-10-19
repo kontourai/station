@@ -97,7 +97,7 @@ export function BasisWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
       {scope.kind === 'session-inventory' ? (
         <Suspense
           fallback={
-            <SkeletonBlock count={3} label="Loading Session inventory" />
+            <SkeletonBlock count={3} label="Loading Chat inventory" />
           }
         >
           <LazyConnectedSessionInventory

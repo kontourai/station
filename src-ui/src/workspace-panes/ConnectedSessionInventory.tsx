@@ -86,7 +86,7 @@ export function ConnectedSessionInventory({
   if (!requestScope)
     return (
       <section role="alert">
-        Session inventory is unavailable until this Station is authorized.
+        Chat inventory is unavailable until this Station is authorized.
       </section>
     );
   return (
@@ -232,7 +232,7 @@ function ConnectedSessionInventorySurface({
   if (unavailable) {
     return (
       <section role="alert">
-        Session inventory is unavailable.
+        Chat inventory is unavailable.
         {pageFailed ? (
           <button type="button" onClick={() => void page.refetch()}>
             Retry page
@@ -246,7 +246,7 @@ function ConnectedSessionInventorySurface({
     );
   }
   if (inventory.isLoading || !model)
-    return <SkeletonBlock count={4} label="Loading Session inventory" />;
+    return <SkeletonBlock count={4} label="Loading Chat inventory" />;
   return (
     <>
       {inventory.error ? (

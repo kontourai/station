@@ -593,7 +593,7 @@ describe('ConnectedSessionInventory', () => {
     );
     expect(screen.queryByText('Grounded')).toBeNull();
     expect(screen.getByText('What this session contains')).toBeTruthy();
-    expect(screen.getByText('Session inventory')).toBeTruthy();
+    expect(screen.getByText('Chat inventory')).toBeTruthy();
   });
 });
 
