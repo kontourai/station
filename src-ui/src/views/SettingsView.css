@@ -1101,6 +1101,7 @@
     .page-row__aside {
     grid-column: 2;
     grid-row: 2;
+    min-height: 44px;
   }
   .settings__range-row {
     flex-wrap: wrap;
