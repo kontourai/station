@@ -16,11 +16,14 @@ export function ConnectedAnswerBasisAffordance({
   chatStoreId,
   sessionId,
   turnId,
+  label = 'Basis for this answer',
 }: {
   projectSlug?: string;
   chatStoreId?: string;
   sessionId: string;
   turnId: string;
+  /** Accessible name naming which answer this chip opens; starts "Basis". */
+  label?: string;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [pendingTrigger, setPendingTrigger] = useState<HTMLElement | null>(
@@ -99,6 +102,7 @@ export function ConnectedAnswerBasisAffordance({
         type="button"
         className="answer-basis-chip"
         title="Open the basis for this answer"
+        aria-label={label}
         aria-busy={pendingTrigger ? true : undefined}
         onClick={(event) => {
           const trigger = event.currentTarget;

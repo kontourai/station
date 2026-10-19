@@ -67,7 +67,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
       'project-route-slug',
       expect.objectContaining({ enabled: false }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Basis' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Basis/ }));
     await waitFor(() =>
       expect(mocks.useProjectQuery).toHaveBeenLastCalledWith(
         'project-route-slug',
@@ -110,7 +110,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
       'project-route-slug',
       expect.objectContaining({ enabled: false }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Basis' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Basis/ }));
     await waitFor(() =>
       expect(mocks.useProjectQuery).toHaveBeenLastCalledWith(
         'project-route-slug',

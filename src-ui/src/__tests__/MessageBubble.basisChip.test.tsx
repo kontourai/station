@@ -103,6 +103,8 @@ vi.mock('../workspace-panes/BasisPaneFallbackContent', () => ({
 const { MessageBubble } = await import('../components/chat/MessageBubble');
 
 const SESSION = 'agent:1792425046978';
+/** Every chip's accessible name starts with its visible text. */
+const CHIP = /^Basis for the answer/;
 const CHAT_STORE = 'agent:1792425046978';
 
 const envelope = {
@@ -201,7 +203,7 @@ describe('MessageBubble answer Basis chip', () => {
   it('puts Basis on an eligible settled answer and opens that exact answer', async () => {
     const { container } = renderTranscript([answer('turn-7')]);
 
-    const chip = await screen.findByRole('button', { name: 'Basis' });
+    const chip = await screen.findByRole('button', { name: CHIP });
     // In the answer's own footer, beside (never inside) the hover-revealed
     // action row: no menu or dialog to open first (#926 amendment).
     expect(chip.parentElement?.classList.contains('turn-footer__bar')).toBe(
@@ -219,6 +221,23 @@ describe('MessageBubble answer Basis chip', () => {
     expectOpenedBasisFor('turn-7', chip);
   });
 
+  it('names each chip for its own answer, and each opens its own turn', async () => {
+    renderTranscript([
+      answer('turn-a', { content: 'First answer about deploys.' }),
+      answer('turn-b', { content: 'Second answer about tests.' }),
+    ]);
+
+    const first = await screen.findByRole('button', {
+      name: 'Basis for the answer “First answer about deploys.”',
+    });
+    const second = screen.getByRole('button', {
+      name: 'Basis for the answer “Second answer about tests.”',
+    });
+    expect(first.textContent).toBe('Basis');
+    fireEvent.click(second);
+    expectOpenedBasisFor('turn-b', second);
+  });
+
   it('hands the exact answer scope to the chat host that owns the session', async () => {
     const unregister = registerSessionInventoryHost('chat-host', {
       authorityKey: mocks.authority.authorityKey,
@@ -227,7 +246,7 @@ describe('MessageBubble answer Basis chip', () => {
     });
     try {
       renderTranscript([answer('turn-7')]);
-      fireEvent.click(await screen.findByRole('button', { name: 'Basis' }));
+      fireEvent.click(await screen.findByRole('button', { name: CHIP }));
 
       const occurrence = renderHook(() =>
         useSessionInventoryOccurrence('chat-host'),
@@ -245,7 +264,7 @@ describe('MessageBubble answer Basis chip', () => {
 
   it('is the only Basis entry: the provenance dialog no longer repeats it', async () => {
     renderTranscript([answer('turn-7')]);
-    await screen.findByRole('button', { name: 'Basis' });
+    await screen.findByRole('button', { name: CHIP });
 
     fireEvent.click(
       await screen.findByRole('button', { name: 'More answer actions' }),
@@ -286,7 +305,7 @@ describe('MessageBubble answer Basis chip', () => {
     it.each(ineligible)('%s', async (_label, row) => {
       renderTranscript([row, answer('turn-ok')]);
 
-      const chips = await screen.findAllByRole('button', { name: 'Basis' });
+      const chips = await screen.findAllByRole('button', { name: CHIP });
       expect(chips).toHaveLength(1);
       fireEvent.click(chips[0]!);
       expectOpenedBasisFor('turn-ok', chips[0]!);
@@ -297,7 +316,7 @@ describe('MessageBubble answer Basis chip', () => {
         isThinking: true,
       });
 
-      const chips = await screen.findAllByRole('button', { name: 'Basis' });
+      const chips = await screen.findAllByRole('button', { name: CHIP });
       expect(chips).toHaveLength(1);
       fireEvent.click(chips[0]!);
       expectOpenedBasisFor('turn-ok', chips[0]!);
@@ -309,7 +328,7 @@ describe('MessageBubble answer Basis chip', () => {
         { conversationId: 'conversation-1' },
       );
 
-      const chips = await screen.findAllByRole('button', { name: 'Basis' });
+      const chips = await screen.findAllByRole('button', { name: CHIP });
       expect(chips).toHaveLength(1);
       fireEvent.click(chips[0]!);
       expectOpenedBasisFor('turn-ok', chips[0]!);
@@ -330,7 +349,7 @@ describe('MessageBubble answer Basis chip', () => {
       mocks.realLauncher = true;
       renderTranscript([answer('turn-7')]);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Basis' }));
+      fireEvent.click(await screen.findByRole('button', { name: CHIP }));
 
       const dialog = await screen.findByRole('dialog', { name: 'Basis' });
       expect(
@@ -349,7 +368,7 @@ describe('MessageBubble answer Basis chip', () => {
       mocks.isMobile = true;
       const { container } = renderTranscript([answer('turn-7')]);
 
-      const chip = await screen.findByRole('button', { name: 'Basis' });
+      const chip = await screen.findByRole('button', { name: CHIP });
       expect(container.querySelector('.message-meta')?.contains(chip)).toBe(
         true,
       );
@@ -379,7 +398,7 @@ describe.skipIf(!chromiumAvailable)('Basis chip at rest, in Chromium', () => {
 
   it('is visible and hittable while the hover-revealed row is hidden', async () => {
     const { container } = renderTranscript([answer('turn-7')]);
-    await screen.findByRole('button', { name: 'Basis' });
+    await screen.findByRole('button', { name: CHIP });
     const css = `${resolveCssImports(resolve(HERE, '../index.css'))}\n${resolveCssImports(resolve(HERE, '../components/chat/chat.css'))}`;
     assertNoImportsSurvive(css);
     const page = await browser.newPage({
@@ -430,3 +449,19 @@ it.skipIf(chromiumAvailable)(
     );
   },
 );
+
+describe('answerBasisLabel', () => {
+  it('names a wordless answer by its settle time, and clips long text', async () => {
+    const { answerBasisLabel } = await import(
+      '../components/chat/MessageBubble'
+    );
+    expect(answerBasisLabel('', Date.parse('2026-08-01T00:00:00Z'))).toMatch(
+      /^Basis for the answer at \S/,
+    );
+    expect(answerBasisLabel('', Number.NaN)).toBe('Basis for this answer');
+    const long = answerBasisLabel('word '.repeat(40), Number.NaN);
+    expect(long.startsWith('Basis for the answer “word word')).toBe(true);
+    expect(long.endsWith('…”')).toBe(true);
+    expect(long.length).toBeLessThan(80);
+  });
+});

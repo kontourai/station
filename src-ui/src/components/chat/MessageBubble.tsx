@@ -126,6 +126,21 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 // this placeholder — see the `agent={agent ?? null}` call further down.
 const FALLBACK_AGENT: { name: string } = { name: 'AI' };
 
+/**
+ * The Basis chip's accessible name: "Basis" (its visible text, first, so
+ * voice control can say what it sees) plus which answer it opens.
+ */
+export function answerBasisLabel(text: string, settledAt: number): string {
+  const words = text.replace(/\s+/g, ' ').trim();
+  if (words) {
+    const excerpt =
+      words.length > 48 ? `${words.slice(0, 47).trimEnd()}…` : words;
+    return `Basis for the answer “${excerpt}”`;
+  }
+  const at = absoluteTime(settledAt);
+  return at ? `Basis for the answer at ${at}` : 'Basis for this answer';
+}
+
 /** A fixed, ordered list of optional slots (never reordered), so its index
  * is a stable key. */
 function renderList(items: readonly ReactNode[]) {
@@ -641,6 +656,10 @@ function MessageBubbleComponent({
   // #1536 B3: the same precondition the Basis route applies. A turn whose
   // envelope records an aborted outcome can only ever be answered 404, so it
   // gets no Basis entry; nor does the still-streaming last answer.
+  // Every answer's chip reads "Basis"; its accessible name says WHICH answer,
+  // by the answer's opening words (or, wordless, its settle time), so a
+  // screen reader's list of buttons is not a column of identical "Basis".
+  const basisAnswerLabel = answerBasisLabel(textContent, settledAt);
   const basisChip =
     isAssistant &&
     msg.turnId &&
@@ -655,6 +674,7 @@ function MessageBubbleComponent({
           chatStoreId: activeSession.id,
           sessionId: answerSessionId,
           turnId: msg.turnId,
+          label: basisAnswerLabel,
         }}
         pending={null}
         shareAcrossMounts

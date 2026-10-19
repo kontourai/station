@@ -537,7 +537,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       expect(
         await screen.findByRole(
           'button',
-          { name: 'Basis' },
+          { name: /^Basis/ },
           { timeout: 10_000 },
         ),
       ).toBeTruthy();
@@ -554,7 +554,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       await openProvenanceDialog();
       await act(async () => {});
 
-      expect(screen.queryByRole('button', { name: 'Basis' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Basis/ })).toBeNull();
       // The rest of the provenance card is unaffected: an aborted turn still
       // has an engine and a turn id worth checking.
       expect(screen.getByLabelText(/^Answer provenance/)).toBeTruthy();
