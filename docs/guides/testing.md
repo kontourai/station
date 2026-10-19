@@ -203,6 +203,14 @@ source checks. On metadata-only events the skipped source aggregate has a
 different name, so it cannot replace a failing required `fast-checks` result.
 The `PR title policy` status is required before queue admission. Its merge-group
 job acknowledges that admission; it does not revalidate titles after enqueue.
+That merge-group acknowledgment POST retries explicit HTTP 500, 502, 503 and 504
+responses at most twice, after 100ms and 200ms, within one 30-second operation
+budget. Every attempt publishes the same context and verdict on the same
+candidate SHA. Other HTTP errors, malformed responses, network failures and
+budget exhaustion remain failures. PR metadata reads and publications do not
+use this retry, so a delay cannot extend a previously validated mutable title
+verdict. The workflow's existing failure fallback remains authoritative when
+publication fails; no source job or candidate is rerun by this handling.
 
 `Repo: Superseded PR checks` runs when `PR: CI` is requested and when a
 same-repository main-target PR closes merged. The merged-close path retires
