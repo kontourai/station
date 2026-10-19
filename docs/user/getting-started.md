@@ -494,6 +494,12 @@ in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
+In **Chats and tasks**, delegated work folds under its recorded parent.
+Expand the subtask count to read the children; children that need you stay
+visible. Task-owned chats appear under their Task as sessions. **Show work**
+filters by project or Station and stays selected on this device. If work needs
+you outside the filter, choose **Show all** from the notice.
+
 The workspace map lists Projects and their named Layouts, followed by your
 **Personal Boards**. Its **+** creates a Board and lets you name it, even
 when the list is empty. Select a project to see its configured views as child rows.

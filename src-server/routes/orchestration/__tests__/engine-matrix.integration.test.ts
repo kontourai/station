@@ -15,11 +15,21 @@ import { promisify } from 'node:util';
 import { serve } from '@hono/node-server';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { originalMcpToolName } from '@kontourai/station-shared/mcp-tool-selection';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { scenarios as deliveryScenarios } from '../../../../scripts/engine-delivery-probes.js';
 import { runMatrix } from '../../../../scripts/lib/engine-matrix.mjs';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedProcess,
+} from '../../../../scripts/lib/owned-process.mjs';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -39,10 +49,13 @@ import {
   runWithNativeOutputTurnContext,
 } from '../../../runtime/native-output-turn-grant.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
+import { AgentService } from '../../../services/agents/agent-service.js';
+import { SkillService } from '../../../services/agents/skill-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import { MCPService } from '../../../services/plugins/mcp-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
   continueExecutionTargetMessage,
@@ -50,6 +63,13 @@ import {
 } from '../../../tools/station-control-delegation.js';
 import { isRecord } from '../../../utils/is-record.js';
 import { createLogger } from '../../../utils/logger.js';
+import { createAgentRoutes } from '../../agents/agents.js';
+import {
+  agentCatalogReadSeam,
+  createEnrichedAgentRoutes,
+} from '../../agents/enriched-agents.js';
+import { createSkillRoutes } from '../../agents/skills.js';
+import { createToolRoutes } from '../../agents/tools.js';
 import {
   agentCreateSchema,
   integrationEnabledSchema,
@@ -96,6 +116,12 @@ class MatrixAdapter implements ProviderAdapterShape {
   readonly starts: ProviderSessionStartInput[] = [];
   readonly stops: string[] = [];
   readonly rendered = new Map<string, string[]>();
+  deliveryTurn:
+    | ((
+        input: ProviderSendTurnInput,
+        turnId: string,
+      ) => Promise<string | undefined>)
+    | undefined;
   private readonly secrets = new Map<string, string>();
   startupError: string | undefined;
   forgetOnStop = false;
@@ -243,11 +269,14 @@ class MatrixAdapter implements ProviderAdapterShape {
       closeNativeOutputTurnContext(context);
       if (artifact) this.rendered.set(turnId, [artifact[1]]);
     }
-    const reply = /Reply with exactly STATION_SMOKE_OK/.test(input.input)
-      ? 'STATION_SMOKE_OK'
-      : this.wrongFollowup
-        ? 'wrong recall'
-        : (this.secrets.get(input.threadId) ?? 'forgot');
+    const deliveryReply = await this.deliveryTurn?.(input, turnId);
+    const reply =
+      deliveryReply ??
+      (/Reply with exactly STATION_SMOKE_OK/.test(input.input)
+        ? 'STATION_SMOKE_OK'
+        : this.wrongFollowup
+          ? 'wrong recall'
+          : (this.secrets.get(input.threadId) ?? 'forgot'));
     if (this.timeout)
       return { threadId: input.threadId, turnId, resumeCursor: cursor };
     this.events.push({
@@ -326,6 +355,10 @@ describe('engine matrix through real foreground routes and orchestration', () =>
   let credential: string;
   let security: EnvironmentSecurityService;
   let connections: (typeof connection)[];
+  let loader: ConfigLoader;
+  let skills: SkillService;
+  let integrations: MCPService;
+  let agents: AgentService;
   const requests: Array<{
     path: string;
     method: string;
@@ -338,6 +371,36 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     await mkdir(workspace);
     vi.stubEnv('STATION_HOME', join(root, 'home'));
     vi.stubEnv('STATION_INSTANCE_NAME', 'matrix-integration');
+    vi.stubEnv('STATION_DELIVERY_PROBE_MCP_ENDPOINT', '');
+    loader = new ConfigLoader({ projectHomeDir: join(root, 'home') });
+    const logger = createLogger({ name: 'matrix-delivery-integration' });
+    skills = new SkillService(loader, logger);
+    integrations = new MCPService(
+      loader,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      logger,
+      undefined,
+      49372,
+    );
+    agents = new AgentService(
+      loader,
+      new FileStorageAdapter(join(root, 'home')),
+      new Map(),
+      new Map(),
+      new Map(),
+      logger,
+    );
+    await agents.createAgent({
+      name: 'Matrix',
+      slug: 'matrix',
+      prompt: 'Follow the supplied diagnostic prompt.',
+      execution: { agentConnectionId: engineConnectionId('matrix-engine') },
+    });
+    const activeAgents = new Map<string, unknown>([['matrix', {}]]);
     requests.length = 0;
     connections = [connection];
     adapter = new MatrixAdapter(root);
@@ -351,18 +414,10 @@ describe('engine matrix through real foreground routes and orchestration', () =>
       eventStore: store,
       logger: { debug: vi.fn(), warn: vi.fn() },
       resolveSessionAgent: createSessionAgentResolver({
-        loadAgentSpec: async (slug) =>
-          slug === 'matrix'
-            ? {
-                name: 'Matrix',
-                prompt: 'Follow the supplied diagnostic prompt.',
-                execution: {
-                  agentConnectionId: engineConnectionId('matrix-engine'),
-                },
-              }
-            : null,
-        resolveToolServer: async () => null,
-        resolveSkillDir: async () => null,
+        logger,
+        loadAgentSpec: (slug) => agents.getAgent(slug),
+        resolveToolServer: async (id) => loader.loadIntegration(id),
+        resolveSkillDir: async (id) => (await skills.getSkill(id)).path,
       }),
     });
     const app = new Hono();
@@ -404,17 +459,44 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     app.get('/.well-known/station/v1', (c) =>
       c.json({ environmentId: 'matrix-host' }),
     );
-    const agent = {
-      slug: 'matrix',
-      name: 'Matrix',
-      available: true,
-      executionDefault: true,
-      execution: { agentConnectionId: 'matrix-engine' },
-    };
-    app.get('/api/agents', (c) => c.json({ success: true, data: [agent] }));
-    app.get('/api/agents/matrix', (c) =>
-      c.json({ success: true, data: agent }),
+    app.route(
+      '/api/agents',
+      createEnrichedAgentRoutes({
+        ...agentCatalogReadSeam(agents),
+        agentMetadataMap: new Map(),
+        activeAgents,
+        getDefaultAgentIds: async () => new Set(['matrix']),
+        defaultModel: 'matrix-1',
+        defaultTools: { mcpServers: [], autoApprove: [] },
+        getRuntimeConnections: async () => [],
+        logger,
+      }),
     );
+    app.route(
+      '/api/skills',
+      createSkillRoutes(skills, () => join(root, 'home')),
+    );
+    app.route(
+      '/integrations',
+      createToolRoutes(integrations, async () => undefined),
+    );
+    app.route(
+      '/agents',
+      createAgentRoutes(
+        agents,
+        skills,
+        async (operation) => {
+          const result = await operation(() => undefined);
+          // Fake runtime activation; the catalog/detail payloads come from the real route.
+          activeAgents.clear();
+          for (const agent of await agents.listAgents())
+            activeAgents.set(agent.slug, {});
+          return result;
+        },
+        () => ({ getAgents: () => [] }),
+      ),
+    );
+
     app.get('/api/connections/agents', (c) =>
       c.json({
         success: true,
@@ -460,6 +542,7 @@ describe('engine matrix through real foreground routes and orchestration', () =>
   afterEach(async () => {
     await service?.shutdown();
     store?.close();
+    await integrations?.resetRuntimeState();
     if (server)
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
@@ -503,6 +586,423 @@ describe('engine matrix through real foreground routes and orchestration', () =>
       }),
       ...extra,
     });
+
+  test.each([
+    { models: undefined, misroute: false, turns: 14 },
+    { models: ['matrix-1'], misroute: false, turns: 6 },
+    { models: ['matrix-1'], misroute: true, turns: 5 },
+  ])(
+    'runs the real delivery lifecycle and isolates setup budget ($turns sends, misroute=$misroute)',
+    async ({ models, misroute, turns }) => {
+      const deliveryErrors: unknown[] = [];
+      const deliver: NonNullable<MatrixAdapter['deliveryTurn']> = async (
+        input,
+        turnId,
+      ) => {
+        if (
+          !input.input.startsWith('Use the delivery-') &&
+          !input.input.startsWith('Call ping')
+        )
+          return undefined;
+        const start = [...adapter.starts]
+          .reverse()
+          .find((entry) => entry.threadId === input.threadId);
+        // Station's native engine loads its authored Agent at invocation, rather
+        // than receiving the external-adapter ResolvedAgentDefinition channel.
+        const slug = start?.metadata?.agentSlug;
+        if (typeof slug !== 'string')
+          throw new Error('No admitted Agent identity');
+        expect(slug).toMatch(/^delivery-/);
+        const spec = await loader.loadAgent(slug);
+        const serverId = spec.tools?.mcpServers?.find((id) =>
+          id.startsWith('probe'),
+        );
+        if (!serverId) throw new Error('No configured MCP server');
+        const server = await loader.loadIntegration(serverId);
+        expect(server.disabledTools).toEqual(['blocked']);
+        expect(
+          server.probe?.toolNames?.map((name) =>
+            originalMcpToolName(server.id, name),
+          ),
+        ).toEqual(expect.arrayContaining(['ping', 'blocked']));
+        if (input.input.startsWith('Use the delivery-')) {
+          const skillId = spec.skills?.[0];
+          if (!skillId)
+            throw new Error('Skill did not reach the authored Agent');
+          const skill = await skills.getSkill(skillId);
+          const result = await exec(
+            process.execPath,
+            [join(skill.path, 'scripts/probe.mjs')],
+            { cwd: workspace, windowsHide: true, timeout: 5000 },
+          );
+          const artifact = (await readdir(workspace)).find((name) =>
+            /^delivery-.*\.txt$/.test(name),
+          );
+          if (!artifact)
+            throw new Error('Skill script did not write its output');
+          const context =
+            currentNativeOutputRelayCompanion()?.issueForRuntimeConfiguration(
+              adapter,
+              () => true,
+            );
+          if (!context) throw new Error('No delivery output grant');
+          try {
+            await runWithNativeOutputTurnContext(context, () =>
+              runWithCurrentNativeOutputCall(randomUUID(), () =>
+                declareCurrentNativeOutput({
+                  file: { path: artifact, mediaType: 'text/plain' },
+                }),
+              ),
+            );
+          } finally {
+            closeNativeOutputTurnContext(context);
+          }
+          adapter.rendered.set(turnId, [artifact]);
+          expect(
+            await readFile(join(skill.path, 'SKILL.md'), 'utf8'),
+          ).not.toContain(result.stdout.trim());
+          expect(input.input).not.toContain(result.stdout.trim());
+          return result.stdout.trim();
+        }
+        if (!server?.command)
+          throw new Error('MCP did not reach session resolution');
+        const client = new Client({ name: 'matrix-delivery', version: '1' });
+        try {
+          await client.connect(
+            new StdioClientTransport({
+              command: server.command,
+              args: server.args,
+              stderr: 'pipe',
+            }),
+          );
+          expect(
+            (await client.listTools()).tools.map((tool) => tool.name),
+          ).toContain('blocked');
+          const toolCallId = randomUUID();
+          const event = {
+            provider: adapter.provider,
+            threadId: input.threadId,
+            turnId,
+            createdAt: new Date().toISOString(),
+            toolCallId,
+            itemId: toolCallId,
+            toolName: `mcp__${server.id}__ping`,
+          };
+          adapter.events.push({
+            ...event,
+            eventId: randomUUID(),
+            method: 'tool.started',
+            arguments: {},
+          });
+          const response = await client.callTool({
+            name: 'ping',
+            arguments: {},
+          });
+          expect(response).toMatchObject({
+            content: [{ text: 'DELIVERY_PING_OK' }],
+          });
+          adapter.events.push({
+            ...event,
+            eventId: randomUUID(),
+            method: 'tool.completed',
+            status: 'success',
+            output: JSON.stringify(response),
+          });
+          return 'DELIVERY_PING_OK';
+        } finally {
+          await client.close();
+        }
+      };
+      adapter.deliveryTurn = async (input, turnId) => {
+        try {
+          return await deliver(input, turnId);
+        } catch (error) {
+          deliveryErrors.push(error);
+          throw error;
+        }
+      };
+      const result = await run({
+        modelIds: models,
+        maxTurns: models ? 6 : 24,
+        additionalScenarios: misroute
+          ? deliveryScenarios.map((scenario) => ({
+              ...scenario,
+              prepare: (ctx: any) =>
+                scenario.prepare({
+                  ...ctx,
+                  setupApi: (path: string, body?: unknown, method?: string) =>
+                    path.endsWith('/reconnect')
+                      ? ctx.api(path, body, method)
+                      : ctx.setupApi(path, body, method),
+                }),
+            }))
+          : deliveryScenarios,
+      });
+      expect(deliveryErrors).toEqual([]);
+      const row = result.rows.find((entry) => entry.scenario === 'delivery');
+      if (misroute)
+        expect(row).toMatchObject({
+          status: 'fail',
+          failure: 'Hard turn ceiling reached; refusing another send',
+        });
+      else
+        expect(row, JSON.stringify(result.rows)).toMatchObject({
+          status: 'unverified',
+          delivery: {
+            skills: { probe: 'unverified' },
+            script: { probe: 'unverified' },
+            toolServers: { probe: 'pass' },
+            disabledTool: { probe: 'unverified' },
+            nativeToolPolicy: { probe: 'unverified' },
+          },
+        });
+      expect(row?.turns).toHaveLength(2);
+      expect(row?.turns[0].storedOutputs).toEqual([
+        expect.stringMatching(/^delivery-[a-f0-9]+\.txt$/),
+      ]);
+      expect(result.rows.some((entry) => entry.status === 'fail')).toBe(
+        misroute,
+      );
+      expect(result.plan.plannedTurnCount).toBe(models ? 6 : 14);
+      expect(result.sentTurns).toBe(turns);
+      expect(result.reservedBillableRequests).toBe(models ? 6 : 14);
+      expect(adapter.turns).toHaveLength(turns);
+      expect(
+        requests
+          .filter(
+            (request) =>
+              request.path.startsWith('/integrations') ||
+              request.path.startsWith('/api/skills') ||
+              request.path.startsWith('/agents'),
+          )
+          .every((request) => request.status! < 300),
+      ).toBe(true);
+      const deletes = requests.filter((request) => request.method === 'DELETE');
+      expect(deletes.map((request) => request.path)).toEqual([
+        expect.stringMatching(/^\/agents\/delivery-/),
+        expect.stringMatching(/^\/api\/skills\/delivery-/),
+        expect.stringMatching(/^\/integrations\/probe/),
+      ]);
+      expect(deletes.every((request) => request.status === 200)).toBe(true);
+      expect(await loader.listIntegrations()).toEqual([]);
+      expect(await loader.agentExists(deletes[0].path.split('/').at(-1)!)).toBe(
+        false,
+      );
+      expect(
+        skills.listSkills().some((entry) => entry.name.startsWith('delivery-')),
+      ).toBe(false);
+      expect(
+        adapter.starts.filter((start) =>
+          String(start.metadata?.agentSlug).startsWith('delivery-'),
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  test.each(['prepare', 'send'] as const)(
+    'SIGINT during %s refuses subsequent mutations and cleans owned resources',
+    async (phase) => {
+      // Keep the worker alive after exercising the runner's actual signal handler.
+      const exit = vi
+        .spyOn(process, 'exit')
+        .mockReturnValue(undefined as never);
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let interruptedAt: number | undefined;
+      const interrupt = () => {
+        interruptedAt = requests.length;
+        expect(process.emit('SIGINT')).toBe(true);
+      };
+      try {
+        const result = await run({
+          modelIds: ['matrix-1'],
+          maxTurns: phase === 'prepare' ? 6 : 5,
+          api: async (path: string, body?: unknown, method?: string) => {
+            const response = await api(path, body, method);
+            if (
+              phase === 'prepare' &&
+              path === '/integrations' &&
+              method === 'POST'
+            )
+              interrupt();
+            return response;
+          },
+          additionalScenarios:
+            phase === 'prepare'
+              ? deliveryScenarios
+              : [
+                  {
+                    id: 'interrupt-before-send',
+                    maxTurns: 1,
+                    async run(ctx: any) {
+                      interrupt();
+                      await ctx.recall(ctx.model);
+                    },
+                  },
+                ],
+        });
+        await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(130));
+        expect(interruptedAt).toBeDefined();
+        const afterInterrupt = requests.slice(interruptedAt);
+        expect(
+          afterInterrupt.filter(
+            (request) =>
+              request.method === 'POST' &&
+              !(
+                request.path === '/api/orchestration/commands' &&
+                isRecord(request.body) &&
+                request.body.type === 'stopSession'
+              ),
+          ),
+        ).toEqual([]);
+        expect(
+          result.rows.find(
+            (row) =>
+              row.scenario ===
+              (phase === 'prepare' ? 'delivery' : 'interrupt-before-send'),
+          ),
+        ).toMatchObject({
+          status: 'fail',
+          failure: expect.stringContaining('Run interrupted'),
+        });
+        expect(result.sentTurns).toBe(4);
+        expect(adapter.turns).toHaveLength(4);
+        if (phase === 'prepare') {
+          expect(
+            afterInterrupt.filter((request) => request.method === 'DELETE'),
+          ).toEqual([
+            expect.objectContaining({
+              path: expect.stringMatching(/^\/integrations\/probe/),
+              status: 200,
+            }),
+          ]);
+          expect(await loader.listIntegrations()).toEqual([]);
+          expect(
+            requests.some(
+              (request) =>
+                request.path === '/api/skills/local' &&
+                request.method === 'POST',
+            ),
+          ).toBe(false);
+        }
+      } finally {
+        exit.mockRestore();
+        stderr.mockRestore();
+      }
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'SIGINT mid-probe attempts all three DELETEs once before the CLI exits',
+    async () => {
+      let entered = false;
+      let release: (() => void) | undefined;
+      const hold = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      adapter.deliveryTurn = async (input) => {
+        if (!input.input.startsWith('Use the delivery-')) return undefined;
+        entered = true;
+        await hold;
+        return 'interrupted';
+      };
+      const child = executeOwnedProcess(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL(
+              '../../../../scripts/station-engine-matrix.mjs',
+              import.meta.url,
+            ),
+          ),
+          '--confirm-billable-engine-matrix',
+          `--origin=${origin}`,
+          '--connection=matrix-engine',
+          `--cwd=${workspace}`,
+          `--scenario-module=${fileURLToPath(new URL('../../../../scripts/engine-delivery-probes.ts', import.meta.url))}`,
+          `--output-dir=${join(workspace, 'receipts')}`,
+        ],
+        undefined,
+        'delivery-signal',
+        {
+          windowsHide: true,
+          stdio: 'pipe',
+          env: { ...process.env, STATION_CREDENTIAL: credential },
+        },
+      );
+      const capture = captureOwnedProcessOutput(child, {
+        maxBytes: 1024 * 1024,
+      });
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await vi.waitFor(() => expect(entered).toBe(true), { timeout: 15000 });
+        child.child.kill('SIGINT');
+        const result = await Promise.race([
+          child.completion,
+          new Promise<never>(
+            (_, reject) =>
+              (deadline = setTimeout(
+                () => reject(new Error('CLI signal cleanup did not terminate')),
+                8000,
+              )),
+          ),
+        ]);
+        const deletes = requests.filter(
+          (request) => request.method === 'DELETE',
+        );
+        expect(deletes.map((request) => request.path)).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(/^\/agents\/delivery-/),
+            expect.stringMatching(/^\/api\/skills\/delivery-/),
+            expect.stringMatching(/^\/integrations\/probe/),
+          ]),
+        );
+        expect(deletes).toHaveLength(3);
+        clearTimeout(deadline);
+        expect(result.status, capture.finish().stderr.text).toBe(130);
+        expect(deletes.every((request) => request.status === 200)).toBe(true);
+        expect(await loader.listIntegrations()).toEqual([]);
+        expect(
+          skills
+            .listSkills()
+            .some((skill) => skill.name.startsWith('delivery-')),
+        ).toBe(false);
+        expect(
+          await loader.agentExists(
+            deletes
+              .find((request) => request.path.startsWith('/agents/'))!
+              .path.split('/')
+              .at(-1)!,
+          ),
+        ).toBe(false);
+      } finally {
+        clearTimeout(deadline);
+        release?.();
+        if (child.isAlive()) await child.forceTerminate();
+        await child.completion;
+      }
+    },
+  );
+
+  test('refuses a null expected response without an evaluator before any turn is sent', async () => {
+    const result = await run({
+      additionalScenarios: [
+        {
+          id: 'null-response',
+          maxTurns: 1,
+          run: async (ctx: any) => ctx.send('ignored', ctx.model, null),
+        },
+      ],
+    });
+    expect(
+      result.rows.filter((row) => row.scenario === 'null-response'),
+    ).toHaveLength(2);
+    expect(
+      result.rows
+        .filter((row) => row.scenario === 'null-response')
+        .every((row) => row.failure?.includes('requires an evaluator')),
+    ).toBe(true);
+    expect(adapter.turns).toHaveLength(12);
+  });
 
   test('runs all five scenarios, model switch and recycle with stored outputs and real provenance', async () => {
     const result = await run();

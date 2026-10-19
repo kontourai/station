@@ -153,6 +153,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/qualification-evidence.test.ts',
   // Runs the advisory review gate as a real child against a loopback GitHub API.
   'scripts/__tests__/advisory-review-gate.test.ts',
+  // #2675: runs the Nightly plan step's shell under bash in a temporary dir.
+  'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.
   'scripts/__tests__/pr-ci-supersession.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
@@ -882,6 +884,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.
   'scripts/__tests__/desktop-runtime-port-lease.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
+  'scripts/__tests__/engine-delivery-probes.test.ts',
+  'scripts/__tests__/engine-delivery-routes.test.ts',
   // Matrix CLI refusals and sends use real routes, SQLite and a fake adapter.
   'src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts',
   // Drives the deploy-ledger commit-back's

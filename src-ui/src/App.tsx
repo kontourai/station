@@ -101,6 +101,12 @@ const loadDesktopUpdateLaunchCheck = () =>
     default: module.DesktopUpdateLaunchCheck,
   }));
 
+// A connected server older than this app (#2675): same reasoning.
+const loadServerOlderLaunchCheck = () =>
+  import('./components/ServerOlderLaunchCheck').then((module) => ({
+    default: module.ServerOlderLaunchCheck,
+  }));
+
 const loadOutboundQueueFlushMount = () =>
   import('./hooks/OutboundQueueFlushMount').then((module) => ({
     default: module.OutboundQueueFlushMount,
@@ -653,6 +659,11 @@ function App() {
             />
             <LazyBoundary
               load={loadDesktopUpdateLaunchCheck}
+              pending={null}
+              componentProps={{}}
+            />
+            <LazyBoundary
+              load={loadServerOlderLaunchCheck}
               pending={null}
               componentProps={{}}
             />

@@ -102,7 +102,21 @@
 
     "src-ui/src/utils/approvalMode.ts",
 
-    "src-ui/src/components/badges/ComposerModeSheet.tsx"
+    "src-ui/src/components/badges/ComposerModeSheet.tsx",
+
+    "scripts/engine-delivery-probes.ts",
+
+    "scripts/fixtures/delivery-probe-mcp.mjs",
+
+    "scripts/__tests__/engine-delivery-probes.test.ts",
+
+    "src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl",
+
+    "src-server/providers/__tests__/fixtures/claude-2.1.296-script-read-local.jsonl",
+
+    "src-server/providers/__tests__/fixtures/claude-2.1.296-skill-local.meta.json",
+
+    "scripts/__tests__/engine-delivery-routes.test.ts"
   ],
 
   "checks": [

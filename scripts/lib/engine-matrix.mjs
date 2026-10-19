@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createMatrixCleanup } from './matrix-cleanup.mjs';
 
 function modelVendor(model) {
   if (/^deepseek-/.test(model)) return 'deepseek';
@@ -274,11 +275,13 @@ function planRun(catalog, modelIds, additionalScenarios, maxTurns) {
   }
   const minimumPlannedTurns =
     builtInTurns +
-    models.length *
-      additionalScenarios.reduce(
-        (sum, scenario) => sum + (scenario.maxTurns ?? 1),
-        0,
-      );
+    additionalScenarios.reduce(
+      (sum, scenario) =>
+        sum +
+        (scenario.maxTurns ?? 1) *
+          (scenario.scope === 'engine' ? 1 : models.length),
+      0,
+    );
   if (minimumPlannedTurns > maxTurns)
     throw new Error(
       `Planned ${minimumPlannedTurns} turns exceeds --max-turns=${maxTurns}; refusing the entire run. Select fewer models with --model=ID (repeatable). You may explicitly raise --max-turns up to 1000; this plan requires ${minimumPlannedTurns}.`,
@@ -286,6 +289,15 @@ function planRun(catalog, modelIds, additionalScenarios, maxTurns) {
   const plan = {
     modelIds: models,
     builtInTurns,
+    additionalScenarios: additionalScenarios.map((scenario) => ({
+      id: scenario.id,
+      scope: scenario.scope ?? 'model',
+      maxTurns: scenario.maxTurns ?? null,
+      instances: scenario.scope === 'engine' ? 1 : models.length,
+      minimumPlannedTurns:
+        (scenario.maxTurns ?? 1) *
+        (scenario.scope === 'engine' ? 1 : models.length),
+    })),
     plannedTurnCount: additionalScenarios.some(
       (scenario) => scenario.maxTurns === undefined,
     )
@@ -330,7 +342,13 @@ async function inspectArtifact(
         inspection.item?.turnId === turnId &&
         inspection.kind === 'text'
       )
-        contentCheck = inspection.text === artifactContent ? 'pass' : 'fail';
+        contentCheck = (
+          typeof artifactContent === 'function'
+            ? artifactContent(inspection.text) === true
+            : inspection.text === artifactContent
+        )
+          ? 'pass'
+          : 'fail';
     }
   }
   return contentCheck;
@@ -423,19 +441,38 @@ function setupCreate(pathname, body) {
   };
 }
 
-/** Additional scenarios use the same send/recall verdict path; #3824 can register here. */
-export async function runMatrix({
-  api,
-  connectionId,
-  cwd,
-  timeoutMs = 60_000,
-  observeOutputs,
-  additionalScenarios = [],
-  modelIds = [],
-  maxTurns = 24,
-  onPlan = () => {},
-  agentId = '',
-}) {
+/**
+ * @typedef {{declared: string, probe?: string, reason?: string, turnId?: string, checks?: string[]}} DeliveryEvidence
+ * @typedef {{requestedModel?: string, reportedModel?: string|null, servedBy?: string|null,
+ * servedEngine?: string|null, turnId?: string, status?: string,
+ * checks?: Record<string,string>, storedOutputs?: string[], renderedOutputs?: string[]|null}} MatrixTurn
+ * @typedef {{engine: string, connectionId: string, model: string, conversationId?: string, sessionId?: string,
+ * scenario: string, status: string, turns: MatrixTurn[], failure: string|null,
+ * delivery?: Record<string,DeliveryEvidence>}} MatrixRow
+ * @typedef {{version: number, generatedAt: string, evidence: string, plan: {modelIds: string[], builtInTurns: number, plannedTurnCount: number, maxTurns: number, extensionBudget: string, additionalScenarios: Array<{id: string, scope: string, maxTurns: number|null, instances: number, minimumPlannedTurns: number}>}, sentTurns?: number, reservedBillableRequests?: number, rows: MatrixRow[]}} MatrixResult
+ */
+
+/**
+ * @param {{api: Function, connectionId: string, cwd: string, timeoutMs?: number,
+ * observeOutputs?: Function, additionalScenarios?: Array<{id: string, scope?: string, maxTurns?: number, prepare?: Function, run: Function}>,
+ * modelIds?: string[], maxTurns?: number, agentId?: string, onPlan?: Function}} options
+ * @returns {Promise<MatrixResult>}
+ */
+async function runMatrixWithLifecycle(
+  {
+    api,
+    connectionId,
+    cwd,
+    timeoutMs = 60_000,
+    observeOutputs,
+    additionalScenarios = [],
+    modelIds = [],
+    maxTurns = 24,
+    onPlan = () => {},
+    agentId = '',
+  },
+  cleanupScope,
+) {
   const inventory = await api('/api/connections/agents');
   if (inventory.failures?.length)
     throw new Error('Connection inventory is incomplete');
@@ -485,6 +522,8 @@ export async function runMatrix({
       'Setup API route refused',
     );
     const { pathname, method } = request;
+    if (cleanupScope.interrupted && method !== 'GET' && method !== 'DELETE')
+      throw new Error('Run interrupted');
     if (!setupRouteAllowed(pathname, method))
       throw new Error(`Setup API route refused: ${method} ${pathname}`);
     const resourceKey = pathname
@@ -544,6 +583,8 @@ export async function runMatrix({
         ));
     // Unknown mutations reserve budget too; setup has its own audited channel.
     const billable = !nonBillable;
+    if (cleanupScope.interrupted && MUTATING_METHODS.has(method) && billable)
+      throw new Error('Run interrupted');
     if (MUTATING_METHODS.has(method) && billable) {
       if (reservedBillableRequests >= Math.min(maxTurns, plan.plannedTurnCount))
         throw new Error('Hard turn ceiling reached; refusing another send');
@@ -552,8 +593,9 @@ export async function runMatrix({
     if (method === 'POST' && isTurnSubmission(pathname, body)) sentTurns++;
     return api(request.path, body, method, ...rest.slice(1));
   };
-  /** @type {{scenario: string, status: string, failure: string | null, turns: object[]}[]} */
+  /** @type {MatrixResult["rows"]} */
   const rows = [];
+  /** @type {MatrixResult} */
   const result = {
     version: 1,
     generatedAt: new Date().toISOString(),
@@ -567,16 +609,76 @@ export async function runMatrix({
   };
   const command = (value) =>
     checkedApi('/api/orchestration/commands', value).then((body) => body.data);
-  for (const model of models) {
+  const trackCleanup = cleanupScope.trackCleanup;
+  const modelScenarios = registered.filter(
+    (scenario) => scenario.scope !== 'engine',
+  );
+  const jobs = [
+    ...models.map((model) => ({ model, selected: modelScenarios })),
+    ...registered
+      .filter((scenario) => scenario.scope === 'engine')
+      .map((scenario) => ({
+        model: models[0],
+        selected: [scenario],
+        lifecycle: scenario,
+      })),
+  ];
+  for (const { model, selected, lifecycle } of jobs) {
     const conversationId = `station-matrix-${randomUUID()}`;
     let activeSessionId;
     const nonce = randomUUID();
     const base = { engine, connectionId, model, conversationId };
     let started = false;
+    let sessionCleanup;
     let completedEventIds = new Set();
+    let jobAgent = agent;
+    const cleanup = [];
+    const delivery = {};
+    const setup = {
+      api: checkedApi,
+      setupApi,
+      engine,
+      connectionId,
+      cwd,
+      model,
+      get sessionId() {
+        return activeSessionId ?? conversationId;
+      },
+      conversationId,
+      delivery,
+      deferCleanup: (label, run) =>
+        cleanup.push({ label, run: trackCleanup(label, run) }),
+    };
     try {
+      const prepared = await lifecycle?.prepare?.(setup);
+      if (prepared?.skipReason) {
+        result.rows.push({
+          ...base,
+          scenario: lifecycle.id,
+          status: 'skipped',
+          turns: [],
+          failure: prepared.skipReason,
+          delivery,
+        });
+        continue;
+      }
+      if (prepared?.metadata?.agentSlug) {
+        jobAgent = (
+          await setupApi(
+            `/api/agents/${encodeURIComponent(prepared.metadata.agentSlug)}`,
+          )
+        ).data;
+        if (
+          !jobAgent ||
+          !matchesConnection(jobAgent) ||
+          jobAgent.available === false
+        )
+          throw new Error(
+            'Prepared Agent is unavailable or bound to another engine',
+          );
+      }
       let priorFailed = false;
-      for (const scenario of registered) {
+      for (const scenario of selected) {
         const row = {
           ...base,
           sessionId: activeSessionId ?? conversationId,
@@ -584,6 +686,7 @@ export async function runMatrix({
           status: 'unverified',
           turns: [],
           failure: null,
+          ...(lifecycle ? { delivery } : {}),
         };
         result.rows.push(row);
         if (priorFailed) {
@@ -591,6 +694,8 @@ export async function runMatrix({
           continue;
         }
         const ctx = {
+          ...setup,
+          state: prepared?.state,
           get sessionId() {
             return activeSessionId ?? conversationId;
           },
@@ -615,7 +720,10 @@ export async function runMatrix({
             expectedText,
             artifactName,
             artifactContent,
+            evaluate,
           ) {
+            if (expectedText === null && typeof evaluate !== 'function')
+              throw new Error('A null expected response requires an evaluator');
             // Recheck isolation before every billable turn, including switches.
             const current = await api('/api/connections/agents');
             if (
@@ -646,6 +754,13 @@ export async function runMatrix({
             );
             if (pendingError) throw new Error(pendingError.message);
             const first = !started;
+            if (first)
+              sessionCleanup = trackCleanup(`session ${conversationId}`, () =>
+                command({
+                  type: 'stopSession',
+                  threadId: activeSessionId ?? conversationId,
+                }),
+              );
             started = true;
             const ack = (
               await checkedApi(
@@ -657,8 +772,8 @@ export async function runMatrix({
                       conversationId,
                       target: {
                         environment: { kind: 'current' },
-                        agent: agent.slug,
-                        expectedEngine: agent.execution?.agentConnectionId
+                        agent: jobAgent.slug,
+                        expectedEngine: jobAgent.execution?.agentConnectionId
                           ? { kind: 'connection', connectionId }
                           : { kind: 'station' },
                         workspace: { kind: 'directory', cwd },
@@ -760,7 +875,10 @@ export async function runMatrix({
               .join('')
               .trim();
             turn.checks = {
-              response: text === expectedText ? 'pass' : 'fail',
+              response:
+                expectedText === null || text === expectedText
+                  ? 'pass'
+                  : 'fail',
               servedModel: checkServedModel(
                 turn.comparisonModel,
                 turn.reportedModel,
@@ -778,6 +896,38 @@ export async function runMatrix({
                   ? 'pass'
                   : 'fail',
             };
+            if (evaluate) {
+              const sessionEvents = (
+                await api(`/api/orchestration/sessions/${sessionId}/events`)
+              ).data;
+              const events = sessionEvents.filter(
+                (event) => event.turnId === ack.providerTurnId,
+              );
+              const checks = await evaluate({
+                text,
+                storedOutputs: stored,
+                events,
+                sessionEvents,
+                turnId: ack.providerTurnId,
+                identityChecks: {
+                  servedModel: turn.checks.servedModel,
+                  servedConnection: turn.checks.servedConnection,
+                },
+              });
+              if (
+                !checks ||
+                Object.keys(checks).length === 0 ||
+                Object.values(checks).some(
+                  (value) => !['pass', 'fail', 'unverified'].includes(value),
+                )
+              )
+                throw new Error('Scenario returned invalid checks');
+              for (const [name, value] of Object.entries(checks)) {
+                if (name in turn.checks)
+                  throw new Error(`Scenario cannot replace check ${name}`);
+                turn.checks[name] = value;
+              }
+            }
             turn.status = aggregate(Object.values(turn.checks));
             if (turn.status === 'fail')
               throw new Error(
@@ -824,22 +974,20 @@ export async function runMatrix({
         }
       }
     } catch (error) {
-      for (const scenario of registered)
+      for (const scenario of selected)
         result.rows.push({
           ...base,
           sessionId: activeSessionId ?? conversationId,
           scenario: scenario.id,
           status: 'fail',
           turns: [],
-          failure: `Start failed: ${String(error.message ?? error).slice(0, 500)}`,
+          failure: `Setup/start failed: ${String(error.message ?? error).slice(0, 500)}`,
+          ...(lifecycle ? { delivery } : {}),
         });
     } finally {
       if (started) {
         try {
-          await command({
-            type: 'stopSession',
-            threadId: activeSessionId ?? conversationId,
-          });
+          await sessionCleanup();
         } catch {
           result.rows.push({
             ...base,
@@ -851,11 +999,37 @@ export async function runMatrix({
           });
         }
       }
+      for (const obligation of cleanup.reverse()) {
+        try {
+          await obligation.run();
+        } catch (error) {
+          result.rows.push({
+            ...base,
+            scenario: 'cleanup',
+            status: 'fail',
+            turns: [],
+            failure: `Cleanup not confirmed (${obligation.label}): ${String(error.message ?? error).slice(0, 500)}`,
+          });
+        }
+      }
     }
   }
   result.sentTurns = sentTurns;
   result.reservedBillableRequests = reservedBillableRequests;
   return result;
+}
+
+function deliveryVerdict(row, evidence) {
+  if (evidence.probe === 'unverified') return 'unverified';
+  if (evidence.declared === 'unsupported') return 'unsupported';
+  if (evidence.probe === 'fail') return 'fail';
+  const turn = row.turns.find((entry) => entry.turnId === evidence.turnId);
+  return evidence.probe === 'pass' &&
+    turn &&
+    evidence.checks?.length &&
+    evidence.checks.every((name) => turn.checks?.[name] === 'pass')
+    ? 'pass'
+    : 'unverified';
 }
 
 export function renderMatrix(result) {
@@ -877,5 +1051,28 @@ export function renderMatrix(result) {
         `| ${[row.engine, row.connectionId, row.model, row.scenario, row.status, row.turns.map((turn) => turn.servedBy ?? 'unverified').join(', '), row.turns.map((turn) => turn.reportedModel ?? 'unverified').join(', '), row.failure ?? ''].map(cell).join(' | ')} |`,
     ),
     '',
+    ...(result.rows.some((row) => row.delivery)
+      ? [
+          '| Engine | Delivery claim | Declared | Probe | Reason |',
+          '| --- | --- | --- | --- | --- |',
+          ...result.rows.flatMap((row) =>
+            Object.entries(row.delivery ?? {}).map(
+              ([claim, evidence]) =>
+                `| ${[row.engine, claim, evidence.declared, deliveryVerdict(row, evidence), evidence.reason ?? ''].map(cell).join(' | ')} |`,
+            ),
+          ),
+          '',
+        ]
+      : []),
   ].join('\n');
+}
+
+/** @param {Parameters<typeof runMatrixWithLifecycle>[0]} options */
+export async function runMatrix(options) {
+  const lifecycle = createMatrixCleanup();
+  try {
+    return await runMatrixWithLifecycle(options, lifecycle);
+  } finally {
+    lifecycle.dispose();
+  }
 }
