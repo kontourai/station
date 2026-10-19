@@ -6,7 +6,7 @@
 import { EventEmitter } from 'node:events';
 import http from 'node:http';
 import net from 'node:net';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { resolveControlEndpoint } from '@kontourai/station-supervisor/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
