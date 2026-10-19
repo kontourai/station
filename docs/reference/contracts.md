@@ -63,6 +63,7 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
+| `@kontourai/station-contracts/desktop-update` | The desktop app's native-owned update state (phases, the error beside the phase it returned to, download policy and its automatic-download time) and its state event name; the native shell computes it, the window and tray read it |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |

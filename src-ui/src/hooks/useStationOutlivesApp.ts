@@ -2,7 +2,8 @@ import { useApiBase } from '../contexts/ApiBaseContext';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useBundledServerStatus } from '../platform/useBundledServerStatus';
 
-function sameBase(left: string, right: string): boolean {
+/** Two API bases name the same Station, ignoring trailing slashes. */
+export function sameBase(left: string, right: string): boolean {
   return left.replace(/\/+$/, '') === right.replace(/\/+$/, '');
 }
 

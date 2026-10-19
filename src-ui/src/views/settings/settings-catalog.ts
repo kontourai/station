@@ -185,7 +185,9 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'desktop-app-updates',
     title: 'Desktop app updates',
     section: 'system',
-    keywords: ['desktop app updater signed release channel'],
+    keywords: [
+      'desktop app updater signed release channel automatic download restart',
+    ],
     conditional: 'desktop',
   },
   {

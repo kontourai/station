@@ -4,6 +4,7 @@ import {
   type DestinationDefinition,
 } from '../../app-shell/destination-registry';
 import { resolveViewFromPath } from '../../app-shell/routing';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SettingsGlyph } from '../icons/Glyph';
@@ -12,6 +13,13 @@ import './ProjectSidebarFooter.css';
 import { destinationIcon } from './nav-items';
 import { ProjectSidebarPresenceTray } from './ProjectSidebarPresenceTray';
 import { SidebarPopover } from './SidebarPopover';
+
+// Desktop-only chrome (#3851), kept out of the entry chunk: it renders
+// nothing until the native updater reports something to do or watch.
+const loadDesktopUpdateControl = () =>
+  import('../desktop-update/DesktopUpdateControl').then((module) => ({
+    default: module.DesktopUpdateControl,
+  }));
 
 const loadCustomizeDialog = () =>
   import('./CustomizeDialog').then((module) => ({
@@ -41,6 +49,7 @@ export function ProjectSidebarFooter({
   collapsed = false,
   onAfterNavigate,
 }: ProjectSidebarFooterProps) {
+  const { isDesktop } = usePlatformProfile();
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreTriggerRef = useRef<HTMLButtonElement>(null);
@@ -119,6 +128,15 @@ export function ProjectSidebarFooter({
   );
   return (
     <div className="sidebar__footer">
+      {isDesktop && (
+        <div className="sidebar__update">
+          <LazyBoundary
+            load={loadDesktopUpdateControl}
+            pending={null}
+            componentProps={{ collapsed }}
+          />
+        </div>
+      )}
       <div className="sidebar__footer-meta">
         {collapsed ? (
           <button

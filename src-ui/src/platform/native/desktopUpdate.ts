@@ -1,92 +1,55 @@
+import {
+  DESKTOP_UPDATE_STATE_EVENT,
+  type DesktopUpdateDownloadPolicy,
+  type DesktopUpdateState,
+} from '@kontourai/station-contracts/desktop-update';
+import { invokeTauri, listenTauri } from './tauriInvoke';
+
 /**
- * Desktop shell self-update (station#575), following `notifier.ts`'s shape:
- * a narrow module that owns the plugin import directly rather than routing
- * through the full `NativePlatformAdapter`, because every outcome — no
- * plugin registered, no network, nothing new — is legitimate here and none
- * of them is an error this module raises.
+ * Desktop shell self-update (#3851). The native shell owns the whole
+ * lifecycle (`src-desktop/src/desktop_update.rs`): it checks periodically,
+ * downloads per the download policy or on request, and installs and restarts
+ * only when asked. This module is the webview's narrow command and event
+ * boundary to it; the webview holds no updater or process plugin authority.
  *
- * The Rust side registers `tauri-plugin-updater` only when the build carries
- * a usable `plugins.updater` config (see `desktop_updater_plugin_configured`
- * in `src-desktop/src/lib.rs`); every other build — dev, and any channel
- * before its endpoint ships — has no plugin at all, so `check()` rejects.
- * That rejection and a genuine offline/signature failure are
- * indistinguishable from here, and both must stay quiet: an absent update
- * channel has not failed a check.
- *
- * A check failure is currently unobservable to anything but this console
- * line — there is no durable record a live channel's check kept failing.
- * Tracked as a follow-up (a `desktop-updater` entry in the native capability
- * report) rather than built in this round.
- *
- * On Windows, the plugin's install path spawns the platform installer and
- * then calls `std::process::exit(0)` unconditionally — the running app never
- * returns from `downloadAndInstall()`. `relaunch()` below and any failure
- * surfaced AFTER the installer has been spawned are therefore macOS/Linux
- * behavior only; a failure during download/extraction, before the installer
- * spawns, still rejects normally on every platform including Windows.
+ * State changes arrive only on {@link subscribeToDesktopUpdateState}.
+ * Commands resolve once the native side accepted them; their outcome
+ * (including failures, which return to the prior phase with `error` set)
+ * arrives as state. A rejected command means the request itself failed.
  */
 
-export type DesktopUpdateOutcome =
-  | {
-      status: 'update-available';
-      version: string;
-      install: () => Promise<void>;
-      dispose: () => Promise<void>;
-    }
-  | { status: 'no-update' }
-  | {
-      status: 'check-failed';
-      /**
-       * The caught error's own message, captured verbatim and WITHOUT
-       * classification: this module cannot tell a missing update channel from
-       * an offline host or a bad signature, so it must not label the text.
-       * Explicit checks surface it inside a technical-details disclosure.
-       */
-      detail?: string;
-    };
+export function readDesktopUpdateState(): Promise<DesktopUpdateState> {
+  return invokeTauri<DesktopUpdateState>('desktop_update_state');
+}
 
-export async function checkForDesktopUpdate(): Promise<DesktopUpdateOutcome> {
-  try {
-    const { check } = await import('@tauri-apps/plugin-updater');
-    const update = await check({ timeout: 15_000 });
-    if (!update) return { status: 'no-update' };
-    let installing: Promise<void> | undefined;
-    let disposed = false;
-    return {
-      status: 'update-available',
-      version: update.version,
-      install() {
-        if (disposed)
-          return Promise.reject(
-            new Error('Check for updates again before installing.'),
-          );
-        installing ??= (async () => {
-          await update.downloadAndInstall();
-          const { relaunch } = await import('@tauri-apps/plugin-process');
-          await relaunch();
-        })().finally(() => {
-          installing = undefined;
-        });
-        return installing;
-      },
-      async dispose() {
-        if (disposed) return;
-        disposed = true;
-        // Navigation or another check may discard the result during download.
-        // Keep the native handle alive until that installation has settled.
-        await installing?.catch(() => undefined);
-        await update.close();
-      },
-    };
-  } catch (error) {
-    // No updater plugin on this host (dev build, or a channel whose
-    // endpoint has not shipped), or a real check failure (offline, a bad
-    // signature). Neither belongs on screen at launch. The raw message is
-    // captured unclassified for explicit checks to disclose.
-    console.debug('station: desktop update check unavailable', error);
-    return {
-      status: 'check-failed',
-      detail: error instanceof Error ? error.message : String(error),
-    };
-  }
+export function subscribeToDesktopUpdateState(
+  handler: (state: DesktopUpdateState) => void,
+): Promise<() => void> {
+  return listenTauri<DesktopUpdateState>(DESKTOP_UPDATE_STATE_EVENT, handler);
+}
+
+export async function checkForDesktopUpdate(): Promise<void> {
+  await invokeTauri<DesktopUpdateState>('desktop_update_check');
+}
+
+export async function downloadDesktopUpdate(): Promise<void> {
+  await invokeTauri<DesktopUpdateState>('desktop_update_download');
+}
+
+/**
+ * Installs the downloaded update and restarts the app. Call only after the
+ * user confirmed the restart. On success the process exits; a failed install
+ * returns to `ready` with an `install` error.
+ */
+export async function installDesktopUpdateAndRestart(): Promise<void> {
+  await invokeTauri<DesktopUpdateState>('desktop_update_install');
+}
+
+/** Rejects when the native side could not persist the policy. */
+export async function setDesktopUpdatePolicy(
+  policy: DesktopUpdateDownloadPolicy,
+): Promise<void> {
+  await invokeTauri<DesktopUpdateState>('desktop_update_set_policy', {
+    policy,
+  });
 }

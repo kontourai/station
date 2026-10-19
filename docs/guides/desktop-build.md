@@ -8,28 +8,46 @@ platform. Keep compile, native interaction, signing and provider receipts separa
 
 ## Release updates
 
-In the desktop shell, Settings → System → **Desktop app updates** →
-**Check for desktop app updates** checks the updater configuration embedded in
-the installed app. The native updater is registered only when the build carries
-usable endpoint/key configuration; an ordinary development build may have none.
-An available update can be installed with **Install desktop
-app update and restart**. Manual checks expose failures and can be retried; the
-automatic launch check remains quiet on check failure. The desktop package
-includes the built-in Station server, so installing this update replaces the
-app and its embedded server together.
+The desktop shell owns its own updates (`src-desktop/src/desktop_update.rs`).
+The native updater is registered only when the build carries usable
+endpoint/key configuration; an ordinary development build has none and reports
+no update channel. A configured app checks about 20 seconds after it starts and
+then hourly while it runs, including tray-only; there is no OS job.
+
+Updating has three separate steps:
+
+1. **Download.** An available update appears in the sidebar as **Download
+   update** and in Settings → System → **Desktop app updates**. The
+   **Automatic download** setting (Never, After 24 hours, Immediately; default
+   After 24 hours) decides when it downloads without a click; the 24-hour clock
+   starts when that version is first seen and survives restarts. A manual
+   download always works. Downloading shows byte progress and never restarts
+   anything.
+2. **Confirm.** A downloaded update offers **Restart to update**, which only
+   opens a confirmation. When the app's built-in server serves this window, the
+   confirmation lists the running agent turns the restart interrupts; an
+   installed service or another server keeps running.
+3. **Install and restart.** Only **Restart now** installs the verified download
+   and restarts the app. A failed install leaves the update downloaded and the
+   app running, with the failure shown.
+
+Settings shows check failures with the updater's own text; the sidebar does
+not. The desktop package includes the built-in Station server, so installing
+this update replaces the app and its embedded server together. The webview
+holds no updater or process plugin permission; it reads the native state and
+asks the native shell to act.
 
 **Connected Station server** is a separate server operation. Its source
 checkout/build-stamp provenance does not establish the installed desktop app's
 update channel. A GitHub DMG must not require a local Git checkout or a fabricated
 `station-nightly-source.json` stamp to check its signed release feed.
 
-When changing update controls, test native check failures, retries, installation
-failure without restart, and desktop-only routing alongside server update tests.
-Release native update handles when checks are replaced or their UI unmounts,
-including late check responses. An active installation retains its handle until
-the operation settles.
-An HTTP-successful release feed or mocked plugin test does not prove installation
-and restart of a packaged app; retain that runtime verification separately.
+When changing update controls, test the native state machine's failure paths
+(`cargo test desktop_update`), and the UI against the native-writer fixtures in
+`src-desktop/src/fixtures/desktop-update-states.json`.
+An HTTP-successful release feed or a fixture-driven test does not prove
+download, installation and restart of a packaged app; retain that runtime
+verification separately.
 
 ## Prerequisites
 

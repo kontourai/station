@@ -3,21 +3,20 @@ import { describe, expect, test } from 'vitest';
 import {
   EXPECTED_APPIMAGE_REMOVED_RESOURCES,
   EXPECTED_APPIMAGE_RUNTIME_FILES,
-  EXPECTED_DESKTOP_UPDATER_PERMISSIONS,
-  EXPECTED_DESKTOP_UPDATER_PLATFORMS,
   EXPECTED_TAURI_CSP,
   EXPECTED_TAURI_PERMISSIONS,
   findCapabilityManifestViolations,
-  findDesktopUpdaterCapabilityViolations,
   findNativeBoundaryViolations,
+  findNativeOnlyPermissionGrants,
   findTauriCspViolations,
   findTauriNonceMarkerViolations,
   findTauriResourceBoundaryViolations,
   NATIVE_GLOBAL_PATTERN,
+  RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
   TAURI_APPIMAGE_CONFIG,
   TAURI_BASE_CONFIG,
+  TAURI_CAPABILITY_DIRECTORY,
   TAURI_DESKTOP_CONFIGS,
-  TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
   TAURI_IMPORT_PATTERN,
   TAURI_MOBILE_CONFIGS,
 } from '../native-platform-boundary.mjs';
@@ -58,6 +57,29 @@ describe('native-platform-boundary', () => {
     ]);
   });
 
+  test('refuses updater and process plugin imports even in adapter files (#3851)', () => {
+    const files = {
+      'src-ui/src/platform/native/tauri.ts':
+        "const { relaunch } = await import('@tauri-apps/plugin-process');",
+      'src-ui/src/platform/native/desktopUpdate.ts':
+        "import { check } from '@tauri-apps/plugin-updater';",
+      'src-ui/src/platform/native/notifier.ts':
+        "import { sendNotification } from '@tauri-apps/plugin-notification';",
+    };
+    expect(
+      findNativeBoundaryViolations(Object.keys(files), readFileFromMap(files)),
+    ).toEqual([
+      expect.objectContaining({
+        file: 'src-ui/src/platform/native/tauri.ts',
+        kind: 'native-only plugin import',
+      }),
+      expect.objectContaining({
+        file: 'src-ui/src/platform/native/desktopUpdate.ts',
+        kind: 'native-only plugin import',
+      }),
+    ]);
+  });
+
   test('names trayNavigation.ts when a direct Tauri import is fault-injected', () => {
     const files = {
       'src-ui/src/lib/trayNavigation.ts':
@@ -86,36 +108,45 @@ describe('native-platform-boundary', () => {
     ).toEqual([expect.stringContaining('core:event:allow-listen')]);
   });
 
-  test('scopes the desktop-updater permissions to platforms where the plugins are actually dependencies', () => {
-    const manifest = JSON.parse(
-      readFileSync(TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST, 'utf8'),
-    );
-    expect(
-      findDesktopUpdaterCapabilityViolations(JSON.stringify(manifest)),
-    ).toEqual([]);
-    expect(manifest.permissions).toEqual(EXPECTED_DESKTOP_UPDATER_PERMISSIONS);
-    expect(manifest.platforms).toEqual(EXPECTED_DESKTOP_UPDATER_PLATFORMS);
+  test('grants the webview no updater or process authority (#3851)', () => {
+    // The gate itself walks the directory; this pins today's manifests.
+    const manifests = [
+      'default.json',
+      'android-agent-activity.json',
+      'ios-agent-activity.json',
+    ].map((name): [string, string] => {
+      const file = `${TAURI_CAPABILITY_DIRECTORY}/${name}`;
+      return [file, readFileSync(file, 'utf8')];
+    });
+    expect(existsSync(RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST)).toBe(false);
+    expect(findNativeOnlyPermissionGrants(manifests)).toEqual([]);
 
-    // A dropped `platforms` scope grants the permissions on every target,
-    // which is exactly what fails mobile ACL resolution — the plugins are
-    // not compiled there to define `updater:allow-check` at all.
+    // The retired manifest is refused by its presence, and a grant in any
+    // manifest (string or object form) is refused.
     expect(
-      findDesktopUpdaterCapabilityViolations(
-        JSON.stringify({ ...manifest, platforms: undefined }),
-      ),
-    ).toEqual([
-      expect.stringContaining(
-        `${TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST} platforms must be exactly`,
-      ),
-    ]);
+      findNativeOnlyPermissionGrants([
+        [
+          RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
+          JSON.stringify({ permissions: [] }),
+        ],
+      ]),
+    ).toEqual([expect.stringContaining('must not exist')]);
     expect(
-      findDesktopUpdaterCapabilityViolations(
-        JSON.stringify({ ...manifest, permissions: ['updater:default'] }),
-      ),
+      findNativeOnlyPermissionGrants([
+        [
+          'src-desktop/capabilities/default.json',
+          JSON.stringify({
+            permissions: [
+              'core:event:allow-listen',
+              'updater:allow-download-and-install',
+              { identifier: 'process:allow-restart' },
+            ],
+          }),
+        ],
+      ]),
     ).toEqual([
-      expect.stringContaining(
-        'updater:allow-check, updater:allow-download-and-install',
-      ),
+      expect.stringContaining('grants updater:allow-download-and-install'),
+      expect.stringContaining('grants process:allow-restart'),
     ]);
   });
 
