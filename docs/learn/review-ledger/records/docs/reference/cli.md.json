@@ -208,13 +208,13 @@
 
     "packages/cli/src/__tests__/delegate.test.ts",
 
+    "packages/cli/src/commands/telemetry.ts",
+
     "packages/cli/src/bin.ts",
 
     "packages/cli/src/help.ts",
 
-    "packages/cli/src/__tests__/core-http.test.ts",
-
-    "packages/cli/src/commands/telemetry.ts"
+    "packages/cli/src/__tests__/core-http.test.ts"
   ],
 
   "checks": [

@@ -131,6 +131,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
   'src-server/routes/pull-requests/__tests__/pull-request-routes.test.ts',
   'src-server/runtime/routes/__tests__/runtime-routes-station-control-declare-pull-request.test.ts',
+  // Real server esbuild children and executable workflow-policy negative controls.
+  'scripts/__tests__/author-telemetry-build.test.ts',
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
   // Claude handshake; skips loudly where Seatbelt cannot apply (non-macOS).
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
@@ -254,6 +256,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+  // Creates real Git and POSIX FIFO fixtures within its isolated workspace.
+  'src-server/routes/projects/__tests__/coding-content.routes.test.ts',
   // #2374 (epic #2323 S6): real `git` plumbing and pushes into temp bare
   // repositories, through the production publish service and route.
   'src-server/routes/projects/__tests__/plugin-publish-routes.test.ts',

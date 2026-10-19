@@ -20,12 +20,9 @@ function withoutObservationTimes(session: OrchestrationSessionSummary) {
 }
 
 export function shareSessionReadModel(
-  previous: unknown,
-  next: unknown,
-): unknown {
-  // TanStack's sharing callback erases the owning query's data type.
-  const previousRows = previous as OrchestrationSessionSummary[] | undefined;
-  const nextRows = next as OrchestrationSessionSummary[];
+  previousRows: OrchestrationSessionSummary[] | undefined,
+  nextRows: OrchestrationSessionSummary[],
+): OrchestrationSessionSummary[] {
   if (!previousRows) return nextRows;
   const byThreadId = new Map(previousRows.map((row) => [row.threadId, row]));
   const shared = nextRows.map((row) => {

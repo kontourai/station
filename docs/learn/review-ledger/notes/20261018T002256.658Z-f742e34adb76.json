@@ -1,0 +1,11 @@
+{
+  "revision": "8498e31f4d6871fc9e552f9f7816b40f294062f7",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the Activity tail-follow explanation against both transcript callers and the F2 direction-based hook. Actual upward movement pauses following, a return to the tail or explicit Jump resumes it, and atLatest reflects follow state. Reader input alone never pauses. Pixel-wheel tail intent covers growth before its scroll event; native anchoring is disabled only while following and restored for paused readers and cleanup. Mounted Chromium coverage includes sustained growth, ArrowUp, small upward wheels, streaming input at the bottom, repeated wheel returns with interleaved growth, native anchoring, own clamped pins and loading an identity through a short skeleton. The existing explanation remains accurate. Full-app and native/device behavior remain unverified.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/session-follow-reader.browser.test.tsx","src-ui/src/components/session-detail/useSessionTranscriptScroll.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the attached-session continuation passage and the AttachedSessionDetail delta. Removing generic transcript pointer/key pauses changes scroll ownership only; Show older messages still pauses explicitly. No Starter Work launch, adoption, one-time binding, owner receipt, or continuation authorization code changes. Existing continuation and read-only claims remain accurate; no prose edit needed. The mounted attached-owner browser cases exercise transcript clicking and return-to-tail, not continuation admission or useful-work completion.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed Continue an Attached Session against the AttachedSessionDetail delta. Only the transcript scroll handlers change; composer confirmation, draft retention, capability reasons, independent child creation, folder confinement and retry/adoption ownership are unchanged. The guide remains accurate without a prose change. Chromium fixture coverage is for transcript scroll ownership; continuation/provider behavior is not newly qualified.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

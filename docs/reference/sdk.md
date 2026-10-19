@@ -342,6 +342,27 @@ children. A selected path is still subject to the server's workspace
 containment and authorization checks; query metadata does not grant file
 access.
 
+### Coding tree and text preview bounds
+
+`GET /api/coding/files` accepts integer `depth` from 0 to 10 and
+`maxEntries` from 1 to 5000; defaults are 3 and 500. Invalid values receive
+400 rather than being clamped. Listings exclude symlinks and preserve workspace
+containment while traversing asynchronously.
+
+`fetchCodingFileContent` and `useCodingFileContentQuery` use
+`GET /api/coding/files/content`. Text previews are limited to 2 MiB; larger
+files receive 413 with code `file-too-large` and an instruction to open the file
+in an editor. Binary detection samples the first 8 KiB before reading the rest.
+The SDK throws the server's error message for a refused preview. Missing files
+retain status 500 with code `not-found` and a workspace-relative message.
+Non-regular files are refused before opening and checked again on the opened
+handle. Platforms that provide nonblocking and no-follow open flags also refuse
+FIFO or symlink replacements at that boundary. Buffers grow with observed file
+contents; a file that grows beyond the limit is rejected rather than truncated.
+These legacy coding endpoints are separate from the built-in Workspace File Preview API.
+See the [reader](../../src-server/services/projects/file-tree-service.ts) and
+[route](../../src-server/routes/projects/coding.ts).
+
 ### Conversation input-origin support
 
 `OrchestrationSessionSummary.inputOrigin` is a closed, optional server-issued

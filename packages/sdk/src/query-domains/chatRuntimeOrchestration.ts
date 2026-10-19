@@ -61,6 +61,7 @@ import {
   type QueryConfig,
   resolveApiBase,
   useApiQuery,
+  useApiQueryWithSharing,
   useCancelWhenInactive,
 } from '../query-core';
 import { orchestrationQueries } from '../queryFactories';
@@ -1273,15 +1274,15 @@ export function useOrchestrationProvidersQuery(
 export function useOrchestrationSessionsQuery(
   config?: QueryConfig<OrchestrationSessionSummary[]>,
 ) {
-  return useApiQuery(
+  return useApiQueryWithSharing(
     orchestrationQueries.sessions().queryKey,
     () => fetchOrchestrationSessions(),
+    shareSessionReadModel,
     {
       staleTime: config?.staleTime ?? orchestrationQueries.sessions().staleTime,
       gcTime: config?.gcTime,
       enabled: config?.enabled,
       refetchInterval: config?.refetchInterval,
-      structuralSharing: shareSessionReadModel,
     },
   );
 }

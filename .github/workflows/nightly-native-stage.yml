@@ -245,7 +245,7 @@ jobs:
           workspaces: src-desktop
           key: android-aarch64
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with: { distribution: temurin, java-version: 17 }
       # `packages` defaults to `tools platform-tools`, and `tools` is the
       # obsolete SDK Tools package Google removed from the repository — the
@@ -393,6 +393,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Fail closed and build/sign/notarize macOS staging artifacts
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: nightly
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
@@ -514,6 +516,8 @@ jobs:
       - name: Build the exact reserved Windows version
         shell: pwsh
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: nightly
           SOURCE_SHA: ${{ inputs.source_sha }}
           BUNDLE_VERSION: ${{ needs.plan-cohort.outputs.bundle_version }}
           WINDOWS_SIGN_COMMAND: ${{ vars.WINDOWS_SIGN_COMMAND }}
