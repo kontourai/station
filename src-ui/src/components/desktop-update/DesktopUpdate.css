@@ -82,5 +82,6 @@ button.desktop-update-control:focus-visible {
 }
 .desktop-update-settings__progress progress {
   flex: 1;
+  accent-color: var(--k-action);
   max-width: 20rem;
 }
