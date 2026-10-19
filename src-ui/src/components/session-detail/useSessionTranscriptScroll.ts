@@ -188,7 +188,16 @@ export function useSessionTranscriptScroll({
         observeContent();
       }
       // DOM growth can be read by another task before ResizeObserver runs.
-      if (readyRef.current && follow.current) pinToLatest();
+      if (readyRef.current && follow.current) {
+        const top = scroll.scrollTop;
+        // Let onScroll classify a pending upward move before pinning.
+        if (
+          top >= lastSeenTop.current - 1 ||
+          scroll.scrollHeight - top - scroll.clientHeight <= 2
+        ) {
+          pinToLatest();
+        }
+      }
     });
     children.observe(scroll, {
       childList: true,

@@ -650,3 +650,49 @@ test.each(['above', 'below'] as const)(
     }
   },
 );
+
+test('an upward wheel pauses follow when DOM growth interleaves before its scroll handler', async () => {
+  const { browser, page, errors } = await sessionFixture();
+  try {
+    await page.waitForFunction(
+      () => document.querySelector('#scroll')?.scrollTop === 1700,
+    );
+    await page.locator('#scroll').evaluate((scroll) => {
+      window.addEventListener(
+        'scroll',
+        (event) => {
+          if (
+            event.target !== scroll ||
+            scroll.scrollTop >= 1700 ||
+            scroll.dataset.interleaved
+          )
+            return;
+          scroll.dataset.interleaved = 'true';
+          const content = document.querySelector<HTMLElement>('#content')!;
+          content.style.height = `${content.offsetHeight + 20}px`;
+        },
+        { capture: true },
+      );
+    });
+    await page.locator('#scroll').hover();
+    await page.mouse.wheel(0, -12);
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#scroll')?.getAttribute('data-interleaved') ===
+        'true',
+    );
+    expect(
+      await page.locator('#scroll').evaluate((scroll) => scroll.scrollTop),
+    ).toBe(1688);
+    expect(
+      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'Grow' }).click();
+    expect(
+      await page.locator('#scroll').evaluate((scroll) => scroll.scrollTop),
+    ).toBe(1688);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
