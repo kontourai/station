@@ -97,6 +97,7 @@ function wire(
     logger: logger_,
     devicePairing: {
       listDevices: () => DEVICES,
+      deviceLocality: () => undefined,
       listPushSubscriptions: () =>
         DEVICES.map(({ id }) => ({
           deviceId: id,
@@ -142,7 +143,7 @@ describe('wireNotificationDelivery (production composition)', () => {
   test("an agent notification asks the session read model with each device's own authority", async () => {
     const tablet = DEVICES[1]!;
     const tabletAuthority = sessionReadAuthorityFromRequest(
-      pairedDevicePrincipal(tablet).id,
+      pairedDevicePrincipal(tablet, undefined).id,
       undefined,
       undefined,
     );
@@ -267,7 +268,7 @@ describe('wireNotificationDelivery (production composition)', () => {
       async (_label, record) => {
         const tabletAuthority = JSON.stringify(
           sessionReadAuthorityFromRequest(
-            pairedDevicePrincipal(DEVICES[1]!).id,
+            pairedDevicePrincipal(DEVICES[1]!, undefined).id,
             undefined,
             undefined,
           ),

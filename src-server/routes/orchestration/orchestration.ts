@@ -6023,9 +6023,8 @@ export function createOrchestrationRoutes(
       let closeReason: 'client-abort' | 'authorization-expired' | undefined;
       let setupError: string | undefined;
       // archive#1225: register this connection with the presence tracker
-      // BEFORE anything else can `await` — the push-on-completion gate
-      // (`turn-completion-notifications.ts`) must never see a window where
-      // a client that is in fact connecting is reported as absent.
+      // BEFORE anything else can `await`, so the `/presence/summary` roster
+      // never misses a client that is in fact connecting.
       const presenceSubject =
         orchestrationStreamPresenceSubjectFromAuthority(authority);
       const releasePresence = presenceSubject
@@ -6062,7 +6061,7 @@ export function createOrchestrationRoutes(
             closeReason ??= 'client-abort';
             // Release what the connection holds NOW, not in `finally`: a store
             // read that never settles would otherwise keep this user counted
-            // as present (suppressing push-on-completion) and subscribed. All
+            // as present (in the roster) and subscribed. All
             // three are idempotent; `finally` repeats them harmlessly.
             stopKeepAlive?.();
             stopActivityFlush?.();

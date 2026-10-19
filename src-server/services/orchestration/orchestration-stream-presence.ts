@@ -229,7 +229,13 @@ export class OrchestrationStreamPresence {
       .sort((a, b) => a.principal.id.localeCompare(b.principal.id));
   }
 
-  /** `true` when this exact subject currently holds a live stream open. */
+  /**
+   * `true` when this exact subject currently holds a live stream open. No
+   * production code reads it since turn completions stopped gating on it;
+   * it stays as the exact count the `/events` route's release-on-every-exit
+   * tests observe, which `roster()` cannot replace (it omits overflow and
+   * principal-less connections by design).
+   */
   isConnected(subject: OrchestrationStreamPresenceSubject | string): boolean {
     if (typeof subject === 'string') {
       return this.isConnected(

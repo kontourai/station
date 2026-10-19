@@ -393,8 +393,8 @@ export function configureRuntimeSupportServices(
     notificationService,
     context.logger,
   );
-  // station#1225 (offline slice 3): push-on-completion — schedules a
-  // notification when a turn completes/fails for a session with a reader.
+  // station#1225: turn-completion notifications — schedules a record when a
+  // turn completes/fails for a session with a reader.
   // Whether it interrupts a surface (Web Push, native alert, desktop feed)
   // is the delivery router's focus/liveness decision below, not a check on
   // whether the owner holds any open `/events` stream.
@@ -639,6 +639,10 @@ export function configureRuntimeSupportServices(
     sessionReaderFor: createAgentActivitySessionReader({
       listDevices: () =>
         context.environmentSecurityService.devicePairing.listDevices(),
+      deviceLocality: (deviceId) =>
+        context.environmentSecurityService.devicePairing.deviceLocality(
+          deviceId,
+        ),
       listSessionReadModel: (authority) =>
         context.orchestrationService.listSessionReadModel(authority),
       listProjectionEvents: (threadIds) => {

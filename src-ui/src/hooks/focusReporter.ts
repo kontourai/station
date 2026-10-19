@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/presence';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { CLIENT_DOCUMENT_SESSION_ID } from './clientDocumentSession';
+import { isWatchingRunningTurn } from './orchestration/chatForeground';
 
 /** Collapses a burst of focus/blur/visibility events into one report. */
 export const FOCUS_REPORT_DEBOUNCE_MS = 1_000;
@@ -25,6 +26,13 @@ export interface FocusReporterEnvironment {
   readonly document: Document;
   readonly window: Window;
   readonly now: () => number;
+  /**
+   * Whether this document shows a chat whose turn is running. A person
+   * watching a turn does not touch the window, and still is there: while
+   * this is true a focused document keeps renewing its lease without input.
+   * Absent: input recency alone decides.
+   */
+  readonly isWatching?: () => boolean;
 }
 
 function readFocusState(doc: Document, pageHidden = false): FocusState {
@@ -95,8 +103,10 @@ export function retryAfterMs(value: string | null, now: number): number {
  *   next focus/visibility change, or by the next heartbeat tick after user
  *   input — so within a minute of signing in;
  * - while focused, a 60 s heartbeat renews the lease only if there was user
- *   input in the last 2 minutes, so an unattended focused window lapses; the
- *   first input after the lease lapsed renews it at once.
+ *   input in the last 2 minutes or the document shows a running turn
+ *   (`isWatching`), so an unattended focused window lapses once nothing is
+ *   running in front of it; the first input after the lease lapsed renews
+ *   it at once.
  *
  * Nothing here throws: presence is advisory and must never break the app.
  */
@@ -113,6 +123,13 @@ export function startFocusReporter(
   },
 ): () => void {
   const { document: doc, window: win, now } = env;
+  const watching = () => {
+    try {
+      return env.isWatching?.() === true;
+    } catch {
+      return false;
+    }
+  };
   let stopped = false;
   let nextSeq = 1;
   let acked: FocusState | undefined;
@@ -287,7 +304,7 @@ export function startFocusReporter(
   };
   const heartbeat = setInterval(() => {
     if (stopped || inFlight) return;
-    if (now() - lastInputAt > FOCUS_INPUT_RECENCY_MS) return;
+    if (now() - lastInputAt > FOCUS_INPUT_RECENCY_MS && !watching()) return;
     if (currentState() === 'focused') {
       void deliver('focused');
     } else if (authBlocked) {
@@ -324,20 +341,27 @@ export function startFocusReporter(
 /** Starts reporting this document's focus to the Station at `apiBase`. */
 export function startStationFocusReporter(apiBase: string): () => void {
   const url = `${apiBase}${FOCUS_PRESENCE_REPORT_PATH}`;
-  return startFocusReporter((state, seq, signal) =>
-    authenticatedFetch(url, {
-      signal,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID,
-      },
-      body: JSON.stringify({
-        clientSessionId: CLIENT_DOCUMENT_SESSION_ID,
-        state,
-        seq,
+  return startFocusReporter(
+    (state, seq, signal) =>
+      authenticatedFetch(url, {
+        signal,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID,
+        },
+        body: JSON.stringify({
+          clientSessionId: CLIENT_DOCUMENT_SESSION_ID,
+          state,
+          seq,
+        }),
+        keepalive: true,
       }),
-      keepalive: true,
-    }),
+    {
+      document,
+      window,
+      now: () => Date.now(),
+      isWatching: isWatchingRunningTurn,
+    },
   );
 }

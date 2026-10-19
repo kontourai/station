@@ -336,7 +336,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     // coverage; this test proves the notification never reaches that seam as
     // a high-priority failure in the first place.
     const schedule = vi
-      .spyOn(notificationService, 'schedule')
+      .spyOn(notificationService, 'scheduleEnveloped')
       .mockResolvedValue({} as never);
     await emit('orchestration:event', {
       event: baseEvent({
@@ -360,6 +360,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
         body: 'Agent stopped in session thread-1',
         priority: 'normal',
       }),
+      expect.anything(),
     );
   });
 
@@ -369,9 +370,9 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       turnId: 'provider:p',
     };
 
-    test('its completion notifies "Your agent replied" when the owner is offline', async () => {
+    test('its completion notifies "Your agent replied"', async () => {
       const schedule = vi
-        .spyOn(notificationService, 'schedule')
+        .spyOn(notificationService, 'scheduleEnveloped')
         .mockResolvedValue({} as never);
       await emit('orchestration:event', {
         event: baseEvent({ method: 'turn.started', ...provider }),
@@ -389,12 +390,13 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
           priority: 'normal',
           dedupeTag: 'turn-completion:thread-1:provider:p',
         }),
+        expect.anything(),
       );
     });
 
-    test('F1: its failure still notifies an offline owner, worded as the reply failing', async () => {
+    test('F1: its failure still notifies, worded as the reply failing', async () => {
       const schedule = vi
-        .spyOn(notificationService, 'schedule')
+        .spyOn(notificationService, 'scheduleEnveloped')
         .mockResolvedValue({} as never);
       await emit('orchestration:event', {
         event: baseEvent({ method: 'turn.started', ...provider }),
@@ -414,12 +416,13 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
           title: "Your agent's reply failed",
           body: "Your agent's reply on its own failed in session thread-1",
         }),
+        expect.anything(),
       );
     });
 
     test('a Stop on it is never reported as "stopped"', async () => {
       const schedule = vi
-        .spyOn(notificationService, 'schedule')
+        .spyOn(notificationService, 'scheduleEnveloped')
         .mockResolvedValue({} as never);
       await emit('orchestration:event', {
         event: baseEvent({ method: 'turn.started', ...provider }),
@@ -444,7 +447,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
 
     test('L6: a reply that ended on a deferred tool (finishReason other, its own result) still notifies "replied"', async () => {
       const schedule = vi
-        .spyOn(notificationService, 'schedule')
+        .spyOn(notificationService, 'scheduleEnveloped')
         .mockResolvedValue({} as never);
       await emit('orchestration:event', {
         event: baseEvent({ method: 'turn.started', ...provider }),
@@ -455,12 +458,13 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       expect(schedule).toHaveBeenCalledWith(
         'turn-completion',
         expect.objectContaining({ title: 'Your agent replied' }),
+        expect.anything(),
       );
     });
 
     test('closed without its own result (a folded send, a new turn) it adds no push; the same shape on a caller turn still does', async () => {
       const schedule = vi
-        .spyOn(notificationService, 'schedule')
+        .spyOn(notificationService, 'scheduleEnveloped')
         .mockResolvedValue({} as never);
       await emit('orchestration:event', {
         event: baseEvent({ method: 'turn.started', ...provider }),
@@ -486,13 +490,14 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       expect(schedule).toHaveBeenCalledWith(
         'turn-completion',
         expect.objectContaining({ title: 'Your agent finished' }),
+        expect.anything(),
       );
     });
   });
 
   test('an unaccompanied Codex turn.completed(cancelled) keeps the existing completed mapping', async () => {
     const schedule = vi
-      .spyOn(notificationService, 'schedule')
+      .spyOn(notificationService, 'scheduleEnveloped')
       .mockResolvedValue({} as never);
 
     await emit('orchestration:event', {
@@ -509,6 +514,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
         title: 'Your agent finished',
         priority: 'normal',
       }),
+      expect.anything(),
     );
   });
 
@@ -697,6 +703,32 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     expect(await notificationService.list()).toHaveLength(0);
   });
 
+  // Read state needs an envelope: without one `markRead` answers
+  // `no-envelope`, so a watched failure could never cancel its escalation.
+  test.each([
+    ['a completed turn', {}, 'done'],
+    ['a failed turn', { method: 'runtime.error', message: 'boom' }, 'failed'],
+  ] as const)(
+    '%s is recorded with a session envelope a reader can mark read',
+    async (_label, overrides, urgency) => {
+      await emit('orchestration:event', { event: baseEvent(overrides) });
+      const [notification] = await notificationService.list();
+      expect(notification.metadata?.envelope).toEqual({
+        v: 1,
+        source: { kind: 'system', subsystem: 'turn-completion' },
+        audience: { kind: 'session-readers', sessionId: 'thread-1' },
+        urgency,
+        target: { kind: 'session', sessionId: 'thread-1' },
+        interrupt: 'default',
+      });
+      const read = await notificationService.markRead(
+        notification.id,
+        'device:phone',
+      );
+      expect(read).toBe('read');
+    },
+  );
+
   test('never leaks response text into the push body', async () => {
     await emit('orchestration:event', {
       event: baseEvent({ outputText: 'THE SECRET ANSWER IS 42' }),
@@ -750,7 +782,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
 
   test('station#1225 HIGH fix: a throwing notificationService.schedule is caught, logged, and does NOT unsubscribe the listener', async () => {
     const scheduleSpy = vi
-      .spyOn(notificationService, 'schedule')
+      .spyOn(notificationService, 'scheduleEnveloped')
       .mockImplementationOnce(async () => {
         throw new Error('simulated JsonFileStore write failure (ENOSPC)');
       });

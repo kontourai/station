@@ -6,15 +6,19 @@
  * (`../approvals/approval-inbox.ts`) and the notification delivery router
  * (`../notifications/delivery/router.ts`, #2586) already provide for
  * approval-request/job-failure notifications — this module only decides
- * WHETHER to call `NotificationService.schedule()`, never how a scheduled
- * notification reaches a device.
+ * WHETHER to schedule a record, never how it reaches a device.
  *
  * "Is anyone watching?" is the router's decision, per surface, not this
- * module's: a focused surface with a live in-app stream skips its OS/push
- * channels and quiets the same person's other surfaces (`policy.ts`). This
- * listener used to skip scheduling whenever the owner held ANY live
- * `/api/orchestration/events` stream; a desktop app idling in the tray keeps
- * one open, so that gate silenced every completion on every device. The
+ * module's (`policy.ts`): a focused surface with a live in-app stream gets
+ * no OS alert or push for the record; the same person's other surfaces skip
+ * a "done" record and hold a "failed" one for `escalateAfterMs`, sending it
+ * then only if it is still unread. The record carries an envelope (system
+ * source, the session's readers, a session target) so that reading it —
+ * opening it, or a focused client showing its chat — cancels that
+ * escalation and retracts what was already sent. This listener used to skip
+ * scheduling whenever the owner held ANY live `/api/orchestration/events`
+ * stream; a desktop app idling in the tray keeps one open, so that gate
+ * silenced every completion on every device. The
  * listener still resolves the completed session's private presence subject
  * through `OrchestrationService.resolveSessionPresenceSubject`: a session
  * that resolves no subject (it has no recorded owner, or a hosted one lacks
@@ -31,6 +35,7 @@
  * without creating an unhandled promise or poisoning later notifications.
  */
 
+import type { NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
 import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
@@ -169,38 +174,56 @@ async function deliverTurnCompletionPush(input: {
   // (focused + live in-app stream → in-app only). Skipping on any open
   // stream silenced every surface while one idle client stayed connected.
 
-  await notificationService.schedule(TURN_COMPLETION_SOURCE, {
-    category:
-      outcome === 'failed' || outcome === 'reply-failed'
+  const failed = outcome === 'failed' || outcome === 'reply-failed';
+  // System source, not `agent`: Station observed this terminal; no agent
+  // sent it, and an agent source claims a verified station-control caller
+  // (`assurance`) that does not exist here. It also keeps the per-agent
+  // mutes, which apply to what an agent chose to send, off these records.
+  const envelope: NotificationEnvelopeV1 = {
+    v: 1,
+    source: { kind: 'system', subsystem: TURN_COMPLETION_SOURCE },
+    audience: { kind: 'session-readers', sessionId: threadId },
+    // The urgency the legacy category already ranked as
+    // (`classifyNotificationCategory`): a stop is quiet like a finish.
+    urgency: failed ? 'failed' : 'done',
+    target: { kind: 'session', sessionId: threadId },
+    interrupt: 'default',
+  };
+  await notificationService.scheduleEnveloped(
+    TURN_COMPLETION_SOURCE,
+    {
+      category: failed
         ? 'turn-failed'
         : outcome === 'stopped'
           ? 'turn-stopped'
           : 'turn-completed',
-    title:
-      outcome === 'failed'
-        ? 'Your agent needs attention'
-        : outcome === 'reply-failed'
-          ? "Your agent's reply failed"
-          : outcome === 'stopped'
-            ? 'Your agent stopped'
-            : outcome === 'replied'
-              ? 'Your agent replied'
-              : 'Your agent finished',
-    body:
-      outcome === 'reply-failed'
-        ? `Your agent's reply on its own failed in session ${threadId}`
-        : `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : outcome === 'replied' ? 'replied' : 'finished'} in session ${threadId}`,
-    priority:
-      outcome === 'failed' || outcome === 'reply-failed' ? 'high' : 'normal',
-    dedupeTag: `turn-completion:${threadId}:${turnId}`,
-    metadata: {
-      sessionId: threadId,
-      sessionKind: SESSION_KIND,
-      threadId,
-      turnId,
-      ...(onActivityCard ? { [ON_ACTIVITY_CARD_METADATA_KEY]: true } : {}),
+      title:
+        outcome === 'failed'
+          ? 'Your agent needs attention'
+          : outcome === 'reply-failed'
+            ? "Your agent's reply failed"
+            : outcome === 'stopped'
+              ? 'Your agent stopped'
+              : outcome === 'replied'
+                ? 'Your agent replied'
+                : 'Your agent finished',
+      body:
+        outcome === 'reply-failed'
+          ? `Your agent's reply on its own failed in session ${threadId}`
+          : `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : outcome === 'replied' ? 'replied' : 'finished'} in session ${threadId}`,
+      priority:
+        outcome === 'failed' || outcome === 'reply-failed' ? 'high' : 'normal',
+      dedupeTag: `turn-completion:${threadId}:${turnId}`,
+      metadata: {
+        sessionId: threadId,
+        sessionKind: SESSION_KIND,
+        threadId,
+        turnId,
+        ...(onActivityCard ? { [ON_ACTIVITY_CARD_METADATA_KEY]: true } : {}),
+      },
     },
-  });
+    envelope,
+  );
   return 'scheduled';
 }
 
@@ -651,7 +674,7 @@ export function wireTurnCompletionNotifications(
  * unrelated notifications is that nothing in this task `await`s the restart
  * itself — by the time `INTERNAL_STOP_REDISPATCH_FAILED` fires, the restart
  * has already concluded (successfully or not), so this dispatched task only
- * does a recipient check and one `schedule()` call, the same bounded work
+ * does a recipient check and one `scheduleEnveloped()` call, the same bounded work
  * `wireTurnCompletionNotifications`'s own task does.
  */
 export function wireInternalStopRedispatchFailureNotifications(
