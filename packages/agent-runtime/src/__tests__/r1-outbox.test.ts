@@ -221,50 +221,57 @@ it('R1.6 one drain applies more than 1024 real settled projections and reaches r
     const startAfterUs = microseconds();
     trace('drain:enter');
     const drainStartUs = microseconds();
-    let drainFailed = false;
+    let drainFailure: { error: unknown } | undefined;
     try {
       await drainModelOutbox(observedStorage, observedSink, key, f.context);
     } catch (error) {
-      drainFailed = true;
-      throw error;
-    } finally {
-      const drainEndUs = microseconds();
-      trace('drain:exit');
-      const stopBeforeUs = microseconds();
-      try {
-        const { profile } = await profiler.post('Profiler.stop');
-        const stopAfterUs = microseconds();
-        const saveStartUs = microseconds();
-        writeFileSync(
-          join(profileDirectory, 'drain.cpuprofile'),
-          JSON.stringify(profile),
-          { flag: 'wx' },
-        );
-        writeFileSync(
-          join(profileDirectory, 'observations.json'),
-          JSON.stringify({
-            startBeforeUs,
-            startAfterUs,
-            drainStartUs,
-            drainEndUs,
-            stopBeforeUs,
-            stopAfterUs,
-            bookkeepingUs,
-            drainFailed,
-            observations,
-          }),
-          { flag: 'wx' },
-        );
-        writeFileSync(
-          join(profileDirectory, 'saved.json'),
-          JSON.stringify({ saveUs: microseconds() - saveStartUs }),
-          { flag: 'wx' },
-        );
-      } catch (error) {
-        if (!drainFailed) throw error;
-        writeSync(2, `\n[r1-outbox-profile-error] ${String(error)}\n`);
-      }
+      drainFailure = { error };
     }
+    const drainEndUs = microseconds();
+    trace('drain:exit');
+    const stopBeforeUs = microseconds();
+    let profileFailure: { error: unknown } | undefined;
+    try {
+      const { profile } = await profiler.post('Profiler.stop');
+      const stopAfterUs = microseconds();
+      const saveStartUs = microseconds();
+      writeFileSync(
+        join(profileDirectory, 'drain.cpuprofile'),
+        JSON.stringify(profile),
+        { flag: 'wx' },
+      );
+      writeFileSync(
+        join(profileDirectory, 'observations.json'),
+        JSON.stringify({
+          startBeforeUs,
+          startAfterUs,
+          drainStartUs,
+          drainEndUs,
+          stopBeforeUs,
+          stopAfterUs,
+          bookkeepingUs,
+          drainFailed: drainFailure !== undefined,
+          observations,
+        }),
+        { flag: 'wx' },
+      );
+      writeFileSync(
+        join(profileDirectory, 'saved.json'),
+        JSON.stringify({ saveUs: microseconds() - saveStartUs }),
+        { flag: 'wx' },
+      );
+    } catch (error) {
+      profileFailure = { error };
+    }
+    if (drainFailure) {
+      if (profileFailure)
+        writeSync(
+          2,
+          `\n[r1-outbox-profile-error] ${String(profileFailure.error)}\n`,
+        );
+      throw drainFailure.error;
+    }
+    if (profileFailure) throw profileFailure.error;
   } finally {
     profiler.disconnect();
   }
