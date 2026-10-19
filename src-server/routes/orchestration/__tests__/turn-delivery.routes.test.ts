@@ -100,6 +100,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
    */
   nextTurn: 'refuse' | 'fail' | undefined;
   turnGate: Promise<void> | undefined;
+  emitInvocation = true;
 
   async sendTurn(input: ProviderSendTurnInput) {
     const next = this.nextTurn;
@@ -107,20 +108,25 @@ class ScriptedAdapter implements ProviderAdapterShape {
     if (next === 'refuse')
       throw new SendTurnRefusedError('The engine refused this turn.');
     if (next === 'fail') throw new Error('The engine connection dropped.');
+    const invocationId = input.invocationId;
+    const threadId = input.threadId;
+    const prompt = input.input;
+    const turnId = `delivery-turn-${this.turns.length + 1}`;
+    const emitInvocation = this.emitInvocation;
     this.turns.push(input);
     if (this.turnGate) await this.turnGate;
-    const turnId = `delivery-turn-${this.turns.length}`;
     const base = {
       provider: this.provider,
-      threadId: input.threadId,
+      threadId,
       turnId,
+      ...(emitInvocation && invocationId !== undefined ? { invocationId } : {}),
       createdAt: new Date().toISOString(),
     } as const;
     this.events.push({
       ...base,
       eventId: `${turnId}:started`,
       method: 'turn.started',
-      prompt: input.input,
+      prompt,
     });
     this.events.push({
       ...base,
@@ -128,7 +134,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
       method: 'turn.completed',
       outputText: 'ok',
     });
-    return { threadId: input.threadId, turnId };
+    return { threadId, turnId };
   }
 
   async interruptTurn() {
@@ -823,18 +829,105 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
   });
 
   test('stamps the send key on the turn.started that send produced', async () => {
-    const { store, send } = station();
+    const { store, adapter, send } = station();
     const sent = await send('conversation:stamp', 'key-stamp');
-    expect(sent.status, await sent.clone().text()).toBe(200);
+    const responseBody = await sent.clone().text();
     const { sessionId } = (
       (await sent.json()) as { data: { sessionId: string } }
     ).data;
+    let lastImage: string | undefined;
     await eventually(() => {
+      const request = adapter.turns[0];
       const started = store
         .listEvents(sessionId)
         .map((row) => row.payload)
         .find((event) => event.method === 'turn.started');
+      const image = JSON.stringify({
+        scenario: 'original-key-stamp-positive',
+        status: sent.status,
+        responseBody,
+        producerCount: adapter.turns.length,
+        request: request ?? null,
+        started: started ?? null,
+      });
+      if (image !== lastImage) {
+        lastImage = image;
+        process.stdout.write(
+          `\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_BEGIN>>>\n${image}\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_END>>>\n`,
+        );
+      }
+      expect(sent.status, responseBody).toBe(200);
+      expect(adapter.turns).toHaveLength(1);
+      expect(typeof request?.invocationId).toBe('string');
+      expect(request?.invocationId).not.toBe('');
+      expect(started).toMatchObject({ invocationId: request?.invocationId });
       expect(started).toMatchObject({ clientTurnId: 'key-stamp' });
+    });
+  });
+
+  test('keeps a deliberately raw producer start unscoped despite its captured send invocation', async () => {
+    const { store, adapter, send } = station();
+    adapter.emitInvocation = false;
+    let releaseTurn!: () => void;
+    adapter.turnGate = new Promise<void>((resolve) => {
+      releaseTurn = resolve;
+    });
+    const pending = send('conversation:raw-stamp', 'key-raw-stamp');
+    let lastEntryImage: string | undefined;
+    try {
+      await eventually(() => {
+        const image = JSON.stringify({
+          scenario: 'raw-producer-entry',
+          currentEmitInvocation: adapter.emitInvocation,
+          producerCount: adapter.turns.length,
+          request: adapter.turns[0] ?? null,
+        });
+        if (image !== lastEntryImage) {
+          lastEntryImage = image;
+          process.stdout.write(
+            `\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_BEGIN>>>\n${image}\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_END>>>\n`,
+          );
+        }
+        expect(adapter.turns).toHaveLength(1);
+      });
+      adapter.emitInvocation = true;
+    } finally {
+      releaseTurn();
+    }
+    const sent = await pending;
+    const responseBody = await sent.clone().text();
+    const { sessionId } = (
+      (await sent.json()) as { data: { sessionId: string } }
+    ).data;
+    let lastImage: string | undefined;
+    await eventually(() => {
+      const request = adapter.turns[0];
+      const started = store
+        .listEvents(sessionId)
+        .map((row) => row.payload)
+        .find((event) => event.method === 'turn.started');
+      const image = JSON.stringify({
+        scenario: 'raw-producer-stored-start',
+        status: sent.status,
+        responseBody,
+        currentEmitInvocation: adapter.emitInvocation,
+        producerCount: adapter.turns.length,
+        request: request ?? null,
+        started: started ?? null,
+      });
+      if (image !== lastImage) {
+        lastImage = image;
+        process.stdout.write(
+          `\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_BEGIN>>>\n${image}\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_END>>>\n`,
+        );
+      }
+      expect(sent.status, responseBody).toBe(200);
+      expect(adapter.turns).toHaveLength(1);
+      expect(typeof request?.invocationId).toBe('string');
+      expect(request?.invocationId).not.toBe('');
+      expect(started).toBeDefined();
+      expect(started).not.toHaveProperty('invocationId');
+      expect(started).not.toHaveProperty('clientTurnId');
     });
   });
 
