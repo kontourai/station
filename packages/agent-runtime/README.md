@@ -82,7 +82,7 @@ and provider metadata are omitted on first delivery and replay; warnings are
 sanitized identically, and timestamps round-trip as Date values. This is not
 full provider fidelity or literal authenticated HTTP byte identity.
 
-The pinned Zod 4.6.5 conversion's direct function-tool `inputSchema` may carry
+The pinned Zod 4.6.7 conversion's direct function-tool `inputSchema` may carry
 one exact non-enumerable `~standard` sidecar. Only its admitted data-descriptor
 shape is excluded; every enumerable schema value remains pinned. The codec
 never calls its functions, and its vendor label proves no origin or authority.

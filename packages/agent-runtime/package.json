@@ -42,7 +42,7 @@
   },
   "dependencies": {
     "@kontourai/monument": "0.1.0",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "peerDependencies": {
     "@ai-sdk/provider": "3.0.18",
