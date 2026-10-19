@@ -1,20 +1,17 @@
 import type { DesktopUpdateState } from '@kontourai/station-contracts/desktop-update';
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
-import { useApiBase } from '../../contexts/ApiBaseContext';
 import { installDesktopUpdateAndRestart } from '../../platform/native/desktopUpdate';
-import { usePlatformProfile } from '../../platform/PlatformProfileContext';
-import { useBundledServerStatus } from '../../platform/useBundledServerStatus';
 import { TechnicalDetails } from '../../views/settings/coreUpdatePresentation';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SkeletonList } from '../state';
 import {
   type DesktopRestartServerImpact,
-  desktopRestartServerImpact,
   type RunningTurn,
   runningTurns,
 } from './restartImpact';
+import { useDesktopRestartServerImpact } from './useDesktopRestartServerImpact';
 import './DesktopUpdate.css';
 
 type TurnsRead =
@@ -115,6 +112,8 @@ export function DesktopUpdateRestartDialogView({
   returnFocusTarget,
 }: DesktopUpdateRestartDialogViewProps) {
   const turnsMatter = impact === 'sidecar-restarts' || impact === 'unknown';
+  // Restart is offered only once the user can see what it interrupts.
+  const awaitingTurns = turnsMatter && turns.status === 'pending';
   return (
     <Dialog
       title={`Restart Station to install ${version}?`}
@@ -133,6 +132,7 @@ export function DesktopUpdateRestartDialogView({
           <Button
             variant="primary"
             onClick={onRestart}
+            disabled={awaitingTurns}
             pending={installing}
             pendingLabel="Installing…"
           >
@@ -175,14 +175,7 @@ export function DesktopUpdateRestartDialog({
   onClose: () => void;
   returnFocusTarget?: HTMLElement | null;
 }) {
-  const profile = usePlatformProfile();
-  const { apiBase } = useApiBase();
-  const bundled = useBundledServerStatus(profile.supervisesBundledServer);
-  const impact = desktopRestartServerImpact({
-    supervisesBundledServer: profile.supervisesBundledServer,
-    bundled,
-    apiBase,
-  });
+  const impact = useDesktopRestartServerImpact();
   const turnsMatter = impact === 'sidecar-restarts' || impact === 'unknown';
   const sessions = useOrchestrationSessionsQuery({ enabled: turnsMatter });
   const { refetch } = sessions;
@@ -208,12 +201,6 @@ export function DesktopUpdateRestartDialog({
         ? state.error.message
         : null));
 
-  // Once the native side answered (ready again, or installing), the local
-  // request flag has served its purpose.
-  useEffect(() => {
-    if (phase.status !== 'ready' || state.error) setRequested(false);
-  }, [phase.status, state.error]);
-
   if (version === null) return null;
 
   const turns: TurnsRead = sessions.isError
@@ -235,12 +222,20 @@ export function DesktopUpdateRestartDialog({
       onRestart={() => {
         setRequestError(null);
         setRequested(true);
-        installDesktopUpdateAndRestart().catch((error: unknown) => {
-          setRequested(false);
-          setRequestError(
-            error instanceof Error ? error.message : String(error),
-          );
-        });
+        installDesktopUpdateAndRestart().then(
+          // On success the app restarts before this resolves. Any answer
+          // that is not `installing` (a failed install, or a refusal because
+          // nothing was ready) ends this request.
+          (answer) => {
+            if (answer.phase.status !== 'installing') setRequested(false);
+          },
+          (error: unknown) => {
+            setRequested(false);
+            setRequestError(
+              error instanceof Error ? error.message : String(error),
+            );
+          },
+        );
       }}
     />
   );

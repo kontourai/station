@@ -75,4 +75,9 @@ export interface DesktopUpdateState {
    * never will (policy `never`, or nothing is available).
    */
   autoDownloadAt: number | null;
+  /**
+   * Increases with every emitted change while the app runs. A reader keeps
+   * the highest it has seen and drops older events and snapshots.
+   */
+  sequence: number;
 }

@@ -26,9 +26,10 @@ vi.mock('../platform/PlatformProfileContext', () => ({
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://127.0.0.1:4141' }),
 }));
+const server = vi.hoisted(() => ({ ownership: 'sidecar' }));
 vi.mock('../platform/useBundledServerStatus', () => ({
   useBundledServerStatus: () => ({
-    ownership: 'sidecar',
+    ownership: server.ownership,
     apiBase: 'http://127.0.0.1:4141',
   }),
 }));
@@ -41,7 +42,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+  vi.resetAllMocks();
+  server.ownership = 'sidecar';
+});
 
 async function mount(
   fixture: Parameters<typeof desktopUpdateFixture>[0],
@@ -179,5 +183,45 @@ describe('Desktop app updates settings card', () => {
     expect(screen.getByRole('alert').textContent).toBe(
       'The update did not install, and Station did not restart.',
     );
+  });
+
+  test('a failed state read is reported with a retry', async () => {
+    const fake = installFakeNativeUpdater(
+      native,
+      desktopUpdateFixture('ready'),
+    );
+    const answer = native.invoke.getMockImplementation()!;
+    native.invoke.mockImplementationOnce(async () => {
+      throw new Error('command desktop_update_state not found');
+    });
+    render(<DesktopUpdateCheck />);
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Station could not read the desktop app’s update state.',
+    );
+    expect(
+      screen.getByText('command desktop_update_state not found'),
+    ).not.toBeNull();
+    native.invoke.mockImplementation(answer);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(
+      await screen.findByText(/Station 0.1.12 is downloaded/),
+    ).not.toBeNull();
+    expect(fake.listenerCount()).toBe(1);
+  });
+
+  test('names the built-in server only when it serves this window', async () => {
+    await mount('upToDate');
+    expect(
+      screen.getByText(/including the built-in server this window uses/),
+    ).not.toBeNull();
+  });
+
+  test('says nothing about a built-in server for an installed service', async () => {
+    server.ownership = 'service';
+    await mount('upToDate');
+    expect(screen.queryByText(/built-in server/)).toBeNull();
+    expect(
+      screen.getByText(/Updates Station on this Mac\. Station restarts only/),
+    ).not.toBeNull();
   });
 });

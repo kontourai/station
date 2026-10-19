@@ -165,3 +165,17 @@ describe('DesktopUpdateControl', () => {
     ).not.toBeNull();
   });
 });
+
+test('an event older than one already applied is dropped', async () => {
+  const { fake } = await mount('available');
+  act(() => fake.emit(desktopUpdateFixture('ready')));
+  await screen.findByRole('button', { name: /Restart to update/ });
+  // A late progress event from before the download finished.
+  act(() =>
+    fake.emitAsIs({ ...desktopUpdateFixture('downloading'), sequence: 1 }),
+  );
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(
+    screen.getByRole('button', { name: /Restart to update/ }),
+  ).not.toBeNull();
+});

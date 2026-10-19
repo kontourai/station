@@ -146,7 +146,7 @@ export function DesktopUpdateControl({
 }: {
   collapsed?: boolean;
 }) {
-  const state = useDesktopUpdateState(true);
+  const { state } = useDesktopUpdateState(true);
   const view = desktopUpdateControlView(state);
   const [confirming, setConfirming] = useState(false);
   const restartRef = useRef<HTMLButtonElement>(null);

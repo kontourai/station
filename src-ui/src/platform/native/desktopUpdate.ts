@@ -38,11 +38,12 @@ export async function downloadDesktopUpdate(): Promise<void> {
 
 /**
  * Installs the downloaded update and restarts the app. Call only after the
- * user confirmed the restart. On success the process exits; a failed install
- * returns to `ready` with an `install` error.
+ * user confirmed the restart. On success the process exits; otherwise the
+ * resolved state says why nothing is installing (a failed install returns
+ * to `ready` with an `install` error).
  */
-export async function installDesktopUpdateAndRestart(): Promise<void> {
-  await invokeTauri<DesktopUpdateState>('desktop_update_install');
+export function installDesktopUpdateAndRestart(): Promise<DesktopUpdateState> {
+  return invokeTauri<DesktopUpdateState>('desktop_update_install');
 }
 
 /** Rejects when the native side could not persist the policy. */

@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -152,10 +153,18 @@ describe('DesktopUpdateRestartDialog', () => {
     );
   });
 
+  /** Lets any invoke that a click started (behind a dynamic import) land. */
+  async function settle() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+  }
+
   test('Later closes without installing; Restart now installs', async () => {
     const { onClose } = open();
     fireEvent.click(screen.getByRole('button', { name: 'Later' }));
     expect(onClose).toHaveBeenCalledOnce();
+    await settle();
     expect(native.invoke).not.toHaveBeenCalledWith(
       'desktop_update_install',
       undefined,
@@ -167,6 +176,70 @@ describe('DesktopUpdateRestartDialog', () => {
         undefined,
       ),
     );
+  });
+
+  test('Restart now waits until the running turns are known', async () => {
+    facts.bundled = { ownership: 'sidecar', apiBase: 'http://127.0.0.1:4141' };
+    facts.sessions = { data: undefined, isError: false, isFetching: true };
+    open();
+    const restart = screen.getByRole('button', {
+      name: 'Restart now',
+    }) as HTMLButtonElement;
+    expect(restart.disabled).toBe(true);
+    fireEvent.click(restart);
+    await settle();
+    expect(native.invoke).not.toHaveBeenCalledWith(
+      'desktop_update_install',
+      undefined,
+    );
+  });
+
+  test('a refused install does not leave the dialog installing', async () => {
+    // The native side answers with a state that is not installing (here:
+    // nothing ready any more), so the request is over.
+    installFakeNativeUpdater(native, desktopUpdateFixture('ready'), {
+      desktop_update_install: async () => desktopUpdateFixture('available'),
+    });
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+    expect(
+      (await screen.findByRole('button', {
+        name: /Installing/,
+      })) as HTMLElement,
+    ).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Restart now' }),
+      ).not.toBeNull(),
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Later' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  test.each([
+    ['http://localhost:4141', 'http://127.0.0.1:4141/'],
+    ['http://[::1]:4141', 'http://localhost:4141'],
+  ])('loopback names compare equal (%s vs %s)', (sidecar, window) => {
+    facts.bundled = { ownership: 'sidecar', apiBase: sidecar };
+    facts.apiBase = window;
+    facts.sessions.data = [session('t-1', 'Refactor the importer', true)];
+    const { dialog } = open();
+    expect(
+      within(dialog).getByText(/built-in server runs inside this app/),
+    ).not.toBeNull();
+  });
+
+  test('another loopback server while a sidecar runs is unknown, not safe', () => {
+    facts.bundled = { ownership: 'sidecar', apiBase: 'http://127.0.0.1:4141' };
+    facts.apiBase = 'http://localhost:9999';
+    facts.sessions.data = [session('t-1', 'Refactor the importer', true)];
+    const { dialog } = open();
+    expect(
+      within(dialog).getByText(/could not confirm whether its server restarts/),
+    ).not.toBeNull();
+    expect(within(dialog).queryByText(/keeps running/)).toBeNull();
   });
 
   test('a failed install says nothing restarted and offers Try again', () => {

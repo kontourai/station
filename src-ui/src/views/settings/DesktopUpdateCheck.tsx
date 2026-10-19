@@ -8,6 +8,7 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DesktopUpdateRestartDialog } from '../../components/desktop-update/DesktopUpdateRestartDialog';
 import { downloadPercent } from '../../components/desktop-update/desktopUpdatePresentation';
+import { useDesktopRestartServerImpact } from '../../components/desktop-update/useDesktopRestartServerImpact';
 import { useDesktopUpdateState } from '../../components/desktop-update/useDesktopUpdateState';
 import { SkeletonBlock } from '../../components/state';
 import {
@@ -110,7 +111,8 @@ const ERROR_LEADS = {
  */
 export function DesktopUpdateCheck() {
   const { target, isDesktop } = usePlatformProfile();
-  const state = useDesktopUpdateState(isDesktop);
+  const { state, error: readError, retry } = useDesktopUpdateState(isDesktop);
+  const impact = useDesktopRestartServerImpact();
   const [confirming, setConfirming] = useState(false);
   const [requestError, setRequestError] = useState<{
     lead: string;
@@ -118,6 +120,18 @@ export function DesktopUpdateCheck() {
   } | null>(null);
   const policyId = useId();
   const restartRef = useRef<HTMLButtonElement>(null);
+
+  if (!state && readError) {
+    return (
+      <div className="settings__update-check">
+        <p role="alert">
+          Station could not read the desktop app’s update state.
+        </p>
+        <TechnicalDetails detail={readError} />
+        <Button onClick={retry}>Try again</Button>
+      </div>
+    );
+  }
 
   if (!state) {
     return (
@@ -128,7 +142,7 @@ export function DesktopUpdateCheck() {
   }
 
   const { phase, error } = state;
-  const request = (lead: string, action: () => Promise<void>) => {
+  const request = (lead: string, action: () => Promise<unknown>) => {
     setRequestError(null);
     action().catch((cause: unknown) =>
       setRequestError({
@@ -243,8 +257,11 @@ export function DesktopUpdateCheck() {
         </div>
       )}
       <span className="settings__field-hint">
-        Updates Station on this {target === 'macos' ? 'Mac' : 'computer'},
-        including its built-in server. Station restarts only when you confirm.
+        Updates Station on this {target === 'macos' ? 'Mac' : 'computer'}
+        {impact === 'sidecar-restarts'
+          ? ', including the built-in server this window uses'
+          : ''}
+        . Station restarts only when you confirm.
       </span>
       {confirming && (
         <DesktopUpdateRestartDialog

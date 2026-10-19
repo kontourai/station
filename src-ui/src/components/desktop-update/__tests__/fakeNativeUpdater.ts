@@ -79,11 +79,19 @@ export function installFakeNativeUpdater(
     if (command.startsWith('desktop_update_')) return current;
     throw new Error(`unexpected native command ${command}`);
   });
+  let sequence = initial.sequence;
+  const deliver = (state: DesktopUpdateState) => {
+    current = state;
+    for (const handler of handlers) handler({ payload: state });
+  };
   return {
+    /** Emits `state` as the native side would: with the next sequence. */
     emit(state: DesktopUpdateState) {
-      current = state;
-      for (const handler of handlers) handler({ payload: state });
+      sequence += 1;
+      deliver({ ...state, sequence });
     },
+    /** Emits `state` with its own sequence, e.g. a stale or reordered one. */
+    emitAsIs: deliver,
     commands(): string[] {
       return native.invoke.mock.calls
         .map(([command]) => command as string)
