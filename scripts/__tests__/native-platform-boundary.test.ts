@@ -11,11 +11,11 @@ import {
   findTauriCspViolations,
   findTauriNonceMarkerViolations,
   findTauriResourceBoundaryViolations,
+  listTauriAclSources,
   NATIVE_GLOBAL_PATTERN,
   RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
   TAURI_APPIMAGE_CONFIG,
   TAURI_BASE_CONFIG,
-  TAURI_CAPABILITY_DIRECTORY,
   TAURI_DESKTOP_CONFIGS,
   TAURI_IMPORT_PATTERN,
   TAURI_MOBILE_CONFIGS,
@@ -109,45 +109,31 @@ describe('native-platform-boundary', () => {
   });
 
   test('grants the webview no updater or process authority (#3851)', () => {
-    // The gate itself walks the directory; this pins today's manifests.
-    const manifests = [
-      'default.json',
-      'android-agent-activity.json',
-      'ios-agent-activity.json',
-    ].map((name): [string, string] => {
-      const file = `${TAURI_CAPABILITY_DIRECTORY}/${name}`;
-      return [file, readFileSync(file, 'utf8')];
-    });
+    const sources = listTauriAclSources();
+    // The real tree is read: capabilities and every Tauri config.
+    expect(sources.map(([file]) => file)).toEqual(
+      expect.arrayContaining([
+        'src-desktop/capabilities/default.json',
+        'src-desktop/tauri.conf.json',
+        'src-desktop/tauri.macos.conf.json',
+      ]),
+    );
     expect(existsSync(RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST)).toBe(false);
-    expect(findNativeOnlyPermissionGrants(manifests)).toEqual([]);
-
-    // The retired manifest is refused by its presence, and a grant in any
-    // manifest (string or object form) is refused.
+    expect(findNativeOnlyPermissionGrants(sources)).toEqual([]);
+    expect(
+      findNativeOnlyPermissionGrants([
+        ['src-desktop/capabilities/broken.json', '{ not json'],
+      ]),
+    ).toEqual(['src-desktop/capabilities/broken.json is not valid JSON']);
+    // Conservative: an identifier-shaped value is refused wherever it sits.
     expect(
       findNativeOnlyPermissionGrants([
         [
-          RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
-          JSON.stringify({ permissions: [] }),
+          'src-desktop/tauri.conf.json',
+          JSON.stringify({ plugins: { updater: { pubkey: 'process:x' } } }),
         ],
       ]),
-    ).toEqual([expect.stringContaining('must not exist')]);
-    expect(
-      findNativeOnlyPermissionGrants([
-        [
-          'src-desktop/capabilities/default.json',
-          JSON.stringify({
-            permissions: [
-              'core:event:allow-listen',
-              'updater:allow-download-and-install',
-              { identifier: 'process:allow-restart' },
-            ],
-          }),
-        ],
-      ]),
-    ).toEqual([
-      expect.stringContaining('grants updater:allow-download-and-install'),
-      expect.stringContaining('grants process:allow-restart'),
-    ]);
+    ).toEqual([expect.stringContaining('grants process:x')]);
   });
 
   test('requires the exact least-privilege desktop CSP and Tauri CSP mutation', () => {

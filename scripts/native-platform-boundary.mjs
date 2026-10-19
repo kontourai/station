@@ -9,11 +9,12 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const TAURI_CAPABILITY_MANIFEST =
   'src-desktop/capabilities/default.json';
-export const TAURI_CAPABILITY_DIRECTORY = 'src-desktop/capabilities';
+export const TAURI_DESKTOP_ROOT = 'src-desktop';
+export const TAURI_CAPABILITY_DIRECTORY = `${TAURI_DESKTOP_ROOT}/capabilities`;
 // #3851: the desktop updater is native-owned. The webview reads its state and
 // asks it to act through app commands; it holds no updater or process plugin
-// authority, so no capability manifest may grant either. The manifest that
-// used to (#575) must not come back.
+// authority, so nothing Tauri loads may grant either. The manifest that used
+// to (#575) must not come back.
 export const RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST =
   'src-desktop/capabilities/desktop-updater.json';
 export const NATIVE_ONLY_PERMISSION_PREFIXES = ['updater:', 'process:'];
@@ -196,54 +197,113 @@ export function findCapabilityManifestViolations(
   return [];
 }
 
-function permissionIdentifier(permission) {
-  if (typeof permission === 'string') return permission;
-  if (permission && typeof permission === 'object') {
-    return typeof permission.identifier === 'string'
-      ? permission.identifier
-      : null;
+function isNativeOnlyIdentifier(value) {
+  return NATIVE_ONLY_PERMISSION_PREFIXES.some((prefix) =>
+    value.startsWith(prefix),
+  );
+}
+
+function collectStrings(value, out) {
+  if (typeof value === 'string') out.push(value);
+  else if (Array.isArray(value))
+    for (const item of value) collectStrings(item, out);
+  else if (value && typeof value === 'object')
+    for (const item of Object.values(value)) collectStrings(item, out);
+  return out;
+}
+
+// Every quoted literal in a TOML or JSON5 file: basic and literal strings,
+// single- or triple-quoted. A conservative superset of the identifiers such
+// a file can declare, so no container shape hides one.
+const QUOTED_LITERAL =
+  /"""([\s\S]*?)"""|'''([\s\S]*?)'''|"((?:[^"\\\n]|\\.)*)"|'([^'\n]*)'/g;
+
+/**
+ * The updater/process identifiers a file Tauri loads could grant or bundle.
+ * JSON is parsed and walked whole (a capability, a list, a
+ * `{ "capabilities": [...] }` file, inline `app.security.capabilities`, or a
+ * permission set); other formats are scanned for every quoted literal.
+ * Unparseable JSON is reported rather than skipped.
+ */
+export function nativeOnlyIdentifiersIn(file, content) {
+  let strings;
+  if (file.endsWith('.json')) {
+    try {
+      strings = collectStrings(JSON.parse(content), []);
+    } catch {
+      return { identifiers: [], unreadable: true };
+    }
+  } else {
+    strings = [];
+    QUOTED_LITERAL.lastIndex = 0;
+    let match = QUOTED_LITERAL.exec(content);
+    while (match !== null) {
+      strings.push(match.slice(1).find((group) => group !== undefined) ?? '');
+      match = QUOTED_LITERAL.exec(content);
+    }
   }
-  return null;
+  return {
+    identifiers: [...new Set(strings.map((value) => value.trim()))].filter(
+      isNativeOnlyIdentifier,
+    ),
+    unreadable: false,
+  };
 }
 
 /**
- * Any capability manifest granting the webview updater or process plugin
- * permissions (#3851). `manifests` is `[file, content]` pairs for every file
- * in the capability directory; the retired desktop-updater manifest is a
- * violation by its presence alone.
+ * Any file Tauri loads that grants the webview updater or process
+ * permissions, or defines an app permission set bundling them (#3851).
+ * `files` is `[path, content]` pairs from {@link listTauriAclSources}; the
+ * retired desktop-updater manifest is a violation by its presence alone.
  */
-export function findNativeOnlyPermissionGrants(manifests) {
+export function findNativeOnlyPermissionGrants(files) {
   const violations = [];
-  for (const [file, content] of manifests) {
-    if (file === RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST) {
+  for (const [file, content] of files) {
+    if (/(?:^|\/)capabilities\/desktop-updater\.json$/.test(file)) {
       violations.push(
         `${file} must not exist: desktop updates are native-owned (#3851)`,
       );
     }
-    let manifest;
-    try {
-      manifest = JSON.parse(content);
-    } catch {
-      violations.push(`${file} is not valid JSON`);
-      continue;
-    }
-    for (const permission of Array.isArray(manifest.permissions)
-      ? manifest.permissions
-      : []) {
-      const identifier = permissionIdentifier(permission);
-      if (
-        identifier !== null &&
-        NATIVE_ONLY_PERMISSION_PREFIXES.some((prefix) =>
-          identifier.startsWith(prefix),
-        )
-      ) {
-        violations.push(
-          `${file} grants ${identifier}; the webview holds no updater or process authority (#3851)`,
-        );
-      }
+    const { identifiers, unreadable } = nativeOnlyIdentifiersIn(file, content);
+    if (unreadable) violations.push(`${file} is not valid JSON`);
+    for (const identifier of identifiers) {
+      violations.push(
+        `${file} grants ${identifier}; the webview holds no updater or process authority (#3851)`,
+      );
     }
   }
   return violations;
+}
+
+function walkFiles(directory) {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = `${directory}/${entry.name}`;
+    return entry.isDirectory() ? walkFiles(path) : [path];
+  });
+}
+
+const TAURI_CONFIG_FILE = /^(?:tauri.*\.conf\.json5?|Tauri.*\.toml)$/i;
+
+/**
+ * Everything Tauri reads ACL entries from under a desktop root: every file
+ * under `capabilities/` (Tauri globs `capabilities/**\/*` and loads json,
+ * json5 and toml), every app permission file under `permissions/`, and every
+ * Tauri config, whose `app.security.capabilities` may inline capabilities.
+ * Files of any extension under those directories are included, so a format
+ * a later Tauri accepts is not silently skipped.
+ */
+export function listTauriAclSources(root = TAURI_DESKTOP_ROOT) {
+  const configs = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && TAURI_CONFIG_FILE.test(entry.name))
+    .map((entry) => `${root}/${entry.name}`);
+  return [
+    ...walkFiles(`${root}/capabilities`),
+    ...walkFiles(`${root}/permissions`),
+    ...configs,
+  ]
+    .sort()
+    .map((file) => [file, readFileSync(file, 'utf8')]);
 }
 
 function hasExactTauriCsp(csp) {
@@ -420,13 +480,13 @@ function main() {
   const manifestFindings = findCapabilityManifestViolations(
     readFileSync(TAURI_CAPABILITY_MANIFEST, 'utf8'),
   );
+  const desktopRootFlag = process.argv.indexOf('--desktop-root');
   const nativeOnlyGrantFindings = findNativeOnlyPermissionGrants(
-    readdirSync(TAURI_CAPABILITY_DIRECTORY)
-      .filter((name) => name.endsWith('.json'))
-      .map((name) => {
-        const file = `${TAURI_CAPABILITY_DIRECTORY}/${name}`;
-        return [file, readFileSync(file, 'utf8')];
-      }),
+    listTauriAclSources(
+      desktopRootFlag === -1
+        ? TAURI_DESKTOP_ROOT
+        : process.argv[desktopRootFlag + 1],
+    ),
   );
   const cspFindings = findTauriCspViolations(
     readFileSync(TAURI_BASE_CONFIG, 'utf8'),
