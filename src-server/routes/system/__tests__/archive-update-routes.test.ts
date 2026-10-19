@@ -1141,6 +1141,8 @@ function coordinatorFor(
     clock?: { now: number };
     /** Holds every policy read until it settles. */
     policyGate?: Promise<void>;
+    /** Runs before each policy read returns. */
+    onPolicyRead?: () => Promise<void> | void;
   } = {},
 ) {
   const clock = options.clock ?? { now: Date.parse('2026-10-19T10:00:00Z') };
@@ -1165,6 +1167,7 @@ function coordinatorFor(
     },
     readDownloadPolicy: async () => {
       if (options.policyGate) await options.policyGate;
+      await options.onPolicyRead?.();
       return policy;
     },
     listRunningTurns: async () => (await options.running?.()) ?? [],
@@ -2303,5 +2306,116 @@ describe('the coordinator, review round 4 (#3851)', () => {
     await checked;
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(timers.live()).toEqual([]);
+  });
+});
+
+describe('the coordinator, review round 5 (#3851)', () => {
+  function intentFile(install: Install) {
+    return join(
+      serviceUpdatePaths(install.installRoot).runtime,
+      'server-update.json',
+    );
+  }
+
+  test('item 1: an unreadable intent file blocks a download and still reports the pending update when idle', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'immediately',
+      running: () => [{ sessionId: 's-1' }],
+    });
+    coordinator.start();
+    coordinator.markReady();
+    await coordinator.setApplyWhenIdle(NEWER);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    chmodSync(intentFile(install), 0o000);
+    try {
+      // A person's download is refused, not let through.
+      expect(await coordinator.stage()).toMatchObject({
+        ok: false,
+        status: 500,
+      });
+      // The policy starts nothing either.
+      await coordinator.check('newer-client', { force: true });
+      expect(request()).toBeNull();
+      // The pending intent is reported from what this coordinator knows.
+      expect((await coordinator.state()).applyWhenIdle).toMatchObject({
+        version: NEWER,
+      });
+    } finally {
+      chmodSync(intentFile(install), 0o600);
+      coordinator.stop();
+    }
+  });
+
+  test('item 3: a deadline the policy armed while a failed check finished is not replaced by a retry', async () => {
+    const install = makeInstall();
+    let fired = false;
+    let armNow: (() => Promise<void>) | null = null;
+    const harness = coordinatorFor(install, {
+      onPolicyRead: async () => {
+        if (!armNow || fired) return;
+        fired = true;
+        await armNow();
+      },
+    });
+    const { coordinator, advance, timers, clock, published, setPolicy } =
+      harness;
+    coordinator.start();
+    await coordinator.check('boot');
+    fetchFn.mockRejectedValueOnce(new Error('EAI_AGAIN'));
+    const publishedBefore = published.length;
+    // Fires at the deadline continuation's own policy read: the failed
+    // check has published by then.
+    armNow = async () => {
+      if (published.length <= publishedBefore) {
+        fired = false;
+        return;
+      }
+      // A newer release seen by a client's check, then the policy saved
+      // twice: it arms its own 24 h deadline for that release.
+      serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+      const app = createApp(install, {
+        extraDeps: { serverUpdate: coordinator },
+      });
+      await app.request('/core-update');
+      setPolicy('never');
+      await coordinator.settingsChanged();
+      setPolicy('after-24h');
+      await coordinator.settingsChanged();
+    };
+    await advance(24 * 60 * 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The policy's deadline (capped timer) stands; no 1 h retry replaced it.
+    expect(fired).toBe(true);
+    expect(timers.live().map((timer) => timer.due - clock.now)).toContain(
+      MAX_TIMER_MS,
+    );
+    expect(timers.live().map((timer) => timer.due - clock.now)).not.toContain(
+      60 * 60_000,
+    );
+    coordinator.stop();
+  });
+
+  test('item 2: a new server leaves an unreadable intent file alone', async () => {
+    const install = makeInstall();
+    const runtime = serviceUpdatePaths(install.installRoot).runtime;
+    mkdirSync(runtime, { recursive: true });
+    const before = JSON.stringify({
+      applyWhenIdle: { version: RUNNING, requestedAt: '2026-10-18T00:00:00Z' },
+    });
+    writeFileSync(intentFile(install), before, { mode: 0o600 });
+    chmodSync(intentFile(install), 0o000);
+    const { coordinator } = coordinatorFor(install, { policy: 'never' });
+    try {
+      coordinator.start();
+    } finally {
+      coordinator.stop();
+      if (existsSync(intentFile(install)))
+        chmodSync(intentFile(install), 0o600);
+    }
+    expect(existsSync(intentFile(install))).toBe(true);
+    expect(readFileSync(intentFile(install), 'utf8')).toBe(before);
   });
 });

@@ -197,6 +197,10 @@ function isTimestamp(value: unknown): value is string {
  */
 const UNREADABLE = Symbol('intent-unreadable');
 
+function isUnreadable(intent: PersistedIntent): boolean {
+  return (intent as Record<symbol, unknown>)[UNREADABLE] === true;
+}
+
 /**
  * The persisted intent; null when the file exists but could not be read
  * (EMFILE, EACCES), which says nothing about what it holds (round 3 item
@@ -310,7 +314,7 @@ export class ServerUpdateCoordinator {
    * coordinator is the intent file's only writer, so the hot path (every
    * runtime event) needs no file read to learn there is nothing to do.
    */
-  private idleIntentPending: boolean | undefined;
+  private knownIdleIntent: PersistedIntent['applyWhenIdle'] | null | undefined;
   /** The running turns the last idle evaluation waited for (item 8). */
   private idleWait: { version: string; turns: number } | null = null;
   /** Consecutive download deadlines whose check failed (item 2). */
@@ -353,7 +357,7 @@ export class ServerUpdateCoordinator {
     // An unreadable file leaves the in-memory flag as it was, and what is
     // built from this read is never written over it.
     if (!intent) return { [UNREADABLE]: true } as PersistedIntent;
-    this.idleIntentPending = !!intent.applyWhenIdle;
+    this.knownIdleIntent = intent.applyWhenIdle ?? null;
     return intent;
   }
 
@@ -361,7 +365,7 @@ export class ServerUpdateCoordinator {
     const path = this.intentPath(installRoot);
     if (!intent.availableSince && !intent.applyWhenIdle && !intent.autoStaged) {
       rmSync(path, { force: true });
-      this.idleIntentPending = false;
+      this.knownIdleIntent = null;
       return;
     }
     mkdirSync(serviceUpdatePaths(installRoot).runtime, {
@@ -369,7 +373,7 @@ export class ServerUpdateCoordinator {
       mode: 0o700,
     });
     writeJsonAtomically(path, intent);
-    this.idleIntentPending = !!intent.applyWhenIdle;
+    this.knownIdleIntent = intent.applyWhenIdle ?? null;
   }
 
   private async policy(): Promise<ServerUpdateDownloadPolicy> {
@@ -397,6 +401,11 @@ export class ServerUpdateCoordinator {
         applyWhenIdle: null,
       };
     const intent = this.readIntent(archive.installRoot);
+    // An unreadable file is not an absent intent (round 5 item 1): what this
+    // coordinator, the file's only writer, last read or wrote answers.
+    const idle = isUnreadable(intent)
+      ? (this.knownIdleIntent ?? null)
+      : (intent.applyWhenIdle ?? null);
     const progress = readServiceUpdateProgress(archive.installRoot);
     const status = this.cached?.status ?? null;
     const latest = status?.latestVersion ?? null;
@@ -429,10 +438,10 @@ export class ServerUpdateCoordinator {
         policy === 'never'
           ? null
           : this.autoDownloadPause(status, progress, intent),
-      applyWhenIdle: intent.applyWhenIdle
+      applyWhenIdle: idle
         ? {
-            ...intent.applyWhenIdle,
-            ...(this.idleWait?.version === intent.applyWhenIdle.version
+            ...idle,
+            ...(this.idleWait?.version === idle.version
               ? { waitingForTurns: this.idleWait.turns }
               : {}),
           }
@@ -613,6 +622,8 @@ export class ServerUpdateCoordinator {
     archive: ArchiveProvenance & { installRoot: string },
   ) {
     const intent = this.readIntent(archive.installRoot);
+    // It builds a fresh record, which would drop the unreadable tag.
+    if (isUnreadable(intent)) return;
     const stale = (version: string | undefined) =>
       version !== undefined &&
       compareStationReleaseVersions(version, archive.version) !== 1;
@@ -644,7 +655,7 @@ export class ServerUpdateCoordinator {
   ): boolean {
     // Built from a read that failed: writing it would erase what the file
     // holds (a pending update when idle, the policy's records).
-    if ((intent as Record<symbol, unknown>)[UNREADABLE]) {
+    if (isUnreadable(intent)) {
       this.deps.logger.warn(
         'Server update: its intent file could not be read; not writing over it',
       );
@@ -771,6 +782,14 @@ export class ServerUpdateCoordinator {
     this.downloadDue = null;
     const archive = this.archive();
     if (!archive) return;
+    // The intent holds what blocks or delays a download (a pending update
+    // when idle, the backoff of a failed one): unread, nothing is started.
+    if (isUnreadable(this.readIntent(archive.installRoot))) {
+      this.deps.logger.warn(
+        'Server update: its intent file could not be read; the download policy waits',
+      );
+      return;
+    }
     const state = await this.state();
     this.lastPolicy = state.downloadPolicy;
     if (!state.autoDownloadAt || state.downloadPolicy === 'never') return;
@@ -844,12 +863,14 @@ export class ServerUpdateCoordinator {
     const status = await this.check('download-due', { force: true });
     // A verified check reset the failure count and let the policy act.
     if (status?.releaseCheck === 'verified' || this.stopped) return;
-    // While the check ran, the policy may have been set to `never`: the
-    // failure is then nobody's to retry (round 3 item 1). A deadline the
-    // policy armed meanwhile needs no guard here: the check's own
-    // recordCheck re-ran the policy (cancelling it) before this continues,
-    // and arming the retry cancels whatever is armed (round 4 items 2-3).
+    // While the check ran (and the policy read), the policy may have been
+    // set to `never`, or re-run and armed a deadline of its own (a client's
+    // check racing a settings save, a recordCheck that threw after the
+    // policy armed one): the failure is then nobody's to retry (rounds 3-5).
+    // `stopped` is checked here too, though arming refuses after stop, so a
+    // stopped coordinator does not log a retry it will not arm.
     if ((await this.policy()) === 'never' || this.stopped) return;
+    if (this.downloadDue) return;
     this.deadlineFailures += 1;
     const retryAt = this.now() + backoff(this.deadlineFailures);
     this.deps.logger.warn('Server update: the download deadline check failed', {
@@ -903,7 +924,15 @@ export class ServerUpdateCoordinator {
     // A new download would replace (and prune) the staged version an
     // apply-when-idle waits for (round 2 item 7).
     const archive = this.archive();
-    if (archive && this.readIntent(archive.installRoot).applyWhenIdle)
+    const current = archive ? this.readIntent(archive.installRoot) : {};
+    if (isUnreadable(current))
+      return {
+        ok: false,
+        status: 500,
+        error:
+          'Station could not read its update records, which may hold an update when idle; nothing was downloaded.',
+      };
+    if (current.applyWhenIdle)
       return {
         ok: false,
         status: 409,
@@ -1004,7 +1033,7 @@ export class ServerUpdateCoordinator {
     if (archive) {
       const intent = this.readIntent(archive.installRoot);
       // Unread is not absent: claiming a cancel would leave the intent.
-      if ((intent as Record<symbol, unknown>)[UNREADABLE])
+      if (isUnreadable(intent))
         return {
           ok: false,
           status: 500,
@@ -1053,7 +1082,7 @@ export class ServerUpdateCoordinator {
     // timer is not reset by later events, so a busy stream cannot starve it.
     // The flag first (round 2 item 1): with no intent pending, a runtime
     // event costs nothing else, no file read and no provenance resolution.
-    if (!this.idleIntentPending) return;
+    if (!this.knownIdleIntent) return;
     if (message.event !== 'orchestration:event' || this.idleTimer) return;
     if (!this.ready) return;
     this.idleTimer = this.setTimer(() => {
