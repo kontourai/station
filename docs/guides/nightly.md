@@ -457,7 +457,7 @@ signing remains required.
 
 One publisher owns `nightly-desktop/latest.json`. It waits for both desktop
 builds, verifies their updater signatures, and creates a manifest containing
-only that cohort. It uploads the five version-specific desktop downloads and
+only that cohort; each signature must name the cohort version (#3851). It uploads the five version-specific desktop downloads and
 checks their GitHub sizes and digests. Then it replaces three more assets:
 the two installers again under fixed names,
 `station-nightly-macos-aarch64.dmg` and
