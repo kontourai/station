@@ -260,7 +260,12 @@ export function buildWorkFacts({
     }
   }
   for (const item of items) {
-    if (item.kind === 'task' || item.kind === 'remote-session') continue;
+    if (
+      item.kind === 'task' ||
+      item.kind === 'remote-session' ||
+      facts.get(item.id)?.runRootId
+    )
+      continue;
     const owners = items.filter(
       (candidate) =>
         candidate.kind === 'task' &&

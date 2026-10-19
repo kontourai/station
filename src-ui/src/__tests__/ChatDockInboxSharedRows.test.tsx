@@ -140,6 +140,85 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     deviceSettingsStore.reloadFromStorage();
   });
 
+  it('keeps an auto-opened family expanded after resolution and clears hidden child details', async () => {
+    const parent = workItem({
+      id: 'parent',
+      chatSessionId: 'parent',
+      title: 'Parent chat',
+      lifecycleLabel: 'Completed',
+    });
+    const child = workItem({
+      id: 'child',
+      chatSessionId: 'child',
+      title: 'Child chat',
+      lifecycleLabel: 'Needs attention',
+    });
+    const facts = new Map([['child', { runRootId: 'parent' }]]);
+    const view = (items: HomeWorkItem[]) => (
+      <MobileTaskSwitcher
+        open
+        tasks={items}
+        workFacts={facts}
+        activeChatSessionId={null}
+        openChatSessionIds={['parent', 'child']}
+        triggerRef={createRef<HTMLButtonElement>()}
+        visualViewportStyle={{}}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        now={NOW}
+      />
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const mounted = renderWithIsolatedConnections(view([parent, child]), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+    expect(screen.getByText('Child chat')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Child chat' }),
+    );
+    await screen.findByRole('dialog', { name: 'Details for Child chat' });
+    mounted.rerender(view([parent, { ...child, lifecycleLabel: 'Completed' }]));
+    const details = await screen.findByRole('dialog', {
+      name: 'Details for Child chat',
+    });
+    fireEvent.click(within(details).getByRole('button', { name: /Close/ }));
+    fireEvent.click(screen.getByRole('button', { name: '1 subtask' }));
+    expect(screen.queryByText('Child chat')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '1 subtask' }));
+    expect(
+      screen.queryByRole('dialog', { name: 'Details for Child chat' }),
+    ).toBeNull();
+  });
+
+  it('keeps the current folded child visible beyond the Earlier page', () => {
+    const history = historicalItems();
+    const parent = history[40];
+    const child = history[41];
+    render(
+      <ChatDockInboxPanel
+        items={history}
+        workFacts={new Map([[child.id, { runRootId: parent.id }]])}
+        activeChatSessionId={child.chatSessionId!}
+        openChatSessionIds={history.map((entry) => entry.chatSessionId!)}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        onOpenHistory={vi.fn()}
+        now={NOW}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+    expect(screen.getByText(child.title)).toBeTruthy();
+    expect(screen.getByText(parent.title)).toBeTruthy();
+  });
+
   it.each(['desktop', 'mobile'] as const)(
     '%s keeps scope after remount and discloses attention outside it',
     (host) => {

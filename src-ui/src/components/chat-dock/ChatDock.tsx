@@ -648,11 +648,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   });
   const taskItemsPending =
     orchestrationSessionsStatus === 'pending' ||
-    durableTasks.isPending ||
     inventory.isPending ||
     !agentsLoaded;
-  const taskItemsFailed =
-    orchestrationSessionsFailed || inventory.isError || durableTasks.isError;
+  const taskItemsFailed = orchestrationSessionsFailed || inventory.isError;
   const refetchInventory = inventory.refetch;
   const refetchTasks = durableTasks.refetch;
   const refetchRemote = remoteInboxSessions.refetch;

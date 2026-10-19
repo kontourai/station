@@ -450,11 +450,7 @@ needing repair stays visible with its setup action; a removed choice asks you
 to choose another.
 
 **Continue working** shows up to five recent chats from the selected workspace,
-using the inbox’s status and details. Delegated work folds under its recorded
-parent; expand the subtask count to read the children. Children that need you
-stay visible. The **Show work** filter narrows the inbox to a project or Station
-and stays selected on this device. If work needs you outside that filter,
-choose **Show all** from the notice to see it. Choose one to resume it, or **View all**
+using the inbox’s status and details. Choose one to resume it, or **View all**
 to open the chat inventory. Loading and failed reads are shown separately from
 an empty list. **Take the tour** and **Connect another device** are optional alternatives.
 Both save the same selected answers before opening their next step.
@@ -465,6 +461,12 @@ lower right. The three-dot menu holds chat actions; connection health remains
 in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
+
+In **Chats and tasks**, delegated work folds under its recorded parent.
+Expand the subtask count to read the children; children that need you stay
+visible. Task-owned chats appear under their Task as sessions. **Show work**
+filters by project or Station and stays selected on this device. If work needs
+you outside the filter, choose **Show all** from the notice.
 
 The workspace map lists Projects and their named Layouts, followed by your
 **Personal Boards**. Its **+** creates a Board and lets you name it, even

@@ -173,6 +173,9 @@ export function HomeContinueCard({
 }) {
   const coarsePointer = useCoarsePointer();
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  const [expandedFamilies, setExpandedFamilies] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   // The lanes' own row inputs, so the row reads exactly as theirs do.
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
@@ -210,6 +213,8 @@ export function HomeContinueCard({
             now: Date.now(),
             workFacts: model.workFacts,
             childrenById,
+            expandedFamilies,
+            setExpandedFamilies,
             detailsFor,
             setDetailsFor,
             chrome: coarsePointer ? 'touch' : 'hover',

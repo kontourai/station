@@ -1,6 +1,7 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import {
   STATION_ENVELOPE_HEADER,
   STATION_ENVELOPE_HEADER_VALUE,
@@ -1482,6 +1483,54 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
  * dismissal regression beside it (archive#3771), so two tests about one sheet
  * cannot drift into describing two different products.
  */
+test('a Task inventory outage does not block the mobile inbox or recent chats', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMobileTaskSwitcher(page);
+  await page.route('**/api/me/preferences', (route) => {
+    if (route.request().method() !== 'GET')
+      return rejectUnexpectedFixtureRequest(route);
+    return route.fulfill({
+      json: {
+        success: true,
+        data: {
+          schemaVersion: 1,
+          values: {},
+          revision: 'task-outage-fixture',
+        } satisfies AccountPreferencesView,
+      },
+    });
+  });
+  let taskFailures = 0;
+  await page.route('**/api/tasks', async (route) => {
+    if (route.request().method() !== 'GET')
+      return rejectUnexpectedFixtureRequest(route);
+    taskFailures++;
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        error: 'Task inventory unavailable',
+      }),
+    });
+  });
+  await page.goto('/?dock=open&maximize=true&chat=conv-running');
+  await dismissSetupLauncher(page);
+  // Wait for the real query to exhaust its one retry, rather than observing
+  // the brief pending state before the failure reaches the host.
+  await expect.poll(() => taskFailures).toBeGreaterThanOrEqual(2);
+  await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
+  await expect(menu.getByText('Some chats may be out of date.')).toHaveCount(0);
+  await expect(
+    menu.getByRole('button', { name: 'Station Chat, Default' }).first(),
+  ).toBeVisible();
+  await menu.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByText('Could not load recent chats')).toHaveCount(0);
+});
+
 test('switches between mobile tasks and restores the exact active chat context', async ({
   page,
 }, testInfo) => {

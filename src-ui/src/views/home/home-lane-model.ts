@@ -317,12 +317,15 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
     const destination = Math.min(
       ...[...memberIds].map((id) => locations.get(id)!),
     );
+    const position = lanes[destination].findIndex((item) =>
+      memberIds.has(item.id),
+    );
     for (const lane of lanes) {
       for (let index = lane.length - 1; index >= 0; index--) {
         if (memberIds.has(lane[index].id)) lane.splice(index, 1);
       }
     }
-    lanes[destination].push(root);
+    lanes[destination].splice(position, 0, root);
   }
   return {
     childrenById,

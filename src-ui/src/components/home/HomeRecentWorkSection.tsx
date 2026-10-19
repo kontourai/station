@@ -79,11 +79,18 @@ interface HomeWorkController {
   settledVisibleCount: number;
   toggleShelf: () => void;
   showMoreSettled: () => void;
+  expandedFamilies: ReadonlySet<string>;
+  setExpandedFamilies: React.Dispatch<
+    React.SetStateAction<ReadonlySet<string>>
+  >;
   detailsFor: string | null;
   setDetailsFor: (id: string | null) => void;
 }
 
 function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
+  const [expandedFamilies, setExpandedFamilies] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [shelfExpanded, setShelfExpanded] = useState(false);
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
@@ -112,6 +119,8 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
     if (detailsFor !== null && !detailsRowRendered) setDetailsFor(null);
   }, [detailsFor, detailsRowRendered]);
   return {
+    expandedFamilies,
+    setExpandedFamilies,
     detailsFor,
     setDetailsFor,
     lanes,
@@ -235,6 +244,9 @@ function HomeWorkContent({
           now: controller.lanes.now,
           workFacts,
           childrenById: controller.lanes.childrenById,
+          isWoken: controller.lanes.isWoken,
+          expandedFamilies: controller.expandedFamilies,
+          setExpandedFamilies: controller.setExpandedFamilies,
           detailsFor: controller.detailsFor,
           setDetailsFor: controller.setDetailsFor,
           chrome: coarsePointer ? 'touch' : 'hover',

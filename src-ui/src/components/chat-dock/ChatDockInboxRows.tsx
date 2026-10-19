@@ -1039,6 +1039,9 @@ export function InboxGroupList({
   actionsInDetails,
   workFacts,
 }: InboxGroupListProps) {
+  const [expandedFamilies, setExpandedFamilies] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
@@ -1058,7 +1061,10 @@ export function InboxGroupList({
     if (collapsed) return [];
     if (group.id === 'earlier')
       return group.items.filter(
-        (item, index) => index < settledVisibleCount || isCurrent(item),
+        (item, index) =>
+          index < settledVisibleCount ||
+          isCurrent(item) ||
+          Boolean(group.childrenById?.get(item.id)?.some(isCurrent)),
       );
     if (group.id !== 'drafts') return group.items;
     const { recent, older } = splitDraftsByAge(group.items, now);
@@ -1117,6 +1123,23 @@ export function InboxGroupList({
       members={group.childrenById?.get(item.id)}
       now={now}
       forceExpanded={group.childrenById?.get(item.id)?.some(isCurrent)}
+      expanded={expandedFamilies.has(item.id)}
+      onExpandedChange={(open) =>
+        setExpandedFamilies((previous) => {
+          const next = new Set(previous);
+          if (open) next.add(item.id);
+          else next.delete(item.id);
+          return next;
+        })
+      }
+      onMembersHidden={() => {
+        if (
+          group.childrenById
+            ?.get(item.id)
+            ?.some((child) => child.id === detailsFor)
+        )
+          setDetailsFor(null);
+      }}
       renderRow={(member) => renderItem(group, member)}
     />
   );

@@ -1,4 +1,4 @@
-import { type ReactNode, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useState } from 'react';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { workStatus } from '../../views/home/work-status';
 import { DisclosureToggle } from '../DisclosureToggle';
@@ -10,19 +10,30 @@ export function WorkItemFamily<T extends HomeWorkItem>({
   now,
   renderRow,
   forceExpanded = false,
+  expanded: controlledExpanded,
+  onExpandedChange,
+  onMembersHidden,
 }: {
   root: T;
   members?: readonly T[];
   now: number;
   renderRow: (item: T) => ReactNode;
   forceExpanded?: boolean;
+  expanded?: boolean;
+  onExpandedChange?: (open: boolean) => void;
+  onMembersHidden?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [ownExpanded, setOwnExpanded] = useState(false);
+  const expanded = controlledExpanded ?? ownExpanded;
+  const setExpanded = onExpandedChange ?? setOwnExpanded;
   const id = useId();
   const needsYou = members.filter(
     (item) => workStatus(item, now).lane === 'needsYou',
   ).length;
   const open = expanded || needsYou > 0 || forceExpanded;
+  useEffect(() => {
+    if ((needsYou > 0 || forceExpanded) && !expanded) setExpanded(true);
+  }, [needsYou, forceExpanded, expanded, setExpanded]);
   const noun =
     root.kind === 'task'
       ? members.length === 1
@@ -42,7 +53,10 @@ export function WorkItemFamily<T extends HomeWorkItem>({
         <DisclosureToggle
           expanded={open}
           controls={id}
-          onToggle={() => setExpanded(!open)}
+          onToggle={() => {
+            if (open) onMembersHidden?.();
+            setExpanded(!open);
+          }}
         >
           {summary}
         </DisclosureToggle>
@@ -51,7 +65,7 @@ export function WorkItemFamily<T extends HomeWorkItem>({
         <section
           id={id}
           className="inbox-row-family__children"
-          aria-label={`Subtasks of ${root.title}`}
+          aria-label={`${root.kind === 'task' ? 'Sessions' : 'Subtasks'} of ${root.title}`}
         >
           {members.map((item) => (
             <div key={item.id}>{renderRow(item)}</div>

@@ -33,6 +33,11 @@ export interface HomeRowContext {
   now: number;
   childrenById?: ReadonlyMap<string, readonly HomeLaneItem[]>;
   workFacts?: WorkFactsById;
+  expandedFamilies?: ReadonlySet<string>;
+  setExpandedFamilies?: (
+    update: (previous: ReadonlySet<string>) => ReadonlySet<string>,
+  ) => void;
+  isWoken?: (id: string) => boolean;
   /** The item whose Details sheet is open; owned by the section so a row
    *  that changes lane keeps its sheet. */
   detailsFor: string | null;
@@ -76,12 +81,33 @@ export function renderHomeWorkRow({
   size = 'card',
   context,
 }: HomeWorkRowProps) {
+  const taskRootId = task.id;
   return (
     <li key={task.stableId}>
       <WorkItemFamily
         root={task}
         members={context.childrenById?.get(task.id)}
         now={context.now}
+        expanded={context.expandedFamilies?.has(task.id)}
+        onExpandedChange={
+          context.setExpandedFamilies
+            ? (open) =>
+                context.setExpandedFamilies!((previous) => {
+                  const next = new Set(previous);
+                  if (open) next.add(task.id);
+                  else next.delete(task.id);
+                  return next;
+                })
+            : undefined
+        }
+        onMembersHidden={() => {
+          if (
+            context.childrenById
+              ?.get(task.id)
+              ?.some((child) => child.id === context.detailsFor)
+          )
+            context.setDetailsFor(null);
+        }}
         renderRow={(task) => (
           <InboxRow
             item={task}
@@ -98,7 +124,9 @@ export function renderHomeWorkRow({
             size={size}
             chrome={context.chrome}
             agents={agents}
-            isWoken={isWoken}
+            isWoken={
+              context.isWoken?.(task.id) ?? (task.id === taskRootId && isWoken)
+            }
             // Resolved exactly as `InboxGroupList` resolves the dock's rows.
             gitLocation={context.gitLocationByThreadId?.get(
               task.orchestrationThreadId ?? task.chatSessionId ?? '',
