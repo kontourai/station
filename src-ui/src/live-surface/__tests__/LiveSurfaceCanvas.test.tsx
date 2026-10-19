@@ -23,6 +23,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { sharedActionsTouchFloor } from '../../__tests__/helpers/shared-touch-floor';
 import {
@@ -251,6 +252,34 @@ async function renderLive(
 }
 
 describe('LiveSurfaceCanvas', () => {
+  test('measures the fitted stage before its first layout commit finishes', () => {
+    const h = harness();
+    let measured = false;
+    const measuredAtCommit: boolean[] = [];
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        if (this.classList.contains('live-surface__stage')) measured = true;
+        return new DOMRect(0, 0, 640, 360);
+      },
+    );
+    const mounted = render(
+      <Profiler id="fit" onRender={() => measuredAtCommit.push(measured)}>
+        <LiveSurfaceCanvas
+          apiBase={API}
+          surfaceId={SURFACE}
+          label="Fitted device"
+          transport={h.transport as never}
+          fit={{ aspect: 2 }}
+        />
+      </Profiler>,
+    );
+    expect(measuredAtCommit[0]).toBe(true);
+    const canvas = screen.getByTestId('live-surface-canvas');
+    expect(canvas.style.width).toBe('640px');
+    expect(canvas.style.height).toBe('320px');
+    mounted.unmount();
+  });
+
   test('draws each frame to a canvas sized to the frame', async () => {
     const h = harness();
     await renderLive(h);

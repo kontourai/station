@@ -1,0 +1,7 @@
+{
+  "revision": "9ad7b3737043f12a247bbda8b705ece3c4c3be56",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the matrix test classification delta: one bounded Node child at a time against an ephemeral loopback API, no Station boot, no provider calls or wall-clock performance assertion. Explicit process-pool registration and the existing test:focused route match the guide; resource-manifest tests passed. No guide prose change is needed.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -1,8 +1,9 @@
 import {
+  constants,
+  type Dirent,
   existsSync,
   lstatSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -12,6 +13,7 @@ import {
 } from 'node:fs';
 import {
   lstat as lstatAsync,
+  open,
   readdir as readdirAsync,
   realpath as realpathAsync,
   stat as statAsync,
@@ -47,18 +49,33 @@ const SKIP_DIRS = new Set([
   '__pycache__',
 ]);
 const MAX_ENTRIES = 500;
+const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
+
+export class FilePreviewError extends Error {
+  constructor(
+    public readonly code:
+      | 'file-too-large'
+      | 'binary-file'
+      | 'not-a-file'
+      | 'not-found',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'FilePreviewError';
+  }
+}
 
 export class FileTreeService {
-  listDirectory(
+  async listDirectory(
     dirPath: string,
     opts?: { depth?: number; maxEntries?: number },
-  ): FileEntry[] {
+  ): Promise<FileEntry[]> {
     fileTreeOps.add(1, { operation: 'listDirectory' });
     const depth = opts?.depth ?? 3;
     const maxEntries = opts?.maxEntries ?? MAX_ENTRIES;
     const results: FileEntry[] = [];
-    const realRoot = this._realWorkspaceRoot(dirPath);
-    this._walk(realRoot, realRoot, depth, maxEntries, results);
+    const realRoot = await realpathAsync(dirPath);
+    await this._walk(realRoot, realRoot, depth, maxEntries, results);
     return this._buildTree(results);
   }
 
@@ -81,26 +98,28 @@ export class FileTreeService {
     return roots;
   }
 
-  private _walk(
+  private async _walk(
     base: string,
     current: string,
     depth: number,
     maxEntries: number,
     results: FileEntry[],
-  ): void {
+  ): Promise<void> {
     if (depth < 0 || results.length >= maxEntries) return;
-    let entries: string[];
+    let entries: Dirent[];
     try {
-      entries = readdirSync(current);
+      entries = await readdirAsync(current, { withFileTypes: true });
     } catch (e) {
       logger.debug('Failed to read directory', { path: current, error: e });
       return;
     }
-    for (const name of entries) {
+    for (const entry of entries) {
       if (results.length >= maxEntries) break;
+      if (entry.isSymbolicLink()) continue;
+      const name = entry.name;
       const fullPath = join(current, name);
       try {
-        if (lstatSync(fullPath).isSymbolicLink()) continue;
+        if ((await lstatAsync(fullPath)).isSymbolicLink()) continue;
       } catch (e) {
         logger.debug('Failed to inspect directory entry', {
           path: fullPath,
@@ -110,7 +129,7 @@ export class FileTreeService {
       }
       let resolvedPath: string;
       try {
-        resolvedPath = realpathSync(fullPath);
+        resolvedPath = await realpathAsync(fullPath);
         this._assertWithin(base, resolvedPath, name);
       } catch (e) {
         // Do not disclose an escaped symlink through the directory listing.
@@ -120,9 +139,9 @@ export class FileTreeService {
         });
         continue;
       }
-      let stat: ReturnType<typeof statSync>;
+      let stat: Awaited<ReturnType<typeof statAsync>>;
       try {
-        stat = statSync(resolvedPath);
+        stat = await statAsync(resolvedPath);
       } catch (e) {
         logger.debug('Failed to stat file', { path: fullPath, error: e });
         continue;
@@ -137,7 +156,7 @@ export class FileTreeService {
         modified: stat.mtime.toISOString(),
       });
       if (isDir && depth > 0) {
-        this._walk(base, resolvedPath, depth - 1, maxEntries, results);
+        await this._walk(base, resolvedPath, depth - 1, maxEntries, results);
       }
     }
   }
@@ -230,6 +249,84 @@ export class FileTreeService {
   readFileWithin(root: string, rel: string): string {
     fileTreeOps.add(1, { operation: 'readFileWithin' });
     return this.readFile(this._resolveExistingWithin(root, rel));
+  }
+
+  /** Bounded, yielding reader for the coding preview endpoint. */
+  async readFilePreviewWithin(root: string, rel: string): Promise<string> {
+    fileTreeOps.add(1, { operation: 'readFilePreviewWithin' });
+    if (!rel?.trim()) throw new Error('path required');
+    try {
+      const realRoot = await realpathAsync(root);
+      const abs = resolve(realRoot, rel);
+      this._assertWithin(realRoot, abs, rel);
+      const entryStat = await lstatAsync(abs);
+      if (entryStat.isSymbolicLink())
+        throw new Error(`Symlink target is not allowed: ${rel}`);
+      const resolved = await realpathAsync(abs);
+      this._assertWithin(realRoot, resolved, rel);
+      if (!entryStat.isFile())
+        throw new FilePreviewError(
+          'not-a-file',
+          'Only regular files can be previewed.',
+        );
+      const handle = await open(
+        resolved,
+        constants.O_RDONLY |
+          (constants.O_NONBLOCK ?? 0) |
+          (constants.O_NOFOLLOW ?? 0),
+      );
+      try {
+        const stat = await handle.stat();
+        if (!stat.isFile())
+          throw new FilePreviewError(
+            'not-a-file',
+            'Only regular files can be previewed.',
+          );
+        const tooLarge = () =>
+          new FilePreviewError(
+            'file-too-large',
+            'This file is too large to preview. The limit is 2 MiB. Open it in an editor instead.',
+          );
+        if (stat.size > MAX_PREVIEW_BYTES) throw tooLarge();
+        // Small files need only their observed size plus an EOF probe. Grow
+        // on demand, retaining one overflow byte to refuse concurrent growth.
+        let buffer = Buffer.alloc(Math.min(8192, stat.size + 1));
+        let length = 0;
+        while (length <= MAX_PREVIEW_BYTES) {
+          if (length === buffer.length) {
+            const capacity = Math.min(
+              MAX_PREVIEW_BYTES + 1,
+              Math.max(buffer.length * 2, stat.size + 1),
+            );
+            const grown = Buffer.alloc(capacity);
+            buffer.copy(grown, 0, 0, length);
+            buffer = grown;
+          }
+          const remaining = buffer.length - length;
+          const readLength =
+            length < 8192 ? Math.min(8192 - length, remaining) : remaining;
+          const next = await handle.read(buffer, length, readLength, length);
+          if (next.bytesRead === 0) break;
+          if (
+            length < 8192 &&
+            buffer.subarray(length, length + next.bytesRead).includes(0)
+          )
+            throw new FilePreviewError(
+              'binary-file',
+              'This file appears to be binary and cannot be previewed.',
+            );
+          length += next.bytesRead;
+        }
+        if (length > MAX_PREVIEW_BYTES) throw tooLarge();
+        return buffer.toString('utf8', 0, length);
+      } finally {
+        await handle.close();
+      }
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT')
+        throw new FilePreviewError('not-found', `Not found: ${rel}`);
+      throw error;
+    }
   }
 
   /** Atomic bounded UTF-8 replacement used by server-owned workspace flows. */

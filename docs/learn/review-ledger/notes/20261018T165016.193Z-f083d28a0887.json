@@ -1,0 +1,7 @@
+{
+  "revision": "67f81266fc99069d85c69a944f6561f2270c4bfb",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the final spend-bound correction: managed sends stop at the smaller of max-turns and the printed plannedTurnCount. The extension overrun child-process test now covers both matching and larger configured ceilings; 72 focused matrix/smoke tests pass. Existing additionalScenarios declarations remain optional; unknown extension counts reserve the remaining ceiling. No provider or browser execution.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/__tests__/station-engine-matrix.test.ts","scripts/lib/engine-matrix.mjs"]}
+  ]
+}

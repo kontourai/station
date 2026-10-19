@@ -734,6 +734,7 @@ const VERBS: Record<string, VerbSpec> = {
       '                        Checks the receiver checkout; no transfer or setup,',
       '                        and no protection against changes during execution.',
       '  --parent-task=<id>    Create a child task of an existing one',
+      '  --attach=<path>       Attach a file as bytes (repeatable; new current-host tasks)',
       '  --approval-mode=<v>   ask|auto|never|connection-default (create + continue,',
       '                        Claude and Codex engines only — most ACP-based',
       '                        External agents reject it)',

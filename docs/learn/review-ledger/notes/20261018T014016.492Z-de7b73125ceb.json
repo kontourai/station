@@ -1,0 +1,9 @@
+{
+  "revision": "405960a84ac15b42877960f178880fd31635fd65",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed guardian disclosure against isEnabled/getMode in approval-guardian.ts and the explicit-ask, project-policy, early guardian outcome, unattended and delegated-denial ordering in pre-tool-policy.ts. Review-mode allow is authoritative; both runtimes previously deferred on adapter errors; no destructive/sensitive class ceiling exists. Preserved explicit askBeforeUse and preceding policy bounds. Documented residual prompt-injection persuasion and advised already-enabled operators to review mode/instructions. No policy or adapter code changed; only this paragraph delta is re-reviewed, with prior guide coverage/limits retained.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Delta-only review: agents.md now discloses existing guardian allow authority and both runtime adapter repairs. The supported-surface inventory’s exact persisted Agent IDs, engine connection identities and reserved internal default mapping are unchanged; no inventory prose changes needed. Not a full re-audit or runtime qualification of the historical inventory.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md"]}
+  ]
+}

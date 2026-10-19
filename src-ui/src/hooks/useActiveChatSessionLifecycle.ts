@@ -7,7 +7,7 @@ import {
   conversationsStore,
   useConversationActions,
 } from '../contexts/ConversationsContext';
-import { useNavigation } from '../contexts/NavigationContext';
+import { useNavigationActions } from '../contexts/NavigationContext';
 import { TASK_SHAPING_INSTRUCTION } from '../lib/task-shaping';
 import type { ChatExecutionMetadata } from '../utils/execution';
 import { deriveLatestPlanArtifactFromMessages } from '../utils/planArtifacts';
@@ -159,7 +159,7 @@ export function useOpenConversation(apiBase: string) {
 export function useLaunchChat(apiBase: string) {
   const createChatSession = useCreateChatSession();
   const sendMessage = useSendMessage(apiBase);
-  const navigation = useNavigation();
+  const navigation = useNavigationActions();
 
   return useCallback(
     async (

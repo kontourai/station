@@ -1,0 +1,9 @@
+{
+  "revision": "b24ed8904984a608009c99bb8e7efc2cd23e0666",
+
+  "notes": [
+    {"path":"docs/user/pull-request-guides.md","note":"Final Guide empty-state rendering now uses Station's shared Empty primitive with an invitation to write a tour. Added the new Guide files to the existing Coding dependency classification (presentation/git-review) and retained the responsive action row as an explicit mobile-evidence exception; no capability or policy threshold was weakened. The read-only guide controls and generation behavior described here are unchanged.","inputs":["docs/user/pull-request-guides.md","src-ui/src/components/coding-layout/PullRequestGuide.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Classified the additive Guide leaf files in Coding's existing dependency inventory: CSS is presentation, the component is git-review. This does not add a workspace authority or change generic Pane ownership. Existing module-map composition claims remain accurate; full mobile/native qualification remains deferred.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

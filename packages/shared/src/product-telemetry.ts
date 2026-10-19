@@ -18,6 +18,7 @@ import {
   type ProductTelemetryPropertyDefinition as PropertyDefinition,
   STATION_DAILY_FIELDS,
   type StationDailyPing,
+  TELEMETRY_CHANNELS,
   TELEMETRY_COUNT_BUCKETS,
   TELEMETRY_ENGINES,
   TELEMETRY_FEEDBACK_ACTIONS,
@@ -26,6 +27,14 @@ import {
   USAGE_TELEMETRY_EVENTS,
   type UsageTelemetryEvent,
 } from '@kontourai/station-contracts/product-telemetry';
+
+/** Runtime builds call the preview release ring beta; telemetry uses preview. */
+export function mapRuntimeChannelToTelemetryChannel(
+  channel: string | undefined,
+): ProductTelemetryBuild['channel'] {
+  const label = channel === 'beta' ? 'preview' : channel;
+  return TELEMETRY_CHANNELS.find((allowed) => allowed === label);
+}
 
 export function renderUsageTelemetryInventory(): string {
   return Object.entries(USAGE_TELEMETRY_EVENTS)

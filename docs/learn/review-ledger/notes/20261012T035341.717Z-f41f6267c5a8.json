@@ -1,0 +1,7 @@
+{
+  "revision": "83d57ad163de9d6338c0e8d5780924b1595a3419",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"App.tsx adds one lazy-loaded launch check (ServerOlderLaunchCheck) beside the existing update launch checks; it renders no markup of its own and presents through BannerHost. No claim in this document changes.","inputs":["docs/guides/web-push-notifications.md","src-ui/src/App.tsx"]}
+  ]
+}

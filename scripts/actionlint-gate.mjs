@@ -48,6 +48,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dump, load } from 'js-yaml';
+import { authorTelemetryWorkflowFindings } from './check-author-telemetry-workflows.mjs';
 import {
   collectRequiredBrowserSmokeFindings,
   FAST_CHECKS_AGGREGATE_RUN,
@@ -438,9 +439,9 @@ export const CHECKOUT_ACTION =
 export const SETUP_NODE_ACTION =
   'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d';
+  'github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d';
+  'github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
@@ -3567,6 +3568,15 @@ function main() {
         `    ${finding.file} job '${finding.jobId}': ${finding.message}`,
       );
     }
+    return 1;
+  }
+
+  const telemetryFindings = authorTelemetryWorkflowFindings(
+    readWorkflowDocuments(),
+  );
+  if (telemetryFindings.length > 0) {
+    for (const finding of telemetryFindings)
+      console.error(`[actionlint] ${finding}`);
     return 1;
   }
 

@@ -18,6 +18,16 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
   `@kontourai/station-shared/parsers`, `/build` and `/git`.
 - Server-only provider interfaces do not belong here. Keep those in `src-server/providers/provider-interfaces.ts` or `src-server/providers/llm/model-provider-types.ts`.
 
+### Delegation file refusals
+
+`@kontourai/station-contracts/attachment-staging` owns
+`DelegationFileRefusalCode`, the closed `delegation_files_*` vocabulary.
+`@kontourai/station-shared/delegation-files` supplies the runtime refusal class
+and batch name/size/data validation used by CLI preflight and the server
+materializer. Existing staging owner/tenant identity, grants and `stage_*` codes
+remain unchanged. The [CLI](cli.md#delegate) and [SDK](sdk.md#delegatetaskapibase-input-options-with-files)
+references describe cleanup and uncertain delivery outcomes.
+
 ## Modules
 
 The authored `@kontourai/station-contracts/usage-export` module defines the
@@ -949,3 +959,12 @@ This profile does not replace existing continuity capabilities or migrate existi
 provider-specific execution paths. Durable inbox placement, accepted-through
 context delivery and crash-durable model/tool steps have separate implementation
 owners. Profile claims must change with their adapter behavior and proof.
+
+### Pull request review guides
+
+`@kontourai/station-contracts/pull-request-review-guide` owns the guide,
+stop, excerpt, run, and result shapes. Completed guides name `headSha`,
+`generatedAt`, `modelSelection`, and ordered `stops`. Runs are `Running` or
+`Failed`. Results carry `currentHeadSha` independently of the guide head and
+validated `excerptContents` for rendering. Stale results omit line anchors.
+The [user guide](../user/pull-request-guides.md) describes generation and limits.
