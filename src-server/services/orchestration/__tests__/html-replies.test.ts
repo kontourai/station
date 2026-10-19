@@ -186,7 +186,7 @@ test.each(['read_file', 'mcp__station-control__html_render'])(
       join(makeTempDir('html-ingress-ref-'), 'events.sqlite'),
     );
     const derived = {
-      version: 1,
+      version: 1 as const,
       sessionId: 'publisher',
       pageId: '00000000-0000-4000-8000-000000000001',
     };

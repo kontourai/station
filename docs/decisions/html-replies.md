@@ -75,6 +75,8 @@ tool result and therefore in canonical tool-completed history. Both live and
 replayed transcript paths recognize it at the tool position. The display
 reference is not authority: the read route checks the same `canUserReadSession`
 predicate used by other history reads, then looks up that Session/page pair.
+Incoming `htmlReply` and `mcpAppResourceUri` metadata claims are discarded at
+ingestion. Only qualified Station render results derive an HTML page reference.
 Bounded history windows retain the validated reference as `htmlReply` event
 metadata before shortening ordinary tool output to 84 characters. The existing
 per-event and per-window byte ceilings still apply; page HTML never enters
