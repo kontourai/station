@@ -1375,6 +1375,9 @@ available) after the replay/snapshot boundary, before buffered live delivery.
 Do not assume the first frame is a snapshot; keepalive frames may arrive while
 history is being read.
 
+Snapshot and caught-up session summaries use the same scope as the stream:
+`?threadId=X` includes only X; the global stream includes all readable sessions.
+
 Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 `threadId` filters the stream and caller authorization still applies. Coalesced
 activity may also arrive as `orchestration:activity`, without a durable cursor.

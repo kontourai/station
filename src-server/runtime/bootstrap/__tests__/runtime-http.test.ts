@@ -27,6 +27,12 @@ test.each([
   ['POST', '/api/projects/demo/file-preview', 200, []],
   ['POST', '/api/projects/demo/file-preview/download', 200, []],
   ['POST', '/api/projects/demo/file-preview/exists', 200, []],
+  ['POST', '/api/projects/demo/file-preview/changes', 200, []],
+  ['POST', '/api/projects/demo/file-preview/changes/', 200, []],
+  ['POST', '/api/projects/demo/plugin-draft/lease', 200, []],
+  ['POST', '/api/projects/demo/plugin-draft/lease/', 200, []],
+  ['POST', '/agents/demo/chat', 200, []],
+  ['POST', '/agents/demo/chat/', 200, []],
   ['POST', '/api/projects/demo/file-preview', 400, []],
   ['POST', '/api/projects/demo/knowledge/search', 200, []],
   ['POST', '/api/projects/demo/knowledge/ns/notes/search', 200, []],
@@ -39,6 +45,16 @@ test.each([
   ['PUT', '/api/project-contributions/offer', 200, ['config']],
   ['GET', '/api/projects/demo', 200, []],
   ['PATCH', '/api/projects/demo', 200, ['projects']],
+  ['POST', '/api/projects', 201, ['projects']],
+  ['POST', '/api/projects/demo/plugin-draft/lease/extra', 200, ['projects']],
+  ['PUT', '/api/projects/demo/plugin-draft/lease', 200, ['projects']],
+  ['PUT', '/api/projects/demo/file-preview/changes', 200, ['projects']],
+  ['POST', '/api/projects/demo/file-preview/changes/extra', 200, ['projects']],
+  ['POST', '/agents', 201, ['agents']],
+  ['PATCH', '/agents/demo', 200, ['agents']],
+  ['DELETE', '/agents/demo', 200, ['agents']],
+  ['POST', '/agents/demo/chat/extra', 200, ['agents']],
+  ['PUT', '/agents/demo/chat', 200, ['agents']],
   ['PUT', '/api/projects/demo/file-preview', 200, ['projects']],
   ['POST', '/api/projects/demo/file-preview/rebuild', 200, ['projects']],
   ['POST', '/api/knowledge/index/rebuild', 200, ['knowledge']],
@@ -70,7 +86,7 @@ test.each([
       eventBus: { emit } as unknown as EventBus,
     });
     app.on(method, path, (c) =>
-      c.json({ success: status === 200, data: {} }, status),
+      c.json({ success: status < 400, data: {} }, status),
     );
     const response = await app.request(`http://station.test${path}`, {
       method,

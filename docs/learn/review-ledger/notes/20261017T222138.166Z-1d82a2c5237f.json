@@ -1,0 +1,7 @@
+{
+  "revision": "0f7cc5c313c1c397727f7380c22d8bd449624b4e",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed Full versus Lite receiver boundaries and pending deployment/ingress qualification. Traced the channel-ledger SQL schema: channels supports retained distinct station signing keys by bundle, while starts has no bundle or join key and counts accepted APNs starts only. SQL examples remain documentation-only; no production calls or deployment actions were made.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md","packages/telemetry-broker/src/store.ts","deploy/push-gateway/src/channel-ledger.ts"]}
+  ]
+}

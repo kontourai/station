@@ -19,7 +19,8 @@
     "pg": "8.23.1"
   },
   "devDependencies": {
-    "@types/pg": "8.23.1"
+    "@types/pg": "8.23.1",
+    "@electric-sql/pglite": "0.5.10"
   },
   "license": "Apache-2.0"
 }

@@ -68,6 +68,57 @@ keys are not operator keys, OTel keys, Grafana passwords, provider credentials
 or personal source grants. Provisioning and subsequent receipt acceptance need
 their own evidence; a live health response is not storage readiness.
 
+That source-key provisioning applies to the **opt-in full event stream**.
+The [lite receiver](../../packages/telemetry-broker/README.md#lite-observations)
+instead accepts strict `station_daily` observations through a public source ID
+mapped by the operator to one publisher/channel. It never needs an installation
+secret. Publisher read keys are separate `stq_` credentials provisioned through
+the operator boundary. Do not route lite traffic through the authenticated
+full-tier endpoint or treat a public source ID as authenticating a binary.
+
+The broker's **owner analytics are exact** at `/v1/operator/lite/daily` and
+`/weekly`, authenticated with the private operator `sto_` key. Keep these routes
+private at ingress. Daily counts include exact distinct IPv4/IPv6-/48
+contributors; weekly counts sum contributor-days, because daily salts prevent
+cross-day deduplication. Publisher `stq_` keys cannot read exact analytics.
+
+`/public/` and `/v1/public/aggregates` expose Kontour's **weekly noisy estimates**.
+Publisher keys receive only their own publisher's weekly publication. The ten
+profile/adoption fields use a fixed public domain of enum values and
+operator-configured public release versions/registry IDs. Every value, including
+true zero, is released with noise; no k threshold or remainder suppression
+remains. Catalogs must be independent of private traffic. Per-count ε=1/280,
+sensitivity 40 per added ping gives ε≤1/7 per ping. Published counts sum distinct
+daily contributor keys per value (network-days); NAT undercounts installations.
+With at most 40 coordinates per network/day, week sensitivity is 280 and ε≤1.
+Arbitrary traffic can exceed that premise; the API computes the conservative
+D/40 network-week bound from its stored public domain. Expected absolute noise
+is about 280 weekly network-days; sparse cells
+have poor utility. Follow bounded 200-cell cursor pages; the dashboard does this
+before selecting a week/dimension locally. See the
+[receiver privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates).
+
+Schema 6 atomically persists each publisher/week's marker and frozen noisy cells.
+Never re-finalize a published week. Back up and restore the complete schema,
+including `lite_noise_key`, `lite_publications` and `lite_published`, together;
+never clear/regenerate historical publication receipts. Older binaries refuse
+schema 6. Run migrations and qualification against an isolated restored copy
+before upgrading a persistent receiver.
+
+The private Compose profile does not publish these endpoints on the Internet.
+A public deployment must independently qualify TLS, ingress access/error logging
+without client IP/user-agent retention, proxy/NAT rate limits, database capacity,
+restart and backup/restore. IPv4 or IPv6 /64s select daily rate-limit keys;
+IPv4 or IPv6 /48s select daily contributor HMACs. Forwarded headers are ignored.
+Run one receiver process; restarts change the salt and inflate same-day distinct
+counts. A failed publisher/day dimension retains only that publisher/day's
+associations while completed publishers' erasure progresses. Public reads never
+take the ingest lock; cache hits perform no database work. Clock-disagreement
+responses are not cached. Failed credential refresh beyond 60 seconds returns
+503, not unauthorized. Raw retention and hash deletion are periodic, and
+downtime delays them. No production endpoint or data flow is enabled by this
+source change.
+
 ## Render, validate, then run
 
 Use a unique, persistent `COMPOSE_PROJECT_NAME`. Keep it stable across upgrades
@@ -166,3 +217,51 @@ refuse without modifying retained data. Secret-binding documents containing new
 telemetry grants need a compatible pre-upgrade backup for older strict readers.
 This profile does not yet provide a qualified upgrade/rollback or release
 descriptor; those acceptance items remain open in #3458 and #3464.
+
+## Passive push-ledger queries (read only)
+
+The manual [passive report](../../packages/telemetry-broker/README.md#passive-distribution-report)
+uses public npm/GitHub download metadata. The queries below are **documentation
+only**: they have not been run against production. Use an owner-authorized
+read-only SQLite snapshot or the provider's read-only SQL inspector for the
+`ChannelLedger` Durable Object. Do not add a remote query route to the gateway
+or run its sweep/triage as an analytics operation.
+
+The authority is [`deploy/push-gateway/src/channel-ledger.ts`](../../deploy/push-gateway/src/channel-ledger.ts).
+`channels` records current broadcast channels, including a hashed Station
+signing-key thumbprint and bundle. Count only aggregates; do not select hashes,
+tokens, channel IDs or device hashes into a report:
+
+```sql
+-- Current retained channels only; the normal purge removes channels after 12h.
+SELECT environment, bundle_id,
+       COUNT(DISTINCT station_key_hash) AS distinct_station_signing_keys,
+       COUNT(*) AS retained_channels
+FROM channels
+GROUP BY environment, bundle_id;
+
+-- Accepted device-start counters for the retained UTC days, across ALL bundles.
+SELECT date(day * 86400, 'unixepoch') AS utc_day,
+       COUNT(DISTINCT device_hash) AS devices_with_accepted_starts,
+       SUM(count) AS accepted_starts
+FROM starts
+GROUP BY day
+ORDER BY day;
+```
+
+These measure different populations. A signing key is not a person or a
+permanent installation, channels can be deleted before purge, and a device hash
+is caller-supplied token material reduced to a hash. `starts` counts accepted
+APNs starts, not every app launch. Its retention is bounded by the ledger's
+normal purge, so a snapshot is not a historical daily series.
+
+**Daily device starts by bundle cannot be queried from the current ledger.**
+`starts` has only `(device_hash, day, count)`; it has no bundle, environment,
+Station-key or channel join key. Joining it to `channels` would fabricate an
+attribution. Grouping channel creation times by bundle would measure created
+channels, including starts APNs may refuse, rather than accepted device starts.
+A future bundle-aware counter requires a separately scoped gateway data-model,
+retention and privacy change. This receiver lane does not change or query that
+production service. Apply a separately reviewed suppression policy before
+publishing any ledger-derived aggregates; these SQL results are private operator
+data, not part of the broker's public release family.
