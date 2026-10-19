@@ -403,6 +403,10 @@ pub struct Controller<H> {
     current_version: String,
     handle: Option<H>,
     sequence: u64,
+    /// A cached package is being read and verified at startup. Checks are
+    /// refused meanwhile, so a check cannot overtake the restore and leave
+    /// it nowhere to land (the restore's own feed check follows at once).
+    restoring: bool,
     /// The phase a running check or download returns to when it fails.
     resume_phase: Option<UpdatePhase>,
     throttle: ProgressThrottle,
@@ -426,6 +430,7 @@ impl<H: Clone> Controller<H> {
             current_version,
             handle: None,
             sequence: 0,
+            restoring: false,
             resume_phase: None,
             throttle: ProgressThrottle::default(),
         }
@@ -486,6 +491,9 @@ impl<H: Clone> Controller<H> {
     /// Only an idle, up-to-date or available state may start a check. A
     /// downloaded or in-flight update is not replaced by a newer offer.
     pub fn begin_check(&mut self) -> bool {
+        if self.restoring {
+            return false;
+        }
         if !matches!(
             self.phase,
             UpdatePhase::Idle | UpdatePhase::UpToDate { .. } | UpdatePhase::Available { .. }
@@ -630,7 +638,22 @@ impl<H: Clone> Controller<H> {
 
     /// Adopts a package cached by an earlier run as `ready`. Only from
     /// `idle`, i.e. at startup before any check.
+    /// Starts restoring a cached package; only from `idle` with no check in
+    /// flight.
+    pub fn begin_restore(&mut self) -> bool {
+        if self.phase != UpdatePhase::Idle || self.restoring {
+            return false;
+        }
+        self.restoring = true;
+        true
+    }
+
+    pub fn end_restore(&mut self) {
+        self.restoring = false;
+    }
+
     pub fn restore_ready(&mut self, handle: H, version: String) -> bool {
+        self.restoring = false;
         if self.phase != UpdatePhase::Idle {
             return false;
         }
@@ -908,6 +931,16 @@ impl<H: UpdateHandle> DesktopUpdater<H> {
             self.packages.clear();
             return false;
         };
+        if !self.update(Controller::begin_restore) {
+            // A check started first. The package is kept on disk (a later
+            // start can restore it, or a download replaces it) rather than
+            // deleted for losing a race.
+            log::info!(
+                "kept cached desktop update {} for a later start: a check was already running",
+                record.version
+            );
+            return false;
+        }
         let restored = self
             .packages
             .load(&record.version)
@@ -928,6 +961,7 @@ impl<H: UpdateHandle> DesktopUpdater<H> {
                 record.version
             ),
         }
+        self.update(Controller::end_restore);
         self.packages.clear();
         false
     }
@@ -2097,6 +2131,56 @@ mod tests {
         let mut next = next;
         next._cache_root = first._cache_root;
         (next, state)
+    }
+
+    #[test]
+    fn a_check_during_the_startup_restore_does_not_cost_the_package() {
+        let first = Harness::new(true, None);
+        ready_with_package(&first, vec![8, 8]);
+        let next = Harness::with_cache(true, None, first.cache.clone());
+        let check_ran = AtomicUsize::new(0);
+        let restored = next.updater.restore_cached(|_, _| {
+            // The user presses Check while the package is being verified.
+            let state = tauri::async_runtime::block_on(next.updater.check(|| async {
+                check_ran.fetch_add(1, Ordering::SeqCst);
+                Ok(offer("0.1.12"))
+            }));
+            assert_eq!(state.phase, UpdatePhase::Idle);
+            Ok(Some(FakeHandle("0.1.12")))
+        });
+        assert!(restored);
+        assert_eq!(check_ran.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            next.updater.snapshot().phase,
+            UpdatePhase::Ready {
+                version: "0.1.12".into()
+            }
+        );
+        assert!(PackageStore::new(first.cache.clone()).record().is_some());
+        // Once restored, checks are allowed again where the phase allows.
+        let failed = Harness::with_cache(true, None, first.cache.clone());
+        assert!(!failed.updater.restore_cached(|_, _| Err("bad".into())));
+        assert!(matches!(
+            failed.check(Ok(None)).phase,
+            UpdatePhase::UpToDate { .. }
+        ));
+    }
+
+    #[test]
+    fn a_check_already_running_at_startup_keeps_the_package() {
+        let first = Harness::new(true, None);
+        ready_with_package(&first, vec![8]);
+        let next = Harness::with_cache(true, None, first.cache.clone());
+        let restored = tauri::async_runtime::block_on(next.updater.check(|| async {
+            // The restore starts while this check is in flight.
+            let restored = next
+                .updater
+                .restore_cached(|_, _| Ok(Some(FakeHandle("0.1.12"))));
+            assert!(!restored);
+            Ok(offer("0.1.12"))
+        }));
+        assert!(matches!(restored.phase, UpdatePhase::Available { .. }));
+        assert!(PackageStore::new(first.cache.clone()).record().is_some());
     }
 
     #[test]
