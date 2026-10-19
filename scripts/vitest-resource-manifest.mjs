@@ -130,6 +130,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Disposable Chromium previews, including renderer limits and process cleanup.
   'src-server/services/__tests__/html-reply-preview.process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
+  // Real server esbuild children and executable workflow-policy negative controls.
+  'scripts/__tests__/author-telemetry-build.test.ts',
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
   // Claude handshake; skips loudly where Seatbelt cannot apply (non-macOS).
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
