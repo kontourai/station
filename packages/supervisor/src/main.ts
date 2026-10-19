@@ -46,7 +46,7 @@ const USAGE = [
   '         [--build-root <dir>] [--control <path>] [--<tuning flag> <ms>]',
   '',
   '  --entry        core server entry for the first generation (.js or .mjs)',
-  '  --home         Station home; the control socket and token live in <home>/run',
+  '  --home         Station home; the control socket and token live beside it in .<home name>.station-supervisor',
   '  --instance     instance id',
   "  --build-root   handoff entries must be inside this directory (default: the entry's directory)",
   '  --control      control socket path (default: derived from --home and --instance)',
@@ -210,6 +210,7 @@ async function main(): Promise<void> {
 
   await runSupervisor({
     entry,
+    home: raw.home,
     buildRoot,
     endpoint,
     instance: raw.instance,

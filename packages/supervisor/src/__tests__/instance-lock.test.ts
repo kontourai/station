@@ -4,6 +4,7 @@
  * exists with the start-time fingerprint it recorded; reaching it is never
  * part of the decision. Every test fails on an explicit deadline or state.
  */
+
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
@@ -26,6 +27,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import { processFingerprint } from '../generation-registry.ts';
+import { supervisorRunDir } from '../protocol.ts';
 import {
   makeShortHome,
   type RunningSupervisor,
@@ -41,7 +43,7 @@ afterEach(async () => {
 });
 
 function runDir(home: string): string {
-  return join(home, 'run');
+  return supervisorRunDir(home);
 }
 
 function epochs(home: string): string[] {

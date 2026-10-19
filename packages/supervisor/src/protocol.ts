@@ -24,7 +24,7 @@
  */
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 
 export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 0 });
 
@@ -395,7 +395,7 @@ export interface ControlEndpoint {
   /** Socket path, or named pipe path on Windows. */
   path: string;
   tokenPath: string;
-  /** Set when the in-home socket path was too long and a hashed temp path is used. */
+  /** Set when the run-directory socket path was too long and a hashed temp path is used. */
   fallbackDir: string | null;
 }
 
@@ -407,6 +407,24 @@ const INSTANCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export function isValidInstanceId(instance: string): boolean {
   return INSTANCE_PATTERN.test(instance);
+}
+
+/**
+ * The supervisor's private run directory for `home`: the instance lock
+ * epochs, control socket, token, and generation registry. It is a sibling of
+ * the home, `<parent>/.<home name>.station-supervisor`, never inside it: a home
+ * schema migration copies the home aside and replaces it, which would move a
+ * live lock and socket out from under a running supervisor (a copy skips the
+ * socket). The parent is already writable wherever Station runs, since the
+ * home schema gate keeps its mutation lock there too.
+ */
+export function supervisorRunDir(home: string): string {
+  const resolved = resolve(home);
+  const name = basename(resolved);
+  if (name === '' || dirname(resolved) === resolved) {
+    throw new Error(`a Station home cannot be a filesystem root: ${resolved}`);
+  }
+  return join(dirname(resolved), `.${name}.station-supervisor`);
 }
 
 /**
@@ -425,7 +443,7 @@ export function resolveControlEndpoint(options: {
     throw new Error(`invalid supervisor instance id: ${options.instance}`);
   }
   const home = resolve(options.home);
-  const runDir = join(home, 'run');
+  const runDir = supervisorRunDir(home);
   const tokenPath = join(runDir, `supervisor-${options.instance}.token`);
   const hash = endpointHash(home, options.instance);
   if (platform === 'win32') {
@@ -435,9 +453,9 @@ export function resolveControlEndpoint(options: {
       fallbackDir: null,
     };
   }
-  const inHome = join(runDir, `supervisor-${options.instance}.sock`);
-  if (Buffer.byteLength(inHome) <= unixSocketPathLimit(platform)) {
-    return { path: inHome, tokenPath, fallbackDir: null };
+  const inRunDir = join(runDir, `supervisor-${options.instance}.sock`);
+  if (Buffer.byteLength(inRunDir) <= unixSocketPathLimit(platform)) {
+    return { path: inRunDir, tokenPath, fallbackDir: null };
   }
   const uid = options.uid ?? process.getuid?.() ?? 0;
   // The per-user temp directory first (private on macOS), then /tmp: a long

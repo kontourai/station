@@ -3,7 +3,7 @@
  * child running the fixture core, an HTTP load client, and an SSE client.
  */
 import { type ChildProcess, spawn } from 'node:child_process';
-import { existsSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -16,6 +16,7 @@ import {
   type ControlEndpoint,
   resolveControlEndpoint,
   type SupervisorStatus,
+  supervisorRunDir,
 } from '../protocol.ts';
 
 export const SUPERVISOR_MAIN = fileURLToPath(
@@ -78,8 +79,24 @@ export const makeShortHome = (() => {
   const make = trackTempDirs({
     base: process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir(),
   });
-  return () => make('sv-');
+  // A child of the tracked directory, so the run directory beside the home
+  // is removed with it.
+  return () => {
+    const home = join(make('sv-'), 'h');
+    mkdirSync(home, { mode: 0o700 });
+    return home;
+  };
 })();
+
+/**
+ * Homes whose sibling run directory a test created: the run directory lives
+ * beside the home, outside any temp directory that holds the home itself.
+ */
+const trackedHomes = new Set<string>();
+export function trackHome(home: string): string {
+  trackedHomes.add(home);
+  return home;
+}
 
 const running = new Map<ChildProcess, ControlEndpoint>();
 
@@ -91,25 +108,32 @@ const running = new Map<ChildProcess, ControlEndpoint>();
 afterEach(async () => {
   const children = [...running];
   running.clear();
-  await Promise.all(
-    children.map(
-      ([child, endpoint]) =>
-        new Promise<void>((resolve) => {
-          const cleanup = () => {
-            if (endpoint.fallbackDir) rmSync(endpoint.path, { force: true });
-            resolve();
-          };
-          if (child.exitCode !== null || child.signalCode !== null)
-            return cleanup();
-          const killer = setTimeout(() => child.kill('SIGKILL'), 10_000);
-          child.once('exit', () => {
-            clearTimeout(killer);
-            cleanup();
-          });
-          child.kill('SIGTERM');
-        }),
-    ),
-  );
+  try {
+    await Promise.all(
+      children.map(
+        ([child, endpoint]) =>
+          new Promise<void>((resolve) => {
+            const cleanup = () => {
+              if (endpoint.fallbackDir) rmSync(endpoint.path, { force: true });
+              resolve();
+            };
+            if (child.exitCode !== null || child.signalCode !== null)
+              return cleanup();
+            const killer = setTimeout(() => child.kill('SIGKILL'), 10_000);
+            child.once('exit', () => {
+              clearTimeout(killer);
+              cleanup();
+            });
+            child.kill('SIGTERM');
+          }),
+      ),
+    );
+  } finally {
+    for (const home of trackedHomes) {
+      rmSync(supervisorRunDir(home), { recursive: true, force: true });
+    }
+    trackedHomes.clear();
+  }
 });
 
 const OUTPUT_LIMIT = 256 * 1024;
@@ -129,6 +153,7 @@ export async function startSupervisor(options: {
   control?: string;
   waitForServing?: boolean;
 }): Promise<RunningSupervisor> {
+  trackHome(options.home);
   const instance = options.instance ?? 'test';
   const port = options.port ?? (await freePort());
   const derived = resolveControlEndpoint({ home: options.home, instance });

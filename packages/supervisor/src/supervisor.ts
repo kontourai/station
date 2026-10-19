@@ -3,7 +3,7 @@
  * processes into one supervisor process.
  */
 import { type ChildProcess, fork, type SendHandle } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import packageJson from '../package.json' with { type: 'json' };
 import { ControlServer } from './control-server.ts';
 import { createEntryBoundary } from './entry-boundary.ts';
@@ -52,6 +52,8 @@ export interface SupervisorOptions {
   /** Every entry a handoff names must be a .js/.mjs file inside this directory. */
   buildRoot: string;
   endpoint: ControlEndpoint;
+  /** The Station home this supervisor serves; its run directory is a sibling. */
+  home: string;
   instance: string;
   handoff?: GenerationManagerOptions['handoff'];
   restart?: GenerationManagerOptions['restart'];
@@ -275,8 +277,11 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     runDir,
     instance: options.instance,
     control: options.endpoint.path,
-    description: `instance ${options.instance} in ${dirname(runDir)}`,
-    breakLockCommand: breakLockCommandFor(dirname(runDir), options.instance),
+    description: `instance ${options.instance} in ${resolve(options.home)}`,
+    breakLockCommand: breakLockCommandFor(
+      resolve(options.home),
+      options.instance,
+    ),
     log,
     pendingGraceMs: options.lockPendingGraceMs,
     testDelayMs: Number.isFinite(testDelay)
