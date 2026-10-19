@@ -13,8 +13,11 @@ const SAFE_OPEN_PATH = '/notifications';
  * base and must stay on it as a single-`/` path with no backslash (dot
  * segments such as `/..//host` or `/%2e%2e//host` collapse to `//host`);
  * otherwise the alert opens `SAFE_OPEN_PATH`. The existing query is kept as
- * written and the fragment is kept; an `OPENED_NOTIFICATION_QUERY_PARAM`
- * already in the link is replaced, never trusted.
+ * written; an `OPENED_NOTIFICATION_QUERY_PARAM` already in the link is
+ * replaced, never trusted. The fragment is dropped: a Station link carries
+ * none (`isRelativeStationPath`), `#station-ui-bootstrap` is a credential
+ * exchange the UI acts on at load, and the desktop host refuses a link
+ * with one, which would open nothing.
  */
 export function withOpenedNotification(
   href: string,
@@ -29,7 +32,7 @@ export function withOpenedNotification(
     const param = `${OPENED_NOTIFICATION_QUERY_PARAM}=${encodeURIComponent(notificationId)}`;
     search = url.search ? `${url.search}&${param}` : `?${param}`;
   }
-  return `${url.pathname}${search}${url.hash}`;
+  return `${url.pathname}${search}`;
 }
 
 function onStationOrigin(href: string): URL | undefined {

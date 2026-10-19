@@ -65,10 +65,14 @@ self.addEventListener('notificationclick', (event) => {
 
   event.notification.close();
 
+  // Requests go to this worker's own Station, never to a base the payload
+  // names elsewhere.
+  const stationBase = sameOriginApiBase(apiBase);
+
   // Tool-approval actions
   if (approvalId && (action === 'allow' || action === 'deny')) {
     event.waitUntil(
-      fetch(`${apiBase}/api/tools/approve`, {
+      fetch(`${stationBase}/api/tools/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ approvalId, agentSlug, action }),
@@ -80,10 +84,13 @@ self.addEventListener('notificationclick', (event) => {
   // Generic notification actions
   if (notificationId && action) {
     event.waitUntil(
-      fetch(`${apiBase}/notifications/${notificationId}/action/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }).catch(() => {}),
+      fetch(
+        `${stationBase}/notifications/${encodeURIComponent(notificationId)}/action/${encodeURIComponent(action)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ).catch(() => {}),
     );
     return;
   }
@@ -122,11 +129,39 @@ function sameOriginTarget(url) {
   if (typeof url === 'string' && url && !url.includes('\\')) {
     try {
       const target = new URL(url, `${origin}/`);
-      if (target.origin === origin && !target.pathname.startsWith('//'))
+      if (
+        (target.protocol === 'https:' || target.protocol === 'http:') &&
+        target.origin === origin &&
+        !target.pathname.startsWith('//')
+      )
         return target.href;
     } catch {
       // Unparseable: the inbox.
     }
   }
   return new URL('/notifications', `${origin}/`).href;
+}
+
+/**
+ * The API base for a tap's request: the payload's `apiBase` only when it is
+ * on this worker's own origin (an http(s) URL, any path, no trailing slash),
+ * else this origin. A payload can name where its request goes, never a
+ * different host.
+ */
+function sameOriginApiBase(apiBase) {
+  const origin = self.location.origin;
+  if (typeof apiBase === 'string' && apiBase && !apiBase.includes('\\')) {
+    try {
+      const base = new URL(apiBase, `${origin}/`);
+      if (
+        (base.protocol === 'https:' || base.protocol === 'http:') &&
+        base.origin === origin &&
+        !base.pathname.startsWith('//')
+      )
+        return `${base.origin}${base.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      // Unparseable: this origin.
+    }
+  }
+  return origin;
 }

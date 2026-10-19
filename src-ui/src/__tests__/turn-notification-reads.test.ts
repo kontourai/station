@@ -32,6 +32,7 @@ import {
   startTurnNotificationReads,
 } from '../hooks/orchestration/turnNotificationReads';
 import { useTurnNotificationReads } from '../hooks/useTurnNotificationReads';
+import { activateNotification } from '../lib/notification-activation';
 import { subscribeToNotificationOpen } from '../lib/notificationOpen';
 
 const CHAT = 'thread-watched';
@@ -230,6 +231,39 @@ test('a desktop alert click: the app navigates to the link and reads the record 
     new URLSearchParams(window.location.search).has('openedNotification'),
   ).toBe(false);
   unsubscribe();
+  view.unmount();
+});
+
+// The reviewer's probe: an agent's (or REST) link naming another record.
+// Opened from the inbox or a toast it must not read that record, which
+// would stop its escalation; only the server's OS-alert links name one.
+test('opening a stored link that names another record does not read that record', async () => {
+  const view = renderHook(() => useTurnNotificationReads());
+  await vi.dynamicImportSettled();
+  const hostile = {
+    ...turnRecord('n-hostile'),
+    source: 'agent',
+    metadata: {
+      envelope: {
+        v: 1,
+        source: { kind: 'agent', sessionId: 's1', assurance: 'bound' },
+        audience: { kind: 'session-readers', sessionId: 's1' },
+        urgency: 'attention',
+        target: {
+          kind: 'path',
+          path: '/notifications?openedNotification=victim',
+        },
+        interrupt: 'default',
+      },
+    },
+  } as Notification;
+  await activateNotification(hostile);
+  // Any navigation would have run synchronously above; let reads settle.
+  await Promise.resolve();
+  expect(readIds()).not.toContain('victim');
+  expect(
+    new URLSearchParams(window.location.search).get('openedNotification'),
+  ).toBeNull();
   view.unmount();
 });
 

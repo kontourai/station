@@ -114,10 +114,18 @@ describe('withOpenedNotification never leaves Station', () => {
     expect(opened.origin).toBe(origin);
   });
 
-  test('a Station link keeps its query as written and its fragment', () => {
+  // The fragment is dropped: no Station link carries one, and the desktop
+  // host refuses a link with '#' (it would open nothing).
+  test('a Station link keeps its query as written and loses any fragment', () => {
     expect(withOpenedNotification('/schedule?job=a%20b&x=1#logs', 'n-1')).toBe(
-      '/schedule?job=a%20b&x=1&openedNotification=n-1#logs',
+      '/schedule?job=a%20b&x=1&openedNotification=n-1',
     );
+    expect(
+      withOpenedNotification(
+        `/x#station-ui-bootstrap=${'A'.repeat(40)}`,
+        'n-1',
+      ),
+    ).toBe('/x?openedNotification=n-1');
   });
 
   test('a record id already in the link is replaced, never trusted', () => {
@@ -140,5 +148,22 @@ describe('withOpenedNotification never leaves Station', () => {
     expect(resolveNotificationOpenHref({ link: '/schedule?job=a' })).toBe(
       '/schedule?job=a',
     );
+    // A stored link that names a record (only the OS-alert builder may) or
+    // carries a fragment is not a Station link.
+    expect(
+      resolveNotificationOpenHref({
+        link: '/notifications?openedNotification=victim',
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveNotificationOpenHref({
+        link: '/x?a=1&opened%4Eotification=victim',
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveNotificationOpenHref({
+        link: `/x#station-ui-bootstrap=${'A'.repeat(40)}`,
+      }),
+    ).toBeUndefined();
   });
 });

@@ -7,4 +7,4 @@ Export `TURN_COMPLETION_NOTIFICATION_SOURCE`, the `source` (and envelope `source
 
 Export `OPENED_NOTIFICATION_QUERY_PARAM`, the query parameter a Web Push or desktop alert's open link carries to name the record it opens, so the client that loads the link can mark that record read.
 
-`isRelativeStationPath` also refuses a path whose dot segments (plain or percent-encoded, any case) normalize to `//host` or off the Station origin, such as `/..//host` or `/%2e%2e//host`.
+`isRelativeStationPath` also refuses a path whose dot segments (plain or percent-encoded, any case) normalize to `//host` or off the Station origin, such as `/..//host` or `/%2e%2e//host`. It also refuses a fragment and a link that carries `openedNotification` (only the server's OS-alert links name a record to mark read).

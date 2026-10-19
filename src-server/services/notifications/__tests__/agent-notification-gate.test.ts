@@ -482,6 +482,10 @@ describe('AgentNotificationGate', () => {
     '/\n/evil.example/phish',
     'https:evil.example/phish',
     'HTTPS://evil.example/phish',
+    // Naming a record: opening the link would read it and stop its
+    // escalation. Only the OS-alert link builder adds this parameter.
+    '/notifications?openedNotification=victim',
+    '/notifications?x=1&opened%4Eotification=victim',
   ])(
     'a hostile link %j is refused, and the push it sends opens on Station',
     async (link) => {
@@ -500,6 +504,9 @@ describe('AgentNotificationGate', () => {
       const opened = new URL(url!, 'https://station.test/');
       expect(opened.origin).toBe('https://station.test');
       expect(opened.pathname.startsWith('//')).toBe(false);
+      expect(opened.searchParams.getAll('openedNotification')).toEqual([
+        stored.id,
+      ]);
     },
   );
 
