@@ -1,3 +1,8 @@
+export {
+  CODEX_DECISION_REPLY_REFUSED_CODE,
+  CODEX_DECISION_UNACKNOWLEDGED_CODE,
+} from '@kontourai/station-contracts/provider-failure';
+
 import type { JsonRpcId } from './codex-adapter-types.js';
 
 /**
@@ -15,10 +20,6 @@ export const CODEX_APPROVAL_ACK_WINDOW_MS = 30_000;
 
 /** The metadata declaration and every decision's `request.resolved`. */
 export const CODEX_APPROVAL_ACKNOWLEDGEMENT = 'engine' as const;
-
-export const CODEX_DECISION_UNACKNOWLEDGED_CODE =
-  'engine-decision-unacknowledged';
-export const CODEX_DECISION_REPLY_REFUSED_CODE = 'engine-decision-not-sent';
 
 /**
  * A JSON-RPC id as a map key that keeps its type: Codex matches replies by

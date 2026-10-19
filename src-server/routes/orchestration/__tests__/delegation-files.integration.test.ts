@@ -22,6 +22,7 @@ import type {
   ProviderSession,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
+import { MODEL_NOT_ADVERTISED_CODE } from '@kontourai/station-contracts/provider';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { parseCoreArgs } from '../../../../packages/cli/src/commands/core-api.js';
@@ -699,12 +700,12 @@ describe('CLI delegation files through staging, route and real orchestration', (
         vi.spyOn(adapter, 'startSession').mockRejectedValueOnce(
           new SessionStartRefusedError(
             'Refused before start',
-            'fixture_start_refused',
+            MODEL_NOT_ADVERTISED_CODE,
           ),
         );
       if (failure === 'turn-refused')
         vi.mocked(adapter.sendTurn).mockRejectedValueOnce(
-          new SendTurnRefusedError('Refused before turn'),
+          new SendTurnRefusedError('Refused before turn', 'provider_error'),
         );
       const response = await post({
         attachmentRefs: other ? [reference, other] : [reference],

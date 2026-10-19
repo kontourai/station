@@ -8,7 +8,7 @@ import {
   acpToolUpdateSupervisorUpdates,
 } from '../../telemetry/metrics.js';
 import type {
-  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderSession,
 } from '../adapter-shape.js';
 import {

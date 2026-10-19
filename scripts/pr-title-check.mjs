@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
 import { validatePullRequestTitle } from './commit-message-gate.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -19,18 +20,31 @@ export async function publishTitlePolicy({
         : undefined;
   if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Missing exact policy head');
   const request = async (path, body) => {
-    const response = await fetch(`${apiUrl}/repos/${repository}/${path}`, {
-      method: body ? 'POST' : 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) throw new Error(`GitHub API ${response.status}`);
-    return response.json();
+    const signal = AbortSignal.timeout(30_000);
+    // Only immutable merge-group acknowledgements may repeat. PR publication
+    // must not reuse mutable title/owner validation after a failed request.
+    const retryAcknowledgement = eventName === 'merge_group' && Boolean(body);
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetch(`${apiUrl}/repos/${repository}/${path}`, {
+        method: body ? 'POST' : 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+        signal,
+      });
+      if (response.ok) return response.json();
+      await response.body?.cancel();
+      if (
+        !retryAcknowledgement ||
+        ![500, 502, 503, 504].includes(response.status) ||
+        attempt === 2
+      )
+        throw new Error(`GitHub API ${response.status}`);
+      await delay(100 * (attempt + 1), undefined, { signal });
+    }
   };
   // The workflow's always() fallback publishes failure if any operation throws.
   let verdict;

@@ -327,6 +327,40 @@ async function qualifyEntrypoint(
         /A valid PostgreSQL connection URL file is required/,
       ],
       ['private database file', {}, null],
+      ...[
+        'not-a-cidr',
+        '0.0.0.0/0',
+        '::/0',
+        '10.0.0.0/8',
+        '192.0.2.0/23',
+        '2001:db8::/63',
+        '192.0.2.1/24',
+        '2001:db8::1/64',
+        ' 192.0.2.0/24',
+        '192.0.2.0/24 ',
+        '127.0.0.1',
+        '127.0.0.1/33',
+        '::1/129',
+        '127.0.0.1/32,',
+        '',
+      ].map((cidrs) => [
+        'invalid trusted proxy CIDRs',
+        { STATION_TELEMETRY_BROKER_TRUSTED_PROXY: cidrs },
+        /Invalid telemetry trusted proxy CIDR/,
+      ]),
+      [
+        'unsupported client IP header',
+        { STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER: 'x-forwarded-for' },
+        /Invalid telemetry client IP header configuration/,
+      ],
+      [
+        'trusted proxy configuration',
+        {
+          STATION_TELEMETRY_BROKER_TRUSTED_PROXY: '127.0.0.2/32,::2/128',
+          STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER: 'cf-connecting-ip',
+        },
+        null,
+      ],
       [
         'legacy database environment',
         {
@@ -366,9 +400,8 @@ async function qualifyEntrypoint(
 // Requires a separate PostgreSQL administrative connection with CREATEDB.
 // Every destructive probe runs in a uniquely named, runner-owned database.
 async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
-  const { createProductBroker, PgProductRepository } = await import(
-    pathToFileURL(join(snapshot, 'index.mjs')).href
-  );
+  const { createProductBroker, PgProductRepository, clientAddressPolicy } =
+    await import(pathToFileURL(join(snapshot, 'index.mjs')).href);
   await qualifyArtifactManifest(
     buildManifest,
     snapshot,
@@ -437,7 +470,7 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
       activeEntrypoints,
     );
     checks.push(
-      'real bundled entrypoint: seven private-file/environment startup controls, source-scoped PostgreSQL probe and owned process cleanup',
+      'real bundled entrypoint: private-file/environment and trusted-proxy startup refusal/positive controls, source-scoped PostgreSQL probe and owned process cleanup',
     );
     const app = createProductBroker(store, operatorKey);
     server = createServer(getRequestListener(app.fetch));
@@ -449,6 +482,7 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
         store,
         pool,
         operatorKey,
+        clientAddressPolicy,
       )),
     );
     // The library harness has no main-entrypoint credential refresh timer.

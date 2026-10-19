@@ -1,0 +1,7 @@
+{
+  "revision": "fa5b361743dd8533f3ba7f9702c568ca7679629c",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Re-reviewed typed fixture event identity additions only; production behavior is unchanged. The restored run passed 298 tests, UI typecheck passed after supplying canonical itemId fields, and typed store tests pass. Safari rendered the real demo-server resource through the distinct-origin proxy and opaque inner frame in the seeded persisted transcript at production revision d52540ef4a957d9fbca17942570fc9549388b6b9. Screenshot retained at /tmp/mcp-inline-chat-safari.jpg. This proves browser resource rendering, not real-provider execution or app interactions.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/__tests__/event-store-mcp-app-results.test.ts","src-ui/src/__tests__/MCPToolUIFrame.test.tsx"]}
+  ]
+}

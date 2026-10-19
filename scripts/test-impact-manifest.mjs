@@ -797,6 +797,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/product-docs-source-links.test.ts',
   // Copies the whole tracked tree and runs the repo-governance lane CLI on it.
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
+  // Inventories contracts/server failure codes and strict runtime.error writers.
+  'scripts/__tests__/provider-failure-inventory.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
   // Discovers server-owned history roots so e2e isolation covers new engines.

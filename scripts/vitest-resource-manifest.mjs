@@ -128,6 +128,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
+  // Disposable Chromium previews, including renderer limits and process cleanup.
+  'src-server/services/__tests__/html-reply-preview.process.test.ts',
+  'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.
   'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
   'src-server/routes/pull-requests/__tests__/pull-request-routes.test.ts',
@@ -1640,12 +1643,20 @@ function explicitFiles(manifest) {
  * and compares it to the exact manifest partition before a run can start.
  */
 export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
+  const siblings = new Map();
+  for (const file of explicitFiles(manifest)) {
+    const slash = file.lastIndexOf('/');
+    const directory = file.slice(0, slash + 1);
+    const names = siblings.get(directory) ?? [];
+    names.push(file.slice(slash + 1));
+    siblings.set(directory, names);
+  }
   return Object.freeze([
-    ...manifest.processHeavy.files,
-    ...manifest.processExclusive.files,
-    ...manifest.coordinatorExclusive.files,
-    ...manifest.credentialLedgerExclusive.files,
-    ...manifest.sharedOutput.files,
+    ...Array.from(siblings, ([directory, names]) =>
+      names.length === 1
+        ? `${directory}${names[0]}`
+        : `${directory}{${names.join(',')}}`,
+    ),
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
     `${manifest.dogfoodReconcile.prefix}/**`,
   ]);
