@@ -1477,12 +1477,6 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   );
 });
 
-/**
- * The two-chat + delegated-row fixture the mobile task switcher is exercised
- * against. Shared by the switch-and-restore journey below and the Escape
- * dismissal regression beside it (archive#3771), so two tests about one sheet
- * cannot drift into describing two different products.
- */
 test('a Task inventory outage does not block the mobile inbox or recent chats', async ({
   page,
 }) => {
@@ -1533,6 +1527,12 @@ test('a Task inventory outage does not block the mobile inbox or recent chats', 
   await expect(newChat.getByText('Could not load recent chats')).toHaveCount(0);
 });
 
+/**
+ * The two-chat + delegated-row fixture the mobile task switcher is exercised
+ * against. Shared by the switch-and-restore journey below and the Escape
+ * dismissal regression beside it (archive#3771), so two tests about one sheet
+ * cannot drift into describing two different products.
+ */
 test('switches between mobile tasks and restores the exact active chat context', async ({
   page,
 }, testInfo) => {
