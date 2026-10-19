@@ -377,8 +377,13 @@ describe('telemetry producer management over the production composition', () => 
       return ((await response.json()) as { data: Record<string, unknown>[] })
         .data;
     };
+    // Producer activity is reported apart from Station's figures, under the
+    // producer, and only to the producer's owner.
     const toolCalls = async (credential: string) => {
-      const response = await h.read('/api/insights?days=1', credential);
+      const response = await h.read(
+        '/api/insights?days=1&producer=e2e-codex',
+        credential,
+      );
       expect(response.status, await response.clone().text()).toBe(200);
       const body = (await response.json()) as Record<string, unknown>;
       const data = (body.data ?? body) as { totalToolCalls?: number };
@@ -475,11 +480,14 @@ describe('telemetry producer management over the production composition', () => 
       );
       expect(response.status, await response.clone().text()).toBe(200);
       const body = (await response.json()) as {
-        data: { agentUsage: Record<string, { chats: number }> };
+        data: {
+          agentUsage: Record<string, { chats: number }>;
+          producerActivity?: Record<string, { chats: number }>;
+        };
       };
-      return body.data.agentUsage;
+      return body.data;
     };
-    const before = await insights();
+    const before = (await insights()).agentUsage;
     expect(before.default?.chats).toBe(1);
 
     // The producer claims the same agent and engine on both ingest paths.
@@ -502,9 +510,10 @@ describe('telemetry producer management over the production composition', () => 
     ).toBe(200);
     await h.flush();
 
-    const after = await insights();
+    const afterData = await insights();
+    const after = afterData.agentUsage;
     expect(after.default?.chats).toBe(1);
-    expect(after['producer:claimer:default']?.chats).toBeGreaterThan(0);
+    expect(afterData.producerActivity?.claimer?.chats).toBeGreaterThan(0);
 
     const rows = async (query: string) => {
       const response = await h.read(
@@ -519,5 +528,175 @@ describe('telemetry producer management over the production composition', () => 
       expect(matched).toHaveLength(2);
       expect(matched.some((row) => K.TELEMETRY_PRODUCER in row)).toBe(false);
     }
+  });
+
+  test("a producer's claimed agent, model, tool and slug-less rows never move Station's figures or filters", async () => {
+    const h = await setup();
+    const created = await h.create(
+      { Authorization: `Bearer ${h.operatorCredential}` },
+      'claimer',
+    );
+    const { token } = ((await created.json()) as { data: { token: string } })
+      .data;
+    const now = () => ({
+      timestamp: new Date().toISOString(),
+      [K.TIMESTAMP_MS]: Date.now(),
+      [K.USER_ID]: getCachedUser().alias,
+    });
+    // Station's own activity: one chat for `default` on claude-opus-4, one
+    // failed Bash call.
+    h.emitRaw({
+      ...now(),
+      [K.OP_NAME]: 'invoke_agent',
+      [K.SPAN_KIND]: 'start',
+      [K.TRACE_ID]: 'st',
+      [K.AGENT_SLUG]: 'default',
+      [K.PROVIDER]: 'station',
+    });
+    h.emitRaw({
+      ...now(),
+      [K.OP_NAME]: 'invoke_agent',
+      [K.SPAN_KIND]: 'end',
+      [K.TRACE_ID]: 'st',
+      [K.AGENT_SLUG]: 'default',
+      [K.PROVIDER]: 'station',
+      [K.MODEL]: 'claude-opus-4',
+    });
+    h.emitRaw({
+      ...now(),
+      [K.OP_NAME]: 'execute_tool',
+      [K.SPAN_KIND]: 'start',
+      [K.TOOL_NAME]: 'Bash',
+      [K.AGENT_SLUG]: 'default',
+      [K.PROVIDER]: 'station',
+    });
+    h.emitRaw({
+      ...now(),
+      [K.OP_NAME]: 'execute_tool',
+      [K.SPAN_KIND]: 'end',
+      [K.TOOL_NAME]: 'Bash',
+      [K.AGENT_SLUG]: 'default',
+      [K.PROVIDER]: 'station',
+      [K.TOOL_CALL_OUTCOME]: 'error',
+    });
+    await h.flush();
+
+    type Insights = {
+      agentUsage: Record<string, { chats: number }>;
+      modelUsage: Record<string, number>;
+      toolUsage: Record<string, { calls: number; errors: number }>;
+      totalChats: number;
+      totalToolCalls: number;
+      totalErrors: number;
+      hourlyActivity: number[];
+      producerActivity?: Record<
+        string,
+        { events: number; chats: number; toolCalls: number }
+      >;
+    };
+    const insights = async (query = '') => {
+      const response = await h.read(
+        `/api/insights?days=1${query}`,
+        h.operatorCredential,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as { data: Insights }).data;
+    };
+    const stationFigures = (data: Insights) => ({
+      agentUsage: data.agentUsage,
+      modelUsage: data.modelUsage,
+      toolUsage: data.toolUsage,
+      totalChats: data.totalChats,
+      totalToolCalls: data.totalToolCalls,
+      totalErrors: data.totalErrors,
+      hourlyActivity: data.hourlyActivity,
+    });
+    const before = stationFigures(await insights());
+    expect(before.agentUsage.default?.chats).toBe(1);
+    expect(before.toolUsage.Bash).toMatchObject({ calls: 1, errors: 1 });
+
+    const span = (attributes: Record<string, string>) =>
+      Object.entries(attributes).map(([key, value]) => ({
+        key,
+        value: { stringValue: value },
+      }));
+    expect(
+      (
+        await h.ingest(token, 'p1', {
+          event_type: 'session.start',
+          agent: { name: 'default', runtime: 'x', version: '1' },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await h.ingest(token, 'p1', {
+          event_type: 'tool.invoke',
+          agent: { name: 'default', runtime: 'x', version: '1' },
+          tool: { name: 'Bash' },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await h.ingestSpan(
+          token,
+          'p2',
+          span({
+            [K.OP_NAME]: 'invoke_agent',
+            [K.AGENT_SLUG]: 'default',
+            [K.MODEL]: 'claude-opus-4',
+            [K.PROVIDER]: 'station',
+            [K.TOOL_NAME]: 'Bash',
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    // Slug-less: no agent at all.
+    expect(
+      (await h.ingestSpan(token, 'p3', span({ [K.OP_NAME]: 'execute_tool' })))
+        .status,
+    ).toBe(200);
+    await h.flush();
+
+    const after = await insights();
+    expect(stationFigures(after)).toEqual(before);
+    expect(after.agentUsage['(unnamed)']).toBeUndefined();
+    expect(after.producerActivity?.claimer?.events).toBe(4);
+
+    // Named, the producer's activity is visible, and only its own.
+    const scoped = await insights('&producer=claimer');
+    expect(scoped.agentUsage.default).toBeUndefined();
+    expect(scoped.toolUsage.Bash).toBeUndefined();
+    expect(
+      Object.keys(scoped.agentUsage).every((agent) =>
+        agent.startsWith('producer:claimer:'),
+      ),
+    ).toBe(true);
+    expect(scoped.totalToolCalls).toBeGreaterThan(0);
+
+    const rows = async (query: string) => {
+      const response = await h.read(
+        `/monitoring/events?start=0${query}`,
+        h.operatorCredential,
+      );
+      return ((await response.json()) as { data: Record<string, unknown>[] })
+        .data;
+    };
+    for (const query of [
+      '&agent=default',
+      '&tool=Bash',
+      '&engine=station',
+      '&agent=(unnamed)',
+    ]) {
+      expect(
+        (await rows(query)).some((row) => K.TELEMETRY_PRODUCER in row),
+      ).toBe(false);
+    }
+    const producerRows = await rows('&producer=claimer');
+    expect(producerRows).toHaveLength(4);
+    expect(
+      producerRows.every((row) => row[K.TELEMETRY_PRODUCER] === 'claimer'),
+    ).toBe(true);
   });
 });

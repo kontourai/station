@@ -1862,11 +1862,27 @@ ingest but its earlier rows remain readable by their owner.
 
 Every identity a producer reports (session, conversation, trace, tool-call and
 event ids, the agent slug and the engine) is stored as
-`producer:<token name>:<reported value>`. A producer that reports a real
-Station session, agent or engine therefore never joins it: its rows do not
-appear under that conversation, match `?agent=` or `?engine=` for it, or count
-toward it in Insights, and its activity shows under its own namespaced agent
-instead. Re-creating a revoked token under the same name reuses that
+`producer:<token name>:<reported value>`; a row with no agent gets
+`producer:<token name>:(unnamed)`. This prevents joins and de-duplication
+collisions with Station's own rows.
+
+Separately, readers apply one rule to every row carrying
+`station.telemetry.producer`, whatever agent, model, engine, tool or
+conversation it names:
+
+- `/api/insights` never counts it toward Station's figures (agent, model and
+  tool usage, error totals and rates, chat and tool-call totals, hourly
+  activity). Each producer's activity is reported apart in
+  `producerActivity: {<token name>: {events, chats, toolCalls}}`. With
+  `producer=<token name>`, every figure in the response is that producer's
+  alone and `applied.producer` echoes it.
+- `/monitoring/events` (and the station-control `read_monitoring_events`
+  tool) never matches it for `agent`, `engine`, `tool` or `conversation`.
+  `producer=<token name>` returns only that producer's rows. An unfiltered
+  read lists producer rows alongside Station's.
+
+The ingest receiver records no tool outcome for producer rows, so a producer
+cannot report tool errors in any case. Re-creating a revoked token under the same name reuses that
 namespace, so the new token's rows group with the old one's.
 
 The station-control `read_monitoring_events` tool puts
@@ -2256,6 +2272,10 @@ monitoring NDJSON files and returns `{success: true, data}`. `data` contains
   windows return 400.
 - `agent`, `tool`, and `engine` are exact filters. Engine reads
   `gen_ai.provider.name`; an event without that field does not match.
+- Rows from external telemetry producers never count toward these figures;
+  they are summarized in `producerActivity`, and `producer=<token name>`
+  scopes the whole response to one producer (see
+  [Telemetry ingest](#telemetry-ingest)).
 - A positive `limit` retains the top buckets (cap 500); it does not cap the
   scanned events or recompute totals from just the displayed buckets.
 - Applied filters/limit are echoed in `data.applied`. Hours use the server's

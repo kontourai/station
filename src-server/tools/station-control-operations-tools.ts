@@ -593,6 +593,12 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
           `Engine that ran it: ${MONITORING_ENGINE_FILTER_VALUES.map((id) => `'${id}'`).join(', ')}. Absent on events written before engine attribution shipped, so this filter excludes them rather than guessing.`,
         ),
       conversation: z.string().optional().describe('Exact conversation id'),
+      producer: z
+        .string()
+        .optional()
+        .describe(
+          'Only rows this external telemetry producer reported. Without it, agent/tool/engine/conversation filters never match producer rows.',
+        ),
       tools: z
         .boolean()
         .optional()
@@ -605,13 +611,23 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .optional()
         .describe('Max events to return (default 500, hard cap 5000)'),
     },
-    async ({ days, agent, tool, engine, conversation, tools, limit }) => {
+    async ({
+      days,
+      agent,
+      tool,
+      engine,
+      conversation,
+      producer,
+      tools,
+      limit,
+    }) => {
       const params = new URLSearchParams();
       if (days !== undefined) params.set('days', String(days));
       if (agent) params.set('agent', agent);
       if (tool) params.set('tool', tool);
       if (engine) params.set('engine', engine);
       if (conversation) params.set('conversation', conversation);
+      if (producer) params.set('producer', producer);
       if (tools) params.set('tools', 'true');
       // The default lives HERE, with the consumer that needs it. The schema
       // above advertises 500, and an agent calling this with no limit pulled

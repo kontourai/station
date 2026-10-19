@@ -414,6 +414,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         tool: c.req.query('tool'),
         engine: c.req.query('engine'),
         conversation: c.req.query('conversation'),
+        producer: c.req.query('producer'),
       };
       const toolsOnly = c.req.query('tools') === 'true';
       // Limits are opt-in. The UI requests a bounded window and discloses
@@ -441,6 +442,21 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         deps,
       ).filter((event) => {
         const record = event as Record<string, unknown>;
+        // A Station filter (agent, engine, tool, conversation) never matches
+        // an external producer's row, whatever names it reported; naming the
+        // producer selects only its rows. Unfiltered reads list everything.
+        const producer = record[K.TELEMETRY_PRODUCER];
+        if (dimension.producer !== undefined) {
+          if (producer !== dimension.producer) return false;
+        } else if (
+          typeof producer === 'string' &&
+          (dimension.agent !== undefined ||
+            dimension.tool !== undefined ||
+            dimension.engine !== undefined ||
+            dimension.conversation !== undefined)
+        ) {
+          return false;
+        }
         if (toolsOnly && record[K.OP_NAME] !== OP.EXECUTE_TOOL) return false;
         if (
           dimension.agent !== undefined &&

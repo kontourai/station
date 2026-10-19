@@ -179,6 +179,7 @@ export function createInsightsRoutes(
       agent: c.req.query('agent'),
       tool: c.req.query('tool'),
       engine: c.req.query('engine'),
+      producer: c.req.query('producer'),
     };
     const limitParam = Number.parseInt(c.req.query('limit') ?? '', 10);
     const limit =
@@ -226,6 +227,7 @@ export function createInsightsRoutes(
       }
     > = {};
     const hourlyActivity: number[] = new Array(24).fill(0);
+    const producerActivity: NonNullable<UsageInsights['producerActivity']> = {};
     const agentUsage: UsageInsights['agentUsage'] = {};
     const modelUsage: Record<string, number> = {};
     const chatTraceIds = new Set<string>();
@@ -280,10 +282,12 @@ export function createInsightsRoutes(
           totalOutcomeUnknown: 0,
           totalUnresolved: 0,
           days,
+          ...(filters.producer === undefined ? { producerActivity: {} } : {}),
           coverage: coverage('unknown'),
           ...(filters.agent !== undefined ||
           filters.tool !== undefined ||
           filters.engine !== undefined ||
+          filters.producer !== undefined ||
           limit !== undefined
             ? {
                 applied: {
@@ -293,6 +297,9 @@ export function createInsightsRoutes(
                   ...(filters.tool !== undefined ? { tool: filters.tool } : {}),
                   ...(filters.engine !== undefined
                     ? { engine: filters.engine }
+                    : {}),
+                  ...(filters.producer !== undefined
+                    ? { producer: filters.producer }
                     : {}),
                   ...(limit !== undefined ? { limit } : {}),
                 },
@@ -389,6 +396,26 @@ export function createInsightsRoutes(
             const spanKind = event[K.SPAN_KIND];
             // Usage-record envelopes have no GenAI operation and are excluded.
             if (typeof operation !== 'string') continue;
+            // An external producer's rows are not Station's activity: whatever
+            // agent, model or tool they name, they never count toward Station's
+            // figures. Unless the request names that producer, they are
+            // tallied apart; when it does, every figure is that producer's.
+            const producer = event[K.TELEMETRY_PRODUCER];
+            if (filters.producer === undefined) {
+              if (typeof producer === 'string') {
+                const tally = (producerActivity[producer] ??= {
+                  events: 0,
+                  chats: 0,
+                  toolCalls: 0,
+                });
+                tally.events++;
+                if (operation === OP.INVOKE_AGENT && spanKind === SPAN.START)
+                  tally.chats++;
+                if (operation === OP.EXECUTE_TOOL && spanKind === SPAN.START)
+                  tally.toolCalls++;
+                continue;
+              }
+            } else if (producer !== filters.producer) continue;
             if (!matchesFilters(event)) continue;
 
             const hour = new Date(ts).getHours();
@@ -541,12 +568,14 @@ export function createInsightsRoutes(
          */
         totalUnresolved,
         days,
+        ...(filters.producer === undefined ? { producerActivity } : {}),
         coverage: coverage(
           scanIssues.size ? (readableRows ? 'partial' : 'unknown') : 'complete',
         ),
         ...(filters.agent !== undefined ||
         filters.tool !== undefined ||
         filters.engine !== undefined ||
+        filters.producer !== undefined ||
         limit !== undefined
           ? {
               // Echo what was applied: a filtered rollup that looks like a
@@ -556,6 +585,9 @@ export function createInsightsRoutes(
                   ? { agent: filters.agent }
                   : {}),
                 ...(filters.tool !== undefined ? { tool: filters.tool } : {}),
+                ...(filters.producer !== undefined
+                  ? { producer: filters.producer }
+                  : {}),
                 ...(filters.engine !== undefined
                   ? { engine: filters.engine }
                   : {}),

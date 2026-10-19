@@ -273,6 +273,11 @@ export function createOtlpReceiverRoutes(
       if (typeof value === 'string' && value.length > 0)
         namespaced[key] = `${PRODUCER_ID_PREFIX}${producer.name}:${value}`;
     }
+    // A slug-less producer row would otherwise join Station's own
+    // `(unnamed)` agent bucket.
+    if (namespaced[K.AGENT_SLUG] === undefined)
+      namespaced[K.AGENT_SLUG] =
+        `${PRODUCER_ID_PREFIX}${producer.name}:(unnamed)`;
     // Last, so no mapped field can shadow the server-derived attribution.
     return {
       ...event,
