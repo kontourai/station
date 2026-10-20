@@ -147,6 +147,8 @@ export type ChatContentPart = {
     | 'user-denied'
     | 'policy-denied';
   activityAt?: string;
+  /** See `MessagePart.startedAt`. */
+  startedAt?: string;
   progressMessage?: string;
   /** Station narrowed engine-supplied tool material before this projection. */
   outputTruncated?: true;

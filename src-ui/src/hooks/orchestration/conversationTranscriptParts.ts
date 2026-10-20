@@ -38,6 +38,7 @@ export function conversationPartToContentParts(
     state: part.state,
     isError: part.isError,
     progressMessage: part.progressMessage,
+    ...(part.startedAt !== undefined ? { startedAt: part.startedAt } : {}),
     runtimeError: part.runtimeError,
     runtimeErrorCode: part.runtimeErrorCode,
     needsApproval: part.needsApproval,

@@ -4314,21 +4314,6 @@ button.background-tasks-banner:focus-visible {
    `src-ui/src/__tests__/copy-affordance-cascade.test.ts` asserts one such rule
    per adopter stylesheet. */
 
-@keyframes streaming-progress-pulse {
-  0% {
-    transform: scale(0.9);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 35%, transparent);
-  }
-  70% {
-    transform: scale(1.05);
-    box-shadow: 0 0 0 8px color-mix(in srgb, var(--k-brand) 0%, transparent);
-  }
-  100% {
-    transform: scale(0.9);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 0%, transparent);
-  }
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -4633,13 +4618,6 @@ button.tool-call__line:hover {
   font-style: italic;
 }
 
-.tool-call-batch__progress {
-  margin: 0 0 2px 19px;
-  color: var(--text-muted);
-  font-size: 0.78em;
-  font-style: italic;
-}
-
 /* Outcome flags on the collapsed row. --bg-tertiary rather than a
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
@@ -4886,18 +4864,6 @@ button.tool-call__line:hover {
    on a 0.85em line they were roughly text height on a phone. Only the block
    dimension is constrained — both already run the full reading column — so
    desktop density is untouched. */
-.tool-call__pulse,
-.tool-call-batch__pulse {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--accent-primary);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 45%, transparent);
-  animation: streaming-progress-pulse var(--motion-status-pulse) var(--ease-out)
-    infinite;
-}
-
 .tool-call-batch__label {
   flex: 1;
   min-width: 0;

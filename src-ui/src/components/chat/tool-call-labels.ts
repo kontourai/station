@@ -132,6 +132,24 @@ export function isToolCallAwaitingApproval(part: ToolCallPhaseInput): boolean {
 }
 
 /**
+ * THE rule for "this call is executing right now". The row verb, the row's
+ * text highlight, the batch summary's tense and count, and the batch's live
+ * child rows all read this one predicate; none restates it.
+ *
+ * `state: 'running'` is written by the live stream (`streamHandlers.ts`) and
+ * by the durable projection for a call still open in a turn the caller
+ * reports live (`runtime-event-projection.ts`'s `liveOpenTurn`). A started
+ * call with no outcome in a turn that is NOT live keeps `state: 'call'` and
+ * reads "No result recorded" — it is never promoted here.
+ */
+export function isToolCallActive(part: ToolCallPhaseInput): boolean {
+  if (part.state !== 'running') return false;
+  if (part.cancelled === true) return false;
+  if (part.error ?? part.errorText) return false;
+  return !isToolCallAwaitingApproval(part);
+}
+
+/**
  * Same derivation `ToolCallDisplay` uses for the row verb. `done` is only
  * returned when a successful completion was observed — never as the
  * leftover of "not running".
@@ -146,7 +164,7 @@ export function toolCallPhase(part: ToolCallPhaseInput): ToolCallPhase {
     part.approvalStatus === 'user-denied' ||
     part.approvalStatus === 'policy-denied';
   if (isToolCallAwaitingApproval(part)) return 'proposed';
-  if (part.state === 'running' && !failed && !cancelled) return 'running';
+  if (isToolCallActive(part)) return 'running';
   const completed =
     !failed &&
     !cancelled &&

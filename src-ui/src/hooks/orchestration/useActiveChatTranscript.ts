@@ -392,13 +392,26 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.conversationActivity?.openTurn?.threadId ??
     session.currentSessionId ??
     session.id;
+  const projectedOpenTurn = useMemo(
+    () => openTurnInWindow(stitchedEvents, projectedOpenThread),
+    [stitchedEvents, projectedOpenThread],
+  );
   const openTurnProjected = Boolean(
     enabled &&
       !replay &&
       (session.conversationActivity?.openTurn ||
         session.orchestrationTurnOpen) &&
-      openTurnInWindow(stitchedEvents, projectedOpenThread),
+      projectedOpenTurn,
   );
+  // The open turn renders from the projection, and the server says it is
+  // still executing: its calls with no outcome yet are in flight, not
+  // abandoned. Only this caller knows that, so it tells the projection.
+  const liveOpenTurnThread = openTurnProjected
+    ? projectedOpenThread
+    : undefined;
+  const liveOpenTurnId = openTurnProjected
+    ? projectedOpenTurn?.turnId
+    : undefined;
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
   useEffect(() => {
@@ -566,7 +579,17 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         .filter((event): event is CanonicalRuntimeEvent =>
           Boolean(event.eventId),
         ),
-      { stableIds: true },
+      {
+        stableIds: true,
+        ...(liveOpenTurnThread
+          ? {
+              liveOpenTurn: {
+                threadId: liveOpenTurnThread,
+                turnId: liveOpenTurnId,
+              },
+            }
+          : {}),
+      },
     )
       // The open turn is rendered by exactly one of two things: the live
       // streaming shell (`ChatMessageList`'s `StreamingMessage`) or this
@@ -885,6 +908,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.orchestrationStatus,
     session.orchestrationTurnOpen,
     openTurnProjected,
+    liveOpenTurnThread,
+    liveOpenTurnId,
     session.status,
     session.conversationActivity,
     session.sendAwaitingTurnStart,

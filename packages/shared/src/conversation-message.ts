@@ -58,6 +58,8 @@ export interface MessagePart {
   cancelled?: boolean;
   isError?: boolean;
   progressMessage?: string;
+  /** When the call's `tool.started` was created (ISO); a running row's elapsed time. */
+  startedAt?: string;
   /** Engine output was deliberately narrowed before publication. */
   outputTruncated?: true;
   /**

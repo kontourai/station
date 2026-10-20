@@ -296,10 +296,13 @@ closes (including waiting behind an unsent message, waiting for its own
 Station, and "Not confirmed" for this window's send with no answer), plus Retry
 and Edit when not sent (Discard is in the bubble's ⋯ menu) and Check and
 Discard… when it may have reached the agent. State changes animate its width with
-the shared motion token, while the clock reserves a stable text column. Running
-tool rows and batches show a subtle reflection sweeping left to right; settled
-calls and approval requests stay still. Reduced motion disables the reflection
-and makes pill size changes immediate.
+the shared motion token, while the clock reserves a stable text column. A
+running tool call's label carries a highlight moving through its text; settled
+calls and approval requests stay still. A running batch keeps one summary row
+("4 commands · 3 done", past tense only once every call settled) and shows each
+running call on its own row beneath it, at most two and then "+N more", with
+its elapsed time after ten seconds. Reduced motion disables the highlight and
+makes pill size changes immediate.
 
 On a phone, a settled answer shows its tool work as one row. Every call from
 the first to the last, and the narration between them, folds into a single

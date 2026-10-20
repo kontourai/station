@@ -180,7 +180,7 @@ describe('classifyToolCallRun', () => {
     expect(
       classifyFirstRun([grep('a', 'running'), grep('b', 'running')])
         .aggregateSummary,
-    ).toBe('Running 2 searches…');
+    ).toBe('2 searches');
   });
 
   test('a command known only by its title still gives way to the command after its env assignments', () => {
@@ -401,7 +401,7 @@ describe('classifyToolCallRun', () => {
     expect(group.inProgress).toBe(false);
   });
 
-  test('a live multi-call run headlines the latest running call, not the inventory phrase', () => {
+  test('a live multi-call run keeps its inventory summary and counts what settled', () => {
     const parts = [
       toolCall({ toolCallId: 'a', toolName: 'Read', state: 'completed' }),
       toolCall({
@@ -413,13 +413,17 @@ describe('classifyToolCallRun', () => {
     ];
     const group = classifyFirstRun(parts);
     expect(group.inProgress).toBe(true);
-    // Collapsed line updates to the current tool.
-    expect(group.summary).toBe('Running npm test…');
-    // Sheet title still names the whole run.
-    expect(group.aggregateSummary).toBe('Reading 1 file, running 1 command…');
+    // The summary never names the current call (its own child row does):
+    // noun inventory, nothing past tense until every call settled.
+    expect(group.summary).toBe('1 file read, 1 command · 1 done');
+    expect(group.aggregateSummary).toBe('1 file read, 1 command');
+    expect(group.activeCalls.map((call) => call.part.toolCallId)).toEqual([
+      'b',
+    ]);
+    expect(group.settledCount).toBe(1);
   });
 
-  test('a later running call replaces the headline', () => {
+  test('a later running call joins the active calls without changing the summary words', () => {
     const parts = [
       toolCall({
         toolCallId: 'a',
@@ -435,10 +439,15 @@ describe('classifyToolCallRun', () => {
       }),
     ];
     const group = classifyFirstRun(parts);
-    expect(group.summary).toBe('Running npm test…');
+    // Nothing settled yet: no count to report.
+    expect(group.summary).toBe('1 file read, 1 command');
+    expect(group.activeCalls.map((call) => call.part.toolCallId)).toEqual([
+      'a',
+      'b',
+    ]);
   });
 
-  test('a failed sibling does not stop a running call from headlining', () => {
+  test('a failed sibling counts as settled and is disclosed by its badge immediately', () => {
     const parts = [
       toolCall({
         toolCallId: 'a',
@@ -456,8 +465,10 @@ describe('classifyToolCallRun', () => {
       }),
     ];
     const group = classifyFirstRun(parts);
-    expect(group.summary).toBe('Running npm test…');
-    expect(group.progressMessage).toBe('compiling');
+    expect(group.summary).toBe('1 file read, 1 command · 1 done');
+    expect(group.activeCalls.map((call) => call.part.toolCallId)).toEqual([
+      'b',
+    ]);
     expect(group.failedCount).toBe(1);
   });
 
@@ -510,6 +521,7 @@ describe('classifyToolCallRun', () => {
     expect(group.inProgress).toBe(true);
     expect(group.summary).toBe('1 file read, 1 file edit');
     expect(group.summary).not.toContain('…');
+    expect(group.summary).not.toContain('done');
   });
 
   test('a known failure does not strip past tense from successful siblings', () => {
@@ -578,7 +590,7 @@ describe('classifyToolCallRun', () => {
     expect(group.summary).not.toMatch(/edited/i);
   });
 
-  test("the latest running call's progress message rides on the group", () => {
+  test('a running call keeps its own progress message for its child row', () => {
     const parts = [
       toolCall({
         toolCallId: 'a',
@@ -595,8 +607,8 @@ describe('classifyToolCallRun', () => {
       }),
     ];
     const group = classifyFirstRun(parts);
-    expect(group.progressMessage).toBe('still going');
-    expect(group.summary).toBe('Running npm test…');
+    expect(group.activeCalls[0]?.part.progressMessage).toBe('still going');
+    expect(group.summary).toBe('1 file read, 1 command · 1 done');
   });
 
   test('a solo in-progress call gets a progressive label and trailing ellipsis', () => {
@@ -683,7 +695,7 @@ describe('classifyToolCallRun', () => {
       // "Running 2 commands…" would be as false for the unresolved call as
       // "Ran" was; the bare verb is the only form true of both, and the
       // ellipsis (which means "still going") is dropped with it.
-      expect(group.summary).toBe('2 commands');
+      expect(group.summary).toBe('2 commands · 1 done');
       expect(group.inProgress).toBe(true);
       expect(group.unresolvedCount).toBe(1);
     });
