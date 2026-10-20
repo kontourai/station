@@ -848,11 +848,12 @@ progress, with a reflection that stops on settlement and respects reduced motion
 Claude supplies tool names from child-scoped replies and task progress independently
 of its summary. Engines that report no child tool name do not borrow their parent's.
 A running Station delegate reads its own current-turn tool activity through the
-bounded newest-turn session window; full-history accounting loads only on
+bounded newest-turn session window. Its separate latest-tool fact survives
+transcript caps and clears when a different turn starts; same-turn steering
+preserves it. Full-history accounting loads only on
 expansion. The background sheet resolves running and finished delegates from
 their own catalog Agent and keeps the task title stable. A native child's reporter
-window supplies engine identity
-only; its prompt, tools and accounting never become the child's data.
+window supplies engine identity only; its prompt, tools and accounting never become the child's data.
 Its expansion reveals model provenance and the full result without repeating that
 preview; usage and transcript access share a wrapping footer. The Agents pane keeps
 open/stop actions beside each row and reveals usage on expansion.
