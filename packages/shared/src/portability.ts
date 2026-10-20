@@ -1,5 +1,6 @@
 /**
- * Phase 4 portability helpers.
+ * Guidance portability helpers: AGENTS.md and MCP configuration export and
+ * import.
  *
  * Ownership boundary:
  * - canonical Station config remains the source of truth
