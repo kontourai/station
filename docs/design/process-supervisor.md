@@ -488,12 +488,61 @@ Every path becomes a generation handoff:
   - Task Scheduler does not relaunch a process that exits. The supervisor
     therefore restarts core servers itself, and the logon task's wrapper
     restarts the supervisor.
-  - Known gap: a handoff can reset a connection or two that were mid-accept.
-    libuv on Windows pre-posts `AcceptEx` on a listener, and closing the
-    draining generation's copy closes every pending accept, so connections
-    already completed into them are reset; POSIX keeps them in the shared
-    backlog. A supervisor-side fix follows in its own change. Until then the
-    zero-reset handoff holds on POSIX only.
+  - Handoffs catch connections (protocol 1.1). libuv on Windows keeps
+    accepts (`AcceptEx`) posted on a listening socket: 32 on a listener Node
+    binds, one on a listener received over IPC. Windows completes a new
+    connection into one as soon as its handshake ends, and closing the
+    listener closes its accepts, resetting any connection completed into
+    one; POSIX keeps such connections in the shared backlog. Windows hands a
+    new connection to the most recently posted accept, so:
+    1. Before draining a generation that listens (the serving one, or a
+       promoted trial that failed), the supervisor asks it for eight spare
+       copies of each listener it listens on (`listener.spares`), listens on
+       them, and holds what it accepts, unread.
+    2. The draining generation closes its listeners only once no connection
+       has reached them for 50 ms, and at most 1 s after the drain began.
+    3. The first generation to report a listener listening
+       (`listener.listening`) gets what was held for it, with
+       `connection.adopt`, as the backlog would have handed it to the first
+       generation to accept: the trial, or the generation a rollback starts.
+       Anything still held when a generation reports ready goes to it then.
+       The core serves it on the named listener. `net.Server` does not count
+       such a connection, so the drain waits on the core's own connection
+       set.
+    4. The supervisor closes the spares once none has accepted for 50 ms,
+       and at most 1 s later: the new generation's accepts are newer, but
+       one still booting can be slow to post its next. If that generation
+       exits or is being ended as a failed trial by then, the supervisor
+       keeps holding for the generation that follows.
+
+    Holding is bounded. Once a listener's spares hold 511 connections
+    (Node's default listen backlog, the queue they would otherwise wait in)
+    they stop listening and new connections wait in the kernel backlog;
+    that resets at most a connection completing into a spare at that
+    instant, where turning arrivals away would reset every one. While the
+    handoff runs, a trial or the rollback is on its way, so connections are
+    held however long a live call extends the drain. Once the handoff has
+    ended with no generation taking them (it fell back to crash restarts),
+    those held 60 seconds or more are closed and the count logged. A
+    connection held for a listener the adopting generation never binds is
+    closed by that generation. One the supervisor cannot send, or sent to a
+    generation that exits or closes its channel before taking it, is closed
+    by the supervisor: Node drops handles queued behind an unacknowledged
+    one without calling back.
+
+    A core says it speaks this when it parks (`adoptsConnections`). The
+    supervisor catches only when both the draining generation and the one
+    that will adopt say so, so a 1.0 core on either side gets the earlier
+    handoff with no added wait, and a 1.0 supervisor never asks.
+
+    Measured with a standalone reproduction on a Windows host, 100 handoffs
+    per run under 16 concurrent fresh-connection clients: without catching,
+    85 of 100 handoffs reset a connection; with one spare per listener, 33;
+    with eight spares and the draining generation closing at once, 3 in 700;
+    with the quiet close as well, none in 700. Closing any Windows listener
+    can still reset a connection completed into it in that instant, so the
+    quiet windows shrink that window rather than remove it: the journey
+    below saw one such reset in 39 runs.
   - `process.kill(pid, 'SIGTERM')` ends a process outright on Windows, so a
     core signalled that way does not run its SIGTERM drain.
 
@@ -572,9 +621,15 @@ verification, and fault injection.
   serving core. None covers a drain held open by a live voice call or an
   event stream on the real core server (its streams need credentials;
   ending them is tested against a plain server). On a Windows host the
-  supervisor package's tests passed and one journey run saw a single reset
-  in a handoff, from the cause described under Windows above; the journey's
-  zero-reset and SIGTERM checks run on POSIX only. A failed trial drains for
+  supervisor package's tests passed, and the journey's zero-reset check
+  passed in 38 of 39 runs with connection catching (see Windows above); the
+  other reset a single connection. With catching turned off, 3 of 3 runs
+  reset one or two connections. The Windows pull-request check does not run
+  the journey, so the residual reset cannot fail it. The
+  journey's SIGTERM check runs on POSIX only. The package's real-process
+  tests also run catching on any host, through a handoff and two rollbacks,
+  and pair a catching supervisor with a 1.0 fixture core (in both
+  directions) and a supervisor that does not catch with a 1.1 one. A failed trial drains for
   at most the kill grace, then gets SIGTERM and, 250 ms later, SIGKILL, so
   a frozen trial delays the rollback by about one kill grace and its process
   group still gets a chance to clean up. SIGKILL goes to the group only if

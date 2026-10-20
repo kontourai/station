@@ -1,0 +1,7 @@
+{
+  "revision": "1ad7389dc5c048b9d7010ea67400161355e77a54",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Re-checked after the connection-catching fix round: the STATION_SUPERVISOR_IPC row still matches supervisor.ts (fork launcher sets STATION_SUPERVISOR_IPC and STATION_SUPERVISOR_GENERATION; children inherit neither, nor the test switch STATION_SUPERVISOR_TEST_FORCE_CATCHING, which it now removes) and supervisor-link.ts. The test switch is unlisted like the other STATION_SUPERVISOR_TEST_* hooks.","inputs":["docs/reference/env-vars.md","packages/supervisor/src/supervisor.ts"]}
+  ]
+}
