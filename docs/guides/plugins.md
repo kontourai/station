@@ -722,6 +722,10 @@ message; the host answers on the same channel.
 | `pane-host/confirm` `{ id, title, message }` | `confirm` | `pane-host/confirm-result` `{ id, decision }` |
 | `pane-host/facts` | `facts.subscribe` | `pane-host/facts-changed` `{ facts }`, now and on every change |
 | `pane-host/present-unavailable` `{ reason }` | `presentUnavailable` | none |
+| `pane-host/related-open` `{ id, request }` | `relatedPanes.open` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-reveal` `{ id, handle }` | `relatedPanes.reveal` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-close` `{ id, handle }` | `relatedPanes.close` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-target` `{ id }` | `relatedPanes.target` | `pane-host/related-result` `{ id, data }` |
 
 `target` accepts the documented path string above, or a typed target —
 `{ kind: 'app-surface', surfaceId }`, `{ kind: 'project-layout', projectSlug,
@@ -740,6 +744,12 @@ Three things are worth knowing before writing against it:
   then one every thirty seconds — the same shape as navigation, for the same
   reason: a full-screen dialog you must answer is the most expensive attention
   a pane can spend, and a pane cannot buy more of it by running in a frame.
+- **Related panes answer every request, with a value.** `relatedPanes` is
+  optional: a placement without it answers each related request
+  `{ status: 'unavailable', reason: 'unsupported' }`, and an older host
+  refuses the method by name. Use `createRelatedPanesPaneHost` (see
+  [Related panes](../reference/sdk.md#related-panes)) rather than the raw
+  messages; the frame tier shares the direct tier's budget and refusals.
 - **An unrecognised or malformed `pane-host/*` message is refused, not
   ignored.** The host replies `pane-host/refused` `{ method, reason, id? }`.
   Silence is how two earlier plugin capabilities stayed broken for months.

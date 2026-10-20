@@ -66,9 +66,19 @@ not yet accepted.
 - [ ] Phone inbox/conversation, child destinations and properties sheet work.
   Not started.
 - [ ] Direct and iframe SDK report journeys share bounded admission/outcomes.
-  Not started on `main`; a local SDK branch predates the #3875 repairs.
+  In the SDK pull request stacked on #3875: one host implementation behind
+  `useRelatedPanes` and the frame client, through the shared related-occurrence
+  pipeline (guards, locked fresh-read commit, Station fence). The direct tier
+  has a browser journey with the Related Reports example; the frame tier's
+  transport is covered at its boundaries (host adapter, SDK client, frame
+  bootstrap relay), not by a frame browser journey.
 - [ ] Context/grant/generation failures and older-host fallback remain visible.
-  Not started.
+  In the SDK pull request: `context-mismatch`, `not-authorized` (disabled,
+  removed or updated plugin, renderer not admitted, including when it changes
+  while a guard answers), `station-unverified` and the bounds are refused at
+  the host before anything is written; a removed plugin's related pane keeps
+  its tab with a placeholder (browser journey); an older host answers
+  `unsupported` without rejecting (SDK hook and frame client).
 - [ ] Header/footer controls work expanded, collapsed, mobile and both themes.
   In #3875: account control beside Live work, region glyphs at the far right;
   browser geometry checked expanded at 216px in both themes, and collapsed and
@@ -91,6 +101,10 @@ not yet accepted.
   request). Known limits: switching tabs within a region still unmounts the
   hidden pane, as before; the open account menu's phone geometry is not
   measured.
+- SDK related panes: unit and integration suites for the host's admission,
+  placement, handles and budget, the plugin occurrence record and fence gate,
+  the frame adapter and the SDK client each fail when the seam they name is
+  reverted (fault injection, recorded in the pull request).
 - #3875 review round 2: related opens refuse without a verified Station; the
   focus path, Up and a close answered after its pane moved each recheck what
   their guard was asked about; a menu that mounts open no longer dismisses

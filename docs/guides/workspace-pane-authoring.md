@@ -118,6 +118,31 @@ export const reviewIssuesPlacement: WorkspacePaneInstance = {
 };
 ```
 
+## Open related panes
+
+A `plugin-component` pane can open its plugin's own other panes beside it — a
+report list opening each report — through the SDK's related-pane capability
+(`useRelatedPanes`; see [Related panes](../reference/sdk.md#related-panes)).
+The plugin names its own descriptor, a declared mode and an opaque key; Station
+decides where the pane goes, fences it to the Station, keeps one reusable
+preview per opener and refuses anything outside the plugin's own descriptors.
+
+A descriptor may declare how it is presented when opened that way:
+
+```ts
+export const reportLogPane: WorkspacePaneDescriptor = {
+  // ...the fields above
+  relationRole: 'tool', // 'destination' (the default) or 'tool'
+};
+```
+
+`destination` opens beside its opener on a desktop and as a child screen on a
+phone; `tool` opens with the Tools, below the main area. The role is a
+presentation hint, not a placement order, a region admission or a grant. A
+role a host does not know is dropped when it reads the descriptor, which then
+behaves as a destination. The [Related Reports example](../../examples/related-reports/README.md)
+declares both.
+
 ## Renderer and policy boundaries
 
 Renderer kind determines the host boundary:
