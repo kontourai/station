@@ -187,7 +187,7 @@ export type ACPProbeInitiator = 'request' | 'background';
  * Not covered by that arithmetic: workspace preparation is filesystem work
  * with no deadline of its own.
  */
-const COLD_START_OPERATION_TIMEOUT_MS = 60_000;
+export const COLD_START_OPERATION_TIMEOUT_MS = 60_000;
 
 /**
  * archive#3441: how many times a single survivor's destroy is retried before

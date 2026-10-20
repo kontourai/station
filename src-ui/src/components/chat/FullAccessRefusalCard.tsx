@@ -3,6 +3,7 @@ import {
   groupLimitedPeopleSteps,
 } from '@kontourai/station-contracts/orchestration';
 import { useState } from 'react';
+import { copyToClipboard } from '../../lib/clipboard';
 import type { FullAccessRefusalNotice } from '../../utils/approvalMode';
 
 /**
@@ -150,10 +151,7 @@ function CommandBlock({ command }: { command: string }) {
       <button
         type="button"
         onClick={() => {
-          void navigator.clipboard
-            ?.writeText(command)
-            .then(() => setCopied(true))
-            .catch(() => setCopied(false));
+          void copyToClipboard(command).then(setCopied);
         }}
         aria-label="Copy the command"
         style={{

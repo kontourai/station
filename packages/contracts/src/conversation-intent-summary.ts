@@ -62,6 +62,11 @@ export interface ConversationIntentSummaryV1 {
   summarizedThroughMessageId: string;
   summarizedMessageCount: number;
   sourceMessageCount: number;
+  /**
+   * True only on summaries that earlier builds persisted; current builds
+   * always render whole turns and write `false`. Kept on the wire because
+   * published SDK readers reject a summary without it.
+   */
   partialMessageIncluded: boolean;
   stale: boolean;
 }
@@ -88,6 +93,7 @@ export interface ConversationIntentSummaryV2 {
   /** Non-contiguous bounded transcript selections are disclosed explicitly. */
   sourceRanges: ConversationIntentSummaryRange[];
   sourceMessageCount: number;
+  /** See `ConversationIntentSummaryV1.partialMessageIncluded`. */
   partialMessageIncluded: boolean;
   contextBoundaryCount: number;
   /** Consumed #4148 context-boundary facts, copied from the authorized source. */

@@ -480,24 +480,24 @@ it.skipIf(chromiumAvailable)(
 );
 
 describe('answerBasisLabels', () => {
-  it('names both controls for the same answer, by words or by time', async () => {
+  it('names the answer by its words or its time, for the chip and its Retry', async () => {
     const { answerBasisLabels } = await import(
       '../components/chat/MessageBubble'
     );
     expect(answerBasisLabels('Short answer.', Number.NaN)).toEqual({
-      chip: 'Basis for the answer “Short answer.”',
+      answer: 'the answer “Short answer.”',
       retry: 'Basis didn’t load · Retry for the answer “Short answer.”',
     });
     expect(
-      answerBasisLabels('', Date.parse('2026-08-01T00:00:00Z')).chip,
-    ).toMatch(/^Basis for the answer at \S/);
+      answerBasisLabels('', Date.parse('2026-08-01T00:00:00Z')).answer,
+    ).toMatch(/^the answer at \S/);
     expect(answerBasisLabels('', Number.NaN)).toEqual({
-      chip: 'Basis for this answer',
+      answer: 'this answer',
       retry: 'Basis didn’t load · Retry for this answer',
     });
-    const long = answerBasisLabels('word '.repeat(40), Number.NaN).chip;
-    expect(long.startsWith('Basis for the answer “word word')).toBe(true);
+    const long = answerBasisLabels('word '.repeat(40), Number.NaN).answer;
+    expect(long.startsWith('the answer “word word')).toBe(true);
     expect(long.endsWith('…”')).toBe(true);
-    expect(long.length).toBeLessThan(80);
+    expect(long.length).toBeLessThan(70);
   });
 });
