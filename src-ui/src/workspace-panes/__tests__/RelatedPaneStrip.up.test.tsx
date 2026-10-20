@@ -38,7 +38,11 @@ vi.mock('../../contexts/ProjectsContext', () => ({
   }),
 }));
 
-import { AuthorityHarness } from '../../contexts/__tests__/paneRelationsHarness';
+import {
+  AuthorityHarness,
+  authoritySwitch,
+  settledStorageSnapshot,
+} from '../../contexts/__tests__/paneRelationsHarness';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
@@ -70,12 +74,16 @@ function ModelProbe() {
   return null;
 }
 
-function seedRelation(opener: PaneOpener, stationId = 'station-a') {
+function seedRelation(
+  opener: PaneOpener,
+  stationId = 'station-a',
+  generation = 'builtin',
+) {
   const relation: PaneRelation = {
     instanceId: ID,
     stateKey: ID,
     stationId,
-    generation: 'builtin',
+    generation,
     opener,
     target: {
       kind: 'file',
@@ -291,6 +299,219 @@ describe('Up to a plugin opener', () => {
     );
     expect(window.location.pathname).toBe('/');
   });
+});
+
+describe('Up to an exact Project plugin pane', () => {
+  const projectOpener = {
+    occurrenceId: 'instance:plugin:alpha-id:reports',
+    label: 'Reports',
+    source: {
+      kind: 'plugin-occurrence',
+      projectSlug: 'alpha',
+      layoutSlug: null,
+      projectPane: {
+        descriptorId: 'pane:plugin%3Areports:list',
+        instanceId: 'instance:plugin:alpha-id:reports',
+      },
+    },
+  } satisfies PaneOpener;
+  const path =
+    '/projects/alpha/panes/pane%3Aplugin%253Areports%3Alist/instance%3Aplugin%3Aalpha-id%3Areports';
+
+  test('desktop Up already on its exact route creates no history or popstate', async () => {
+    navigationStore.navigate(path);
+    seedRelation(projectOpener);
+    mount();
+    const length = window.history.length;
+    const pop = vi.fn();
+    window.addEventListener('popstate', pop);
+    try {
+      act(() => screen.getByRole('button', { name: 'Up to Reports' }).click());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(window.history.length).toBe(length);
+      expect(pop).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('popstate', pop);
+    }
+  });
+
+  test.each([
+    'cancel',
+    'station-change',
+    'station-and-record-change',
+    'generation-change',
+    'source-change',
+    'new-guard',
+    'allow',
+  ])(
+    'a routed exact return rechecks %s and commits only through canonical navigation',
+    async (answer) => {
+      seedRelation(projectOpener);
+      mount();
+      let proceed: (() => void) | undefined;
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('exact Up'),
+        (accept, cancel) => {
+          if (answer === 'cancel') cancel?.();
+          else proceed = accept;
+        },
+        ID,
+      );
+      let unregisterNew = () => {};
+      try {
+        await settledStorageSnapshot();
+        const up = screen.getByRole('button', { name: 'Up to Reports' });
+        act(() => up.click());
+        if (answer !== 'cancel')
+          await waitFor(() => expect(proceed).toBeDefined());
+        if (answer === 'station-change')
+          await act(async () => {
+            authoritySwitch.set?.({ station: 'station-b' });
+          });
+        if (
+          answer === 'station-and-record-change' ||
+          answer === 'generation-change'
+        ) {
+          act(() => {
+            if (answer === 'station-and-record-change')
+              authoritySwitch.set?.({ station: 'station-b' });
+            seedRelation(
+              projectOpener,
+              answer === 'station-and-record-change'
+                ? 'station-b'
+                : 'station-a',
+              answer === 'generation-change' ? 'changed-generation' : 'builtin',
+            );
+            window.dispatchEvent(
+              new StorageEvent('storage', {
+                key: PANE_RELATIONS_STORAGE_KEY,
+                newValue: localStorage.getItem(PANE_RELATIONS_STORAGE_KEY),
+              }),
+            );
+          });
+          expect(screen.getByRole('button', { name: 'Up to Reports' })).toBe(
+            up,
+          );
+        }
+        if (answer === 'source-change')
+          await act(async () => {
+            const changed = {
+              ...projectOpener,
+              source: { ...projectOpener.source, projectSlug: 'beta' },
+            };
+            seedRelation(changed);
+            window.dispatchEvent(
+              new StorageEvent('storage', {
+                key: PANE_RELATIONS_STORAGE_KEY,
+                newValue: localStorage.getItem(PANE_RELATIONS_STORAGE_KEY),
+              }),
+            );
+          });
+        if (answer === 'new-guard')
+          unregisterNew = navigationStore.registerNavigationGuard(
+            Symbol('new work'),
+            (accept) => accept(),
+            ID,
+          );
+        const before = await settledStorageSnapshot();
+        await act(async () => {
+          proceed?.();
+        });
+        if (answer === 'allow')
+          await waitFor(() => expect(window.location.pathname).toBe(path));
+        else {
+          expect(window.location.pathname).toBe('/');
+          expect(await settledStorageSnapshot()).toEqual(before);
+        }
+      } finally {
+        unregisterNew();
+        unregister();
+      }
+    },
+  );
+
+  test('same-path phone Up asks once and Cancel leaves the actual child layer intact', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY || query === '(pointer: coarse)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    window.history.replaceState({}, '', path);
+    navigationStore.navigate(path);
+    seedRelation(projectOpener);
+    writeFilePreviewPaneState(localStorage, ID, {
+      version: '1.0',
+      projectSlug: 'alpha',
+      path: 'a.ts',
+      wrap: true,
+    });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => {
+      model?.openSurfaceInRegion(ID);
+    });
+    await waitFor(() => expect(model?.phoneLayer?.surfaceId).toBe(ID));
+    let accept = false;
+    let asked = 0;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('phone exact Up'),
+      (proceed, cancel) => {
+        asked += 1;
+        if (accept) proceed();
+        else cancel?.();
+      },
+      ID,
+    );
+    const before = await settledStorageSnapshot();
+    const up = screen.getByRole('button', { name: 'Up to Reports' });
+    act(() => {
+      up.focus();
+      up.click();
+    });
+    expect(asked).toBe(1);
+    expect(model?.phoneLayer?.surfaceId).toBe(ID);
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(document.activeElement).toBe(up);
+    accept = true;
+    const pushes = vi.spyOn(window.history, 'pushState');
+    act(() => up.click());
+    await waitFor(() => expect(model?.phoneLayer).toBeNull());
+    expect(window.location.pathname).toBe(path);
+    expect(asked).toBe(2);
+    expect(pushes).not.toHaveBeenCalled();
+    pushes.mockRestore();
+    unregister();
+  });
+
+  test.each([
+    { descriptorId: '', instanceId: 'instance:plugin:alpha-id:reports' },
+    {
+      descriptorId: 'pane:plugin%3Areports:list',
+      instanceId: 'different-instance',
+    },
+    {
+      descriptorId: ' pane:plugin%3Areports:list',
+      instanceId: 'instance:plugin:alpha-id:reports',
+    },
+  ])(
+    'an invalid exact pane reference does not silently offer a Project fallback: %j',
+    (projectPane) => {
+      seedRelation({
+        ...projectOpener,
+        source: { ...projectOpener.source, projectPane },
+      });
+      mount();
+      expect(
+        screen.queryByRole('button', { name: 'Up to Reports' }),
+      ).toBeNull();
+    },
+  );
 });
 
 test('a relation recorded on another Station offers no Up', () => {

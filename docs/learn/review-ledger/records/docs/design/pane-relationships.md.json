@@ -5,9 +5,9 @@
 
   "state": "partial",
 
-  "summary": "Accepted pane workspace contract, reviewed against implemented file previews, the optional direct/frame plugin capability and Main Activity quick review: bounded locked relations, immutable Station fences, captured openers and exact targets, existing region and SessionDetail owners, source-preserving visible-row navigation, draft protection, Keep, guarded close and phone history.",
+  "summary": "Pane workspace contract across file previews, direct/frame SDK related panes and Main Activity quick review: locked relations, Station fences, captured openers and exact targets, existing region and SessionDetail owners, source-preserving review, draft protection, Keep, guarded close, phone history and host-stamped exact Project-pane references for canonical Up.",
 
-  "limits": "Partial implementation and qualification. Coding presentation, the phone inbox/conversation root, selection-properties sheets, cold child links and closed built-in SDK targets remain planned. Source review and focused/browser evidence do not qualify native shells, hosted checks, publication or landing. A plugin opener label does not prove its Up route; the native finding is tracked for a standalone repair.",
+  "limits": "Partial implementation and qualification. Coding presentation, phone inbox/conversation roots, selection-properties sheets, cold child links and closed built-in SDK targets remain planned. This local source consolidation is unqualified as a combined tree. Fresh SDK-Up source review and Activity independent review remain pending; canonical review notes for the final SDK repair remain pending. Older unattested plugin opener records retain their legacy fallback. Prior source/focused/browser evidence does not establish combined native, hosted, publication or landing acceptance.",
 
   "sources": [
     "src-ui/src/regions/pane-relations.ts",
@@ -66,7 +66,25 @@
 
     "src-ui/src/__tests__/ActivityReview.lifecycle.test.tsx",
 
-    "src-ui/src/__tests__/ActivityReview.chatExit.test.tsx"
+    "src-ui/src/__tests__/ActivityReview.chatExit.test.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
+
+    "src-ui/src/workspace-panes/relatedPanesHost.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneDirectRoute.ts",
+
+    "src-ui/src/workspace-panes/__tests__/RelatedPaneStrip.up.test.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/relatedPanesHost.test.tsx",
+
+    "tests/related-panes.spec.ts",
+
+    "tests/related-panes-frame.spec.ts",
+
+    "src-ui/src/contexts/openRelatedOccurrence.ts",
+
+    "tests/helpers/related-pane-upgrade.ts"
   ],
 
   "checks": []

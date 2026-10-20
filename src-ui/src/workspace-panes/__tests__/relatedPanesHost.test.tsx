@@ -215,15 +215,19 @@ function caller(
     project = PROJECT,
     version = '1.0.0',
     lifecycle,
+    projectPane = false,
+    descriptorId = LIST.id,
   }: {
     project?: typeof PROJECT;
     version?: string;
     lifecycle?: string | null;
+    projectPane?: boolean;
+    descriptorId?: string;
   } = {},
 ): RelatedPaneCaller {
   const instance = parseWorkspacePaneInstance({
     version: '1.0',
-    descriptorId: LIST.id,
+    descriptorId,
     instanceId: occurrenceId,
     stateKey: occurrenceId,
     boundContext: {
@@ -237,6 +241,7 @@ function caller(
     instance,
     ...project,
     layoutSlug: 'reports',
+    projectPane,
     label: 'Reports',
     target,
   });
@@ -366,6 +371,109 @@ afterEach(() => {
 });
 
 describe('a plugin opens its own related panes', () => {
+  test.each([false, true])(
+    'the exact updated Project caller attests its old report (kept: %s) without replacing its state',
+    async (kept) => {
+      await mount();
+      const first = await open({});
+      if (first.status !== 'opened') throw new Error('Report was not opened');
+      if (kept)
+        await run(async () => {
+          await probe.relations?.keep(first.handle);
+        });
+      const relation = relationOf(first.handle)!;
+      const state = readPluginPaneState(localStorage, first.handle);
+      expect(relation.opener.source).not.toHaveProperty('projectPane');
+      await rerenderWith(() => {
+        callers.first = caller('instance:list', {}, null, {
+          projectPane: true,
+        });
+      });
+      expect(await open({})).toEqual({
+        status: 'focused',
+        handle: first.handle,
+        presentation: 'beside',
+      });
+      expect(relationOf(first.handle)).toEqual({
+        ...relation,
+        opener: {
+          ...relation.opener,
+          source: {
+            ...relation.opener.source,
+            projectPane: { descriptorId: LIST.id, instanceId: 'instance:list' },
+          },
+        },
+      });
+      expect(readPluginPaneState(localStorage, first.handle)).toEqual(state);
+      expect(regions().right.panes).toEqual([first.handle]);
+    },
+  );
+
+  test('an upgraded Project caller replaces its old unkept preview for another target', async () => {
+    await mount();
+    const first = await open({ key: 'weekly' });
+    if (first.status !== 'opened') throw new Error('Report was not opened');
+    await rerenderWith(() => {
+      callers.first = caller('instance:list', {}, null, { projectPane: true });
+    });
+    const next = await open({ key: 'monthly' });
+    expect(next.status).toBe('replaced');
+    if (next.status !== 'replaced') throw new Error('Preview was not replaced');
+    expect(regions().right.panes).toEqual([next.handle]);
+    expect(relationOf(first.handle)).toBeUndefined();
+    expect(readPluginPaneState(localStorage, first.handle)).toBeNull();
+  });
+
+  test.each([
+    `pane:plugin%3Areports:${'x'.repeat(278)}`,
+    'pane:plugin%3Areports:li\tst',
+  ])(
+    'an unrepresentable Project descriptor retains readable new and kept fallback records: %j',
+    async (descriptorId) => {
+      await mount();
+      const first = await open({});
+      if (first.status !== 'opened') throw new Error('Report was not opened');
+      expect(relationOf(first.handle)).toBeDefined();
+      expect(relationOf(first.handle)?.opener.source).not.toHaveProperty(
+        'projectPane',
+      );
+      await run(async () => {
+        await probe.relations?.keep(first.handle);
+      });
+      act(() => {
+        callers.first = caller('instance:list', {}, null, {
+          descriptorId,
+          projectPane: true,
+        });
+        probe.rerender?.();
+      });
+      const before = relationOf(first.handle);
+      expect(await open({})).toMatchObject({
+        status: 'focused',
+        handle: first.handle,
+      });
+      expect(relationOf(first.handle)).toEqual(before);
+      const next = await open({ key: 'another' });
+      expect(next.status).toBe('opened');
+      if (next.status !== 'opened') throw new Error('Report was not opened');
+      expect(relationOf(next.handle)).toBeDefined();
+      expect(relationOf(next.handle)?.opener.source).not.toHaveProperty(
+        'projectPane',
+      );
+      expect(relationOf(first.handle)).toEqual(before);
+    },
+  );
+
+  test('a direct Project pane captures its catalog-issued descriptor and instance for Up', async () => {
+    callers.first = caller('instance:list', {}, null, { projectPane: true });
+    await mount();
+    const outcome = await open({});
+    expect(outcome.status).toBe('opened');
+    if (outcome.status !== 'opened') throw new Error('Report was not opened');
+    expect(relationOf(outcome.handle)?.opener.source).toMatchObject({
+      projectPane: { descriptorId: LIST.id, instanceId: 'instance:list' },
+    });
+  });
   test('a new occurrence is fenced to this Station and records the caller’s scope and generation', async () => {
     callers.first = caller('instance:list', { taskId: 'task-7' });
     await mount();
@@ -1005,6 +1113,171 @@ describe('a capability acts only for the occurrence and Station it was given to'
 let closingHandle: string | null = null;
 
 describe('what a guard was asked about is what the open commits over', () => {
+  test.each(['renamed Project', 'foreign fence', 'unreadable fence'])(
+    'an old kept opener is not attested through %s',
+    async (change) => {
+      await mount();
+      const opened = await open({});
+      if (opened.status !== 'opened') throw new Error('Report was not opened');
+      await run(async () => {
+        await probe.relations?.keep(opened.handle);
+      });
+      const relation = relationOf(opened.handle);
+      await rerenderWith(() => {
+        const project = {
+          ...PROJECT,
+          projectSlug:
+            change === 'renamed Project' ? 'renamed' : PROJECT.projectSlug,
+        };
+        callers.first = caller('instance:list', {}, null, {
+          project,
+          projectPane: true,
+        });
+        facts.catalog = { ...facts.catalog, ...project };
+        facts.dock = project;
+      });
+      if (change !== 'renamed Project')
+        localStorage.setItem(
+          `station:pane-fence:v1:${encodeURIComponent(opened.handle)}`,
+          change === 'foreign fence'
+            ? JSON.stringify({ version: 1, stationId: 'station-b' })
+            : 'unreadable',
+        );
+      expect(await open({})).toMatchObject({
+        status: 'focused',
+        handle: opened.handle,
+      });
+      expect(relationOf(opened.handle)).toEqual(relation);
+    },
+  );
+
+  test.each(['another occurrence', 'another layout', 'already attested'])(
+    'reopening kept work from %s does not rewrite its opener',
+    async (change) => {
+      if (change === 'already attested')
+        callers.first = caller('instance:list', {}, null, {
+          projectPane: true,
+        });
+      await mount();
+      const opened = await open({});
+      if (opened.status !== 'opened') throw new Error('Report was not opened');
+      await run(async () => {
+        await probe.relations?.keep(opened.handle);
+      });
+      const before = relationOf(opened.handle);
+      await rerenderWith(() => {
+        callers.first = {
+          ...caller(
+            change === 'another occurrence'
+              ? 'instance:elsewhere'
+              : 'instance:list',
+            {},
+            null,
+            { projectPane: true },
+          ),
+          ...(change === 'another layout' ? { layoutSlug: 'elsewhere' } : {}),
+          label: 'Renamed Reports',
+        };
+      });
+      expect(await open({})).toMatchObject({
+        status: 'focused',
+        handle: opened.handle,
+      });
+      expect(relationOf(opened.handle)).toEqual(before);
+    },
+  );
+
+  test.each([
+    ['Cancel', 'guard-cancelled'],
+    ['unverified Station', 'context-mismatch'],
+    ['another Station', 'context-mismatch'],
+    ['changed source', 'superseded'],
+    ['new guard', 'superseded'],
+    ['contended lock', 'contended'],
+  ])(
+    'legacy focus after %s neither enriches nor reveals',
+    async (change, reason) => {
+      await mount();
+      const opened = await open({});
+      if (opened.status !== 'opened') throw new Error('Report was not opened');
+      await run(async () => {
+        await probe.relations?.keep(opened.handle);
+      });
+      await rerenderWith(() => {
+        callers.first = caller('instance:list', {}, null, {
+          projectPane: true,
+        });
+      });
+      act(() => probe.model?.placeSurface('activity', 'right'));
+      const first = deferredGuard('activity');
+      let second: ReturnType<typeof deferredGuard> | undefined;
+      let release: (() => void) | undefined;
+      try {
+        let pending!: ReturnType<PaneRelatedPanesHost['open']>;
+        act(() => {
+          pending = host().open({
+            descriptorId: DETAIL.id,
+            modeId: 'project',
+            key: 'weekly',
+          });
+        });
+        await waitFor(() => expect(first.asked).toHaveBeenCalledTimes(1));
+        if (change === 'unverified Station')
+          act(() => authoritySwitch.set?.('unverified'));
+        if (change === 'another Station')
+          act(() => authoritySwitch.set?.({ station: 'station-b' }));
+        if (change === 'changed source') {
+          await run(async () => {
+            await probe.relations?.transact((tx) => {
+              if (
+                !tx.write({
+                  ...tx.record,
+                  entries: tx.record.entries.map((entry) =>
+                    entry.instanceId === opened.handle
+                      ? {
+                          ...entry,
+                          opener: {
+                            ...entry.opener,
+                            source: {
+                              kind: 'plugin-occurrence',
+                              projectSlug: PROJECT.projectSlug,
+                              layoutSlug: 'changed',
+                            },
+                          },
+                        }
+                      : entry,
+                  ),
+                })
+              )
+                return { ok: false, reason: 'storage' };
+              return { ok: true, value: undefined };
+            });
+          });
+        }
+        if (change === 'new guard') second = deferredGuard('activity');
+        if (change === 'contended lock')
+          release = installFakeLocks().holdExternally();
+        const before = await settledStorageSnapshot();
+        const arrangement = structuredClone(regions());
+        first.answer(change === 'Cancel' ? 'cancel' : 'proceed');
+        expect(await run(() => pending)).toEqual({
+          status: 'unavailable',
+          reason,
+        });
+        expect(await settledStorageSnapshot()).toEqual(before);
+        expect(regions()).toEqual(arrangement);
+        expect(relationOf(opened.handle)?.opener.source).not.toHaveProperty(
+          'projectPane',
+        );
+        if (second) expect(second.asked).not.toHaveBeenCalled();
+      } finally {
+        first.unregister();
+        second?.unregister();
+        release?.();
+      }
+    },
+  );
+
   async function keptReportUnderActivity() {
     await mount();
     const { handle } = (await open({ key: 'weekly' })) as { handle: string };

@@ -479,6 +479,7 @@ export function WorkspacePaneRouteView({
                         projectId: catalog.projectId,
                         projectSlug: catalog.projectSlug!,
                         layoutSlug: layoutSlug ?? null,
+                        projectPane: true,
                         label: entry.descriptor.name,
                       })
                     : null

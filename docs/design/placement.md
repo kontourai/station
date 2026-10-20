@@ -722,11 +722,19 @@ replaces the layer's pane and keeps the ORIGINAL previous state, so one Back
 always returns to Chat. Since the pane workspace contract a kept related
 preview is the exception to the minted tab's removal (`retainLayerPane`): Keep,
 or beginning an edit, makes the layer's pane an ordinary tab of Chat's region,
-so Back, "‹ Chat" and a later replacement leave it placed, and the control
-names the conversation the preview came from
+so Back, "‹ Chat" and a later replacement leave it placed. The control uses
+the verified relation's captured opener label, including conversations,
+Files, routes and plugin panes; without a verified relation it says Chat
 ([pane relationships](pane-relationships.md)). A related pane's Up to its
 conversation leaves the layer through the same guarded close, then selects the
-conversation, so its guard is asked once and Cancel changes nothing. Anything else that takes the pane off screen — "Show
+conversation, so its guard is asked once and Cancel changes nothing. An exact
+Project-plugin Up already on its opener's route closes the phone layer without
+pushing another navigation entry; on desktop that same-path action is a no-op.
+A different canonical route uses navigation precommit with fresh Station,
+generation and source checks. An explicit phone close captures its layer and
+watches guard registrations: a replacement layer, a new guard for its owner,
+or a caller whose admission changed supersedes the pending close. Neither the
+restore nor its continuation runs in those cases. Anything else that takes the pane off screen — "Show
 Chat" in the folded menu, closing the tab, hiding the region — dismisses the
 layer the same way and consumes its entry; "Hide <pane>" for the layer's own
 pane is the way back to Chat rather than a hide of Chat's region. A

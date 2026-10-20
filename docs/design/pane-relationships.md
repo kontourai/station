@@ -149,6 +149,34 @@ Session-owned tools have an independent lifecycle. Older hosts disclose the
 unsupported action without opening an empty pane. Inspector selection facts are
 proved with built-in Session properties before extending plugins.
 
+### Returning to a Project plugin pane
+
+A related open from a direct Project pane captures that pane's catalog-issued
+descriptor and instance IDs in its typed opener record. Up builds the return
+through `workspacePaneDirectRoute`; the Project overview is not a substitute.
+The metadata contains no raw URL and grants no context or permission. The route
+owner still resolves the pane and admits its current renderer.
+
+The record survives reload. A routed return uses canonical navigation precommit
+and rechecks the Station and captured relation after guards answer. A phone
+child already on its opener's route uses the existing layer's scoped guard once
+before returning; Cancel leaves history, placement, state and focus unchanged.
+A replacement layer, new owner guard or withdrawn caller admission supersedes
+that close. Same-path Up adds no history; desktop Up already at its opener is
+a no-op. Back's caption uses any verified relation's captured opener label,
+including Files, routes, plugins and conversations.
+An older record without that reference gains it only when the same exact
+Project-pane caller reopens its target. After guards answer, the existing lock
+rechecks the caller's Station, Project, installed generation, occurrence, target
+state and fence, and the unchanged source record before adding the missing
+reference. Other openers and existing references are never rewritten. Until
+that caller witnesses it, the old record retains its truthful layout or Project
+fallback; missing identity is never guessed from ambient context. The optional
+reference does not change preview selection identity: an unkept old preview
+still focuses for the same target and replaces for another. References outside
+the relation reader's bounds are omitted before stamping or attestation, so the
+legacy return remains readable rather than losing its relation on the next read.
+
 ## Shell controls
 
 Keep the current header styling. Existing icon-only Tools and Related buttons

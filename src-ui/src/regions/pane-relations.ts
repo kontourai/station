@@ -105,6 +105,10 @@ export type PaneOpenerSource =
       readonly kind: 'plugin-occurrence';
       readonly projectSlug: string;
       readonly layoutSlug: string | null;
+      readonly projectPane?: {
+        readonly descriptorId: string;
+        readonly instanceId: string;
+      };
     };
 
 /** The UI occurrence that opened a pane, at the selection it had then. */
@@ -266,6 +270,20 @@ function parseTargetScope(value: unknown): RelatedTargetScope | null {
   return scope;
 }
 
+export function parseProjectPaneReference(
+  value: unknown,
+): { descriptorId: string; instanceId: string } | null {
+  if (
+    !isRecordObject(value) ||
+    !boundedText(value.descriptorId, 256) ||
+    !boundedText(value.instanceId, 512) ||
+    value.descriptorId !== value.descriptorId.trim() ||
+    value.instanceId !== value.instanceId.trim()
+  )
+    return null;
+  return { descriptorId: value.descriptorId, instanceId: value.instanceId };
+}
+
 function parseSource(value: unknown): PaneOpenerSource | null {
   if (!isRecordObject(value)) return null;
   if (value.kind === 'activity') {
@@ -309,6 +327,12 @@ function parseSource(value: unknown): PaneOpenerSource | null {
     };
   }
   if (value.kind === 'plugin-occurrence') {
+    let projectPane: { descriptorId: string; instanceId: string } | undefined;
+    if (value.projectPane !== undefined) {
+      const parsed = parseProjectPaneReference(value.projectPane);
+      if (!parsed) return null;
+      projectPane = parsed;
+    }
     if (
       !boundedText(value.projectSlug, 256) ||
       !nullableText(value.layoutSlug, 256)
@@ -318,6 +342,7 @@ function parseSource(value: unknown): PaneOpenerSource | null {
       kind: 'plugin-occurrence',
       projectSlug: value.projectSlug,
       layoutSlug: value.layoutSlug,
+      ...(projectPane ? { projectPane } : {}),
     };
   }
   return null;
@@ -332,6 +357,12 @@ function parseOpener(value: unknown): PaneOpener | null {
     return null;
   const source = parseSource(value.source);
   if (!source) return null;
+  if (
+    source.kind === 'plugin-occurrence' &&
+    source.projectPane &&
+    source.projectPane.instanceId !== value.occurrenceId
+  )
+    return null;
   return { occurrenceId: value.occurrenceId, label: value.label, source };
 }
 

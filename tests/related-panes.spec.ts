@@ -24,6 +24,10 @@ import {
   installPluginWithConsent,
 } from './helpers/install-plugin';
 import { expectRegionTabs } from './helpers/region-placement';
+import {
+  expectUpgradedPluginOpener,
+  seedLegacyKeptPluginOpener,
+} from './helpers/related-pane-upgrade';
 
 const api = resolveE2EApiBase();
 const pluginId = 'related-reports';
@@ -130,6 +134,67 @@ test.describe('related panes from an installed plugin', () => {
       reports(page).getByRole('heading', { name: 'Reports' }),
     ).toBeVisible();
   });
+  for (const width of [1280, 390]) {
+    test(`Up returns to the exact Project Reports pane at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(reportsRoute);
+      await expect(
+        reports(page).getByRole('heading', { name: 'Reports' }),
+      ).toBeVisible({ timeout: 30_000 });
+      await openFromList(page, 'Open Weekly report');
+      await expect(
+        page.getByRole('article', { name: 'Weekly report' }),
+      ).toContainText('Seven days of work, summarised.');
+      await page
+        .getByRole('button', { name: 'Keep open', exact: true })
+        .click();
+      const legacyHandle = await seedLegacyKeptPluginOpener(page);
+      await page.reload();
+      await expect(
+        page.getByRole('article', { name: 'Weekly report' }),
+      ).toContainText('Seven days of work, summarised.');
+      if (width === 390) {
+        await expect(
+          page.getByRole('button', { name: 'Back to Reports', exact: true }),
+        ).toBeVisible();
+        await page
+          .getByRole('button', { name: 'Back to Reports', exact: true })
+          .click();
+      }
+      await openFromList(page, 'Open Weekly report');
+      if (width === 1280)
+        await expect(reports(page).getByRole('status')).toHaveText(
+          'Weekly report: focused, beside.',
+        );
+      await expectUpgradedPluginOpener(
+        page,
+        legacyHandle,
+        reportsDescriptor,
+        decodeURIComponent(reportsRoute.split('/').at(-1)!),
+      );
+      if (width === 1280) {
+        await page.getByRole('button', { name: 'Home', exact: true }).click();
+        await expect(page).toHaveURL(/\/\?(?:.*)?$|\/$/);
+        await expect(
+          page.getByRole('article', { name: 'Weekly report' }),
+        ).toBeVisible();
+        await expect(reports(page)).toHaveCount(0);
+      }
+      await page
+        .getByRole('button', { name: 'Up to Reports', exact: true })
+        .click();
+      await expect(page).toHaveURL(
+        new RegExp(
+          `${reportsRoute.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\?.*)?$`,
+        ),
+      );
+      await expect(
+        reports(page).getByRole('heading', { name: 'Reports' }),
+      ).toBeVisible();
+    });
+  }
 
   test('opens, replaces, focuses, keeps and closes its own report panes, and a removed plugin’s pane runs no plugin code', async ({
     page,

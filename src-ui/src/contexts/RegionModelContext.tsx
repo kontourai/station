@@ -371,7 +371,9 @@ export interface RegionModelValue {
    * `then` runs after the layer has closed — never on Cancel — so a caller
    * that leaves the layer to go somewhere (a related pane's Up) asks its
    * guard once, through this, rather than changing anything first. With no
-   * layer nothing is asked and `then` runs at once.
+   * layer nothing is asked and `then` runs at once. A replacement layer, a
+   * new guard for its owner or a false `canClose` supersedes a pending close:
+   * neither restoration nor `then` runs.
    */
   closePhoneLayer(
     then?: () => void,

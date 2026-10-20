@@ -39,11 +39,13 @@ import {
   type RegionModelValue,
   useRegionModelOptional,
 } from '../contexts/RegionModelContext';
+import { readPaneFence } from '../regions/pane-fence';
 import {
   type PaneOpener,
   type PaneRelation,
   type PaneRelationTarget,
   paneRelationOf,
+  parseProjectPaneReference,
   RELATED_TARGET_SCOPE_KEYS,
   sameRelationTarget,
   withoutPaneRelation,
@@ -98,6 +100,10 @@ export interface RelatedPaneCaller {
   readonly projectSlug: string;
   /** The Project layout it is a tab of, if it is one. */
   readonly layoutSlug: string | null;
+  readonly projectPane?: Extract<
+    PaneOpener['source'],
+    { kind: 'plugin-occurrence' }
+  >['projectPane'];
   /** Its captured scope; a related pane gets at most this. */
   readonly scope: PluginPaneScope;
   /** What a related pane's Up names. */
@@ -158,13 +164,26 @@ export function relatedPaneCaller(input: {
   projectId: string;
   projectSlug: string;
   layoutSlug: string | null;
+  projectPane?: boolean;
   label: string;
   target?: RelatedPaneTarget | null;
 }): RelatedPaneCaller | null {
   const contribution = input.instance.boundContext?.contribution;
   const generation = pluginInstallGeneration(contribution);
   const pluginId = contribution?.provenance.pluginId;
-  if (!generation || !pluginId) return null;
+  if (
+    !generation ||
+    !pluginId ||
+    (input.projectPane &&
+      String(input.instance.instanceId) !== input.occurrenceId)
+  )
+    return null;
+  const projectPane = input.projectPane
+    ? parseProjectPaneReference({
+        descriptorId: String(input.instance.descriptorId),
+        instanceId: String(input.instance.instanceId),
+      })
+    : null;
   return {
     occurrenceId: input.occurrenceId,
     pluginId,
@@ -172,6 +191,7 @@ export function relatedPaneCaller(input: {
     projectId: input.projectId,
     projectSlug: input.projectSlug,
     layoutSlug: input.layoutSlug,
+    ...(projectPane ? { projectPane } : {}),
     scope: scopeOf(input.instance.boundContext),
     label: input.label.slice(0, 160) || 'Plugin pane',
     target: input.target ?? null,
@@ -440,6 +460,7 @@ function createRelatedPanesHost(
       kind: 'plugin-occurrence',
       projectSlug: caller.projectSlug,
       layoutSlug: caller.layoutSlug,
+      ...(caller.projectPane ? { projectPane: caller.projectPane } : {}),
     },
   };
   const claim = () => pluginRelatedPaneBudget.claim(caller.pluginId, now());
@@ -542,6 +563,28 @@ function createRelatedPanesHost(
             return admitted.ok ? null : admitted.reason;
           },
           confirms: (instanceId) => storedTargetIs(instanceId, target, station),
+          attestFocusedOpener: (relation) => {
+            const source = relation.opener.source;
+            const fence = readPaneFence(
+              window.localStorage,
+              relation.instanceId,
+            );
+            if (
+              !caller.projectPane ||
+              !ownedRelation(relation) ||
+              fence.status !== 'fenced' ||
+              fence.stationId !== station ||
+              source.kind !== 'plugin-occurrence' ||
+              source.projectPane !== undefined ||
+              source.projectSlug !== caller.projectSlug ||
+              source.layoutSlug !== caller.layoutSlug
+            )
+              return undefined;
+            return {
+              ...relation.opener,
+              source: { ...source, projectPane: caller.projectPane },
+            };
+          },
           reveal: (model, instanceId, options) =>
             model.openSurfaceInRegion(instanceId, {
               ...options,

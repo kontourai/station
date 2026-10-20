@@ -119,6 +119,7 @@ export interface RelatedOccurrenceAdapter<AdapterRefusal extends string> {
    * vouches for what the occurrence is bound to.
    */
   confirms?(instanceId: string): boolean;
+  attestFocusedOpener?(relation: PaneRelation): PaneOpener | undefined;
   /**
    * Reveal an existing occurrence, carrying anything this request adds. It
    * opens the occurrence with `{ ...options, focusExisting: true }`, which is
@@ -358,9 +359,12 @@ async function openWatched<AdapterRefusal extends string>(
           return { ok: false, reason: 'superseded' };
         if (!readmitted()) return { ok: false, reason: 'refused' };
         const fresh = prunePaneRelations(tx.record, relatedOccurrenceExists);
+        const held = paneRelationOf(fresh, focusId);
         const model = getModel();
         const now = hiddenByReveal(model, focusId, options);
         if (
+          !held ||
+          JSON.stringify(held) !== JSON.stringify(focus) ||
           occurrenceToFocus(
             keptPaneForTarget(fresh, station, target),
             transientPaneForOpener(fresh, station, opener),
@@ -373,6 +377,19 @@ async function openWatched<AdapterRefusal extends string>(
           !noneRegistered(watch, hidden)
         )
           return { ok: false, reason: 'superseded' };
+        const attestedOpener = adapter.attestFocusedOpener?.(held);
+        if (
+          attestedOpener &&
+          !tx.write({
+            ...fresh,
+            entries: fresh.entries.map((entry) =>
+              entry.instanceId === focusId
+                ? { ...entry, opener: attestedOpener }
+                : entry,
+            ),
+          })
+        )
+          return { ok: false, reason: 'storage' };
         const outcome = adapter.reveal(model, focusId, options);
         if (!outcome.ok) {
           stepRefusal = outcome.reason;

@@ -43,6 +43,10 @@ import {
   stationRootForLiveHome,
   stopStation,
 } from './helpers/live-station-task';
+import {
+  expectUpgradedPluginOpener,
+  seedLegacyKeptPluginOpener,
+} from './helpers/related-pane-upgrade';
 
 const REMOTE_HOST = 'station-remote.test';
 const pluginDir = resolve('examples/related-reports');
@@ -195,7 +199,8 @@ test.describe('related panes from a plugin in the sandboxed frame', () => {
   // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
   test('opens, replaces, focuses and closes its own report panes, and opens a tool, all from frames', async ({}, testInfo) => {
     if (!browser || !live) throw new Error('the spec Station did not start');
-    const context = await browser.newContext({
+    const activeBrowser = browser;
+    const context = await activeBrowser.newContext({
       viewport: { width: 1280, height: 900 },
       storageState,
     });
@@ -278,6 +283,92 @@ test.describe('related panes from a plugin in the sandboxed frame', () => {
           pluginFrame(page, 'log').getByRole('region', { name: 'Report log' }),
         ).toBeVisible({ timeout: 30_000 });
       });
+      for (const width of [1280, 390]) {
+        await test.step(`Up from a frame report returns to its exact Project pane at ${width}px`, async () => {
+          const returnContext = await activeBrowser.newContext({
+            storageState,
+          });
+          const returnPage = await returnContext.newPage();
+          try {
+            await returnPage.setViewportSize({ width, height: 900 });
+            await returnPage.goto(`${remoteUi}${reportsRoute}`);
+            const source = pluginFrame(returnPage, 'reports').getByRole(
+              'region',
+              { name: 'Related reports' },
+            );
+            await expect(
+              source.getByRole('heading', { name: 'Reports' }),
+            ).toBeVisible({ timeout: 30_000 });
+            await source
+              .getByRole('button', { name: 'Open Weekly report', exact: true })
+              .click();
+            await expect(
+              pluginFrame(returnPage, 'report').getByRole('article', {
+                name: 'Weekly report',
+              }),
+            ).toContainText('Seven days of work, summarised.');
+            await returnPage
+              .getByRole('button', { name: 'Keep open', exact: true })
+              .click();
+            const legacyHandle = await seedLegacyKeptPluginOpener(returnPage);
+            await returnPage.reload();
+            if (width === 390) {
+              await expect(
+                pluginFrame(returnPage, 'report').getByRole('article', {
+                  name: 'Weekly report',
+                }),
+              ).toContainText('Seven days of work, summarised.', {
+                timeout: 30_000,
+              });
+              await expect(
+                returnPage.getByRole('button', {
+                  name: 'Back to Reports',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await returnPage
+                .getByRole('button', { name: 'Back to Reports', exact: true })
+                .click();
+            }
+            await source
+              .getByRole('button', { name: 'Open Weekly report', exact: true })
+              .click();
+            await expectUpgradedPluginOpener(
+              returnPage,
+              legacyHandle,
+              reportsDescriptor,
+              decodeURIComponent(reportsRoute.split('/').at(-1)!),
+            );
+            if (width === 1280) {
+              await returnPage
+                .getByRole('button', { name: 'Home', exact: true })
+                .click();
+              await expect(returnPage).toHaveURL(/\/\?(?:.*)?$|\/$/);
+              await expect(
+                pluginFrame(returnPage, 'report').getByRole('article', {
+                  name: 'Weekly report',
+                }),
+              ).toBeVisible();
+              await expect(
+                returnPage.locator('iframe[title="Plugin: reports"]'),
+              ).toHaveCount(0);
+            }
+            await returnPage
+              .getByRole('button', { name: 'Up to Reports', exact: true })
+              .click();
+            expect(new URL(returnPage.url()).pathname).toBe(reportsRoute);
+            await expect(
+              source.getByRole('heading', { name: 'Reports' }),
+            ).toBeVisible();
+            await returnPage.reload();
+            await expect(
+              source.getByRole('heading', { name: 'Reports' }),
+            ).toBeVisible({ timeout: 30_000 });
+          } finally {
+            await returnContext.close();
+          }
+        });
+      }
       passed = true;
     } finally {
       if (!passed) {
