@@ -1127,8 +1127,12 @@ export interface InstanceSurfacePrefix {
    * same answer.
    */
   matches: (id: string) => boolean;
-  /** The built-in descriptor its occurrences carry (`pane:builtin:…`). */
-  descriptorId: string;
+  /**
+   * The built-in descriptor its occurrences carry (`pane:builtin:…`), or null
+   * for the plugin-pane family, whose occurrences each name their own plugin
+   * descriptor in their stored record (`pluginPaneOccurrence.ts`).
+   */
+  descriptorId: string | null;
   /**
    * The title an id alone can carry — a tab whose instance has not been
    * resolved (the folded Regions menu, the shell landmark) shows this.
@@ -1165,6 +1169,9 @@ const FILE_PREVIEW_SURFACE_ID = /^file-preview:[0-9a-f]{32}$/;
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const BOARD_SURFACE_ID = new RegExp(`^board:${UUID}$`);
 const PROJECT_LAYOUT_SURFACE_ID = new RegExp(`^layout:${UUID}/${UUID}$`);
+
+/** `plugin-pane:<nonce>`, the 32 hex digits `mintPluginPaneId` mints. */
+const PLUGIN_PANE_SURFACE_ID = /^plugin-pane:[0-9a-f]{32}$/;
 
 export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
   {
@@ -1219,6 +1226,19 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
     descriptorId: 'pane:builtin:workspace-layout',
     title: 'Layout',
     icon: 'board',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+  },
+  // A plugin's own pane opened as a related pane (`PaneRelatedPanesHost`):
+  // the host mints the nonce, and which plugin descriptor, mode and target it
+  // shows is the occurrence's stored record. Related by default; a related
+  // open of a `tool` lands it with the Tools.
+  {
+    prefix: 'plugin-pane:',
+    matches: (id) => PLUGIN_PANE_SURFACE_ID.test(id),
+    descriptorId: null,
+    title: 'Plugin pane',
+    icon: 'plugin',
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
   },

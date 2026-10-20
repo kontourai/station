@@ -113,6 +113,12 @@ import {
   isCanonicalFilePreviewPaneInstance,
 } from '../workspace-panes/filePreviewPaneInstance';
 import {
+  PLUGIN_PANE_ID,
+  pluginPaneInstance,
+  readPluginPaneState,
+  removePluginPaneState,
+} from '../workspace-panes/pluginPaneOccurrence';
+import {
   type FilePreviewPaneStateStorage,
   readFilePreviewPaneState,
   removeFilePreviewPaneState,
@@ -150,8 +156,12 @@ export interface RegionSurfacePane {
    * which directory it reads). Absent: no tooltip.
    */
   tooltip?: string;
-  /** The descriptor the pane is an occurrence of (`pane:builtin:<surface>`). */
-  descriptorId: string;
+  /**
+   * The descriptor the pane is an occurrence of (`pane:builtin:<surface>`; a
+   * plugin occurrence's own plugin descriptor), or null for a plugin
+   * occurrence whose record is gone.
+   */
+  descriptorId: string | null;
   /**
    * The instance id every occurrence this entry mints carries — constant per
    * kind, whatever project it binds — so the region's tab strip can name the
@@ -324,6 +334,7 @@ export const INSTANCE_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
     'src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx',
   'board:': 'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx',
   'layout:': 'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx',
+  'plugin-pane:': 'src-ui/src/workspace-panes/RegionPluginPane.tsx',
 };
 
 /** The exact shape `createFilePreviewPaneInstance` mints its identity in. */
@@ -476,6 +487,37 @@ function layoutSurfacePane(surfaceId: string): RegionSurfacePane | undefined {
 }
 
 /**
+ * One plugin pane a related open minted (`PaneRelatedPanesHost`), resolved
+ * from its id and its stored record (`pluginPaneOccurrence.ts`). Like a file
+ * preview, an occurrence exists only while that record does and only under
+ * the dock's own Project. Whether the plugin may render it now is decided
+ * where it renders (`RegionPluginPane`), against the Project's catalog and
+ * the live plugin registry, never here.
+ */
+function pluginSurfacePane(surfaceId: string): RegionSurfacePane {
+  const storage = filePreviewStorage();
+  const state = storage ? readPluginPaneState(storage, surfaceId) : null;
+  const canonical = state ? pluginPaneInstance(surfaceId, state) : null;
+  return {
+    surfaceId,
+    descriptorId: state?.descriptorId ?? null,
+    instanceId: toWorkspacePaneInstanceId(surfaceId),
+    ...(state?.title ? { title: state.title } : {}),
+    instance: ({ projectId, projectSlug }) =>
+      state &&
+      state.projectId === projectId &&
+      state.projectSlug === projectSlug
+        ? canonical
+        : null,
+    isCanonical: (instance) =>
+      canonical !== null &&
+      String(instance.instanceId) === surfaceId &&
+      String(instance.stateKey) === surfaceId &&
+      instance.descriptorId === canonical.descriptorId,
+  };
+}
+
+/**
  * The pane a surface renders as in a region host, if it has one: a registered
  * surface's map entry, else the one occurrence an instance-keyed id names
  * (#2049). The prefixes here are the same ones `INSTANCE_SURFACE_PREFIXES`
@@ -501,6 +543,7 @@ export function regionSurfacePane(
     return browserPreviewSurfacePane(surfaceId);
   if (surfaceId.startsWith('board:') || surfaceId.startsWith('layout:'))
     return layoutSurfacePane(surfaceId);
+  if (PLUGIN_PANE_ID.test(surfaceId)) return pluginSurfacePane(surfaceId);
   return undefined;
 }
 
@@ -519,6 +562,8 @@ export function forgetRegionPaneState(surfaceId: string): void {
       removeFilePreviewPaneState(storage, surfaceId);
     else if (BROWSER_PREVIEW_PANE_ID.test(surfaceId))
       removeBrowserPreviewPaneState(storage, surfaceId);
+    else if (PLUGIN_PANE_ID.test(surfaceId))
+      removePluginPaneState(storage, surfaceId);
   } catch {
     /* per-device storage is optional */
   }

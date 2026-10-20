@@ -1,3 +1,8 @@
+import {
+  parseWorkspacePaneInstance,
+  WORKSPACE_PANE_CONTRACT_VERSION,
+  type WorkspacePaneInstance,
+} from '@kontourai/station-contracts/workspace-pane';
 import { removePaneFence } from '../regions/pane-fence';
 
 /**
@@ -202,4 +207,24 @@ export function mintPluginPaneId(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return `plugin-pane:${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * The occurrence's identity as a region holds it: the plugin's descriptor,
+ * the occurrence id as its state key, and the recorded Project and scope.
+ * Deliberately no `contribution`: what may render it is the Project
+ * catalog's server-issued contribution, attached where it renders.
+ */
+export function pluginPaneInstance(
+  id: string,
+  state: PluginPaneState,
+): WorkspacePaneInstance | null {
+  if (!PLUGIN_PANE_ID.test(id)) return null;
+  return parseWorkspacePaneInstance({
+    version: WORKSPACE_PANE_CONTRACT_VERSION,
+    descriptorId: state.descriptorId,
+    instanceId: id,
+    stateKey: id,
+    boundContext: { projectId: state.projectId, ...state.scope },
+  });
 }

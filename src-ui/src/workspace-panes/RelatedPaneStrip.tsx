@@ -216,6 +216,31 @@ function useRouteUp(source: Extract<PaneOpener['source'], { kind: 'route' }>) {
   return () => navigate(`${source.pathname}${source.search}`);
 }
 
+/**
+ * Up for a plugin pane opener: that exact occurrence while a region holds
+ * it (revealed; this pane's guard is asked only when the reveal hides it),
+ * else its Project layout through canonical `setLayout`, else its Project.
+ */
+function usePluginOccurrenceUp(instanceId: string, opener: PaneOpener) {
+  const model = useRegionModelOptional();
+  const showSurface = useShowSurface();
+  const leaveFor = useLeaveFor(instanceId);
+  const { setLayout, setProject } = useNavigationActions();
+  const source = opener.source as Extract<
+    PaneOpener['source'],
+    { kind: 'plugin-occurrence' }
+  >;
+  return () => {
+    const occurrence = opener.occurrenceId;
+    if (model && occupiedRegion(model.regions, occurrence) !== undefined) {
+      leaveFor(occurrence, () => showSurface(occurrence));
+      return;
+    }
+    if (source.layoutSlug) setLayout(source.projectSlug, source.layoutSlug);
+    else setProject(source.projectSlug);
+  };
+}
+
 function UpButton({ label, onUp }: { label: string; onUp: () => void }) {
   return (
     <button
@@ -259,6 +284,17 @@ function FilesUp({
   return <UpButton label={opener.label} onUp={up} />;
 }
 
+function PluginOccurrenceUp({
+  instanceId,
+  opener,
+}: {
+  instanceId: string;
+  opener: PaneOpener;
+}) {
+  const up = usePluginOccurrenceUp(instanceId, opener);
+  return <UpButton label={opener.label} onUp={up} />;
+}
+
 function RouteUp({ opener }: { opener: PaneOpener }) {
   const up = useRouteUp(
     opener.source as Extract<PaneOpener['source'], { kind: 'route' }>,
@@ -280,6 +316,8 @@ function OpenerUp({
       return <FilesUp instanceId={instanceId} opener={opener} />;
     case 'route':
       return <RouteUp opener={opener} />;
+    case 'plugin-occurrence':
+      return <PluginOccurrenceUp instanceId={instanceId} opener={opener} />;
   }
 }
 

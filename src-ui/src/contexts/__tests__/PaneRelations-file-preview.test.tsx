@@ -29,6 +29,7 @@ import {
   readFilePreviewPaneState,
   writeFilePreviewPaneState,
 } from '../../workspace-panes/filePreviewPaneStateStorage';
+import { createPluginPaneStatePreparation } from '../../workspace-panes/pluginPaneOccurrence';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
@@ -464,9 +465,9 @@ describe('refusals leave everything as it was', () => {
 
   test('the bound: live entries of OTHER tabs are never evicted', async () => {
     await refusedWith('capacity', () => {
-      // Occurrences another tab shows: each fenced, the previews with their
-      // own state (at most the 24 the preview store holds), the rest of
-      // another kind this path cannot see the state of. None is placed here.
+      // Occurrences another tab shows: each fenced with its own state —
+      // previews (at most the 24 the preview store holds) and plugin panes.
+      // None is placed here.
       const entries: PaneRelation[] = [];
       for (let i = 0; i < PANE_RELATIONS_LIMIT; i += 1) {
         const hex = i.toString(16).padStart(32, '0');
@@ -480,18 +481,37 @@ describe('refusals leave everything as it was', () => {
             path: `src/other-${i}.ts`,
             wrap: true,
           });
+        else
+          createPluginPaneStatePreparation(localStorage, id, {
+            version: 1,
+            projectId: PROJECT.projectId,
+            projectSlug: PROJECT.projectSlug,
+            pluginId: 'reports',
+            generation: 'plugin:reports@1.0.0',
+            descriptorId: 'pane:plugin%3Areports:report',
+            modeId: 'project',
+            key: `report-${i}`,
+          }).prepare();
         entries.push({
           instanceId: id,
           stateKey: id,
           stationId: 'station-a',
-          generation: 'builtin',
+          generation: preview ? 'builtin' : 'plugin:reports@1.0.0',
           opener: { ...SECURITY, occurrenceId: `other-${i}` },
-          target: {
-            kind: 'file',
-            ...PROJECT,
-            path: `src/other-${i}.ts`,
-            thread: null,
-          },
+          target: preview
+            ? {
+                kind: 'file',
+                ...PROJECT,
+                path: `src/other-${i}.ts`,
+                thread: null,
+              }
+            : {
+                kind: 'plugin',
+                pluginId: 'reports',
+                descriptorId: 'pane:plugin%3Areports:report',
+                modeId: 'project',
+                key: `report-${i}`,
+              },
           kept: true,
           openedAt: i,
         });

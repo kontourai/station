@@ -46,6 +46,10 @@ export type PaneRelationTarget =
  *   it has one, the execution session it was showing.
  * - `files`: a Files pane, with the Project it was bound to when it opened.
  * - `route`: a routed page (an app path and query, never an origin).
+ * - `plugin-occurrence`: a plugin pane, by the Project it was bound to and,
+ *   when it was a tab of one, the Project layout; the occurrence itself is
+ *   the opener's `occurrenceId`. Plugins publish no selection: one reusable
+ *   preview per opening occurrence.
  */
 export type PaneOpenerSource =
   | {
@@ -63,6 +67,11 @@ export type PaneOpenerSource =
       readonly kind: 'route';
       readonly pathname: string;
       readonly search: string;
+    }
+  | {
+      readonly kind: 'plugin-occurrence';
+      readonly projectSlug: string;
+      readonly layoutSlug: string | null;
     };
 
 /** The UI occurrence that opened a pane, at the selection it had then. */
@@ -230,6 +239,18 @@ function parseSource(value: unknown): PaneOpenerSource | null {
       search: value.search as string,
     };
   }
+  if (value.kind === 'plugin-occurrence') {
+    if (
+      !boundedText(value.projectSlug, 256) ||
+      !nullableText(value.layoutSlug, 256)
+    )
+      return null;
+    return {
+      kind: 'plugin-occurrence',
+      projectSlug: value.projectSlug,
+      layoutSlug: value.layoutSlug,
+    };
+  }
   return null;
 }
 
@@ -370,6 +391,8 @@ export function openerSelectionKey(opener: PaneOpener): string {
       return `files:${source.projectId}`;
     case 'route':
       return `route:${source.pathname}${source.search}`;
+    case 'plugin-occurrence':
+      return `plugin-occurrence:${source.projectSlug}/${source.layoutSlug ?? ''}`;
   }
 }
 
