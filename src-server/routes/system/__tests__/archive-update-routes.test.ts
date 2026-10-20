@@ -1923,18 +1923,31 @@ describe('stage and apply on an install that has updated before (#3851 review F1
 describe('the coordinator, review round 2 (#3851)', () => {
   test('item 1: with no apply-when-idle pending, runtime events resolve nothing and arm nothing', async () => {
     const install = makeInstall();
+    let policyReads = 0;
     const { coordinator, turnEnded, timers, provenanceCalls } = coordinatorFor(
       install,
-      { policy: 'never' },
+      {
+        policy: 'never',
+        onPolicyRead: () => {
+          policyReads += 1;
+        },
+      },
     );
     coordinator.start();
     coordinator.markReady();
+    // start()'s own reads (its baseline, its first publish) settle first.
+    await vi.waitFor(() => expect(policyReads).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const readsBefore = policyReads;
     const before = provenanceCalls();
     const armed = timers.live().length;
     for (let event = 0; event < 100; event += 1)
       turnEnded('content.text-delta');
+    await new Promise((resolve) => setTimeout(resolve, 30));
     expect(provenanceCalls()).toBe(before);
     expect(timers.live()).toHaveLength(armed);
+    // Not a settings save either (the config:changed path): no policy read.
+    expect(policyReads).toBe(readsBefore);
     // And the resolution happened once for the whole life of the coordinator.
     await coordinator.state();
     await coordinator.state();
