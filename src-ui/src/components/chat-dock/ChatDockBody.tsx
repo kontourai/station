@@ -178,6 +178,13 @@ const loadOutboundQueuedMessages = () =>
     }),
   );
 
+const loadConversationInboxMessages = () =>
+  import('../chat/ConversationInboxMessages').then(
+    ({ ConversationInboxMessages }) => ({
+      default: ConversationInboxMessages,
+    }),
+  );
+
 const loadConversationOpenRecoveryNotice = () =>
   import('./ConversationOpenRecoveryNotice').then((module) => ({
     default: module.ConversationOpenRecoveryNotice,
@@ -1534,6 +1541,14 @@ export function ChatDockBody({
             sessionId: activeSession.id,
             messages: activeSession.unsentMessages,
           }}
+        />
+      ) : null}
+      {activeSession.conversationId && !activeSession.replay ? (
+        <LazyBoundary
+          key={activeSession.conversationId}
+          load={loadConversationInboxMessages}
+          pending={null}
+          componentProps={{ conversationId: activeSession.conversationId }}
         />
       ) : null}
       {activeSession.queuedMessages.length ? (

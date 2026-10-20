@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Reviewed against the glossary's new Chat inventory row: CONTEXT.md does not name the inventory surface; no prose change.","inputs":["CONTEXT.md","docs/glossary.md"]}
+  ]
+}

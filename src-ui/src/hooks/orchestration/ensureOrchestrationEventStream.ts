@@ -308,6 +308,10 @@ function refreshSessionReadModelOnFact(
   event: OrchestrationEvent,
 ): void {
   if (!SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
+  void currentStreamQueryClient(apiBase)?.invalidateQueries(
+    { queryKey: ['conversation-inbox', apiBase], type: 'active' },
+    { cancelRefetch: false },
+  );
   requestSessionReadModelRefresh(apiBase);
 }
 

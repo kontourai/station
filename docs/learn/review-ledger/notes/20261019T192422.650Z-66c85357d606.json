@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Added the Chat inventory term: the user-facing name for the session-inventory record, opened from an answer's Basis chip or the dock More menu; the developer contract, SDK hook and portable MCP App keep the Session inventory name. Checked the UI strings in ConnectedSessionInventory, BasisWorkspacePane, SessionInventoryTaskPicker and basis-pane SessionInventory.","inputs":["docs/glossary.md"]}
+  ]
+}

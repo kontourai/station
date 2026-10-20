@@ -26,7 +26,7 @@ export function SessionInventoryTaskPicker({
       target={row}
       triggerLabel="Keep output"
       dialogTitle="Keep output in Task"
-      eyebrow="Session inventory"
+      eyebrow="Chat inventory"
       projectId={currentProjectId}
       adapter={{
         tasks: tasks.data,
