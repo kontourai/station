@@ -240,8 +240,9 @@ authority and generic route errors: 10 keys), and the UI always runs in
 
 - Read a message with `const { message } = useLocale()` and call
   `message('route.loading')`. Placeholders are written `{name}` and passed as
-  an object; TypeScript requires exactly the template's placeholder names, and
-  a missing or extra value throws at runtime.
+  an object; TypeScript requires exactly the template's placeholder names. At
+  runtime a template with placeholders throws on a missing or extra value; a
+  template with none returns unchanged and ignores any values passed.
 - `useLocale()` also returns `formatDate`, `formatNumber` and `compare`, cached
   `Intl` formatters for the current locale.
 - Add a key only to `catalog.en-US.ts`. The pseudo-locale catalog

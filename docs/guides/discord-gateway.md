@@ -27,12 +27,11 @@ configuration contract is
   are text only.
 - One turn runs per bound conversation at a time. A message that arrives while
   a turn is running is refused, not queued.
-- A Discord-started turn is an unattended session. The
-  **Default approval mode** setting applies to it like it applies to webhooks,
-  scheduled jobs and delegations, for engines that have an approval setting;
-  **Full access** runs such a turn with no sandbox and no approval prompts. The
-  gateway has no way to answer a tool approval request from Discord; a turn
-  that asks for approval waits in Station.
+- A Discord message continues the bound conversation, so it runs with that
+  conversation's existing approval posture and confinement. The gateway grants
+  no extra access: it carries no full-access grant and records no approval
+  decision. The gateway has no way to answer a tool approval request from
+  Discord; a turn that asks for approval waits in Station.
 
 ## Set it up
 
@@ -47,8 +46,9 @@ configuration contract is
    `~/.station/instances/nightly` for a Nightly install. Restrict the file to
    your user (`chmod 600`): Station does not change the permissions of a file
    you write by hand, and the file holds the bot token.
-4. Restart Station. The gateway reads `enabled` and `token` only when Station
-   starts.
+4. Restart Station. The gateway connects only at startup, and only when
+   `enabled` is `true` and a token is set; it keeps using the token it read
+   then for its connection.
 
 A minimal file:
 
@@ -135,8 +135,14 @@ authorize anything.
 
 The allowlist, identities and bindings are re-read from the file for every
 message and every reply, so revoking a person or removing a channel takes
-effect without a restart. A person who is not mapped, is revoked or lacks
-`turn:start` gets no reply in Discord.
+effect without a restart. A message from a person who is not mapped, is
+revoked or lacks `turn:start` gets no reply in Discord.
+
+Authorization for a reply is checked again when the turn completes, against
+`transcript:read`. If the sender lost access while the turn ran (the mapping
+was revoked, the capability removed or the channel taken off the allowlist),
+Station does not post the answer, but it still posts "Station completed the
+turn" with the relative Station link for that session.
 
 ## Replies
 
@@ -156,10 +162,12 @@ Station answers in the channel when it cannot run a turn:
 
 ## Failure behaviour and limits
 
-- **Restart needed:** turning the gateway on or changing the token takes
-  effect at the next Station start. Setting `enabled` to `false` while Station
-  runs stops replies, but not message handling; restart Station to stop the
-  gateway completely.
+- **Restart needed:** turning the gateway on takes effect at the next Station
+  start, and the gateway connection keeps the token it read then. Replies are
+  sent with the token currently in the file, so changing the token while
+  Station runs splits the two until a restart. Setting `enabled` to `false`
+  while Station runs stops replies, but not message handling; restart Station
+  to stop the gateway completely.
 - **Disconnects:** Station reconnects after one second and resumes the Discord
   session when it can. There is no backoff, and an invalid token is retried
   every second rather than reported.

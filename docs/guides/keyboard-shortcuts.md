@@ -41,7 +41,8 @@ clears that. Choose
 
 Use the arrow keys to move, Return to run the highlighted item, and Escape or a
 click outside to close. Running an item closes the palette and returns focus to
-where you were.
+where you were, except **Reset command history**, which keeps the palette open
+and shows whether the reset worked.
 
 ## Return in chat
 

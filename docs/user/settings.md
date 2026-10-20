@@ -28,9 +28,10 @@ Turning a preview on affects everyone who uses this Station.
 
 ## Developer tools
 
-**Enable developer tools** shows the **Developer** and **Monitoring** pages in
-**Customize**, the sidebar and the command palette. It is off by default.
-Turning it off only hides them; a direct `/developer` link still opens.
+**Enable developer tools** shows the **Developer** page in **Customize** and
+the command palette, and its **Monitoring** page in the command palette. It is
+off by default. Turning it off only hides them; a direct `/developer` link
+still opens.
 
 ## Shared answers
 

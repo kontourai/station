@@ -95,26 +95,44 @@ tailnet.
 
 A webhook turn starts a new, ephemeral session. It is recorded as the local
 operator's but marked unattributed, it is left out of the session list, and it
-raises no card alerts. It is an unattended session, so the
-**Default approval mode** setting applies to it; with **Full access** it runs
-with no sandbox and no approval prompts on engines that have an approval
-setting. Nobody is present to answer an approval request from the webhook.
+raises no card alerts. Nobody is present to answer an approval request from
+the webhook.
 
-A successful request returns `202` with `conversationId` and
-`providerTurnId`. Station does not call the sender back when the turn ends.
+The **Default approval mode** setting applies to the new session, but a
+webhook start carries no full-access grant, so the session starts inside
+Station's workspace confinement rather than with host access. With
+**Full access** selected, Codex runs without prompts inside that confinement.
+Claude Code does so at session start, and on later turns only while Station
+has observed the session confined; otherwise it gets automatic approval
+instead. Engines without an approval setting ignore it. The setting's own help
+text describes unattended sessions as running with no sandbox; for webhook
+starts that does not match the code.
+
+A successful request returns `202` with
+`{ "success": true, "data": { "conversationId", "providerTurnId", "ephemeral": true } }`.
+Station does not call the sender back when the turn ends.
 
 ## Responses
 
-Every response body is `{ "success", "code", "retryable" }`.
+A refusal's body is `{ "success": false, "code", "retryable" }`, except that
+a 400 for a bad body omits `retryable`. The rate limits below apply before
+anything else. Station then checks the headers in this order and reads the
+body only if they pass.
 
 | Status | Code | Cause |
 | --- | --- | --- |
-| 202 | | The turn started. The body also carries `conversationId`, `providerTurnId` and `ephemeral: true`. |
-| 400 | `malformed_request` | A missing or malformed header, a body that is not the expected JSON, a body over 256 KiB, or a message over 200,000 characters |
-| 401 | `unknown_token` | No token has that ID |
-| 403 | `disabled`, `policy_unavailable`, `revoked_token`, `stale_timestamp`, `invalid_signature`, `forbidden_start`, `replay` | The request was refused; see below |
-| 429 | `rate_limited` | Too many attempts |
-| 503 | `turn_start_failed` | The request was valid but the turn could not start |
+| 202 | | The turn started (body above) |
+| 403 | `policy_unavailable` | The configuration file is invalid; checked before the token |
+| 403 | `disabled` | `enabled` is not `true`; checked before the token, so any token ID gets this |
+| 401 | `unknown_token` | The token header is missing, malformed or names no token |
+| 403 | `revoked_token` | The token has `revokedAt` |
+| 400 | `malformed_request` | The timestamp or nonce header is missing, or the nonce is malformed (`retryable: false`); or, after the headers pass, a body that is not the expected JSON object, is over 256 KiB, or has a message over 200,000 characters (no `retryable`) |
+| 403 | `stale_timestamp` | The timestamp is not 10 digits or is more than 5 minutes from the server's clock |
+| 403 | `invalid_signature` | The signature header is missing, malformed or does not match |
+| 403 | `forbidden_start` | The token's grants do not allow that Agent and Project |
+| 403 | `replay` | The token, timestamp and nonce were already used |
+| 429 | `rate_limited` | Too many attempts (`retryable: true`) |
+| 503 | `turn_start_failed` | The request was valid but the turn could not start (`retryable: true`) |
 
 - **Timestamps:** a timestamp more than 5 minutes from the server's clock is
   `stale_timestamp`.

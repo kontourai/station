@@ -1562,7 +1562,10 @@ standing and current `revision`. `list-support-bundles` and
 `list-support-claims` list the opaque IDs you may choose from.
 `attach-support` is idempotent. `replace-support` and `remove-support` are
 compare-and-swap: pass the `--revision` you observed (a positive integer), and a
-stale revision is refused. `remove-support` does not ask for confirmation.
+stale revision is refused. A `replace-support` retry that sends the previous
+revision with the bundle and claim already in place returns the current record
+instead of failing, and `remove-support` succeeds when nothing is attached.
+`remove-support` does not ask for confirmation.
 Protected answers and support choices report a generic not-found.
 
 Task outputs keep a copy of a file a Task produced. `keep-output` snapshots
@@ -2843,7 +2846,8 @@ station home recovery-plan --base=<existing-home> [--json]
 
 Pass exactly one of `--base=<dir>` or `--home=<dir>`; `--json` is the only
 other accepted flag, and any mutation option is refused. The text report names
-the inspection result and source schema, lists each store and its entry count,
+the inspection result and source schema, lists each store that has entries
+with its entry count,
 and ends with limits, unknowns and the decisions you must review. `--json`
 prints one `station.home-recovery-plan/v1` object. The plan never allows apply
 (`applyAllowed: false`), and owner exclusion is always reported as not proven.
