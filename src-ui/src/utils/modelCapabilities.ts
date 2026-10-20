@@ -227,18 +227,6 @@ export function effortLabel(value: string): string {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
-export function selectedModelOption(
-  models: SelectableModel[],
-  currentModel?: string,
-  defaultModel?: string,
-): SelectableModel | undefined {
-  const id = currentModel || defaultModel;
-  return (
-    models.find((model) => model.id === id || model.originalId === id) ??
-    models[0]
-  );
-}
-
 /**
  * Keep approval and other non-model state, but remove model controls the newly
  * selected descriptor does not report. This prevents an effort from a prior

@@ -477,7 +477,7 @@ describe('Session inventory view model', () => {
     expect(headings).toHaveLength(1);
     expect(document.activeElement).toBe(headings[0]);
     expect(
-      screen.getAllByRole('region', { name: 'Session inventory' }),
+      screen.getAllByRole('region', { name: 'Chat inventory' }),
     ).toHaveLength(2);
   });
 });

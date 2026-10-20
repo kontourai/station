@@ -2853,12 +2853,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-ui/src/views/LayoutView.tsx",
-      "rule": "as-any",
-      "fingerprint": "fb4afd2b3627a1fd84b01bd3352e5a77b5091bed989a1d6bf79e1f25c0e85222",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-ui/src/views/ProjectPage.tsx",
       "rule": "as-any",
       "fingerprint": "48a7c098addcf5179bf2c95c06e4b195b7b33b743107a1d0e17ebf13e73e7189",

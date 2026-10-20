@@ -1,0 +1,7 @@
+{
+  "revision": "764b270379659c09cba29775a5eb939e489eae8f",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed against the sdk.md addition on useSessionInventoryQuery refusal and refetch behavior: this guide does not describe session inventory hooks or their cache semantics; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

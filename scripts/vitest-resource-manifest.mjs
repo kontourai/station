@@ -547,8 +547,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dependency-patch-binding.test.ts',
   // Installed YAML CLI children protect the parser migration's public behavior.
   'scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts',
-  // Bounded Bash children test Linux bootstrap recovery with inert swap commands.
-  'scripts/__tests__/gcp-bootstrap.test.ts',
   // Offline Git children validate encrypted workspace transport against real repositories.
   'packages/shared/src/__tests__/workspace-package.test.ts',
   'packages/cli/src/__tests__/cloud.test.ts',
@@ -587,6 +585,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/documentation-value-bindings.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
+  // Runs the hygiene report CLI as a child against disposable Git trees and a
+  // fake `gh` child.
+  'scripts/__tests__/hygiene-report.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',
   // station#4464: pins the screenshot comparator's scope-integrity behavior
@@ -1050,6 +1051,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // that starts a grandchild in its group, then sweeps and terminates it.
   // Same process-tree shape as owned-process-reaping.test.ts.
   'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
+  // #3800: starts the real `codex app-server` (when this host has one) with a
+  // fresh CODEX_HOME to read the sandbox it reports over a planted workspace
+  // config; skips loudly where no codex binary resolves.
+  'src-server/providers/__tests__/codex-project-config.process.test.ts',
   // #561: runs a real Flow shell command (a stub script that leaves a
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.
@@ -1082,6 +1087,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Vitest workers or hide a leaked child behind a timing failure.
   'src-server/services/__tests__/scheduler.test.ts',
   'src-server/services/acp/__tests__/acp-process-spawn-failure.test.ts',
+  // #3290: spawns an OpenCode-shaped ACP engine through the real
+  // ACPProcess, so the launch environment is the one actually delivered.
+  'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
   // Runs npm and the real lockfile gate against an isolated two-workspace
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.

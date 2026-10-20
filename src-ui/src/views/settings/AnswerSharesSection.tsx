@@ -159,7 +159,7 @@ export function AnswerSharesSection() {
           <Empty
             variant="compact"
             label="Nothing shared yet"
-            description="Use “Share answer” beneath any answer in a chat to create a link."
+            description="Open an answer’s actions, choose Turn provenance, then use “Share answer” to create a link."
           />
         )}
 

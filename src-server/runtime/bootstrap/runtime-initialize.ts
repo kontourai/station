@@ -604,6 +604,10 @@ export async function initializeRuntime(
     // acp-resume-cursor-support.ts — keyed on the observed handshake, not on
     // the presence of capabilities.
     resumeCursorSupport: acpResumeCursorSupport(acpBridge),
+    // #3290: an ACP thread has an approval knob only on a connection whose
+    // approval rules Station sets at launch.
+    acpApprovalControl: (connectionId) =>
+      acpBridge.approvalControl(connectionId),
     adoptionLedger,
     credentialProfileRecoveryAdapter: deps.credentialProfileRecoveryAdapter,
     requireTenantExecutionContext: isHostedTenantExecutionRequired,

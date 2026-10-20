@@ -49,7 +49,10 @@ import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
 import type { SavedAnswerQuote } from '../../utils/answer-quotes';
-import { sessionApprovalOverride } from '../../utils/approvalMode';
+import {
+  acpApprovalFor,
+  sessionApprovalOverride,
+} from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
@@ -492,14 +495,21 @@ export function ChatDockBody({
       })
     : null;
   const { data: acpConnections = [] } = useACPConnections();
-  const advertisedAcpSession = useMemo(
+  const activeAcpConnection = useMemo(
     () =>
-      advertisedAcpSessionModesFromConnection(
-        acpConnections.find(
-          (connection) => connection.id === activeSession.agentConnectionId,
-        ),
+      acpConnections.find(
+        (connection) => connection.id === activeSession.agentConnectionId,
       ),
     [acpConnections, activeSession.agentConnectionId],
+  );
+  const advertisedAcpSession = useMemo(
+    () => advertisedAcpSessionModesFromConnection(activeAcpConnection),
+    [activeAcpConnection],
+  );
+  // #3290: who decides which of this ACP engine's actions ask.
+  const acpApproval = useMemo(
+    () => acpApprovalFor(activeAcpConnection),
+    [activeAcpConnection],
   );
   // Stable across renders unless the saved Station or accountable display name
   // changes, preserving ChatMessageList's memoization.
@@ -2271,6 +2281,7 @@ export function ChatDockBody({
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
             approvalModeOverride={sessionApprovalOverride(activeSession)}
             acpSessionModes={advertisedAcpSession.modes}
+            acpApproval={acpApproval}
             acpCurrentModeId={
               activeSession.currentModeId ?? advertisedAcpSession.currentModeId
             }
