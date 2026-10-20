@@ -1473,6 +1473,9 @@ station tasks attach-turn <task-id> --session=<session-id> --turn=<turn-id> [--a
 station tasks show-turn <task-id> [--api-base=<url>]
 station tasks attach-result <task-id> --session=<session-id> --event=<event-id> [--api-base=<url>]
 station tasks show-results <task-id> [--json] [--api-base=<url>]
+station tasks basis <task-id> [--answer-reference=<reference-id>] [--format=summary|json] [--json] [--api-base=<url>]
+station tasks get-output <task-id> <output-id> [--api-base=<url>]
+station tasks keep-output <task-id> --path=<relative-path> --title=<title> --operation=<operation-id> [--media=<type>] [--api-base=<url>]
 ```
 
 Examples:
