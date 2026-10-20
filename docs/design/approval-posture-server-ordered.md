@@ -903,8 +903,10 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
       Project configured through a symlink or in another case would
       otherwise never match it and leave the place as its own root. The
       check maps the canonical root back onto a cwd reached through a link.
-      The trusted
-      repository is the innermost one containing that root. Anything found
+      The trusted repository is the innermost one containing the canonical
+      root; a repository that exists only on the lexical path (an
+      agent-built one holding a link into the Project) trusts nothing, and
+      its `.codex` is refused. Anything found
       from the cwd is no anchor: an agent can build a whole repository,
       commit and remote-tracking ref included, in temp and move it in
       (EXECUTED in review). Below the root, a repository is trusted only as
