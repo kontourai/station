@@ -3,6 +3,8 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -164,6 +166,16 @@ function engineAlways(h: Harness): unknown[] {
     .map((entry) => entry.always);
 }
 
+/** The engine's client writes (`fs/write_text_file`) and their errors. */
+function clientWrites(
+  h: Harness,
+): Array<{ clientWrite: string; error: string | null }> {
+  return records(h).filter(
+    (entry): entry is { clientWrite: string; error: string | null } =>
+      'clientWrite' in entry,
+  );
+}
+
 /** The session ids a relaunched engine resumed (`session/resume`). */
 function resumes(h: Harness): unknown[] {
   return records(h)
@@ -264,6 +276,7 @@ describe.skipIf(process.platform === 'win32')(
         FAKE_OPENCODE_USER_CONFIG: process.env.FAKE_OPENCODE_USER_CONFIG,
         FAKE_OPENCODE_RECORD: process.env.FAKE_OPENCODE_RECORD,
         FAKE_OPENCODE_REFUSE_RESUME: process.env.FAKE_OPENCODE_REFUSE_RESUME,
+        FAKE_OPENCODE_CLIENT_WRITE: process.env.FAKE_OPENCODE_CLIENT_WRITE,
       };
       delete process.env.OPENCODE_CONFIG_CONTENT;
       process.env.FAKE_OPENCODE_USER_CONFIG = USER_CONFIG;
@@ -1114,6 +1127,89 @@ describe.skipIf(process.platform === 'win32')(
         expect(
           existsSync(join(globalDir, '..', 'opencode', 'plugins', 'x.js')),
         ).toBe(false);
+      });
+
+      describe('#3957: the client file-system methods', () => {
+        const stationCwdPlant = join(
+          process.cwd(),
+          '.config',
+          'opencode',
+          'plugins',
+          'x3957.js',
+        );
+        afterEach(() => {
+          rmSync(
+            join(process.cwd(), '.config', 'opencode', 'plugins', 'x3957.js'),
+            {
+              force: true,
+            },
+          );
+        });
+
+        test("Auto: an allowed patch's relative client write is refused, not resolved against Station's directory", async () => {
+          process.env.FAKE_OPENCODE_CLIENT_WRITE = '1';
+          h = harness('opencode');
+          await start(h, 'client-relative', 'auto');
+          const patch = await turn(
+            h,
+            'client-relative',
+            'patch: .config/opencode/plugins/x3957.js',
+          );
+          // An ordinary project path: Auto allows the edit itself.
+          expect(patch.asked).toBeUndefined();
+          expect(clientWrites(h)).toEqual([
+            {
+              clientWrite: '.config/opencode/plugins/x3957.js',
+              error: expect.stringMatching(/absolute and normalized/),
+            },
+          ]);
+          expect(existsSync(stationCwdPlant)).toBe(false);
+        });
+
+        test('a governed session writes through the client only inside its project', async () => {
+          process.env.FAKE_OPENCODE_CLIENT_WRITE = '1';
+          h = harness('opencode');
+          await start(h, 'client-governed', 'auto');
+          await turn(h, 'client-governed', 'edit: inside.ts');
+          const outside = join(h.cwd, '..', `outside-${Date.now()}.txt`);
+          await turn(h, 'client-governed', `edit: ${outside}`, {
+            answer: 'accept',
+          });
+          expect(clientWrites(h)).toEqual([
+            {
+              clientWrite: join(realpathSync(h.cwd), 'inside.ts'),
+              error: null,
+            },
+            {
+              clientWrite: outside,
+              error: expect.stringMatching(/outside the session's project/),
+            },
+          ]);
+        });
+
+        test('an engine that decides for itself keeps absolute client writes, and loses only relative ones', async () => {
+          process.env.FAKE_OPENCODE_CLIENT_WRITE = '1';
+          h = harness('kiro-cli');
+          await start(h, 'client-engine');
+          const outside = join(h.cwd, '..', `kiro-outside-${Date.now()}.txt`);
+          await turn(h, 'client-engine', `edit: ${outside}`);
+          await turn(
+            h,
+            'client-engine',
+            'patch: .config/opencode/plugins/x3957.js',
+          );
+          expect(clientWrites(h)).toEqual([
+            { clientWrite: outside, error: null },
+            {
+              clientWrite: '.config/opencode/plugins/x3957.js',
+              error: expect.stringMatching(/absolute and normalized/),
+            },
+          ]);
+          expect(readFileSync(outside, 'utf8')).toBe(
+            'written by the fixture\n',
+          );
+          expect(existsSync(stationCwdPlant)).toBe(false);
+        });
       });
 
       test('a start inside the preflight window is scanned again', async () => {

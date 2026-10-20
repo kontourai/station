@@ -176,6 +176,10 @@ function writeDestination(target: string, root: string): string | undefined {
   const absolute = target;
   const parts = absolute.split(sep).filter(Boolean);
   if (parts.some((part) => part === '.' || part === '..')) return undefined;
+  // A Windows 8.3 short name (`PROGRA~1`) names a directory by an alias the
+  // checks below would not recognize.
+  if (process.platform === 'win32' && parts.some((part) => /~\d/.test(part)))
+    return undefined;
   let current = parsePath(absolute).root;
   for (const [index, part] of parts.entries()) {
     const candidate = join(current, part);
@@ -246,6 +250,20 @@ export function openCodeEditNeedsPerson(
       global.some((path) => isInsideIgnoringCase(real, path))
     );
   });
+}
+
+/**
+ * #3957: why a governed session may not read or write `path` through the
+ * ACP client file-system methods: the same rules as an edit, with no person
+ * to ask, so anything an edit would send to a person is refused.
+ */
+export function openCodeClientFileRefusal(
+  path: string,
+  cwd: string,
+): string | undefined {
+  return openCodeEditNeedsPerson({ filepath: path }, cwd)
+    ? "it is outside the session's project, reached through a symbolic link in it, or OpenCode configuration"
+    : undefined;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

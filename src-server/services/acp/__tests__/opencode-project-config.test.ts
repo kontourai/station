@@ -223,6 +223,20 @@ describe('#3924 openCodeEditNeedsPerson: symbolic links and global configuration
     },
   );
 
+  test.skipIf(process.platform !== 'win32')(
+    'a Windows 8.3 short-name segment asks',
+    () => {
+      const { repo, cwd } = project();
+      expect(
+        openCodeEditNeedsPerson(
+          { filepath: join(repo, 'OPENCO~1', 'x.js') },
+          cwd,
+          env,
+        ),
+      ).toBe(true);
+    },
+  );
+
   test('a link above the project is resolved, so ordinary edits stay ordinary', () => {
     const { root, repo } = project();
     const linked = join(root, 'linked-repo');

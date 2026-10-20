@@ -90,6 +90,7 @@ import {
 import {
   findOpenCodeProjectCode,
   isOpenCodeEditShaped,
+  openCodeClientFileRefusal,
   openCodeEditNeedsPerson,
   openCodeProjectCodeRefusal,
 } from '../../services/acp/opencode-project-config.js';
@@ -2640,6 +2641,12 @@ export class AcpAdapter implements ProviderAdapterShape {
       // object Station never computed, handed back AS the refreshed token.
       // See acp-inbound-extension-policy.ts and ADR 0013 Layer 1.
       // (Unrecognized NOTIFICATIONS stay ignored, per spec, above.)
+      // #3957: a session Station governs below full access reads and writes
+      // through the client methods only what an edit could reach unasked.
+      fileAccessRefusal: (path) =>
+        record.approvalFloor === 'confined'
+          ? openCodeClientFileRefusal(path, record.session.cwd ?? context.cwd)
+          : undefined,
       onExtMethod: createAcpInboundExtensionRequestHandler({
         logger: context.logger,
         connectionId: record.connectionId,

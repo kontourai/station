@@ -31,6 +31,10 @@
 // #3924: an `edit: <path>` request carries what OpenCode sends, its
 // permission metadata (`{ filepath, diff }`, `filepath` absolute: an absolute
 // path as written, a relative one joined to the process's directory), and an allowed edit writes the file.
+// `patch: <relative path>` sends apply_patch's metadata (a relative
+// `filepath`, absolute `files`). With `FAKE_OPENCODE_CLIENT_WRITE=1`, an
+// allowed edit or patch is first written through the client
+// (`fs/write_text_file`) and a `{ clientWrite, error }` line recorded (#3957).
 // An `always` answer is remembered for the permission, as OpenCode's edit
 // tool asks with `always: ["*"]`: later requests for it are not sent, and a
 // `{ "always": <permission> }` line is recorded. `debug agent` records a
@@ -222,6 +226,12 @@ function update(sessionId, payload) {
 const ACTIONS = {
   run: { permission: 'bash', kind: 'execute', title: 'bash', key: 'command' },
   edit: { permission: 'edit', kind: 'edit', title: 'edit', key: 'filePath' },
+  patch: {
+    permission: 'edit',
+    kind: 'edit',
+    title: 'apply_patch',
+    key: 'filePath',
+  },
   fetch: {
     permission: 'webfetch',
     kind: 'fetch',
@@ -243,9 +253,9 @@ const alwaysAllowed = new Set();
 async function prompt(sessionId, text) {
   // The action is the last `<verb>: <target>` line: Station may put its own
   // context ahead of the typed text.
-  const match = [...text.matchAll(/^(run|edit|fetch|task|mcp):\s*(.+)$/gm)].at(
-    -1,
-  );
+  const match = [
+    ...text.matchAll(/^(run|edit|patch|fetch|task|mcp):\s*(.+)$/gm),
+  ].at(-1);
   if (!match) return { stopReason: 'end_turn' };
   const target = match[2].trim();
   const action =
@@ -262,9 +272,19 @@ async function prompt(sessionId, text) {
         ? target
         : join(process.cwd(), target)
       : undefined;
+  // apply_patch's metadata: `filepath` joins worktree-relative paths, and
+  // `files` carries the absolute ones (OpenCode 1.18.18).
+  const patchPath =
+    match[1] === 'patch' ? join(process.cwd(), target) : undefined;
   const rawInput = editPath
     ? { filepath: editPath, diff: '' }
-    : { [action.key]: target };
+    : patchPath
+      ? {
+          filepath: target,
+          diff: '',
+          files: [{ filePath: patchPath, relativePath: target, type: 'add' }],
+        }
+      : { [action.key]: target };
   update(sessionId, {
     sessionUpdate: 'tool_call',
     toolCallId,
@@ -314,9 +334,31 @@ async function prompt(sessionId, text) {
       }
     }
   }
-  if (allowed && editPath) {
-    mkdirSync(dirname(editPath), { recursive: true });
-    writeFileSync(editPath, 'written by the fixture\n');
+  // #3957: after an allowed edit, OpenCode's ACP agent writes the proposed
+  // content through the client (`fs/write_text_file`) at the metadata's
+  // `filepath`, as given (`acp/permission.ts` `writeProposedEdit`), and then
+  // its own tool writes the file.
+  if (
+    allowed &&
+    (editPath || patchPath) &&
+    process.env.FAKE_OPENCODE_CLIENT_WRITE === '1'
+  ) {
+    const response = await request('fs/write_text_file', {
+      sessionId,
+      path: rawInput.filepath,
+      content: 'written through the client\n',
+    });
+    if (process.env.FAKE_OPENCODE_RECORD) {
+      appendFileSync(
+        process.env.FAKE_OPENCODE_RECORD,
+        `${JSON.stringify({ clientWrite: rawInput.filepath, error: response?.__error?.message ?? null })}\n`,
+      );
+    }
+  }
+  const ownWrite = editPath ?? patchPath;
+  if (allowed && ownWrite) {
+    mkdirSync(dirname(ownWrite), { recursive: true });
+    writeFileSync(ownWrite, 'written by the fixture\n');
   }
   update(sessionId, {
     sessionUpdate: 'tool_call_update',
@@ -351,7 +393,7 @@ async function handle(message) {
   if (message.method === undefined && message.id !== undefined) {
     const resolve = waiting.get(message.id);
     waiting.delete(message.id);
-    resolve?.(message.result);
+    resolve?.(message.error ? { __error: message.error } : message.result);
     return;
   }
   const { id, method, params } = message;
