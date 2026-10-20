@@ -1785,14 +1785,21 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       conversation: ConversationOpenRecovery['conversation'] | string,
       isCurrent?: () => boolean,
       keepReader = false,
+      options?: { revealDock?: boolean },
     ) => {
       const controller = await loadConversationOpenController();
       const opened = await controller.openConversationForDock(conversation, {
         apiBase,
         observation: workObservation,
-        open: keepReader
-          ? openConversationInScopedPane
-          : openUserSelectedConversationInScopedPane,
+        open: (id, agent, slug, name, model, updated, accepted, execution) => {
+          const open = keepReader
+            ? openConversationInScopedPane
+            : openUserSelectedConversationInScopedPane;
+          return open(id, agent, slug, name, model, updated, accepted, {
+            ...execution,
+            ...options,
+          });
+        },
         projectName: (slug) =>
           projects.find((project) => project.slug === slug)?.name,
         findTab: (conversationId) =>
@@ -1985,7 +1992,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     };
     const unregisterOpenChatsNavigation = openChatsStore.registerNavigation({
       focus: focusChat,
-      openConversation: openConversationForDock,
+      openConversation: (conversation, current, options) =>
+        openConversationForDock(conversation, current, false, options),
       // Remote transcript rendering has no safe cross-Station reader in this
       // slice. Route selection to its named connection instead of treating an
       // opaque remote conversation ID as a local one.

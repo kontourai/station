@@ -1,8 +1,9 @@
 import { useProjectLayoutsQuery } from '@kontourai/station-sdk';
-import { type ReactNode, useCallback, useMemo, useRef } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useLayoutChatPlacement } from '../app-shell/chat-placement';
 import { Button } from '../components/Button';
 import { Empty } from '../components/state';
+import { useActivityReview } from '../contexts/ActivityReviewContext';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
 import { describeRelatedOpenRefusal } from '../contexts/openRelatedFilePreview';
@@ -316,30 +317,32 @@ function ActivityUp({
   opener: PaneOpener;
 }) {
   const showSurface = useShowSurface();
-  const model = useRegionModelOptional();
-  const leaveFor = useLeaveFor(instanceId);
+  const review = useActivityReview();
   const relations = usePaneRelations();
-  const live = useRef({ model, relations });
-  live.current = { model, relations };
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const up = () => {
     if (opener.source.kind !== 'activity') return;
-    const station = relations.stationId;
-    const sourceSelection = relations.currentSelection('activity');
-    const current = () =>
-      live.current.relations.stationId === station &&
-      live.current.relations.currentSelection('activity') === sourceSelection;
     const selected = opener.source.selectedThreadId;
-    const reveal = () => {
-      if (!current()) return;
-      const unchanged =
-        relations.currentSelection('activity') === `activity:${selected ?? ''}`;
-      if (!unchanged)
-        showSurface('activity', selected ? { session: selected } : {});
-      else showSurface('activity');
-    };
-    if (model?.phoneLayer?.surfaceId === instanceId)
-      model.closePhoneLayer(reveal, current);
-    else leaveFor('activity', reveal);
+    void review.reveal(
+      instanceId,
+      'activity',
+      (current) => {
+        if (!current()) return;
+        const unchanged =
+          relations.currentSelection('activity') ===
+          `activity:${selected ?? ''}`;
+        if (!unchanged)
+          showSurface('activity', selected ? { session: selected } : {});
+        else showSurface('activity');
+      },
+      () => mounted.current,
+    );
   };
   return <UpButton label={opener.label} onUp={up} />;
 }

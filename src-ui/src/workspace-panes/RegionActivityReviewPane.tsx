@@ -8,6 +8,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -22,19 +23,18 @@ import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useActivityReview } from '../contexts/ActivityReviewContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
-import { navigationStore } from '../contexts/navigation-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { describeRelatedOpenRefusal } from '../contexts/openRelatedFilePreview';
 import { usePaneRelations } from '../contexts/PaneRelationsContext';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
-import { handOffAttachedContinuation } from '../lib/attached-continuation-handoff';
-import { openerSelectionKey } from '../regions/pane-relations';
 import {
-  focusChatEventDetailForAction,
-  resolveConversationOpenAction,
-} from '../views/home/work-item-open-policy';
+  attachedContinuationScope,
+  handOffAttachedContinuation,
+} from '../lib/attached-continuation-handoff';
+import { openerSelectionKey } from '../regions/pane-relations';
+import { resolveConversationOpenAction } from '../views/home/work-item-open-policy';
 import { readActivityReviewPane } from './activityReviewPane';
 import { FencedRelatedPane, RelatedPaneStrip } from './RelatedPaneStrip';
 import './ActivityReviewPane.css';
@@ -72,7 +72,13 @@ function ActivityReviewPane({ id }: { id: string }) {
   const showSurface = useShowSurface();
   const [pending, setPending] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
-  const intent = useRef(0);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const query = useQuery({
     queryKey: [
       'activity-review',
@@ -109,8 +115,6 @@ function ActivityReviewPane({ id }: { id: string }) {
     heading.current?.focus({ preventScroll: true });
   }, []);
   const relation = relations.relationOf(id);
-  const live = useRef({ relations, relation, apiBase });
-  live.current = { relations, relation, apiBase };
   const source = review.source;
   const sameSource =
     relation !== undefined &&
@@ -169,19 +173,16 @@ function ActivityReviewPane({ id }: { id: string }) {
     : null;
   const openConversation = () => {
     if (action?.kind !== 'rehydrate' || !relation) return;
-    const station = relation.stationId;
-    navigationStore.runNavigationGuards(
-      () => {
-        if (
-          live.current.relations.stationId !== station ||
-          live.current.apiBase !== apiBase
-        )
-          return;
-        const target = focusChatEventDetailForAction(action);
-        if (target) openChatsStore.focus(target);
+    void review.reveal(
+      id,
+      'chat',
+      async (current, signal) => {
+        await openChatsStore.openConversation(action.conversationId, current, {
+          signal,
+          revealDock: false,
+        });
       },
-      undefined,
-      { owner: id },
+      () => mounted.current,
     );
   };
   return (
@@ -282,26 +283,34 @@ function ActivityReviewPane({ id }: { id: string }) {
             key={`${apiBase}\0${session.threadId}`}
             apiBase={apiBase}
             draftScope={draftScope}
+            onOpenConversation={openConversation}
             session={session}
             onTaskChanged={() => void query.refetch()}
-            getSelectionIntent={() => intent.current}
+            getSelectionIntent={() => 0}
             onContinueInChat={(draft) => {
-              handOffAttachedContinuation({
-                threadId: session.threadId,
-                draft,
-              });
-              showSurface('chat', { session: session.threadId });
+              return review.reveal(
+                id,
+                'chat',
+                (current) => {
+                  if (!current()) return;
+                  chatDraftsStore.clearActivityDraft(
+                    draftScope,
+                    session.threadId,
+                  );
+                  handOffAttachedContinuation({
+                    threadId: session.threadId,
+                    draft,
+                    scope: attachedContinuationScope(
+                      relation?.stationId ?? null,
+                      apiBase,
+                    ),
+                  });
+                  showSurface('chat', { session: session.threadId });
+                },
+                () => mounted.current,
+              );
             }}
-            onAdopted={(child, adoptedIntent, message) => {
-              if (adoptedIntent !== intent.current) return;
-              if (message.trim())
-                chatDraftsStore.setActivityDraft(
-                  apiBase,
-                  child.threadId,
-                  message,
-                );
-              showSurface('chat', { session: child.threadId });
-            }}
+            onAdopted={() => {}}
           />
         </div>
       )}

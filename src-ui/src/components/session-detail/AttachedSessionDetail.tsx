@@ -19,6 +19,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -97,6 +98,7 @@ function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
 
 export function AttachedSessionDetail({
   draftScope,
+  handoffScope,
   apiBase,
   chatFontSize = 14,
   showHeader = false,
@@ -120,6 +122,7 @@ export function AttachedSessionDetail({
   visualViewport,
 }: {
   draftScope?: string;
+  handoffScope?: string;
   /**
    * #3552: the same chat everywhere. Activity's pane has no surrounding
    * chrome, so it shows the conversation's name and origin above it; the dock
@@ -131,7 +134,7 @@ export function AttachedSessionDetail({
    * its Agent's chat. A host that is not the dock passes this, and Send hands
    * the exact draft to the dock instead of continuing here.
    */
-  onContinueInChat?: (draft: string) => void;
+  onContinueInChat?: (draft: string) => void | boolean | Promise<boolean>;
   openingContinuation?: boolean;
   continuationCreated?: boolean;
   onLoadOlder?: () => Promise<void>;
@@ -245,6 +248,21 @@ export function AttachedSessionDetail({
     [draftScope, session.threadId],
   );
   const confirmedDraft = useRef('');
+  const handoffIntent = useRef(0);
+  const handoffIdentity = JSON.stringify([
+    apiBase,
+    draftScope,
+    session.threadId,
+  ]);
+  const handoffSource = useRef(handoffIdentity);
+  const [handoffPending, setHandoffPending] = useState(false);
+  useLayoutEffect(() => {
+    handoffSource.current = handoffIdentity;
+    handoffIntent.current += 1;
+    return () => {
+      handoffIntent.current += 1;
+    };
+  }, [handoffIdentity]);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const transcriptBodyRef = useRef<HTMLDivElement>(null);
@@ -495,12 +513,26 @@ export function AttachedSessionDetail({
     </>
   );
   const composerDisabled =
-    !continuationSupported || adoption.isPending || continued;
-  const requestSend = () => {
+    !continuationSupported || adoption.isPending || continued || handoffPending;
+  const requestSend = async () => {
     if (!draft.trim() || composerDisabled) return;
     if (onContinueInChat) {
-      onContinueInChat(draft);
-      setDraft('');
+      const heldIntent = handoffIntent.current;
+      setHandoffPending(true);
+      try {
+        const result = onContinueInChat(draft);
+        const accepted = result instanceof Promise ? await result : result;
+        if (heldIntent === handoffIntent.current && accepted !== false)
+          setDraft('');
+      } catch {
+        if (heldIntent === handoffIntent.current)
+          showToast(
+            'Could not open this conversation. Your message is still here.',
+            session.threadId,
+          );
+      } finally {
+        if (heldIntent === handoffIntent.current) setHandoffPending(false);
+      }
       return;
     }
     setReplyRequested(true);
@@ -511,7 +543,10 @@ export function AttachedSessionDetail({
   useEffect(() => {
     if (handsOff) return;
     const receive = () => {
-      const handedOver = takeAttachedContinuationHandoff(session.threadId);
+      const handedOver = takeAttachedContinuationHandoff(
+        session.threadId,
+        handoffScope,
+      );
       if (handedOver === null) return;
       setDraft(handedOver);
       // If this reader cannot continue, its reason shows above the composer;
@@ -520,7 +555,13 @@ export function AttachedSessionDetail({
     };
     receive();
     return subscribeAttachedContinuationHandoff(receive);
-  }, [handsOff, session.threadId, continuationSupported, setDraft]);
+  }, [
+    handsOff,
+    session.threadId,
+    continuationSupported,
+    setDraft,
+    handoffScope,
+  ]);
 
   return (
     <section

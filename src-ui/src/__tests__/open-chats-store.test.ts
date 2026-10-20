@@ -51,6 +51,7 @@ describe('openChatsStore', () => {
       expect(openConversation).toHaveBeenCalledExactlyOnceWith(
         'conversation-target',
         isCurrent,
+        undefined,
       );
       expect(focus).not.toHaveBeenCalled();
     } finally {

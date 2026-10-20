@@ -341,36 +341,49 @@ test.each(['removed-target', 'station-changed', 'new-guard'])(
   },
 );
 
-test('a delayed Close cannot remove a review that moved to another region', async () => {
-  await mount();
-  await quickReview('Review alpha');
-  await within(review()).findByText('Transcript: Review alpha');
-  const id = model.regions.right.occupant;
-  if (!id) throw new Error('No review');
-  let proceed: (() => void) | undefined;
-  const unregister = navigationStore.registerNavigationGuard(
-    Symbol('close owner'),
-    (accept) => {
-      proceed = accept;
-    },
-    id,
-  );
-  await waitFor(() => expect(saved()[0]?.kept).toBe(true));
-  fireEvent.click(
-    within(review()).getByRole('button', { name: 'Close review' }),
-  );
-  await act(async () => {
-    model.placeSurface(id, 'bottom');
-  });
-  const before = await settledStorageSnapshot();
-  await act(async () => {
-    proceed?.();
-  });
-  expect(await settledStorageSnapshot()).toEqual(before);
-  expect(model.regions.bottom.panes).toContain(id);
-  expect(saved()).toHaveLength(1);
-  unregister();
-});
+test.each(['moved', 'new-guard'])(
+  'a delayed Close cannot remove a review after %s',
+  async (change) => {
+    await mount();
+    await quickReview('Review alpha');
+    await within(review()).findByText('Transcript: Review alpha');
+    const id = model.regions.right.occupant;
+    if (!id) throw new Error('No review');
+    let proceed: (() => void) | undefined;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('close owner'),
+      (accept) => {
+        proceed = accept;
+      },
+      id,
+    );
+    await waitFor(() => expect(saved()[0]?.kept).toBe(true));
+    fireEvent.click(
+      within(review()).getByRole('button', { name: 'Close review' }),
+    );
+    let unregisterNew = () => {};
+    await act(async () => {
+      if (change === 'moved') model.placeSurface(id, 'bottom');
+      else
+        unregisterNew = navigationStore.registerNavigationGuard(
+          Symbol('new draft'),
+          (_proceed, cancel) => cancel?.(),
+          id,
+        );
+    });
+    const before = await settledStorageSnapshot();
+    await act(async () => {
+      proceed?.();
+    });
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(
+      model.readRegions()[change === 'moved' ? 'bottom' : 'right'].panes,
+    ).toContain(id);
+    expect(saved()).toHaveLength(1);
+    unregister();
+    unregisterNew();
+  },
+);
 
 test('a real draft guard keeps the preview and Cancel preserves source, child, focus and storage', async () => {
   await mount();
