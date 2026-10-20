@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-20T20:43:05Z | nightly-android | 0.1.11-nightly.2484.2 | `19a234c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39484774741) |
 | 2026-10-20T19:46:34Z | nightly-npm | 0.10.0-nightly.2484.39484774741 | `19a234c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39484774741) |
 | 2026-10-20T11:21:36Z | nightly-desktop | 0.1.11-nightly.2484.1 | `6569ee5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39407854711) |
 | 2026-10-20T11:21:32Z | nightly-android | 0.1.11-nightly.2484.1 | `6569ee5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39407854711) |
@@ -314,6 +315,39 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-20T20:43:05Z · nightly-android · 0.1.11-nightly.2484.2
+
+- Ship SHA: `19a234c63ec38c353aeca0d81c485894cb39540c`
+- Artifact built at: `2026-10-20T19:44:33.318Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 39484774741)
+
+### Changelog
+
+Commits since `6569ee5` ([full sha](https://github.com/kontourai/station/commit/6569ee5af0d4ae711594c7521736fd23cce435ab)):
+
+**Features**
+
+- [#3965](https://github.com/kontourai/station/pull/3965) feat(ui): named color themes on top of light and dark (Catppuccin and more)
+- [#3900](https://github.com/kontourai/station/pull/3900) feat(supervisor): run the core server as a supervised generation
+
+**Fixes**
+
+- [#3960](https://github.com/kontourai/station/pull/3960) fix(ci): skip Android tests for cancelled and non-main builds
+- [#3910](https://github.com/kontourai/station/pull/3910) fix(gallery): keep auxiliary screenshots out of the capture set
+- [#3966](https://github.com/kontourai/station/pull/3966) fix(ci): retire superseded runs waiting in native queues
+
+**Docs**
+
+- [#3894](https://github.com/kontourai/station/pull/3894) docs(design): give plugins the same terminal surface as the Coding layout
+
+**Other**
+
+- [#3070](https://github.com/kontourai/station/pull/3070) chore: version packages
+- [#3972](https://github.com/kontourai/station/pull/3972) chore: land the repository hygiene pass as one rollup (21 reviewed PRs)
+- [#3969](https://github.com/kontourai/station/pull/3969) test: repair main qualification regressions after #3897/#3922/#3865/#3937
+- [#3936](https://github.com/kontourai/station/pull/3936) test: fix three main-floor regressions (CLI parity temp dir, ACP process path read, corpus reachability)
 
 ## 2026-10-20T19:46:34Z · nightly-npm · 0.10.0-nightly.2484.39484774741
 

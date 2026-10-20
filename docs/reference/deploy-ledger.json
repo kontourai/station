@@ -1,5 +1,46 @@
 [
   {
+    "timestampUtc": "2026-10-20T20:43:05Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2484.2",
+    "sha": "19a234c63ec38c353aeca0d81c485894cb39540c",
+    "artifactBuiltAt": "2026-10-20T19:44:33.318Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39484774741",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39484774741)"
+    ],
+    "changelog": {
+      "previousSha": "6569ee5af0d4ae711594c7521736fd23cce435ab",
+      "groups": {
+        "feat": [
+          "[#3965](https://github.com/kontourai/station/pull/3965) feat(ui): named color themes on top of light and dark (Catppuccin and more)",
+          "[#3900](https://github.com/kontourai/station/pull/3900) feat(supervisor): run the core server as a supervised generation"
+        ],
+        "fix": [
+          "[#3960](https://github.com/kontourai/station/pull/3960) fix(ci): skip Android tests for cancelled and non-main builds",
+          "[#3910](https://github.com/kontourai/station/pull/3910) fix(gallery): keep auxiliary screenshots out of the capture set",
+          "[#3966](https://github.com/kontourai/station/pull/3966) fix(ci): retire superseded runs waiting in native queues"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3894](https://github.com/kontourai/station/pull/3894) docs(design): give plugins the same terminal surface as the Coding layout"
+        ],
+        "other": [
+          "[#3070](https://github.com/kontourai/station/pull/3070) chore: version packages",
+          "[#3972](https://github.com/kontourai/station/pull/3972) chore: land the repository hygiene pass as one rollup (21 reviewed PRs)",
+          "[#3969](https://github.com/kontourai/station/pull/3969) test: repair main qualification regressions after #3897/#3922/#3865/#3937",
+          "[#3936](https://github.com/kontourai/station/pull/3936) test: fix three main-floor regressions (CLI parity temp dir, ACP process path read, corpus reachability)"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
     "timestampUtc": "2026-10-20T19:46:34Z",
     "channel": "nightly-npm",
     "version": "0.10.0-nightly.2484.39484774741",
