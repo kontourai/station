@@ -6,11 +6,12 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../../domain/migrations/009-project-task-room-revision-attribution.js';
+import type { Logger } from '../../../utils/logger.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 
-const { warnings } = vi.hoisted(() => ({ warnings: vi.fn() }));
+const { warnings } = vi.hoisted(() => ({ warnings: vi.fn<Logger['warn']>() }));
 vi.mock('../../../utils/logger.js', () => ({
-  createLogger: () => ({ warn: warnings }),
+  createLogger: (): Pick<Logger, 'warn'> => ({ warn: warnings }),
 }));
 
 const require = createRequire(import.meta.url);
@@ -101,12 +102,12 @@ describe('project task room working state', () => {
         }),
       ).toBe('unavailable');
       expect(warnings).toHaveBeenCalledWith(
+        'Task room working state unavailable',
         {
           event: 'project-task-room-working-state-unavailable',
           operation: 'agent-lifecycle',
           reason: 'worker-unavailable-reply',
         },
-        'Task room working state unavailable',
       );
       expect(await first.readAgentLifecycles({ scope })).toEqual([
         { intentId: input.intentId, value: input.value },
@@ -182,12 +183,12 @@ describe('project task room working state', () => {
     const pending = working.read({ scope });
     await expect(pending).resolves.toEqual({ kind: 'unavailable' });
     expect(warnings).toHaveBeenCalledWith(
+      'Task room working state unavailable',
       {
         event: 'project-task-room-working-state-unavailable',
         operation: 'read',
         reason: 'response-deadline',
       },
-      'Task room working state unavailable',
     );
     await expect(working.read({ scope })).resolves.toEqual({
       kind: 'unavailable',
@@ -220,12 +221,12 @@ describe('project task room working state', () => {
         kind: 'unavailable',
       });
       expect(warnings).toHaveBeenCalledWith(
+        'Task room working state unavailable',
         {
           event: 'project-task-room-working-state-unavailable',
           operation: 'read',
           reason,
         },
-        'Task room working state unavailable',
       );
       expect(JSON.stringify(warnings.mock.calls)).not.toContain('private database data');
       await expect(working.read({ scope })).resolves.toEqual({
@@ -248,12 +249,12 @@ describe('project task room working state', () => {
         value: () => 'private-payload',
       })).resolves.toBe('unavailable');
       expect(warnings).toHaveBeenCalledWith(
+        'Task room working state unavailable',
         {
           event: 'project-task-room-working-state-unavailable',
           operation: 'agent-lifecycle',
           reason: 'post-message-failed',
         },
-        'Task room working state unavailable',
       );
       expect(JSON.stringify(warnings.mock.calls)).not.toContain('private-');
     } finally {

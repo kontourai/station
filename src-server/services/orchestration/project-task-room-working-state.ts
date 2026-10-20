@@ -21,8 +21,8 @@ function reportUnavailable(operation: string, reason: UnavailableReason) {
   // Diagnostics must not interrupt settlement of the unavailable result.
   try {
     logger.warn(
-      { event: 'project-task-room-working-state-unavailable', operation, reason },
       'Task room working state unavailable',
+      { event: 'project-task-room-working-state-unavailable', operation, reason },
     );
   } catch {}
 }
