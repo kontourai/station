@@ -154,7 +154,10 @@ test.describe('Agents pane child work (#2459)', () => {
       .getByRole('menuitem', { name: /Background tasks — 1 running/ })
       .click();
 
-    const scopeChat = page.getByRole('button', { name: 'This conversation' });
+    const scopeChat = page.getByRole('button', {
+      name: 'This conversation',
+      exact: true,
+    });
     const scopeAll = page.getByRole('button', { name: 'All', exact: true });
     await expect(scopeChat).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText('Investigate flaky test')).toBeVisible();
@@ -315,7 +318,7 @@ test.describe('Agents pane child work (#2459)', () => {
       await expect(sheet.getByText('Investigate flaky test')).toBeVisible();
       // Bottom-only: the sheet, never the Agents pane's scope controls.
       await expect(
-        page.getByRole('button', { name: 'This conversation' }),
+        page.getByRole('button', { name: 'This conversation', exact: true }),
       ).toHaveCount(0);
       await page.screenshot({
         path: testInfo.outputPath('mobile-background-tasks-390.png'),
