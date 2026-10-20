@@ -1,4 +1,5 @@
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
+import type { PaneRelatedPanesHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import {
   createContext,
   type ReactNode,
@@ -26,6 +27,11 @@ export interface SDKContextValue {
   apiBase: string;
   /** Exact request identity owned by this SDKProvider boundary. */
   pluginApiIdentity?: PluginApiIdentity;
+  /**
+   * The related-pane capability of the pane occurrence this provider wraps,
+   * when its host offers one (`useRelatedPanes`).
+   */
+  relatedPanes?: PaneRelatedPanesHost;
 
   // Core contexts (injected by core app)
   contexts: {

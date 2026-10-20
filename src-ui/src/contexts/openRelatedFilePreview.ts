@@ -1,39 +1,24 @@
 import type { WorkspaceFilePreviewPaneState } from '@kontourai/station-contracts/workspace-file-preview';
 import { useCallback, useLayoutEffect, useRef } from 'react';
 import {
-  readPaneFence,
-  removePaneFence,
-  writePaneFence,
-} from '../regions/pane-fence';
-import {
   BUILTIN_PANE_GENERATION,
-  keptPaneForTarget,
-  openerSelectionKey,
   type PaneOpener,
-  type PaneRelation,
-  type PaneRelationTarget,
-  prunePaneRelations,
-  sameRelationTarget,
-  transientPaneForOpener,
-  withPaneRelation,
 } from '../regions/pane-relations';
-import { isDockRegion, occupiedRegion } from '../regions/region-model';
-import { forgetRegionPaneState } from '../regions/region-surface-panes';
 import { createFilePreviewPaneInstance } from '../workspace-panes/filePreviewPaneInstance';
+import { createFilePreviewPaneStatePreparation } from '../workspace-panes/filePreviewPaneStateStorage';
 import {
-  createFilePreviewPaneStatePreparation,
-  readFilePreviewPaneState,
-} from '../workspace-panes/filePreviewPaneStateStorage';
-import { navigationStore } from './navigation-store';
-import {
-  type PaneRelationsRefusal,
-  type PaneRelationsValue,
-  usePaneRelations,
+  openRelatedOccurrence,
+  type RelatedOpenModel,
+  type RelatedOpenOutcome,
+  type RelatedOpenRefusal,
+} from './openRelatedOccurrence';
+import type {
+  PaneRelationsRefusal,
+  PaneRelationsValue,
 } from './PaneRelationsContext';
+import { usePaneRelations } from './PaneRelationsContext';
 import {
   type OpenInRegionOptions,
-  type OpenInRegionOutcome,
-  type RegionModelValue,
   useRegionModelOptional,
 } from './RegionModelContext';
 import {
@@ -41,53 +26,24 @@ import {
   type OpenFilePreviewRequest,
   type OpenPaneRefusal,
   openFilePreviewInRegion,
-  openInRegion,
   revealFilePreview,
 } from './useOpenInRegion';
 
+export type {
+  RelatedOpenDisposition,
+  RelatedOpenOutcome,
+  RelatedOpenRefusal,
+} from './openRelatedOccurrence';
+
 /**
- * Opening a file preview as a RELATED pane (docs/design/pane-relationships.md):
- * one reusable preview per exact opener selection, Keep and unsaved work
- * protect it, an exact kept target is focused rather than duplicated, and the
- * preview is fenced to the Station it was opened on (`pane-fence.ts`).
- *
- * The order is what makes every refusal leave everything as it was:
- *
- * 1. Plan from the current record, with no write.
- * 2. Ask the unsaved-changes guard of every pane the open would take off
- *    screen — the preview it replaces, the pane it covers. Cancel ends here.
- * 3. Take the record's exclusive lock and re-read it. The verified Station,
- *    the opener's selection, the plan (the occurrence to focus or replace)
- *    and the pane the open takes off screen must all still be the ones step
- *    2 asked about; otherwise the open is `superseded` / `station-changed`.
- *    At the bound it is refused.
- * 4. Focus the occurrence the plan named, or fence and store a new one, write
- *    the record, then commit the arrangement. A refusal at any step removes
- *    what the earlier steps wrote.
- *
- * Without a verified Station there is nothing to fence a new occurrence to,
- * so a related open is refused (`station-unverified`) before anything is
- * written. Previews made before relationships keep their unfenced reads; no
- * new unfenced one is minted.
+ * A file preview opened as a RELATED pane (docs/design/pane-relationships.md)
+ * through the shared related-occurrence pipeline (`openRelatedOccurrence`):
+ * its target is the exact file — Project, path and the session it is read
+ * through — focusing a kept or current preview carries a newly requested line
+ * range onto it, and a new preview's state is the bounded file-preview record.
+ * Previews made before relationships keep their unfenced reads; no new
+ * unfenced one is minted.
  */
-
-export type RelatedOpenRefusal =
-  | OpenPaneRefusal
-  | PaneRelationsRefusal
-  | 'guard-cancelled';
-
-export type RelatedOpenDisposition = 'opened' | 'focused' | 'replaced';
-
-export type RelatedOpenOutcome =
-  | (Extract<OpenInRegionOutcome, { ok: true }> & {
-      disposition?: RelatedOpenDisposition;
-    })
-  | { ok: false; reason: RelatedOpenRefusal };
-
-type RelatedOpenModel = Pick<
-  RegionModelValue,
-  'regions' | 'phoneLayer' | 'openSurfaceInRegion' | 'replacePane'
->;
 
 const RELATION_REFUSAL_SENTENCES: Record<
   PaneRelationsRefusal | 'guard-cancelled',
@@ -121,78 +77,6 @@ export function describeRelatedOpenRefusal(reason: RelatedOpenRefusal): string {
     : describeOpenInRegionRefusal(reason as OpenPaneRefusal);
 }
 
-/**
- * Whether a related occurrence still exists in durable, origin-wide storage:
- * its fence, and for a file preview its own state too. Other occurrence kinds
- * (a plugin pane) are owned elsewhere; their fence is what this path can see,
- * so it never prunes them for lacking a preview state.
- */
-function relatedOccurrenceExists(instanceId: string): boolean {
-  const storage = window.localStorage;
-  if (readPaneFence(storage, instanceId).status === 'none') return false;
-  return instanceId.startsWith('file-preview:')
-    ? readFilePreviewPaneState(storage, instanceId) !== null
-    : true;
-}
-
-/**
- * The occurrence an open of `target` focuses rather than mints: the kept
- * preview of that exact target, else the opener's transient preview when it
- * already shows that exact target — either only while it still exists.
- */
-function occurrenceToFocus(
-  kept: PaneRelation | undefined,
-  transient: PaneRelation | undefined,
-  station: string,
-  target: PaneRelationTarget,
-): PaneRelation | undefined {
-  if (kept && relatedOccurrenceExists(kept.instanceId)) return kept;
-  if (
-    transient &&
-    sameRelationTarget(station, transient.target, target) &&
-    relatedOccurrenceExists(transient.instanceId)
-  )
-    return transient;
-  return undefined;
-}
-
-/**
- * The pane on screen this open would take off screen, if any: the phone
- * layer's pane, else the selected pane of the region the new preview lands in
- * (the replaced preview's region, or Related).
- */
-function paneHiddenBy(
-  model: RelatedOpenModel,
-  landingBeside: string | undefined,
-): string | null {
-  if (model.phoneLayer) return model.phoneLayer.surfaceId;
-  const region = landingBeside
-    ? occupiedRegion(model.regions, landingBeside)
-    : 'right';
-  if (!region || !isDockRegion(region)) return null;
-  const state = model.regions[region];
-  return state.visible ? state.occupant : null;
-}
-
-/**
- * Ask each guarded owner's own unsaved-changes guard, one after another.
- * False as soon as one answers Cancel; nothing else is asked then.
- */
-async function guardsAllow(owners: readonly (string | null | undefined)[]) {
-  for (const owner of new Set(owners)) {
-    if (!owner || !navigationStore.hasNavigationGuard(owner)) continue;
-    const allowed = await new Promise<boolean>((resolve) =>
-      navigationStore.runNavigationGuards(
-        () => resolve(true),
-        () => resolve(false),
-        { owner },
-      ),
-    );
-    if (!allowed) return false;
-  }
-  return true;
-}
-
 export async function openRelatedFilePreview(
   getModel: () => RelatedOpenModel,
   relations: PaneRelationsValue,
@@ -203,76 +87,6 @@ export async function openRelatedFilePreview(
   const { projectId, projectSlug, path, lineRange, thread } = request;
   if (projectId === null || projectSlug === null)
     return { ok: false, reason: 'unsupplied' };
-  const station = relations.stationId;
-  if (station === null) return { ok: false, reason: 'station-unverified' };
-
-  const target: PaneRelationTarget = {
-    kind: 'file',
-    projectId,
-    projectSlug,
-    path,
-    thread: thread ?? null,
-  };
-  const selection = openerSelectionKey(opener);
-  const before = getModel();
-  const focus = occurrenceToFocus(
-    relations.keptFor(target),
-    relations.transientFor(opener),
-    station,
-    target,
-  );
-  if (focus) {
-    const focusId = focus.instanceId;
-    const asked = paneHiddenBy(before, focusId);
-    const hidden = asked === focusId ? null : asked;
-    if (!(await guardsAllow([hidden])))
-      return { ok: false, reason: 'guard-cancelled' };
-    let arrangementRefusal: OpenPaneRefusal | undefined;
-    // Focusing writes too — the arrangement, and a new line range onto the
-    // preview's state — so it commits under the same lock, after the same
-    // checks, as a new preview: the guard above was answered for THIS
-    // Station, source, target and covered pane.
-    const result = await relations.transact<RelatedOpenOutcome>(
-      (tx) => {
-        const current = relations.currentSelection(opener.occurrenceId);
-        if (current !== undefined && current !== selection)
-          return { ok: false, reason: 'superseded' };
-        const fresh = prunePaneRelations(tx.record, relatedOccurrenceExists);
-        const model = getModel();
-        const coveredNow = paneHiddenBy(model, focusId);
-        if (
-          occurrenceToFocus(
-            keptPaneForTarget(fresh, station, target),
-            transientPaneForOpener(fresh, station, opener),
-            station,
-            target,
-          )?.instanceId !== focusId ||
-          (coveredNow === focusId ? null : coveredNow) !== hidden
-        )
-          return { ok: false, reason: 'superseded' };
-        const outcome = revealFilePreview(model, focusId, lineRange, options);
-        if (!outcome.ok) {
-          arrangementRefusal = outcome.reason;
-          return { ok: false, reason: 'refused' };
-        }
-        return { ok: true, value: { ...outcome, disposition: 'focused' } };
-      },
-      { station },
-    );
-    if (!result.ok)
-      return { ok: false, reason: arrangementRefusal ?? result.reason };
-    return result.value;
-  }
-
-  const transient = relations.transientFor(opener);
-  const replacing =
-    transient && relatedOccurrenceExists(transient.instanceId)
-      ? transient.instanceId
-      : undefined;
-  const covered = paneHiddenBy(before, replacing);
-  if (!(await guardsAllow([replacing, covered])))
-    return { ok: false, reason: 'guard-cancelled' };
-
   const state: WorkspaceFilePreviewPaneState = {
     version: '1.0',
     projectSlug,
@@ -281,89 +95,35 @@ export async function openRelatedFilePreview(
     wrap: true,
     ...(thread ? { thread } : {}),
   };
-  const instance = createFilePreviewPaneInstance(state, projectId);
-  if (!instance) return { ok: false, reason: 'no-surface' };
-  const nextId = String(instance.instanceId);
-  const storage = window.localStorage;
-  let arrangementRefusal: OpenPaneRefusal | undefined;
-
-  const result = await relations.transact<RelatedOpenOutcome>(
-    (tx) => {
-      // The open is for what the opener showed when it was clicked.
-      const current = relations.currentSelection(opener.occurrenceId);
-      if (current !== undefined && current !== selection)
-        return { ok: false, reason: 'superseded' };
-      const fresh = prunePaneRelations(tx.record, relatedOccurrenceExists);
-      if (
-        transientPaneForOpener(fresh, station, opener)?.instanceId !==
-          replacing ||
-        keptPaneForTarget(fresh, station, target) !== undefined ||
-        paneHiddenBy(getModel(), replacing) !== covered
-      )
-        return { ok: false, reason: 'superseded' };
-      const written = withPaneRelation(
-        fresh,
-        {
-          instanceId: nextId,
-          stateKey: String(instance.stateKey),
-          stationId: station,
-          generation: BUILTIN_PANE_GENERATION,
-          opener,
-          target,
-          kept: false,
-          openedAt: Date.now(),
-        },
-        replacing,
-      );
-      if (!written.ok) return written;
-      if (!writePaneFence(storage, nextId, station))
-        return { ok: false, reason: 'storage' };
+  return openRelatedOccurrence(getModel, relations, opener, {
+    target: {
+      kind: 'file',
+      projectId,
+      projectSlug,
+      path,
+      thread: thread ?? null,
+    },
+    generation: BUILTIN_PANE_GENERATION,
+    landing: 'right',
+    reveal: (model, instanceId, revealOptions) =>
+      revealFilePreview(model, instanceId, lineRange, revealOptions),
+    mint: () => {
+      const instance = createFilePreviewPaneInstance(state, projectId);
+      if (!instance) return null;
+      const stateKey = String(instance.stateKey);
       const preparation = createFilePreviewPaneStatePreparation(
-        storage,
-        String(instance.stateKey),
+        window.localStorage,
+        stateKey,
         state,
       );
-      if (!preparation.prepare()) {
-        removePaneFence(storage, nextId);
-        return { ok: false, reason: 'storage' };
-      }
-      // Rollback removes the new state and, with it, the new fence.
-      if (!tx.write(written.record)) {
-        preparation.rollback();
-        return { ok: false, reason: 'storage' };
-      }
-      const model = getModel();
-      // In place: the new preview takes the replaced one's tab slot. A phone
-      // layer replaces its own pane; a preview this tab does not place is
-      // left to whichever tab places it, beside a new one.
-      const inPlace =
-        replacing !== undefined &&
-        model.phoneLayer?.surfaceId !== replacing &&
-        isDockRegion(occupiedRegion(model.regions, replacing) ?? 'main');
-      const outcome: OpenInRegionOutcome = inPlace
-        ? model.replacePane(replacing, nextId)
-        : openInRegion(model, instance, { region: 'right', ...options });
-      if (!outcome.ok) {
-        preparation.rollback();
-        arrangementRefusal = outcome.reason;
-        return { ok: false, reason: 'refused' };
-      }
-      // The replaced preview left the arrangement with its relation; its
-      // state and fence go too.
-      if (inPlace && replacing !== undefined) forgetRegionPaneState(replacing);
       return {
-        ok: true,
-        value: {
-          ...outcome,
-          disposition: replacing === undefined ? 'opened' : 'replaced',
-        },
+        instanceId: String(instance.instanceId),
+        stateKey,
+        prepare: () => preparation.prepare(),
+        rollback: () => preparation.rollback(),
       };
     },
-    { station },
-  );
-  if (!result.ok)
-    return { ok: false, reason: arrangementRefusal ?? result.reason };
-  return result.value;
+  }, options);
 }
 
 /**

@@ -1,0 +1,351 @@
+import {
+  readPaneFence,
+  removePaneFence,
+  writePaneFence,
+} from '../regions/pane-fence';
+import {
+  keptPaneForTarget,
+  openerSelectionKey,
+  type PaneOpener,
+  type PaneRelation,
+  type PaneRelationTarget,
+  prunePaneRelations,
+  sameRelationTarget,
+  transientPaneForOpener,
+  withPaneRelation,
+} from '../regions/pane-relations';
+import {
+  type DockRegionId,
+  isDockRegion,
+  occupiedRegion,
+} from '../regions/region-model';
+import { forgetRegionPaneState } from '../regions/region-surface-panes';
+import { readFilePreviewPaneState } from '../workspace-panes/filePreviewPaneStateStorage';
+import { readPluginPaneState } from '../workspace-panes/pluginPaneOccurrence';
+import { navigationStore } from './navigation-store';
+import type {
+  PaneRelationsRefusal,
+  PaneRelationsValue,
+} from './PaneRelationsContext';
+import type {
+  OpenInRegionOptions,
+  OpenInRegionOutcome,
+  RegionModelValue,
+} from './RegionModelContext';
+import type { OpenPaneRefusal } from './useOpenInRegion';
+
+/**
+ * Opening a RELATED pane occurrence (docs/design/pane-relationships.md), for
+ * every kind of pane that opens as one: one reusable preview per exact opener
+ * selection, Keep and unsaved work protect it, an exact kept target is
+ * focused rather than duplicated, and every new occurrence is fenced to the
+ * Station it was opened on (`pane-fence.ts`). The kind of pane supplies only
+ * its target, its state and its reveal (`RelatedOccurrenceAdapter`).
+ *
+ * The order is what makes every refusal leave everything as it was:
+ *
+ * 1. Plan from the current record, with no write.
+ * 2. Ask the unsaved-changes guard of every pane the open would take off
+ *    screen — the preview it replaces, the pane it covers. Cancel ends here.
+ * 3. Take the record's exclusive lock and re-read it. The verified Station,
+ *    the opener's selection, the plan (the occurrence to focus or replace),
+ *    the pane the open takes off screen and the adapter's own admission must
+ *    all still be what step 2 asked about; otherwise the open is
+ *    `superseded` / `station-changed` / the adapter's refusal. At the bound
+ *    it is refused.
+ * 4. Focus the occurrence the plan named, or fence and store a new one, write
+ *    the record, then commit the arrangement. A refusal at any step removes
+ *    what the earlier steps wrote.
+ *
+ * Without a verified Station there is nothing to fence a new occurrence to,
+ * so a related open is refused (`station-unverified`) before anything is
+ * written.
+ */
+
+export type RelatedOpenRefusal =
+  | OpenPaneRefusal
+  | PaneRelationsRefusal
+  | 'guard-cancelled';
+
+export type RelatedOpenDisposition = 'opened' | 'focused' | 'replaced';
+
+export type RelatedOpenOutcome<AdapterRefusal extends string = never> =
+  | (Extract<OpenInRegionOutcome, { ok: true }> & {
+      disposition?: RelatedOpenDisposition;
+    })
+  | { ok: false; reason: RelatedOpenRefusal | AdapterRefusal };
+
+export type RelatedOpenModel = Pick<
+  RegionModelValue,
+  'regions' | 'phoneLayer' | 'openSurfaceInRegion' | 'replacePane'
+>;
+
+/** A new occurrence's identity and state, staged but not yet written. */
+export interface MintedRelatedOccurrence {
+  readonly instanceId: string;
+  readonly stateKey: string;
+  /** Write the occurrence's state. False (nothing written) refuses the open. */
+  prepare(): boolean;
+  /** Remove what `prepare` wrote, and with it the occurrence's fence. */
+  rollback(): void;
+}
+
+/** What one kind of related pane supplies to `openRelatedOccurrence`. */
+export interface RelatedOccurrenceAdapter<AdapterRefusal extends string> {
+  /** The exact target, which dedupe and Keep compare. */
+  readonly target: PaneRelationTarget;
+  /** The opener's installation generation, recorded with a new relation. */
+  readonly generation: string;
+  /** Where a new occurrence lands when it replaces no preview in place. */
+  readonly landing: DockRegionId;
+  /**
+   * The adapter's own admission, asked when the open is planned and again
+   * inside the lock after any guard answered. Null admits.
+   */
+  admit?(): AdapterRefusal | null;
+  /** Reveal an existing occurrence, carrying anything this request adds. */
+  reveal(
+    model: RelatedOpenModel,
+    instanceId: string,
+    options?: OpenInRegionOptions,
+  ): OpenInRegionOutcome;
+  /** A new occurrence's ids and staged state, or null when none can be minted. */
+  mint(): MintedRelatedOccurrence | null;
+}
+
+/**
+ * Whether a related occurrence still exists in durable, origin-wide storage:
+ * its fence, and its own state for the kinds that store one. Never by whether
+ * this tab places it: another tab may be showing it.
+ */
+export function relatedOccurrenceExists(instanceId: string): boolean {
+  const storage = window.localStorage;
+  if (readPaneFence(storage, instanceId).status === 'none') return false;
+  if (instanceId.startsWith('file-preview:'))
+    return readFilePreviewPaneState(storage, instanceId) !== null;
+  if (instanceId.startsWith('plugin-pane:'))
+    return readPluginPaneState(storage, instanceId) !== null;
+  return true;
+}
+
+/**
+ * The occurrence an open of `target` focuses rather than mints: the kept
+ * occurrence of that exact target, else the opener's transient preview when
+ * it already shows that exact target — either only while it still exists.
+ */
+function occurrenceToFocus(
+  kept: PaneRelation | undefined,
+  transient: PaneRelation | undefined,
+  station: string,
+  target: PaneRelationTarget,
+): PaneRelation | undefined {
+  if (kept && relatedOccurrenceExists(kept.instanceId)) return kept;
+  if (
+    transient &&
+    sameRelationTarget(station, transient.target, target) &&
+    relatedOccurrenceExists(transient.instanceId)
+  )
+    return transient;
+  return undefined;
+}
+
+/**
+ * The pane on screen this open would take off screen, if any: the phone
+ * layer's pane, else the selected pane of the region the new occurrence lands
+ * in (the replaced preview's region, or `landing`).
+ */
+function paneHiddenBy(
+  model: RelatedOpenModel,
+  landingBeside: string | undefined,
+  landing: DockRegionId,
+): string | null {
+  if (model.phoneLayer) return model.phoneLayer.surfaceId;
+  const region = landingBeside
+    ? occupiedRegion(model.regions, landingBeside)
+    : landing;
+  if (!region || !isDockRegion(region)) return null;
+  const state = model.regions[region];
+  return state.visible ? state.occupant : null;
+}
+
+/**
+ * Ask each guarded owner's own unsaved-changes guard, one after another.
+ * False as soon as one answers Cancel; nothing else is asked then.
+ */
+export async function guardsAllow(
+  owners: readonly (string | null | undefined)[],
+): Promise<boolean> {
+  for (const owner of new Set(owners)) {
+    if (!owner || !navigationStore.hasNavigationGuard(owner)) continue;
+    const allowed = await new Promise<boolean>((resolve) =>
+      navigationStore.runNavigationGuards(
+        () => resolve(true),
+        () => resolve(false),
+        { owner },
+      ),
+    );
+    if (!allowed) return false;
+  }
+  return true;
+}
+
+export async function openRelatedOccurrence<AdapterRefusal extends string>(
+  getModel: () => RelatedOpenModel,
+  relations: PaneRelationsValue,
+  opener: PaneOpener,
+  adapter: RelatedOccurrenceAdapter<AdapterRefusal>,
+  options?: OpenInRegionOptions,
+): Promise<RelatedOpenOutcome<AdapterRefusal>> {
+  const station = relations.stationId;
+  if (station === null) return { ok: false, reason: 'station-unverified' };
+  const refusedFirst = adapter.admit?.() ?? null;
+  if (refusedFirst !== null) return { ok: false, reason: refusedFirst };
+
+  const { target, landing } = adapter;
+  const selection = openerSelectionKey(opener);
+  // A refusal the transaction cannot name in its own vocabulary: the
+  // arrangement's, or the adapter's. The transaction refuses `refused` so
+  // its writes roll back, and the open reports this instead.
+  let stepRefusal: RelatedOpenRefusal | AdapterRefusal | undefined;
+  const readmitted = (): boolean => {
+    const refused = adapter.admit?.() ?? null;
+    if (refused === null) return true;
+    stepRefusal = refused;
+    return false;
+  };
+  const before = getModel();
+  const focus = occurrenceToFocus(
+    relations.keptFor(target),
+    relations.transientFor(opener),
+    station,
+    target,
+  );
+  if (focus) {
+    const focusId = focus.instanceId;
+    const asked = paneHiddenBy(before, focusId, landing);
+    const hidden = asked === focusId ? null : asked;
+    if (!(await guardsAllow([hidden])))
+      return { ok: false, reason: 'guard-cancelled' };
+    // Focusing writes too — the arrangement, and anything the reveal carries
+    // onto the occurrence's state — so it commits under the same lock, after
+    // the same checks, as a new occurrence: the guard above was answered for
+    // THIS Station, source, target and covered pane.
+    const result = await relations.transact<RelatedOpenOutcome<AdapterRefusal>>(
+      (tx) => {
+        const current = relations.currentSelection(opener.occurrenceId);
+        if (current !== undefined && current !== selection)
+          return { ok: false, reason: 'superseded' };
+        if (!readmitted()) return { ok: false, reason: 'refused' };
+        const fresh = prunePaneRelations(tx.record, relatedOccurrenceExists);
+        const model = getModel();
+        const coveredNow = paneHiddenBy(model, focusId, landing);
+        if (
+          occurrenceToFocus(
+            keptPaneForTarget(fresh, station, target),
+            transientPaneForOpener(fresh, station, opener),
+            station,
+            target,
+          )?.instanceId !== focusId ||
+          (coveredNow === focusId ? null : coveredNow) !== hidden
+        )
+          return { ok: false, reason: 'superseded' };
+        const outcome = adapter.reveal(model, focusId, options);
+        if (!outcome.ok) {
+          stepRefusal = outcome.reason;
+          return { ok: false, reason: 'refused' };
+        }
+        return { ok: true, value: { ...outcome, disposition: 'focused' } };
+      },
+      { station },
+    );
+    if (!result.ok) return { ok: false, reason: stepRefusal ?? result.reason };
+    return result.value;
+  }
+
+  const transient = relations.transientFor(opener);
+  const replacing =
+    transient && relatedOccurrenceExists(transient.instanceId)
+      ? transient.instanceId
+      : undefined;
+  const covered = paneHiddenBy(before, replacing, landing);
+  if (!(await guardsAllow([replacing, covered])))
+    return { ok: false, reason: 'guard-cancelled' };
+
+  const minted = adapter.mint();
+  if (!minted) return { ok: false, reason: 'no-surface' };
+  const nextId = minted.instanceId;
+  const storage = window.localStorage;
+
+  const result = await relations.transact<RelatedOpenOutcome<AdapterRefusal>>(
+    (tx) => {
+      // The open is for what the opener showed when it was clicked.
+      const current = relations.currentSelection(opener.occurrenceId);
+      if (current !== undefined && current !== selection)
+        return { ok: false, reason: 'superseded' };
+      if (!readmitted()) return { ok: false, reason: 'refused' };
+      const fresh = prunePaneRelations(tx.record, relatedOccurrenceExists);
+      if (
+        transientPaneForOpener(fresh, station, opener)?.instanceId !==
+          replacing ||
+        keptPaneForTarget(fresh, station, target) !== undefined ||
+        paneHiddenBy(getModel(), replacing, landing) !== covered
+      )
+        return { ok: false, reason: 'superseded' };
+      const written = withPaneRelation(
+        fresh,
+        {
+          instanceId: nextId,
+          stateKey: minted.stateKey,
+          stationId: station,
+          generation: adapter.generation,
+          opener,
+          target,
+          kept: false,
+          openedAt: Date.now(),
+        },
+        replacing,
+      );
+      if (!written.ok) return written;
+      if (!writePaneFence(storage, nextId, station))
+        return { ok: false, reason: 'storage' };
+      if (!minted.prepare()) {
+        removePaneFence(storage, nextId);
+        return { ok: false, reason: 'storage' };
+      }
+      // Rollback removes the new state and, with it, the new fence.
+      if (!tx.write(written.record)) {
+        minted.rollback();
+        return { ok: false, reason: 'storage' };
+      }
+      const model = getModel();
+      // In place: the new occurrence takes the replaced one's tab slot. A
+      // phone layer replaces its own pane; a preview this tab does not place
+      // is left to whichever tab places it, beside a new one.
+      const inPlace =
+        replacing !== undefined &&
+        model.phoneLayer?.surfaceId !== replacing &&
+        isDockRegion(occupiedRegion(model.regions, replacing) ?? 'main');
+      const outcome: OpenInRegionOutcome = inPlace
+        ? model.replacePane(replacing, nextId)
+        : model.openSurfaceInRegion(nextId, { region: landing, ...options });
+      if (!outcome.ok) {
+        minted.rollback();
+        stepRefusal = outcome.reason;
+        return { ok: false, reason: 'refused' };
+      }
+      // The replaced preview left the arrangement with its relation; its
+      // state and fence go too.
+      if (inPlace && replacing !== undefined) forgetRegionPaneState(replacing);
+      return {
+        ok: true,
+        value: {
+          ...outcome,
+          disposition: replacing === undefined ? 'opened' : 'replaced',
+        },
+      };
+    },
+    { station },
+  );
+  if (!result.ok) return { ok: false, reason: stepRefusal ?? result.reason };
+  return result.value;
+}
