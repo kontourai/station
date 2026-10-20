@@ -519,12 +519,16 @@ Every path becomes a generation handoff:
     (Node's default listen backlog, the queue they would otherwise wait in)
     they stop listening and new connections wait in the kernel backlog;
     that resets at most a connection completing into a spare at that
-    instant, where turning arrivals away would reset every one. A
-    connection still held 60 seconds after its spare began listening, with
-    no generation to take it, is closed and the count logged. A connection
-    held for a listener the adopting generation never binds is closed by
-    that generation, and one the supervisor cannot send (the generation's
-    channel already closed) is closed by the supervisor.
+    instant, where turning arrivals away would reset every one. While the
+    handoff runs, a trial or the rollback is on its way, so connections are
+    held however long a live call extends the drain. Once the handoff has
+    ended with no generation taking them (it fell back to crash restarts),
+    those held 60 seconds or more are closed and the count logged. A
+    connection held for a listener the adopting generation never binds is
+    closed by that generation. One the supervisor cannot send, or sent to a
+    generation that exits or closes its channel before taking it, is closed
+    by the supervisor: Node drops handles queued behind an unacknowledged
+    one without calling back.
 
     A core says it speaks this when it parks (`adoptsConnections`). The
     supervisor catches only when both the draining generation and the one
