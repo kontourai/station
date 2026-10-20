@@ -597,7 +597,9 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
     support.inspect = () => ({ outcome: 'not-received' });
     const homeDir = makeTempDir('station-thread-inbox-durable-hold-');
     const store = new EventStore(join(homeDir, 'orchestration.sqlite'));
-    closers.push(() => store.close());
+    closers.push(() => {
+      store.close();
+    });
     const authority = store.sessionTurnBoundaryAuthority();
     const owned = authority.claim(PARENT, new Date().toISOString());
     if (owned.kind !== 'owner')
