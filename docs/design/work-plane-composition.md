@@ -25,6 +25,10 @@ out of it in Station, where the concepts are built in.*
 
 ## Problem
 
+This section is the 2026-07-20 baseline. Slice S6 has since deleted
+`SessionBoardView.tsx` and mounted the Console board in its place
+([ConsoleBoardView](../../src-ui/src/views/ConsoleBoardView.tsx), archive#765).
+
 Station has grown three parallel "work" concepts that do not speak to each other:
 
 1. **Tasks board** (`TaskGraphService`, per-project `task-graph.json`, own 6-value status

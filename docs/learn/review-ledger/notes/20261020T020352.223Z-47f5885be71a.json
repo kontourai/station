@@ -1,0 +1,35 @@
+{
+  "revision": "58c38bee646f4db8341b171c6a34b4a626a8f03f",
+
+  "notes": [
+    {"path":"README.md","note":"Deployment guide gained a directory index at the top; README's links to it and its section anchors are unchanged.","inputs":["README.md","docs/guides/deployment.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Dropped citations of the removed GCP bootstrap script and its test, which this recipe never used. The .dockerignore change only removes the stale scripts/dogfood/ exclusion; the overlay's build context claims are unchanged.","inputs":["deploy/public-ingress/README.md",".dockerignore","deploy/gcp-dev/bootstrap.sh","scripts/__tests__/gcp-bootstrap.test.ts"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Deployment guide's new index describes this directory as the private telemetry receiver profile whose developer profile is the local monitoring stack; nothing in this README changes.","inputs":["deployment/telemetry/README.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Deployment guide anchors this review links (#reverse-proxy and the guide itself) are unchanged by the added index.","inputs":["docs/architecture/abstraction-review.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/design/automations.md","note":"Links only the deployment guide's exposure advice, unchanged by the added index.","inputs":["docs/design/automations.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/design/cloud-move.md","note":"GCP profile paragraph no longer links the removed deploy/gcp-dev recipe; it points at its last commit db816d256f6. The not-implemented status of GCP template generation is unchanged.","inputs":["docs/design/cloud-move.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Testing guide gained one paragraph about uploading PR screenshots instead of committing them; no code-quality claim depends on it.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Added a Deployment directories index checked against the tree: deploy/public-ingress (Caddy overlay, smoke run by container-smoke.yml), deploy/push-gateway (Cloudflare Worker, no deploying workflow), deployment/self-hosted-broker (guide self-hosted-broker.md), deployment/telemetry. Dropped citations of the removed GCP bootstrap script and test. .dockerignore change only removes the stale scripts/dogfood/ line.","inputs":["docs/guides/deployment.md",".dockerignore","deploy/gcp-dev/bootstrap.sh","scripts/__tests__/gcp-bootstrap.test.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"AWS section no longer links the removed GCP recipe; it states the recipe was removed and links its last commit db816d256f6. The service run supervisor claim still describes current CLI behavior.","inputs":["docs/guides/integrating-station.md","deploy/gcp-dev/README.md","deploy/gcp-dev/bootstrap.sh","docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Added that PR screenshots are uploaded to the PR body and not committed under .github/. The vitest resource manifest only lost the removed gcp-bootstrap entry; the classification rules described here are unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Integrating guide's GCP recipe sentence changed; this assessment cites the guide only for reading routes, which are unchanged.","inputs":["docs/strategy/kontour-integration-surface.md","docs/guides/integrating-station.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Testing guide screenshot paragraph and the removed gcp-bootstrap manifest entry do not change the scripts instructions.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Testing guide screenshot paragraph does not change server instructions.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Links only the testing guide's fixture-fidelity section; the added screenshot paragraph does not change UI instructions.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Testing guide screenshot paragraph does not change test instructions.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

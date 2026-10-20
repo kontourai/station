@@ -8,4 +8,3 @@ export {
   useCancelMessage,
   useSendMessage,
 } from './useActiveChatSessionMessaging';
-export { usePruneActiveChats } from './usePruneActiveChats';

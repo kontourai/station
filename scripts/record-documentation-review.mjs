@@ -15,10 +15,10 @@
 // reviewed bytes, adds the notes as one new append-only notes file, and writes
 // nothing unless every entry validates. It records a review that a person
 // performed; it does not decide whether the prose is accurate.
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   assertDocumentationFresh,
   checkDocumentationFreshness,
@@ -74,12 +74,10 @@ const gitBlobId = (bytes) =>
     .digest('hex');
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
-    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
-    maxBuffer: 64 * 1024 * 1024,
   });
 }
 
