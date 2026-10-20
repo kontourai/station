@@ -1898,7 +1898,12 @@ server read beyond the pull request links Chat details already reads.
   transcript's room, so the card folds behind its chip while the inventory
   is open. Beside it the aside gives way first, down to its 16rem minimum,
   so the transcript keeps its 640px floor wherever the surface has room for
-  both (#3882). A measurement rather than a CSS container query
+  both (#3882). Opening the inventory moves focus into it (the card's
+  Chat inventory button folds away with the card), Escape inside it closes
+  it, and closing returns focus to the control that opened it or, when
+  that is gone, to the chip that stands in for the card, then to the
+  card's Chat inventory button once the card has room again. A measurement
+  rather than a CSS container query
   because two places read the answer — the card in the body and the header
   items it replaces, which render into the region bar's slots outside the
   body — and both must read one derivation. A phone never shows it inline.
