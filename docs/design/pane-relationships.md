@@ -55,8 +55,10 @@ Writes to the side record are transactions under an exclusive cross-window
 lock, over a fresh read of the record. Focusing an existing target writes too
 (its arrangement and a new line range), so it commits the same way. A
 contended or unavailable lock, a newer record, the bound, or a Station, source,
-target or covered pane that changed while a guard was answering refuses the
-open, and a refusal removes whatever it had written. At
+target or covered pane that changed while a guard was answering — read from
+the model's committed arrangement, and including a pane that gained unsaved
+work meanwhile — refuses the open, and a refusal removes whatever it had
+written. At
 the bound a new relation is refused; nothing live or kept is evicted, and only
 relations whose occurrence no longer exists in shared storage are pruned.
 

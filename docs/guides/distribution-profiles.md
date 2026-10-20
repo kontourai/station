@@ -65,6 +65,15 @@ observed package and readiness state. Overrides live separately in
 `config/distribution-lifecycle.json`. A cached catalog is an observation;
 applying a layout resolves it again through the live owner.
 
+Each change of an override also advances that item's revision in its own file,
+`config/distribution-lifecycle-revisions.json`, so the override file keeps the
+shape older servers read. A plugin's catalog contribution carries a
+`lifecycleGeneration`: its installation (the admission journal's incarnation,
+which every install mints anew, or the package's content digest) and that
+revision. It tells an occurrence opened before a disable, a re-enable or a
+reinstall apart from the current installation; it is identity only, never a
+grant, and a Project layout does not record it.
+
 The [profile contract](../../packages/contracts/src/distribution.ts),
 [built-in catalog](../../packages/contracts/src/layout.ts), and
 [profile service](../../src-server/services/plugins/distribution-profile-service.ts)
