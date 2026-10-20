@@ -43,6 +43,13 @@ export interface DeviceSettingsActions {
     key: K,
     value: DeviceSettings[K],
   ) => void;
+  /**
+   * Several keys as ONE choice: one envelope write and, when signed in, one
+   * account patch. For values that only make sense together (a color theme
+   * and its flavor and accent), so no subscriber sees half of the change and
+   * an account server cannot accept one key of it and refuse another.
+   */
+  setDeviceSettings: (values: Partial<DeviceSettings>) => void;
   resetDeviceSetting: <K extends keyof DeviceSettings>(key: K) => void;
   /** One envelope write and one notify for the whole set (#2144 slice 6). */
   resetDeviceSettings: (keys: readonly (keyof DeviceSettings)[]) => void;
@@ -56,6 +63,9 @@ export function useDeviceSettingsActions(): DeviceSettingsActions {
     },
     [],
   );
+  const setDeviceSettings = useCallback((values: Partial<DeviceSettings>) => {
+    deviceSettingsStore.merge(values);
+  }, []);
   const resetDeviceSetting = useCallback(
     <K extends keyof DeviceSettings>(key: K) => {
       deviceSettingsStore.reset(key);
@@ -77,5 +87,10 @@ export function useDeviceSettingsActions(): DeviceSettingsActions {
     [account.status],
   );
 
-  return { setDeviceSetting, resetDeviceSetting, resetDeviceSettings };
+  return {
+    setDeviceSetting,
+    setDeviceSettings,
+    resetDeviceSetting,
+    resetDeviceSettings,
+  };
 }

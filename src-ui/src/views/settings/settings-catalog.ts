@@ -604,7 +604,18 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
     configKeys: ['confirmConversationDelete'],
   },
-  { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
+  // The theme and accent controls moved to the Appearance page. These two rows
+  // stay, as links there, so Settings search, the palette's Settings targets
+  // and recorded `highlight=theme` / `highlight=accent-color` links still land
+  // on a row that answers them. `theme` stays first: it is the key this row
+  // still writes (the mode toggle) and the one its scope is read from.
+  {
+    id: 'theme',
+    title: 'Theme',
+    section: 'appearance',
+    configKeys: ['theme', 'colorTheme', 'colorThemeFlavor'],
+    keywords: ['mode', 'dark', 'light', 'color theme', 'catppuccin'],
+  },
   {
     id: 'haptic-feedback',
     title: 'Haptic feedback',
@@ -616,7 +627,7 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'accent-color',
     title: 'Accent color',
     section: 'appearance',
-    configKeys: ['accentColor'],
+    configKeys: ['accentColor', 'colorThemeAccent'],
   },
   {
     id: 'keyboard-shortcuts',

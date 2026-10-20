@@ -604,6 +604,8 @@ export function getPathForView(view: NavigationView): string | null {
       return '/notifications';
     case 'settings':
       return '/settings';
+    case 'appearance':
+      return '/appearance';
     case 'developer':
       return view.tab ? `/developer/${view.tab}` : '/developer';
     case 'schedule':
@@ -671,6 +673,7 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'schedule':
     case 'notifications':
     case 'profile':
+    case 'appearance':
       return null;
     case 'agent-edit':
     case 'agent-new':

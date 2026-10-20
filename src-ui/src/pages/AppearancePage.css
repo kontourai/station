@@ -1,0 +1,320 @@
+.appearance {
+  display: grid;
+  gap: var(--k-space-4);
+}
+
+.appearance__scope {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+/* Native radios carry the semantics and arrow-key behaviour; the label they
+   sit in is what a person sees and presses. Same clip as `.sr-only`. */
+.appearance__radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.appearance__hint,
+.appearance__current {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+/* The visible focus ring belongs on the label, because the input is clipped.
+   Same colour rule as index.css's product-level :focus-visible. */
+:is(
+  .appearance-mode__option,
+  .appearance-theme,
+  .appearance-choice,
+  .appearance-accent
+):has(.appearance__radio:focus-visible) {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+:is(
+    :root[data-brand-focus],
+    :root.is-dev-build,
+    :root[data-app-channel="beta"],
+    :root[data-app-channel="nightly"]
+  )
+  :is(
+    .appearance-mode__option,
+    .appearance-theme,
+    .appearance-choice,
+    .appearance-accent
+  ):has(.appearance__radio:focus-visible) {
+  outline-color: var(--k-focus);
+}
+
+/* ── Mode ── */
+.appearance-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--k-space-1);
+}
+
+.appearance-mode__options {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg);
+}
+
+.appearance-mode__option {
+  position: relative;
+  min-width: 4.5rem;
+  padding: var(--k-space-1) var(--k-space-3);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-align: center;
+  cursor: pointer;
+}
+
+.appearance-mode__option:hover {
+  color: var(--k-text);
+}
+
+.appearance-mode__option.is-selected {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+/* ── Theme gallery ── */
+.appearance-theme__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--k-space-3);
+}
+
+.appearance-theme {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  cursor: pointer;
+}
+
+.appearance-theme:hover {
+  border-color: var(--k-line-strong);
+}
+
+.appearance-theme.is-selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+.appearance-theme__check {
+  position: absolute;
+  top: var(--k-space-1);
+  right: var(--k-space-1);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: 12px;
+}
+
+.appearance-theme__preview {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 6px;
+  margin-bottom: var(--k-space-1);
+  padding: 8px;
+  border-radius: var(--k-radius-sm);
+  aspect-ratio: 16 / 10;
+  /* The card's own border sits on Station's panel; this one separates the
+     preview from it whatever the theme's canvas is. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.appearance-theme__panel {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.appearance-theme__line,
+.appearance-theme__token {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: currentColor;
+}
+
+.appearance-theme__line--title {
+  width: 55%;
+}
+
+.appearance-theme__line--muted {
+  width: 85%;
+  opacity: 0.45;
+}
+
+.appearance-theme__code {
+  display: flex;
+  gap: 4px;
+}
+
+.appearance-theme__token {
+  width: 22%;
+}
+
+.appearance-theme__token--text {
+  width: 38%;
+  opacity: 0.7;
+}
+
+.appearance-theme__token--short {
+  width: 14%;
+  opacity: 0.45;
+}
+
+.appearance-theme__button {
+  display: block;
+  width: 42%;
+  height: 11px;
+  margin-top: 3px;
+  border-radius: 6px;
+}
+
+.appearance-theme__strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.appearance-theme__name {
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+
+.appearance-theme__detail {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+/* ── Flavor ── */
+.appearance-choice__row,
+.appearance-accent__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-3);
+}
+
+.appearance-choice {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 32px;
+  padding: 0 var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+
+.appearance-choice:hover {
+  border-color: var(--k-line-strong);
+}
+
+.appearance-choice.is-selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+  font-weight: 600;
+}
+
+.appearance-choice__dot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid;
+  border-radius: 50%;
+}
+
+/* ── Accent ── */
+.appearance-accent {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.appearance-accent__swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-text) 18%, transparent);
+}
+
+.appearance-accent:hover .appearance-accent__swatch {
+  box-shadow: 0 0 0 2px var(--k-line-strong);
+}
+
+.appearance-accent.is-selected .appearance-accent__swatch {
+  box-shadow:
+    0 0 0 2px var(--k-panel),
+    0 0 0 4px var(--k-text);
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .appearance-mode__option,
+  .appearance-choice {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  .appearance-accent {
+    width: 44px;
+    height: 44px;
+  }
+
+  .appearance-accent__swatch {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@media (max-width: 640px) {
+  .appearance-mode {
+    align-items: stretch;
+  }
+
+  .appearance-mode__option {
+    flex: 1;
+  }
+
+  .appearance-theme__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

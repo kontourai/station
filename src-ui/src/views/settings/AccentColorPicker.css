@@ -1,0 +1,55 @@
+/* The accent picker renders on the Appearance page now, which does not load
+   Settings' stylesheet, so its rules travel with the component. */
+.settings__accent-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.settings__accent-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color var(--motion-fast);
+}
+.settings__accent-swatch:hover {
+  border-color: var(--text-secondary);
+}
+.settings__accent-swatch--active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}
+.settings__accent-custom {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+}
+.settings__accent-reset {
+  font-size: var(--k-text-sm);
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.settings__accent-reset:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .settings__accent-swatch,
+  .settings__accent-custom {
+    width: 44px;
+    height: 44px;
+  }
+  .settings__accent-reset {
+    min-height: 44px;
+  }
+}

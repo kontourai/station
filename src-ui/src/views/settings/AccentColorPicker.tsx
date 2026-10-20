@@ -7,6 +7,7 @@ import {
 import { applyAccentColor } from '../../lib/accent-contrast';
 import { SettingsPageRow } from './SettingsPageRow';
 import { settingsRow } from './settings-catalog';
+import './AccentColorPicker.css';
 
 /** Exported so the contrast tests measure the shipped list, not a copy. */
 export const ACCENT_PRESETS = [
@@ -20,7 +21,11 @@ export const ACCENT_PRESETS = [
   '#06b6d4',
 ];
 
-export function AccentColorPicker() {
+export function AccentColorPicker({
+  description = 'Choose an accent color for your interface.',
+}: {
+  description?: string;
+} = {}) {
   const account = useAccountPreferences();
   const { accentColor } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
@@ -43,7 +48,7 @@ export function AccentColorPicker() {
   return (
     <SettingsPageRow
       {...settingsRow('accent-color')}
-      description="Choose an accent color for your interface."
+      description={description}
       control={
         <div className="settings__accent-row">
           {ACCENT_PRESETS.map((preset) => (

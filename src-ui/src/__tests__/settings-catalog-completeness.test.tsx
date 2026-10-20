@@ -17,6 +17,7 @@ import {
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  matchingSettingsRows,
   OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
@@ -394,8 +395,9 @@ let pluginVisibilityFailed = false;
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
+const navigateMock = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
+  useNavigation: () => ({ navigate: navigateMock }),
   // #2059: the page's nav-only rows navigate to other DESTINATIONS (Agents,
   // Skills, Engines & Models, …) rather than to a `?view=` section of this
   // page, so the section nav reads the navigation actions directly. Where
@@ -1542,6 +1544,45 @@ describe('settings catalog completeness', () => {
     );
     expect(container.querySelector('#section-chat')).toBeNull();
     expect(container.querySelector('#section-appearance')).toBeTruthy();
+  });
+
+  // The theme and accent controls moved to the Appearance page. Their rows
+  // stayed, as links there, so a recorded link and the palette's
+  // `settings:theme` / `settings:accent-color` targets still reveal a row
+  // rather than reporting a target that no longer exists.
+  test.each([
+    ['theme', 'Theme'],
+    ['accent-color', 'Accent color'],
+  ])(
+    'a recorded highlight=%s link reveals its row, which opens Appearance',
+    async (highlight, title) => {
+      navigateMock.mockClear();
+      window.history.replaceState(
+        {},
+        '',
+        `/settings?view=appearance&highlight=${highlight}`,
+      );
+      const { container } = await renderSettings();
+
+      expect(
+        await screen.findByText(`${title} revealed in Settings.`),
+      ).toBeTruthy();
+      const row = container.querySelector<HTMLElement>(
+        `[data-catalog-id="${highlight}"]`,
+      )!;
+      fireEvent.click(
+        within(row).getByRole('button', { name: 'Open Appearance' }),
+      );
+      expect(navigateMock).toHaveBeenCalledWith('/appearance');
+    },
+  );
+
+  test.each([
+    ['catppuccin', 'theme'],
+    ['color theme', 'theme'],
+    ['accent', 'accent-color'],
+  ])('Settings search for "%s" still finds the %s row', (query, id) => {
+    expect(matchingSettingsRows(query).map((entry) => entry.id)).toContain(id);
   });
 
   test('focuses a deep-linked editable field in the Agent runs section', async () => {

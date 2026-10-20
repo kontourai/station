@@ -141,6 +141,16 @@ Chromium. A picker lists `COLOR_THEME_OPTIONS` from
 [color-themes.ts](../../src-ui/src/lib/color-themes.ts) and writes the
 `colorTheme`, `colorThemeFlavor` and `colorThemeAccent` device settings.
 
+The picker is the Appearance page (`/appearance`, listed in Customize and the
+command palette): [AppearancePage](../../src-ui/src/pages/AppearancePage.tsx)
+holds the light/dark mode, a gallery of every theme drawn from the catalog
+swatches for the current mode, the family's dark flavors, and its named
+accents (Station's own presets and custom colour when Station is selected).
+Choosing a family resets flavor and accent to that family's defaults, and
+choosing a named accent clears a custom `accentColor`, which would otherwise
+win. Settings keeps its Theme and Accent color rows as links to the page, so
+their search terms and `highlight=` links still land.
+
 ## White-label branding theme
 
 A branding provider's `getTheme()` answer is applied by

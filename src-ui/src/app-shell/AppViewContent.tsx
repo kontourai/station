@@ -69,6 +69,11 @@ const DeveloperView = lazy(() =>
     default: module.DeveloperView,
   })),
 );
+const AppearancePage = lazy(() =>
+  import('../pages/AppearancePage').then((module) => ({
+    default: module.AppearancePage,
+  })),
+);
 const NotificationsPage = lazy(() =>
   import('../pages/NotificationsPage').then((module) => ({
     default: module.NotificationsPage,
@@ -447,6 +452,9 @@ function AppViewContentBody({
   }
   if (currentView.type === 'profile') {
     return <ProfilePage />;
+  }
+  if (currentView.type === 'appearance') {
+    return <AppearancePage />;
   }
   if (currentView.type === 'notifications') {
     return <NotificationsPage />;
