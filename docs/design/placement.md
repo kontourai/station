@@ -1883,7 +1883,7 @@ server read beyond the pull request links Chat details already reads.
   omitted rather than worded as a state. There is no Kept row: no inventory
   read runs for the active chat until the inventory opens, and adding one per
   open chat to prefill a row is not cheap.
-- **Width decides, measured on the conversation surface.** The card shows
+- **Width decides, measured on the transcript column.** The card shows
   when the room beside it keeps the transcript's floor:
   the transcript's 640px floor (`TRANSCRIPT_MIN_WIDTH`, derived from the
   message column's rules in
@@ -1891,8 +1891,19 @@ server read beyond the pull request links Chat details already reads.
   which the Coding workbench's `CODING_TRANSCRIPT_MIN_WIDTH` also reads)
   plus the card's 280px column, so at least 920px
   ([sessionContextCardModel.ts](../../src-ui/src/components/chat-dock/sessionContextCardModel.ts)).
-  The room is the surface plus the card while it shows, so showing it cannot
-  flip the answer back. A measurement rather than a CSS container query
+  The room is the transcript column (the conversation surface less any
+  column beside the transcript in it) plus the card while it shows, so
+  showing it cannot flip the answer back. An open Chat inventory aside is
+  such a column: it leaves the surface's width unchanged but takes the
+  transcript's room, so the card folds behind its chip while the inventory
+  is open. Beside it the aside gives way first, down to its 16rem minimum,
+  so the transcript keeps its 640px floor wherever the surface has room for
+  both (#3882). Opening the inventory moves focus into it (the card's
+  Chat inventory button folds away with the card), Escape inside it closes
+  it, and closing returns focus to the control that opened it or, when
+  that is gone, to the chip that stands in for the card, then to the
+  card's Chat inventory button once the card has room again. A measurement
+  rather than a CSS container query
   because two places read the answer — the card in the body and the header
   items it replaces, which render into the region bar's slots outside the
   body — and both must read one derivation. A phone never shows it inline.
@@ -1908,7 +1919,9 @@ server read beyond the pull request links Chat details already reads.
   facts they show, so the dock's resize frames and stream renders do not
   re-render it. While it is folded,
   a chip after the project context names the ladder word and opens the same
-  rows as a popover anchored under it. On a phone the bar's edge reserve
+  rows as a popover anchored to it, on whichever side of the chip has more
+  room and capped to that room, so a bottom dock's chip opens upward
+  (#3888). On a phone the bar's edge reserve
   (96px) holds exactly its two 44px controls, and a third wrapped the bar
   onto a second line, so the sheet opens from a **This chat** row of the
   Chat actions sheet instead, and closing it returns focus to ⋯. The actions

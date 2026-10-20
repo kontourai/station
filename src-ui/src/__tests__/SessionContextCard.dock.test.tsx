@@ -46,6 +46,9 @@ const fixture = vi.hoisted(() => ({
   inbox: [] as unknown[],
   backgroundRunning: 0,
   surfaceWidth: 0,
+  // Width taken from the transcript's column by something beside it in the
+  // surface, as an open Chat inventory aside takes it (#3882).
+  besideTranscript: 0,
   authority: undefined as unknown,
   pullRequests: [] as unknown[],
   // The card chunk's state: `ready` renders the real card; `loading`
@@ -262,7 +265,9 @@ vi.mock('../components/chat/ShareIntakeController', () => ({
 // The transcript and the context meter are other owners' surfaces and need
 // providers this fragment does not mount; neither is under test here.
 vi.mock('../components/chat-dock/ChatDockContentArea', () => ({
-  ChatDockContentArea: () => <div data-testid="transcript" />,
+  ChatDockContentArea: () => (
+    <div className="chat-dock__content-area" data-testid="transcript" />
+  ),
 }));
 vi.mock('../components/conversation-stats/ConversationStats', () => ({
   ContextPercentage: () => null,
@@ -444,15 +449,23 @@ beforeEach(() => {
   fixture.inbox = [inboxRow({})];
   fixture.backgroundRunning = 2;
   fixture.surfaceWidth = 1200;
+  fixture.besideTranscript = 0;
   fixture.authority = undefined;
   fixture.pullRequests = [];
   fixture.cardChunk = 'ready';
   fixture.cardRowRenders = 0;
-  // The one layout fact the fit reads: the conversation surface's width.
+  // The one layout fact the fit reads: the transcript column's width. The
+  // surface is the dock body less the card's column while the card shows;
+  // the column is the surface less anything beside the transcript in it.
   HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
     const rect = realRect.call(this);
-    if (!this.classList.contains('chat-dock__conversation-surface'))
-      return rect;
+    const surface = fixture.surfaceWidth - (card() ? 280 : 0);
+    const width = this.classList.contains('chat-dock__conversation-surface')
+      ? surface
+      : this.classList.contains('chat-dock__content-area')
+        ? surface - fixture.besideTranscript
+        : null;
+    if (width === null) return rect;
     return {
       x: 0,
       y: 0,
@@ -460,8 +473,8 @@ beforeEach(() => {
       left: 0,
       bottom: rect.bottom,
       height: rect.height,
-      right: fixture.surfaceWidth,
-      width: fixture.surfaceWidth,
+      right: width,
+      width,
       toJSON: () => ({}),
     } as DOMRect;
   };
@@ -583,6 +596,25 @@ describe('session context card visibility follows the dock body width', () => {
     fixture.surfaceWidth = 920;
     renderDock();
     await waitFor(() => expect(card()).not.toBeNull());
+  });
+
+  test('#3882: a column opening beside the transcript (Chat inventory) folds the card though the surface keeps its width', async () => {
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    // The inventory aside takes 352px beside the transcript: 1200px less it
+    // is 848px, less than the 920px the transcript floor and the card need
+    // together, though the surface itself is unchanged.
+    fixture.besideTranscript = 352;
+    await resizeSurface(1200);
+    await waitFor(() => expect(card()).toBeNull());
+    expect(chip()).not.toBeNull();
+    expect(branchBadge()?.textContent).toContain('feature/parser');
+    // Closing it gives the room back.
+    fixture.besideTranscript = 0;
+    await resizeSurface(1200);
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(chip()).toBeNull();
   });
 });
 

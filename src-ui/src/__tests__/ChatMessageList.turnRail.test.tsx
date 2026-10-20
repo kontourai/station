@@ -120,9 +120,45 @@ function session(turns: number, tail = '') {
 
 type Session = ReturnType<typeof session>;
 
+/** The same chat with `turns` more user turns of older history loaded. */
+function withOlderTurns(base: Session, turns: number): Session {
+  const older = Array.from({ length: turns }, (_, turn) => [
+    {
+      id: `older-u-${turn}`,
+      role: 'user' as const,
+      content: `Older question ${turn}`,
+      timestamp: -100 + turn * 2,
+    },
+    {
+      id: `older-a-${turn}`,
+      role: 'assistant' as const,
+      turnId: `older-t-${turn}`,
+      content: `Older answer ${turn}`,
+      timestamp: -100 + turn * 2 + 1,
+    },
+  ]).flat();
+  return { ...base, messages: [...older, ...base.messages] };
+}
+
+/** Another chat of the same shape, whose prompts say so. */
+function anotherChat(turns: number): Session {
+  const base = session(turns);
+  return {
+    ...base,
+    id: 'another-chat',
+    messages: base.messages.map((message) => ({
+      ...message,
+      content: message.content.replace('Question', 'Other question'),
+    })),
+  };
+}
+
 function renderList(
   activeSession: Session,
-  extra: { hasOlderMessages?: boolean } = {},
+  extra: {
+    hasOlderMessages?: boolean;
+    scrollControlsTarget?: HTMLElement | null;
+  } = {},
 ) {
   const element = (next: Session, nextExtra = extra) => (
     <ChatMessageList
@@ -136,10 +172,15 @@ function renderList(
   );
   const view = render(element(activeSession));
   const scroller = screen.getByRole('log');
-  // Rows are 100px tall from the content top.
-  const geometry = { scrollHeight: activeSession.messages.length * 100 };
+  // Rows are 100px tall from the content top, in a column wide enough for
+  // the rail (it hides under 560px).
+  const geometry = {
+    scrollHeight: activeSession.messages.length * 100,
+    clientWidth: 800,
+  };
   Object.defineProperties(scroller, {
     clientHeight: { configurable: true, get: () => 400 },
+    clientWidth: { configurable: true, get: () => geometry.clientWidth },
     scrollHeight: { configurable: true, get: () => geometry.scrollHeight },
   });
   scroller.getBoundingClientRect = () =>
@@ -463,6 +504,132 @@ describe('the turn preview and announcements', () => {
   });
 });
 
+describe('#3862 follow-ups', () => {
+  test('another page of older history clears a stale announcement while older history remains', () => {
+    const first = session(10);
+    const { scroller, rerender } = renderList(first, {
+      hasOlderMessages: true,
+    });
+    fireEvent.click(tick(5));
+    settle(scroller);
+    step('Previous turn');
+    expect(announcement()).toBe('Loaded turn 5 of 10: Question 4');
+    // A second page of older history: still more beyond it, so the flag
+    // does not change, but every loaded position has moved.
+    rerender(withOlderTurns(first, 2), { hasOlderMessages: true });
+    expect(announcement()).toBe('');
+  });
+
+  test("a chat switch drops a hover preview instead of showing the new chat's turn at the old index", () => {
+    const { rerender } = renderList(session(30));
+    const rail = turnRail()!;
+    rail.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 600, height: 600 }) as DOMRect;
+    // 60 rows over 600px: turn 10's prompt (row 20) is at 200px.
+    fireEvent.pointerMove(rail, { clientY: 200, pointerId: 1 });
+    expect(screen.getByRole('tooltip').textContent).toContain('Question 10');
+    rerender(anotherChat(30));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  test('a column that shrinks under a resting pointer unmounts the preview, so Escape is not spent on it', () => {
+    const onUp = vi.fn();
+    function GoUp() {
+      useKeyboardShortcut(
+        'app.escapeUp',
+        'Escape',
+        [],
+        'Go up one level',
+        onUp,
+        true,
+        -100,
+      );
+      return null;
+    }
+    render(
+      <KeyboardShortcutsProvider>
+        <GoUp />
+        <ChatMessageList
+          activeSession={session(30)}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+          renderOverride={(message) => <>{message.content}</>}
+        />
+      </KeyboardShortcutsProvider>,
+    );
+    const scroller = screen.getByRole('log');
+    const geometry = { clientWidth: 800 };
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => geometry.clientWidth },
+    });
+    deliverResize(scroller);
+    const rail = turnRail()!;
+    rail.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 600, height: 600 }) as DOMRect;
+    fireEvent.pointerMove(rail, { clientY: 200, pointerId: 1 });
+    expect(screen.getByRole('tooltip')).toBeTruthy();
+
+    geometry.clientWidth = 400;
+    deliverResize(scroller);
+    expect(
+      document
+        .querySelector('.transcript-turn-rail-host')
+        ?.hasAttribute('data-unavailable'),
+    ).toBe(true);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onUp).toHaveBeenCalledTimes(1);
+  });
+
+  test('at the latest message a column too narrow for the rail keeps Previous turn in the composer slot', () => {
+    const slot = document.body.appendChild(document.createElement('div'));
+    try {
+      const { scroller } = renderList(session(10), {
+        scrollControlsTarget: slot,
+      });
+      // Wide: the rail is the navigation; nothing waits in the slot.
+      expect(within(slot).queryByRole('button')).toBeNull();
+
+      Object.defineProperty(scroller, 'clientWidth', {
+        configurable: true,
+        get: () => 390,
+      });
+      deliverResize(scroller);
+      const group = within(slot).getByRole('group', {
+        name: 'Turn navigation',
+      });
+      expect(
+        within(group)
+          .getAllByRole('button')
+          .map((button) => button.getAttribute('aria-label')),
+      ).toEqual(['Previous turn']);
+      const previous = within(group).getByRole('button', {
+        name: 'Previous turn',
+      });
+      act(() => previous.focus());
+      fireEvent.click(previous);
+      act(() => {
+        vi.advanceTimersByTime(32);
+      });
+      // At the end with the last prompt on screen: the turn before it.
+      expect(announcement()).toBe('Turn 9 of 10: Question 8');
+      // Away from the end the group grows to its full form around the
+      // same Previous button, which keeps focus.
+      expect(
+        within(slot)
+          .getAllByRole('button')
+          .map((button) => button.getAttribute('aria-label')),
+      ).toEqual(['Previous turn', 'Next turn', 'Scroll to bottom']);
+      expect(document.activeElement).toBe(previous);
+    } finally {
+      slot.remove();
+    }
+  });
+});
+
 describe('Escape with the app shortcut dispatcher', () => {
   /** App.tsx's "Go up one level": a window Escape at priority -100. */
   function GoUp({ onUp }: { onUp: () => void }) {
@@ -492,6 +659,12 @@ describe('Escape with the app shortcut dispatcher', () => {
         />
       </KeyboardShortcutsProvider>,
     );
+    const scroller = screen.getByRole('log');
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+    deliverResize(scroller);
     const rail = turnRail()!;
     rail.getBoundingClientRect = () =>
       ({ top: 0, bottom: 600, height: 600 }) as DOMRect;

@@ -330,8 +330,9 @@ retired names.
   background tasks and pending messages) and any linked pull requests; its
   footer opens Chat inventory. Each row shows a fact the dock already holds
   and opens a surface that already exists; it computes no state of its own.
-  It sits beside the transcript when the dock body has room for it and a
-  640px transcript, and is otherwise one tap away: a header chip on a desktop
+  It sits beside the transcript when the dock body has room for it, a 640px
+  transcript and anything else open beside the transcript (Chat inventory),
+  and is otherwise one tap away: a header chip on a desktop
   dock, a row of the Chat actions sheet on a phone. It is a Panel, not a
   pane, and is not persisted.
 

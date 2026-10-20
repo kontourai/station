@@ -2439,7 +2439,14 @@ facts, insertion-order IDs, authority inferred from replay, or restored liveness
 
 **Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
 mounts `ProjectTaskRoomProvider`, `ProjectTaskRoomPresence`, `TaskRoomEditorPane`
-and `ProjectTaskRoomConversation` through `WorkspacePaneHost`.
+and `ProjectTaskRoomConversation` through `WorkspacePaneHost`. The page's
+Kept answers section opens Basis panes into that host (Open Basis, Open Whole
+Task Basis); the room section wraps the host's open action it publishes to
+the page (panes opened inside the room use the host's own) so the pane is
+selected and its tab takes focus. Unless the room's tab strips were already
+in view, the tab's pane group is then scrolled to the top of the viewport,
+just below the page's sticky header so the focused tab is not covered
+(#3883).
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.
