@@ -4740,10 +4740,10 @@ describe('CodexAdapter', () => {
     const threadStart = processHandle.stdin.lines
       .map(parseLine)
       .find((line) => line.method === 'thread/start');
-    expect(threadStart.params).toMatchObject({
-      approvalPolicy: 'untrusted',
-      sandbox: 'workspace-write',
-    });
+    expect(threadStart.params).toMatchObject({ approvalPolicy: 'untrusted' });
+    // #3800: outside a host session workspace-write is the permission
+    // profile the spawn selects; a mode would replace it.
+    expect(threadStart.params).not.toHaveProperty('sandbox');
 
     // First turn carries no override — omit knobs so the thread keeps the
     // engine/session policy rather than resetting to Station's old Never
@@ -5040,10 +5040,9 @@ describe('CodexAdapter', () => {
           confinement,
           resume,
         );
-        expect(request?.params).toMatchObject({
-          approvalPolicy: 'never',
-          sandbox: 'workspace-write',
-        });
+        // #3800: the workspace sandbox is the spawn's permission profile.
+        expect(request?.params).toMatchObject({ approvalPolicy: 'never' });
+        expect(request?.params).not.toHaveProperty('sandbox');
         expect(configured.metadata).toMatchObject({
           sandbox: 'workspace-write',
           approvalMode: 'never',

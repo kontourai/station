@@ -108,9 +108,11 @@ rules below. Selecting it does not make Codex enforce those rules.
 
 Station's Codex Ask mode selects `approvalPolicy: untrusted` and
 `sandbox: workspace-write`; Auto selects `on-request` with the same sandbox.
-A `workspace` session with no Station mode sends only `sandbox:
-workspace-write` and no `approvalPolicy`, so Codex's own approval
-configuration governs it ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
+Outside a `host` session that sandbox is Station's `station-workspace`
+permission profile, selected on the app-server spawn, so the thread and turn
+requests carry no sandbox mode (#3800). A `workspace` session with no Station
+mode sends no `approvalPolicy`, so Codex's own approval configuration
+governs it ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
 These policies determine when Codex requests approval. They do not select who
 reviews a sandbox escalation. For a `host` session Station leaves Codex's
 `approvalsReviewer` unchanged on thread start, resume, native adoption by

@@ -51,10 +51,9 @@ describe('Codex reviewer inheritance', () => {
         () => calls().find((call) => call.method === method),
         method,
       );
-      expect(start.params).toMatchObject({
-        approvalPolicy: 'untrusted',
-        sandbox: 'workspace-write',
-      });
+      expect(start.params).toMatchObject({ approvalPolicy: 'untrusted' });
+      // #3800: workspace-write is the permission profile the spawn selects.
+      expect(start.params).not.toHaveProperty('sandbox');
       expect(start.params).not.toHaveProperty('approvalsReviewer');
       await emit(process, {
         id: start.id,
@@ -69,6 +68,10 @@ describe('Codex reviewer inheritance', () => {
             networkAccess: false,
             excludeTmpdirEnvVar: false,
             excludeSlashTmp: false,
+          },
+          activePermissionProfile: {
+            id: 'station-workspace',
+            extends: ':workspace',
           },
         },
       });

@@ -814,12 +814,23 @@ refused, because no confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
 A Codex session that does not run as `host` (started by you in person, or
-from a device you granted full access) ignores every
-`sandbox_workspace_write.writable_roots` setting, whether it comes from the
-folder's `.codex/config.toml` or your own Codex configuration, so its sandbox
-lets it write only inside its folder (and its temp directories). Station
-also starts it with `approvals_reviewer="user"`, whatever your configuration
-sets, so a model never approves its sandbox escalations.
+from a device you granted full access) runs under a Codex permission profile
+Station defines, `station-workspace`. Its sandbox lets it write only inside
+its folder and its temp directories, and on macOS it cannot create, change or
+read any `.codex` or `.claude` directory in the folder, at any depth, which
+other sessions there would load. It ignores every
+`sandbox_workspace_write.writable_roots` setting and every `sandbox_mode` or
+`default_permissions` setting, whether from the folder's configuration or
+your own. It also ignores `sandbox_workspace_write.network_access`: to give
+these sessions network, set `[permissions.station-workspace.network]
+enabled = true` in your own Codex configuration. A `.codex` the repository
+already contains still applies, as the top-level one does. If Codex does not
+report the profile applied (a Codex version without permission profiles),
+a session that must be confined is refused, and any other is recorded as
+`configured-but-failed`. On Linux, Codex cannot deny a `.codex` the session
+creates later, so that protection is macOS-only. Station also starts these
+sessions with `approvals_reviewer="user"`, whatever your configuration sets,
+so a model never approves their sandbox escalations.
 
 Two boundaries to know: credential-profile login/enrolment children do not
 receive the connection's `env`; they use the selected profile's config home

@@ -199,7 +199,12 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     expect(capturedArgs).toEqual([
       '-c',
       'mcp_servers.station-control.url="http://127.0.0.1:4321/mcp/station-control?token=minted-for-thread-e2e-codex"',
-      // No confinement given: confined, so its writable roots are pinned (#3800).
+      // No confinement given: confined, so it runs under Station's permission
+      // profile with its writable roots pinned (#3800).
+      '-c',
+      'default_permissions="station-workspace"',
+      '-c',
+      'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={"**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
       '-c',
       'sandbox_workspace_write.writable_roots=[]',
       '-c',

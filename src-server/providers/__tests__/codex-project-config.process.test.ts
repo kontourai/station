@@ -1,6 +1,8 @@
 /**
  * #3800: a `.codex/config.toml` planted inside the workspace must not widen
- * the sandbox of a session that is not started as `host`.
+ * the sandbox of a session that is not started as `host`, and such a session
+ * cannot plant one: it runs under Station's permission profile, whose deny
+ * rules the real Codex sandbox enforces.
  *
  * Drives the real `CodexAdapter` start against the real `codex app-server`
  * (whatever `codex` this host resolves), with a fresh `CODEX_HOME`, and reads
@@ -8,7 +10,8 @@
  * control: the same planted file does widen an operator session, which proves
  * the plant reached Codex. Hosts without a `codex` binary skip loudly.
  */
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ConfinementPlan } from '@kontourai/station-contracts/execution-confinement';
 import type {
@@ -20,6 +23,10 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { createCodexProcess } from '../adapters/codex-adapter-transport.js';
+import {
+  codexConfinementConfigArgs,
+  STATION_CODEX_PERMISSION_PROFILE,
+} from '../adapters/codex-confinement.js';
 import { findCliBinaryAsync } from '../auth/cli-auth.js';
 
 const codexBinary = await findCliBinaryAsync('codex');
@@ -46,6 +53,14 @@ interface ReportedSandbox {
   writableRoots?: string[];
 }
 
+interface ThreadStartReport {
+  sandbox?: ReportedSandbox;
+  approvalsReviewer?: unknown;
+  approvalPolicy?: unknown;
+  activePermissionProfile?: { id?: string } | null;
+  instructionSources?: string[];
+}
+
 describe.skipIf(!codexBinary)(
   `a planted workspace Codex config under the real engine${codexBinary ? '' : ' (SKIPPED: no codex binary)'}`,
   () => {
@@ -62,6 +77,7 @@ describe.skipIf(!codexBinary)(
       for (const dir of [join(workspace, '.git'), outside, codexHome])
         mkdirSync(dir, { recursive: true });
       mkdirSync(join(workspace, '.codex'));
+      writeFileSync(join(workspace, 'AGENTS.md'), 'Workspace instructions.\n');
       // What a confined agent could plant: a root outside its workspace.
       writeFileSync(
         join(workspace, '.codex', 'config.toml'),
@@ -75,8 +91,7 @@ describe.skipIf(!codexBinary)(
     });
 
     async function startAt(confinement: StationConfinement) {
-      let reported: ReportedSandbox | undefined;
-      let reviewer: unknown;
+      let report: ThreadStartReport | undefined;
       let threadStartId: number | undefined;
       const adapter = new CodexAdapter({
         getConnectionEnv: async () => ({ CODEX_HOME: codexHome }),
@@ -104,13 +119,8 @@ describe.skipIf(!codexBinary)(
               buffered = buffered.slice(index + 1);
               try {
                 const message = JSON.parse(line);
-                if (
-                  threadStartId !== undefined &&
-                  message.id === threadStartId
-                ) {
-                  reported = message.result?.sandbox;
-                  reviewer = message.result?.approvalsReviewer;
-                }
+                if (threadStartId !== undefined && message.id === threadStartId)
+                  report = message.result;
               } catch {
                 // A partial or non-JSON line.
               }
@@ -144,8 +154,9 @@ describe.skipIf(!codexBinary)(
       await adapter.stopAll();
       controller.abort();
       return {
-        reported,
-        reviewer,
+        reported: report?.sandbox,
+        reviewer: report?.approvalsReviewer,
+        report,
         record: started?.metadata?.stationConfinementRecord as
           | { posture?: string }
           | undefined,
@@ -167,6 +178,123 @@ describe.skipIf(!codexBinary)(
       expect(run.record?.posture).toBe('confined');
       // A model never approves its escalations: a person does.
       expect(run.reviewer).toBe('user');
+      // It runs under Station's permission profile, with the workspace's
+      // instructions and the approval policy Station sent.
+      expect(run.report?.activePermissionProfile?.id).toBe('station-workspace');
+      expect(run.report?.instructionSources).toContain(
+        join(workspace, 'AGENTS.md'),
+      );
+      expect(run.report?.approvalPolicy).toBe('on-request');
     }, 60_000);
+
+    test('control: a host session is not under the profile', async () => {
+      const run = await startAt('host');
+      expect(run.report?.activePermissionProfile?.id).not.toBe(
+        'station-workspace',
+      );
+    }, 60_000);
+  },
+);
+
+const darwin = process.platform === 'darwin';
+if (codexBinary && !darwin)
+  console.warn(
+    `ENFORCEMENT UNVERIFIED (#3800): Codex expands deny globs from a snapshot before the sandbox starts on ${process.platform}, so a .codex created later is not denied there; the permission profile probe runs only on macOS.`,
+  );
+
+/**
+ * The profile Station spawns a non-host session with, applied by the real
+ * Codex sandbox (`codex sandbox`, the same policy a turn's commands run
+ * under) to a workspace holding a checked-in nested `.codex`. The
+ * `:workspace` control is the confinement before #3800: it allows the
+ * nested writes, so a refusal under Station's profile comes from its deny
+ * rules, not from the probe.
+ */
+describe.skipIf(!codexBinary || !darwin)(
+  `Station's permission profile under the real Codex sandbox${codexBinary && darwin ? '' : ' (SKIPPED: needs codex on macOS)'}`,
+  () => {
+    const makeTempDir = trackTempDirs({ lifetime: 'file' });
+    const PROBES = {
+      nestedCodex: 'mkdir -p sub/.codex && echo x > sub/.codex/config.toml',
+      deepCodex:
+        'mkdir -p sub/a/b/.codex && echo x > sub/a/b/.codex/config.toml',
+      renamedIntoCodex:
+        'mkdir -p sub/stage && echo x > sub/stage/config.toml && mv sub/stage sub/.codex',
+      checkedInNestedCodex: 'echo "# planted" >> pre/.codex/config.toml',
+      nestedClaude:
+        'mkdir -p sub/.claude && echo "{}" > sub/.claude/settings.json',
+      projectFile: 'mkdir -p sub/new && echo ok > sub/new/file.txt',
+    } as const;
+
+    function probeUnder(profileArgs: string[]): Record<string, boolean> {
+      const root = realpathSync(makeTempDir('codex-profile-'));
+      const workspace = join(root, 'workspace');
+      const codexHome = join(root, 'codex-home');
+      for (const dir of [
+        join(workspace, '.git'),
+        join(workspace, 'pre', '.codex'),
+        codexHome,
+      ])
+        mkdirSync(dir, { recursive: true });
+      writeFileSync(join(workspace, 'pre', '.codex', 'config.toml'), '# ok\n');
+      const allowed: Record<string, boolean> = {};
+      for (const [name, script] of Object.entries(PROBES)) {
+        const result = spawnSync(
+          codexBinary!,
+          [
+            'sandbox',
+            ...profileArgs,
+            '-C',
+            workspace,
+            '--',
+            'sh',
+            '-c',
+            script,
+          ],
+          {
+            cwd: workspace,
+            env: { ...process.env, CODEX_HOME: codexHome },
+            encoding: 'utf8',
+            timeout: 30_000,
+          },
+        );
+        if (result.error) throw result.error;
+        allowed[name] = result.status === 0;
+      }
+      allowed.checkedInUnchanged =
+        readFileSync(
+          join(workspace, 'pre', '.codex', 'config.toml'),
+          'utf8',
+        ) === '# ok\n';
+      return allowed;
+    }
+
+    test("Station's profile refuses engine configuration at any depth and still allows project writes", () => {
+      expect(STATION_CODEX_PERMISSION_PROFILE).toBe('station-workspace');
+      const allowed = probeUnder([
+        '-P',
+        STATION_CODEX_PERMISSION_PROFILE,
+        ...codexConfinementConfigArgs('workspace'),
+      ]);
+      expect(allowed).toEqual({
+        nestedCodex: false,
+        deepCodex: false,
+        renamedIntoCodex: false,
+        checkedInNestedCodex: false,
+        nestedClaude: false,
+        projectFile: true,
+        checkedInUnchanged: true,
+      });
+    }, 120_000);
+
+    test("control: Codex's own workspace profile allows the nested writes", () => {
+      const allowed = probeUnder(['-P', ':workspace']);
+      expect(allowed).toMatchObject({
+        nestedCodex: true,
+        checkedInNestedCodex: true,
+        projectFile: true,
+        checkedInUnchanged: false,
+      });
+    }, 120_000);
   },
 );

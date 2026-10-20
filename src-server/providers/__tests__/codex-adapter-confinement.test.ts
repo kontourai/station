@@ -104,6 +104,21 @@ async function waitForCall(
   throw new Error(`Timed out waiting for ${method}.`);
 }
 
+async function waitForNthCall(
+  process: FakeCodexProcess,
+  method: string,
+  index: number,
+): Promise<any> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const match = calls(process).filter((call) => call.method === method)[
+      index
+    ];
+    if (match) return match;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`Timed out waiting for ${method} #${index}.`);
+}
+
 function respond(
   process: FakeCodexProcess,
   request: { id: string | number },
@@ -136,9 +151,19 @@ async function start(input: {
   plan?: ConfinementPlan;
   /**
    * Codex's reported sandbox; `null` removes it from the response. A
-   * function answers from the request Station sent.
+   * function answers from the request Station sent, and whether Codex
+   * applied Station's permission profile.
    */
-  reported?: unknown | ((params: Record<string, unknown>) => unknown);
+  reported?:
+    | unknown
+    | ((params: Record<string, unknown>, profiled: boolean) => unknown);
+  /**
+   * Codex's reported `activePermissionProfile`; `null` reports none. Absent:
+   * what codex-cli 0.162.1 reports (EXECUTED), Station's profile when the
+   * spawn selects it and the request sends no `sandbox` mode (a mode
+   * replaces it), else none.
+   */
+  reportedProfile?: unknown;
   /**
    * Codex's reported approval policy. Absent: what Station sent, as Codex
    * echoes an accepted request (the capture's own `never`, when it sent
@@ -200,9 +225,18 @@ async function start(input: {
     input.reportedApprovalPolicy ??
     request.params.approvalPolicy ??
     CAPTURED.approvalPolicy;
+  const profiled =
+    (spawnArgs ?? []).includes('default_permissions="station-workspace"') &&
+    request.params.sandbox === undefined;
+  result.activePermissionProfile =
+    input.reportedProfile !== undefined
+      ? input.reportedProfile
+      : profiled
+        ? { id: 'station-workspace', extends: ':workspace' }
+        : null;
   const reported =
     typeof input.reported === 'function'
-      ? input.reported(request.params)
+      ? input.reported(request.params, profiled)
       : input.reported;
   if (reported === null) delete result.sandbox;
   else if (reported !== undefined) result.sandbox = reported;
@@ -219,7 +253,15 @@ async function start(input: {
     await adapter.stopAll();
     controller.abort();
   };
-  return { outcome, request, sessionStarted, process, spawnArgs, cleanup };
+  return {
+    outcome,
+    request,
+    sessionStarted,
+    process,
+    spawnArgs,
+    adapter,
+    cleanup,
+  };
 }
 
 function threadIdOf(result: Record<string, unknown>): unknown {
@@ -247,7 +289,9 @@ describe('#2494: Codex confinement posture is read back from its response', () =
       plan: REQUIRED,
     });
     expect(run.outcome).toEqual({ ok: true });
-    expect(run.request.params.sandbox).toBe('workspace-write');
+    // #3800: the spawn's permission profile is the sandbox; a mode would
+    // replace it.
+    expect(run.request.params).not.toHaveProperty('sandbox');
     expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual({
       level: 'os-profile',
       required: true,
@@ -279,8 +323,9 @@ describe('#2494: Codex confinement posture is read back from its response', () =
         plan: REQUIRED,
         reported,
       });
-      // Station asked for the sandbox: what it SENT would say confined.
-      expect(run.request.params.sandbox).toBe('workspace-write');
+      // Station engaged the sandbox (its permission profile): what it
+      // requested would say confined.
+      expect(run.request.params).not.toHaveProperty('sandbox');
       expect(run.outcome.ok).toBe(false);
       const error = (run.outcome as { error: unknown }).error;
       expect(error).toBeInstanceOf(ConfinementRefusedError);
@@ -341,7 +386,7 @@ describe('#2494: Codex confinement posture is read back from its response', () =
       plan: NOT_REQUIRED_WORKSPACE,
       reported: { type: 'dangerFullAccess' },
     });
-    expect(run.request.params.sandbox).toBe('workspace-write');
+    expect(run.request.params).not.toHaveProperty('sandbox');
     expect(run.outcome).toEqual({ ok: true });
     expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual({
       level: 'os-profile',
@@ -493,8 +538,11 @@ describe('#2494: Codex confinement posture is read back from its response', () =
      * applies a sandbox Station asks for at thread level, and its own
      * configuration otherwise.
      */
-    const operatorConfigSandbox = (params: Record<string, unknown>) =>
-      params.sandbox === 'workspace-write'
+    const operatorConfigSandbox = (
+      params: Record<string, unknown>,
+      profiled: boolean,
+    ) =>
+      params.sandbox === 'workspace-write' || profiled
         ? CAPTURED.sandbox
         : { type: 'dangerFullAccess' };
 
@@ -502,7 +550,7 @@ describe('#2494: Codex confinement posture is read back from its response', () =
       ['start', false],
       ['resume', true],
     ] as const)(
-      'a workspace %s Station sent no mode to asks Codex for workspace-write, leaves approvals to Codex, and runs confined',
+      'a workspace %s Station sent no mode to runs under its permission profile, leaves approvals to Codex, and runs confined',
       async (label, resume) => {
         const run = await start({
           threadId: `codex-config-never-${label}`,
@@ -512,7 +560,7 @@ describe('#2494: Codex confinement posture is read back from its response', () =
           reported: operatorConfigSandbox,
           resume,
         });
-        expect(run.request.params.sandbox).toBe('workspace-write');
+        expect(run.request.params).not.toHaveProperty('sandbox');
         expect(run.request.params).not.toHaveProperty('approvalPolicy');
         expect(run.outcome).toEqual({ ok: true });
         expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual({
@@ -531,7 +579,7 @@ describe('#2494: Codex confinement posture is read back from its response', () =
       ['start', false],
       ['resume', true],
     ] as const)(
-      'a workspace %s Codex still reports wider than the workspace-write Station asked for, at never, is refused',
+      'a workspace %s Codex still reports wider than the profile Station selected, at never, is refused',
       async (label, resume) => {
         const run = await start({
           threadId: `codex-config-never-wider-${label}`,
@@ -541,7 +589,7 @@ describe('#2494: Codex confinement posture is read back from its response', () =
           reported: { type: 'dangerFullAccess' },
           resume,
         });
-        expect(run.request.params.sandbox).toBe('workspace-write');
+        expect(run.request.params).not.toHaveProperty('sandbox');
         expect(run.outcome.ok).toBe(false);
         expect(
           (run.outcome as { error: ConfinementRefusedError }).error.code,
@@ -610,6 +658,10 @@ describe('#2494: Codex confinement posture is read back from its response', () =
 describe('#3800: workspace configuration cannot widen a confined Codex sandbox', () => {
   const PIN = [
     '-c',
+    'default_permissions="station-workspace"',
+    '-c',
+    'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={"**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
+    '-c',
     'sandbox_workspace_write.writable_roots=[]',
     '-c',
     'approvals_reviewer="user"',
@@ -643,6 +695,109 @@ describe('#3800: workspace configuration cannot widen a confined Codex sandbox',
     expect(run.spawnArgs).toEqual(PIN);
     await run.cleanup();
   });
+
+  test.each([
+    ['reports no permission profile (a Codex without profiles)', null],
+    [
+      "reports Codex's own workspace profile instead",
+      { id: ':workspace', extends: null },
+    ],
+  ])(
+    'a required start whose Codex %s is refused, naming the profile',
+    async (_label, reportedProfile) => {
+      const run = await start({
+        threadId: `unprofiled-${String(reportedProfile && (reportedProfile as { id: string }).id)}`,
+        approvalMode: 'never',
+        confinement: 'workspace',
+        plan: REQUIRED,
+        reportedProfile,
+      });
+      // The legacy shape alone would read as confined.
+      expect(CAPTURED.sandbox).toMatchObject({
+        type: 'workspaceWrite',
+        writableRoots: [],
+      });
+      expect(run.outcome.ok).toBe(false);
+      const error = (run.outcome as { error: ConfinementRefusedError }).error;
+      expect(error.code).toBe('confinement_not_observed');
+      expect(error.message).toContain('station-workspace');
+      expect(run.sessionStarted).toBeUndefined();
+      expect(run.process.killed).toBe(true);
+      await run.cleanup();
+    },
+  );
+
+  test('an unrequired start without the profile is recorded configured-but-failed, and still runs', async () => {
+    const run = await start({
+      threadId: 'unprofiled-auto',
+      approvalMode: 'auto',
+      confinement: 'workspace',
+      plan: NOT_REQUIRED_WORKSPACE,
+      reportedProfile: null,
+    });
+    expect(run.outcome).toEqual({ ok: true });
+    expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual(
+      expect.objectContaining({
+        posture: 'configured-but-failed',
+        required: false,
+      }),
+    );
+    await run.cleanup();
+  });
+
+  test('a read-only review start still sends read-only, which needs no profile', async () => {
+    const process = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => process as never,
+    });
+    const started = adapter.startSession({
+      provider: 'codex',
+      threadId: 'review-read-only',
+      cwd: '/workspace/repo',
+      modelId: 'gpt-5.5',
+      confinement: 'workspace',
+      confinementPlan: REQUIRED,
+      reviewIsolation: { workspaceAccess: 'read-only' },
+    } as ProviderSessionStartInput);
+    respond(process, await waitForCall(process, 'initialize'), {});
+    const request = await waitForCall(process, 'thread/start');
+    expect(request.params.sandbox).toBe('read-only');
+    const result = structuredClone(CAPTURED);
+    result.approvalPolicy = 'never';
+    result.sandbox = { type: 'readOnly', networkAccess: false };
+    result.activePermissionProfile = null;
+    respond(process, request, result);
+    await expect(started).resolves.toBeDefined();
+    await adapter.stopAll();
+  });
+
+  test.each([
+    ['auto', 'never', 'ask'],
+    ['never', 'auto', 'never'],
+  ] as const)(
+    'a workspace session under the profile changes modes across turns (%s, then %s, %s) without ever sending a sandboxPolicy',
+    async (first, ...later) => {
+      const run = await start({
+        threadId: `profile-turns-${first}`,
+        approvalMode: first,
+        confinement: 'workspace',
+        plan: NOT_REQUIRED_WORKSPACE,
+      });
+      expect(run.outcome).toEqual({ ok: true });
+      for (const [index, mode] of [first, ...later].entries()) {
+        const turn = run.adapter.sendTurn({
+          threadId: `profile-turns-${first}`,
+          input: 'go',
+          modelOptions: { approvalMode: mode },
+        });
+        const request = await waitForNthCall(run.process, 'turn/start', index);
+        expect(request.params).not.toHaveProperty('sandboxPolicy');
+        respond(run.process, request, { turn: { id: `turn-${index}` } });
+        await turn;
+      }
+      await run.cleanup();
+    },
+  );
 
   test("a host session keeps its workspace's configuration", async () => {
     const run = await start({

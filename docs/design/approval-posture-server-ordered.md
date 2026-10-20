@@ -794,8 +794,8 @@ Recovery replay sends a turn, not a start, so it records nothing new.
 
 **Codex's own sandbox** is the first provider
 ([codex-confinement.ts](../../src-server/providers/adapters/codex-confinement.ts)).
-Its posture comes from the `sandbox` of Codex's `thread/start`, `thread/resume`
-or `thread/fork` response:
+Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
+`thread/start`, `thread/resume` or `thread/fork` response:
 
 - `readOnly` is `confined`. `workspaceWrite` is `confined` only when every
   extra writable root it lists lies inside the resolved workspace or
@@ -803,7 +803,13 @@ or `thread/fork` response:
   or another checkout makes it `configured-but-failed`. Codex's implicit
   roots (the cwd, `TMPDIR` and `/tmp`, governed by its exclude flags) are part
   of what `workspaceWrite` means and are accepted. Network access is not
-  judged. Paths are compared lexically; symlinks are not resolved.
+  judged. Paths are compared lexically; symlinks are not resolved. A session
+  that is not `host` and sent no sandbox mode (it relies on Station's
+  permission profile, below) is `confined` only when Codex also reports
+  `activePermissionProfile.id` `station-workspace`. Without it (a Codex
+  without permission profiles, or one whose configuration replaced it) it is
+  `configured-but-failed`, and a required start is refused with a reason that
+  names the profile.
   - **Intended fail-closed change:** a required `workspace` `never` session
     on a host whose operator configured extra Codex `writable_roots` outside
     the workspace (for example `~/.cargo`) is refused. The refusal lists
@@ -818,32 +824,72 @@ or `thread/fork` response:
   `no-mechanism`, recorded as policy.
 - **Workspace configuration cannot widen it (#3800).** Codex merges every
   `.codex/config.toml` from the project root down to the cwd over the user's
-  configuration and honours `sandbox_workspace_write.writable_roots` from
-  it, so a planted file widened the next session's sandbox. Every session not
-  started as `host` therefore spawns `codex app-server` with
-  `-c sandbox_workspace_write.writable_roots=[]` and
-  `-c approvals_reviewer="user"`, after the connection's own arguments. A
-  `-c` override outranks every file layer and applies to every configuration
-  load of that process, so rewriting the file mid-session changes nothing.
-  The user's own extra roots and reviewer are overridden for these sessions
-  too: with `auto_review` a model, not a person, would approve a sandbox
-  escalation. Marking the project untrusted would ignore the whole project
+  configuration. Station starts sessions in subdirectories, so a file a
+  confined session wrote (`sub/.codex/config.toml`) configured every later
+  session started in `sub`: its `writable_roots` widened the sandbox and its
+  `mcp_servers` commands ran outside it at thread start. Every session not
+  started as `host` therefore spawns `codex app-server`, after the
+  connection's own arguments, with:
+  - `-c default_permissions="station-workspace"` and a
+    `permissions.station-workspace` profile that extends Codex's `:workspace`
+    (the workspace roots and temp writable, the `.codex` at a root read-only)
+    and denies `**/.codex`, `**/.codex/**`, `**/.claude` and `**/.claude/**`
+    under every workspace root. Codex accepts only `deny` for a glob, so the
+    agent cannot read these directories either; Codex's own configuration
+    loading runs outside the sandbox and is unaffected. The subtree patterns
+    are needed: the bare directory pattern refuses creating a `.codex` but
+    not writing inside a checked-in one.
+  - `-c sandbox_workspace_write.writable_roots=[]`, for a thread not under
+    the profile (a `read-only` review start, or a Codex that does not apply
+    it), whose tightening restores the reported workspace baseline.
+  - `-c approvals_reviewer="user"`: with `auto_review` a model, not a person,
+    would approve a sandbox escalation.
+
+  A `-c` override outranks every file layer and applies to every
+  configuration load of that process (start, resume, fork): a user or
+  project `sandbox_mode = "danger-full-access"` or
+  `default_permissions = ":danger-full-access"` still reports the profile.
+  A thread-level `sandbox` mode or a turn-level `sandboxPolicy` replaces the
+  profile for that and every later turn, so Station sends neither for
+  `workspace-write` outside `host` (`codexThreadSandboxRequest`,
+  `planCodexTurnSandbox`). `read-only` (review isolation) is still sent: it is
+  narrower. Marking the project untrusted would ignore the whole project
   layer, but Codex then also drops the workspace's `AGENTS.md` and changes
-  its default approval policy, so it is not used.
-  - **Residual, not closed.** Every other project key still applies to a
-    workspace Codex session, including MCP server commands, which Codex runs
-    outside its sandbox, and network access (which Station does not judge;
-    Seatbelt leaves the network open too). Codex's own sandbox keeps only the
-    top-level `.codex` of its writable root read-only, so a confined Codex
-    session can write a `.codex` in a subdirectory, and a later session
-    started in that subdirectory loads it. The Seatbelt profile denies every
-    `.codex` (below), so a confined Claude session cannot plant one.
+  its default approval policy, so it is not used. Verified against
+  codex-cli 0.162.1 on macOS with live turns: nested and deeper `.codex`
+  writes, a rename or symlink into `.codex`, writes inside a checked-in
+  nested `.codex`, and a nested `.claude` are refused; project and temp
+  writes are allowed; `AGENTS.md` loads; the approval policy is the one sent.
+  - **Network.** The profile ignores the legacy
+    `sandbox_workspace_write.network_access`; Station does not set network.
+    An operator gives a confined session network with
+    `[permissions.station-workspace.network] enabled = true` in their own
+    Codex configuration (tables merge across layers).
+  - **Checked-in configuration is still honoured.** A `.codex` the
+    repository already contains, at any depth, is repository content with
+    the same trust as the top-level one: its `mcp_servers` still run, and its
+    keys merge into the profile. A writable root it adds outside the
+    workspace still shows in `writableRoots` and is refused above. What the
+    profile closes is the agent planting or changing one.
+  - **Residual: Linux.** Outside macOS, Codex expands a deny glob from a
+    snapshot of existing paths before the sandbox starts. A `.codex` the
+    agent creates later is not denied there, so the nested-write path stays
+    open on Linux (EXECUTED, codex-cli 0.160.0 with bubblewrap: creating
+    `sub/.codex/config.toml` was allowed; writing an existing checked-in
+    file was refused). The live probe runs only on macOS and warns
+    elsewhere.
+  - Every other project key from a checked-in file still applies, including
+    network access, which Station does not judge (Seatbelt leaves the
+    network open too). The Seatbelt profile denies every `.codex` (below),
+    so a confined Claude session cannot plant one either.
 - A required start that is not reported `confined` is refused
   (`confinement_not_observed`). The refusal runs before `session.started` is
   published (the `SessionStartRefusedError` contract depends on that), and the
   process is stopped.
 - Codex labels the response `sandbox` field legacy in favour of
-  `activePermissionProfile`; reading the profile is a follow-up.
+  `activePermissionProfile`. Station reads both: the profile says Station's
+  deny rules are in force, the legacy shape says how wide the writable roots
+  are.
 
 **The receipt.** `ExecutionResolutionReceipt` is built before the session
 exists, so it cannot carry the engine's reported posture. Its `confinement`
