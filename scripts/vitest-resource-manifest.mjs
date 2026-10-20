@@ -587,6 +587,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/documentation-value-bindings.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
+  // Runs the dead-code ceiling CLI with the real fallow analyzer against a
+  // disposable project.
+  'scripts/__tests__/fallow-ceiling.test.ts',
   // Runs the hygiene report CLI as a child against disposable Git trees and a
   // fake `gh` child.
   'scripts/__tests__/hygiene-report.test.ts',

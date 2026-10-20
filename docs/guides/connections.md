@@ -676,6 +676,33 @@ When editing a Station agent, choose your Ollama model from the agent's model pi
 Codex, Claude Code, OpenCode, Kiro, and similar agent apps are Engines. Use
 **Connections → Engines → Add engine** to add one.
 
+Station knows these engines by name. A detected engine is one whose command is
+on this computer's `PATH`; detection does not mean it is signed in or ready.
+
+| Engine | Command Station looks for | How Station runs it |
+| --- | --- | --- |
+| Claude Code | `claude` | Native adapter; startup can adopt it |
+| Codex | `codex` | Native adapter; startup can adopt it |
+| Muse | `muse` | Native adapter; startup can adopt it |
+| Kiro CLI | `kiro-cli acp` | Agent Client Protocol |
+| Cursor | `cursor-agent acp` | Agent Client Protocol |
+| OpenCode | `opencode acp` | Agent Client Protocol |
+| Goose | `goose acp` | Agent Client Protocol |
+| Qwen Code | `qwen --acp` | Agent Client Protocol |
+| GitHub Copilot | `copilot --acp` | Agent Client Protocol |
+| Grok Build | `grok agent stdio` | Agent Client Protocol |
+| Mistral Vibe | `vibe-acp` | Agent Client Protocol |
+
+The native engines come from
+[startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
+and the Agent Client Protocol entries from the built-in list in
+[defaults.ts](../../src-server/providers/llm/defaults.ts). Any other command
+that speaks the Agent Client Protocol can be added with the custom option. What
+each engine can receive from Station (system prompt, tools, skills, images) is
+recorded per engine in the
+[engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts);
+the [ACP guide](acp.md) covers protocol details.
+
 1. Select a detected or supported engine, or choose the custom option.
 2. For custom setup, enter a name and command. Command arguments, working directory, and other
    raw setup details stay under **Advanced**.

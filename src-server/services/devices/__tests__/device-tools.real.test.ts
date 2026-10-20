@@ -12,7 +12,7 @@ import { createDeviceToolRunner, DeviceToolsService } from '../device-tools.js';
  * Every case SKIPS, naming why, unless BOTH:
  *
  * - `STATION_REAL_DEVICE_HUB_URL` names a running expo-device-hub (see
- *   experiments/mobile-device/README.md), and
+ *   docs/guides/mobile-device-workspace.md), and
  * - an iOS simulator is already booted (this test never boots one).
  *
  * On a Linux runner neither exists and every case reports a skip.

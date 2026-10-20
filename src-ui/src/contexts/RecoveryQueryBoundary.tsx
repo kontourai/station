@@ -215,7 +215,7 @@ export function RecoveryQueryBoundary({
     // a connection-only ambient dismissal here would miss same-origin
     // authority changes and mis-stamp late callbacks from the retired
     // authority as current. Full toast/notification/action isolation is a
-    // separate #481/106 follow-up; this slice preserves baseline behavior.
+    // separate #481/106 follow-up; this boundary keeps the prior behavior.
   }, [client, switchTuple]);
 
   return (

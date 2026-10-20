@@ -213,7 +213,7 @@ const CLAUDE_RUNTIME_ID = 'claude';
  * archive#896 wave 2: codex's app-home opt-in (docs/design/
  * connections-onboarding.md §1.1) — mirrors claude's `useAppHome`
  * field. Codex does not get `provideSkills`: skills stay claude/
- * workspace-channel only this wave.
+ * workspace-channel only for now.
  */
 const CODEX_RUNTIME_ID = 'codex';
 
@@ -251,7 +251,7 @@ function runtimeDefaultConfig(
       : {}),
     // archive#896 wave 2: codex gets the same app-home opt-in as claude,
     // but never `provideSkills` (skills stay claude/workspace-channel only
-    // this wave).
+    // for now).
     ...(id === CODEX_RUNTIME_ID ? { useAppHome: false } : {}),
   };
 }
@@ -763,12 +763,12 @@ export function buildACPCapabilityInventory({
  * evidence a surface explains and the evidence a capability is derived from
  * are one record.
  *
- * Keyed on the HANDSHAKE, not on the presence of capabilities (review
- * finding). A successful `initialize` that carried no `agentCapabilities` at
- * all — legal in the ACP SDK, and not defaulted on the client path — is a
- * real observation whose answer is `mcpHttp: false`. Keying on capability
- * presence would report a CLI Station has connected to, handshaked with, and
- * created a session on as "not checked yet", permanently and unfixably.
+ * Keyed on the HANDSHAKE, not on the presence of capabilities. A successful
+ * `initialize` that carried no `agentCapabilities` at all — legal in the ACP
+ * SDK, and not defaulted on the client path — is a real observation whose
+ * answer is `mcpHttp: false`. Keying on capability presence would report a CLI
+ * Station has connected to, handshaked with, and created a session on as "not
+ * checked yet", permanently and unfixably.
  *
  * `undefined` therefore means exactly one thing: no handshake has ever
  * succeeded for this connection. That is NOT `{ mcpHttp: false }` — "never

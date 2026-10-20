@@ -201,7 +201,7 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
       const { request } = createHarness();
       const response = await request(path, method, READ_ONLY_CREDENTIAL);
       expect(response.status, `${method} ${path}`).toBe(403);
-      // archive#1097 review round 2: HEAD only entered this operate-tier
+      // archive#1097: HEAD only entered this operate-tier
       // sweep once the /api/environments/ssh/sessions leaf override added
       // the table's first HEAD:orchestration:operate rule — every prior
       // operate-tier case was a POST/PUT/PATCH/DELETE, which all carry a
@@ -301,7 +301,7 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
     }
   });
 
-  // archive#1097 review round 2 (HIGH): a dedicated, literal-path exercise
+  // archive#1097: a dedicated, literal-path exercise
   // of the cross-station-reads tightening — deliberately NOT via `/probe`
   // like the table-driven sweep above, so this proves the real production
   // route (no trailing segment) resolves the same way, not just its prefix.

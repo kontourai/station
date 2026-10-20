@@ -1,0 +1,17 @@
+{
+  "revision": "d4400ba279180cdd4bf8cd6de4ef3e7462ca5ac1",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Checked against schemas/agent.schema.json. The only change is the description of the deprecated streaming block, reworded from a SUNSET marker to plain prose that points at #3879. No field, type or accepted value changed, so this document's claims about agent files stay accurate.","inputs":["docs/guides/agents.md","schemas/agent.schema.json"]},
+
+    {"path":"docs/guides/commands.md","note":"Checked against schemas/agent.schema.json. The only change is the description of the deprecated streaming block, reworded from a SUNSET marker to plain prose that points at #3879. No field, type or accepted value changed, so this document's claims about agent files stay accurate.","inputs":["docs/guides/commands.md","schemas/agent.schema.json"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked against schemas/agent.schema.json. The only change is the description of the deprecated streaming block, reworded from a SUNSET marker to plain prose that points at #3879. No field, type or accepted value changed, so this document's claims about agent files stay accurate.","inputs":["docs/guides/connections.md","schemas/agent.schema.json"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked against schemas/agent.schema.json. The only change is the description of the deprecated streaming block, reworded from a SUNSET marker to plain prose that points at #3879. No field, type or accepted value changed, so this document's claims about agent files stay accurate.","inputs":["docs/guides/self-configuring-agent.md","schemas/agent.schema.json"]},
+
+    {"path":"docs/reference/config.md","note":"Checked against schemas/agent.schema.json. The only change is the description of the deprecated streaming block, reworded from a SUNSET marker to plain prose that points at #3879. No field, type or accepted value changed, so this document's claims about agent files stay accurate.","inputs":["docs/reference/config.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","schemas/agent.schema.json"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked against schemas/agent.schema.json. The only change is the description of the deprecated streaming block, reworded from a SUNSET marker to plain prose that points at #3879. No field, type or accepted value changed, so this document's claims about agent files stay accurate.","inputs":["examples/self-configuring-agent/README.md","schemas/agent.schema.json"]}
+  ]
+}

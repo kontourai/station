@@ -59,8 +59,7 @@ async function seedAcpChatState(page: Page): Promise<void> {
     },
   });
   // The default seedOrchestrationRoutes agents fixture only knows
-  // 'dev-agent'; override with the persisted default Agent for this engine
-  // shape getACPManagerVirtualAgents emits (Wave 1, acp-manager-view.ts).
+  // 'dev-agent'; override with this ACP engine's persisted default Agent.
   await page.route('**/api/agents', (route) =>
     route.fulfill({
       status: 200,

@@ -114,7 +114,11 @@
 
     "packages/monument/src/index.ts",
 
-    "packages/monument/src/session-message-delivery.ts"
+    "packages/monument/src/session-message-delivery.ts",
+
+    "packages/basis-pane/package.json",
+
+    "packages/board-pane/package.json"
   ],
 
   "checks": [

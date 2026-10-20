@@ -35,7 +35,7 @@ own runtime locations. Neither path is protected policy source.
 
 - `style-standard` (required, default): runs `npm run lint:check`.
 - `repo-governance` (required, default): Veritas artifacts, AI instruction wiring, CI/report wiring, pinned workflow actions.
-- `documentation-truth` (required, default): runs `npm run docs:truth:gate`, including recorded document/source freshness scoped to the change (see [keep reviews fresh](../docs/guides/documentation.md#keep-reviews-fresh)). Unknown dependencies and semantic accuracy still need review.
+- `documentation-truth` (required, default): runs `npm run docs:truth:gate`, including recorded document/source freshness scoped to the change (see [keep reviews fresh](../docs/guides/documentation-review-ledger.md#keep-reviews-fresh)). Unknown dependencies and semantic accuracy still need review.
 - `verification-policy` (default): runs the executable selector-first verification-policy gate, so public lane wiring and agent guidance cannot drift silently. It is default-enforced, not a required evidence family.
 - `architecture-boundaries` / `ui-data-access` / `runtime-contracts`: candidate or advisory proof-family inventory entries. Their current selection and blocking status must be read from the Repo Map
   and proof-family inventory. Declaration alone does not establish an executed
@@ -121,11 +121,11 @@ PR's change cannot dequeue this one; a Nightly sweep keeps one tracking issue
 for what remains. The separate same-repository PR source-scan job reports
 freshness too and is not a required status check. A normal reader build can
 mark stale reviews `needs-review`; the scoped check refuses the ones the change
-owns. See [keep reviews fresh](../docs/guides/documentation.md#keep-reviews-fresh). The named deploy-ledger contract separately
+owns. See [keep reviews fresh](../docs/guides/documentation-review-ledger.md#keep-reviews-fresh). The named deploy-ledger contract separately
 checks current machine data and its exact projection while preserving the
 historical source review; removed classified changeset notes remain explicitly
 absent. These narrow lifecycle rules do not waive current-guide or generator
-source drift. See [documentation maintenance](../docs/guides/documentation.md#generated-release-records-and-removed-notes).
+source drift. See [documentation maintenance](../docs/guides/documentation-review-ledger.md#generated-release-records-and-removed-notes).
 None of these mechanisms proves the semantics
 of a prose claim or covers source dependencies absent from the ledger.
 

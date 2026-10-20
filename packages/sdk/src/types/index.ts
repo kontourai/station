@@ -159,44 +159,9 @@ export interface Toast {
 export type EventHandler<T = any> = (event: T) => void;
 export type Permission = string;
 
-export interface KeyboardCommand {
-  key: string;
-  modifiers?: string[];
-  handler: () => void;
-}
-
 export interface Tool {
   id: string;
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
-}
-
-export interface WindowOptions {
-  url: string;
-  title?: string;
-  width?: number;
-  height?: number;
-}
-
-// ── Knowledge Provider ─────────────────────────────────────────────
-
-export interface IKnowledgeProvider {
-  listDocs(
-    namespace?: string,
-  ): Promise<
-    import('@kontourai/station-contracts/knowledge').KnowledgeDocumentMeta[]
-  >;
-  search(query: string, namespace?: string, topK?: number): Promise<any[]>;
-  save(
-    filename: string,
-    content: string,
-    namespace?: string,
-  ): Promise<
-    import('@kontourai/station-contracts/knowledge').KnowledgeDocumentMeta
-  >;
-  remove(docId: string, namespace?: string): Promise<void>;
-  listNamespaces(): Promise<
-    import('@kontourai/station-contracts/knowledge').KnowledgeNamespaceConfig[]
-  >;
 }

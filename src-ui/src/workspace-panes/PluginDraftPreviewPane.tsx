@@ -55,7 +55,7 @@ const pluginDraftQueryKey = (apiBase: string, projectSlug: string) =>
  * Everything a viewer's click chose, captured AT the click. The host that
  * executes a revision reads only this, never the live pane props: a pane
  * re-rendered for another Project or another Station must not turn one
- * viewer's choice into a load of somebody else's bytes (S3 review HIGH-3).
+ * viewer's choice into a load of somebody else's bytes (#2375).
  */
 interface RunningRevision {
   readonly apiBase: string;

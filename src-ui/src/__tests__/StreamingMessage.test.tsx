@@ -13,7 +13,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const useStreamingContent = vi.fn();
 const mobile = vi.hoisted(() => ({ current: false }));
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => mobile.current }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => mobile.current,
+}));
 
 vi.mock('../hooks/useStreamingContent', () => ({
   useStreamingContent: (sessionId: string) => useStreamingContent(sessionId),

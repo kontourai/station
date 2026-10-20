@@ -365,7 +365,7 @@ export const MUSE_BACKGROUND_TASK_UNRESOLVED_OUTPUT =
 export const MUSE_PENDING_BACKGROUND_TASKS_MAX = 64;
 
 /**
- * #2300 (review M5): how long a send waits for the PREVIOUS turn's child to
+ * #2300: how long a send waits for the PREVIOUS turn's child to
  * exit when that turn has already ended. The server frees a turn at its
  * `turn.completed`, but the child can still take a moment to exit (~160 ms
  * observed after muse's follow-up run), and until it does it owns the
@@ -566,7 +566,7 @@ const MUSE_STDERR_TAIL_MAX_CHARS = 400;
 
 /**
  * Cap on the accumulated/reported turn text folded into a failed turn's
- * `runtime.error.message` (archive#3450 review). Sized the same order as
+ * `runtime.error.message` (archive#3450). Sized the same order as
  * `MUSE_STDERR_TAIL_MAX_CHARS` so the two DETAILS this file appends —
  * `outputTextDetail` (this bound) and `stderrDetail` — total <= 900 chars
  * and can never together blow `runtime-auth-health-monitor.ts`'s
@@ -583,9 +583,9 @@ const MUSE_STDERR_TAIL_MAX_CHARS = 400;
  * either way — but only the first bound is exact.
  *
  * This bounds only those two appended details. It does NOT bound the
- * `outcome.error.message` PREFIX they are appended to — a second archive#3450
- * review round found that prefix unbounded at the `muse-terminal-not-completed`
- * call site (`effect.terminal`/`effect.reason` interpolated verbatim), which
+ * `outcome.error.message` PREFIX they are appended to — that prefix was once
+ * unbounded at the `muse-terminal-not-completed` call site (archive#3450;
+ * `effect.terminal`/`effect.reason` interpolated verbatim), which
  * `MUSE_TERMINAL_FIELD_MAX_CHARS` bounds separately, below.
  */
 const MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS = 500;
@@ -593,7 +593,7 @@ const MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS = 500;
 /**
  * Cap on `effect.terminal`/`effect.reason` when interpolated into
  * `muse-terminal-not-completed`'s `runtime.error.message` prefix
- * (archive#3450 review round 2). Both come from `extractString`
+ * (archive#3450). Both come from `extractString`
  * (`muse-adapter-events.ts:17-19`), a bare `typeof value === 'string'` with
  * no length cap of its own — so either field can carry up to
  * `MUSE_STDOUT_BUFFER_MAX_CHARS` (1,048,576) chars of child-controlled JSONL.
@@ -610,7 +610,7 @@ const MUSE_TERMINAL_FIELD_MAX_CHARS = 200;
  * The terminal outcome `settleTurn` publishes exactly one event for.
  *
  * A discriminated union rather than one object with optional `aborted`/
- * `error` flags (archive#3450 review): the old shape let a caller pass both
+ * `error` flags (archive#3450): the old shape let a caller pass both
  * `aborted: true` and `error`, which nothing checked — the union makes
  * "exactly one of aborted/error/completed" a compile-time property of every
  * call site instead of a comment asserting it holds.
@@ -1307,7 +1307,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (record.serve) return this.sendServeTurn(record, record.serve, input);
     // The slot is held until the child EXITS, not until the turn settles: two
     // `muse exec` processes must never run concurrently against one
-    // `--session-id`. #2300 (review M5): the server frees a turn at its
+    // `--session-id`. #2300: the server frees a turn at its
     // terminal event, so a queued send can arrive while the previous child
     // is still exiting; that is waited out briefly, not refused.
     const previous = record.activeTurn;
@@ -1477,7 +1477,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.attachProcess(record, turn);
     this.armTurnDeadlines(record, turn);
 
-    // Independent review MEDIUM-1: carries the server-owned
+    // Carries the server-owned
     // `firstTurnInstructionsComposed` marker (reserved metadata, stripped
     // from any caller-supplied value) onto THIS turn's own persisted
     // record — see the constant's doc comment in provider.ts — so the
@@ -2122,10 +2122,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     // deltas streamed — appending it would duplicate what the transcript
     // already rendered. On the failure branch this is that text's only
     // remaining carrier (`settleTurn`'s `outputTextDetail` folds it into
-    // `runtime.error.message` — archive#3450 review).
+    // `runtime.error.message` — archive#3450).
     const outputText =
       turn.outputText.length > 0 ? turn.outputText : (effect.text ?? undefined);
-    // Bounded (archive#3450 review round 2 — MUSE_TERMINAL_FIELD_MAX_CHARS):
+    // Bounded (archive#3450 — MUSE_TERMINAL_FIELD_MAX_CHARS):
     // `effect.terminal`/`effect.reason` are child-controlled JSONL with no
     // length cap of their own, and this message's PREFIX is not covered by
     // `outputTextDetail`'s/`stderrDetail`'s bounds.
@@ -2193,7 +2193,7 @@ export class MuseAdapter implements ProviderAdapterShape {
 
   /**
    * Bounded, SCRUBBED formatting of turn text muse had produced or reported
-   * before a failure, for `runtime.error.message` (archive#3450 review).
+   * before a failure, for `runtime.error.message` (archive#3450).
    *
    * Two of the four `error`-outcome call sites compute and pass
    * `outputText` — `handleStdoutLine`'s non-`completed` `run_terminal`
@@ -2209,7 +2209,7 @@ export class MuseAdapter implements ProviderAdapterShape {
    * durable projection already reconstructed from them, but including it is
    * harmless (bounded, same as the stderr tail below).
    *
-   * `redactSecrets` (archive#3450 review round 2): `stderrDetail` scrubs
+   * `redactSecrets` (archive#3450): `stderrDetail` scrubs
    * because "auth failures are exactly the output most likely to echo a
    * credential back" — and this detail lands in the exact same
    * `runtime.error.message` string, at failure time, from a `run_terminal`
@@ -2239,7 +2239,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   /**
    * Bounds `effect.terminal`/`effect.reason` before they are interpolated
    * into `muse-terminal-not-completed`'s `runtime.error.message` PREFIX
-   * (archive#3450 review round 2 — see `MUSE_TERMINAL_FIELD_MAX_CHARS`).
+   * (archive#3450 — see `MUSE_TERMINAL_FIELD_MAX_CHARS`).
    * Head-truncated, not tail: unlike `outputTextDetail`'s free-form assistant
    * text (where the most RECENT content is the more diagnostic end), these
    * are short discriminator-shaped fields, so the front of an oversized value
@@ -2274,7 +2274,7 @@ export class MuseAdapter implements ProviderAdapterShape {
    * for a turn that failed. See bedrock-adapter.ts's and ollama-adapter.ts's
    * `publishTurnFailure` (archive#3442), which this mirrors.
    *
-   * `MuseTurnSettleOutcome`'s discriminated union (archive#3450 review) is
+   * `MuseTurnSettleOutcome`'s discriminated union (archive#3450) is
    * what makes "exactly one of `turn.aborted` / `runtime.error` /
    * `turn.completed` per turn" true here: a caller cannot construct an
    * `outcome` that is both `aborted` and `error`, so this `switch` is
@@ -2769,7 +2769,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * #2300 (review M5): waits, bounded by
+   * #2300: waits, bounded by
    * {@link MUSE_SETTLED_CHILD_EXIT_WAIT_MS}, for a settled turn's child to
    * exit and free the slot. Resolves either way; the caller re-checks.
    */

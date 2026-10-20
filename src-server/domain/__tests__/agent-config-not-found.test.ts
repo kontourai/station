@@ -14,7 +14,7 @@ import {
 } from '../config-loader-agents.js';
 
 /**
- * archive#3549 review round 3 follow-up.
+ * Follow-up to archive#3549.
  *
  * `isAgentConfigNotFound` now carries the entire distinction between "this
  * agent has no spec" (ordinary — every registry default is like this) and
@@ -62,7 +62,7 @@ describe('the real loader distinguishes absence from unreadability', () => {
     );
   });
 
-  // Review round 4 (Codex), HIGH: `existsSync` returns false for EACCES as
+  // Past defect: `existsSync` returns false for EACCES as
   // well as ENOENT, so a spec that EXISTS under an unreadable directory was
   // manufactured as absence — the branch meaning "no pin is possible,
   // proceed" — and a pinned agent ran on the connection's account.
