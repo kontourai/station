@@ -255,6 +255,39 @@ describe('useShortcut through the real adapter and registry', () => {
     expect(paletteRun).toHaveBeenCalledTimes(1);
   });
 
+  test('a plugin shortcut the user rebinds onto a reserved chord never fires on it', () => {
+    // No palette is mounted, so nothing but the dispatch guard stands between
+    // the rebound plugin shortcut and the reserved chord.
+    const run = vi.fn();
+    render(
+      <Shell>
+        <PluginShortcut
+          id="jump"
+          keys={{ key: 'j', modifiers: ['cmd'] }}
+          description="Jump"
+          run={run}
+        />
+      </Shell>,
+    );
+    act(() => {
+      actions?.setBinding('plugin.acme-tools.jump', {
+        key: 'k',
+        modifiers: ['cmd'],
+      });
+    });
+    pressPrimary('k');
+    expect(run).not.toHaveBeenCalled();
+    // Control: a non-reserved rebinding still dispatches.
+    act(() => {
+      actions?.setBinding('plugin.acme-tools.jump', {
+        key: 'u',
+        modifiers: ['cmd'],
+      });
+    });
+    pressPrimary('u');
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   test('a plugin cannot reach a kernel id: dotted ids are refused and every id is namespaced', () => {
     const settingsRun = vi.fn();
     function KernelSettings() {
