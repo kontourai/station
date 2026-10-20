@@ -1168,7 +1168,7 @@ export class DeviceToolsService {
     assertTarget(target.platform, target.deviceId);
     const { platform, deviceId } = target;
     // Asked once; its SETTLED result — a refusal, a busy host, any error —
-    // is what every later ask gets (review round 3, D1). A latch set before
+    // is what every later ask gets. A latch set before
     // the first ask resolved would hand later commands a pass instead.
     const first = options.beforeRun;
     let decided: Promise<void> | undefined;

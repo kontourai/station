@@ -135,7 +135,7 @@ async function assertOwningProjectSavable(
 }
 
 /**
- * archive#3549 review round 3 (independent, Codex): "this agent has no
+ * archive#3549: "this agent has no
  * on-disk spec" and "this agent's spec could not be read" were both a bare
  * `Error`, so no caller could tell them apart.
  *
@@ -191,7 +191,7 @@ async function loadAgentConfigAsStored(
 ): Promise<AgentSpec> {
   const path = join(projectHomeDir, 'agents', slug, 'agent.json');
 
-  // Review round 4 (independent, Codex), HIGH: this used to be
+  // archive#3549: this used to be
   // `if (!existsSync(path)) throw new AgentConfigNotFoundError(...)`.
   //
   // `existsSync` returns false for EACCES as well as ENOENT, so a spec that

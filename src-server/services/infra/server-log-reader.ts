@@ -39,7 +39,7 @@
  *    local by the bound `isBoundRuntimeLocalOperator` flag; it is never a query-string
  *    flag a client can set. Critically, `q` is matched against the
  *    rendering the caller will actually receive, never the other one
- *    (archive#1896 review round 2, HIGH #1): a remote caller can only
+ *    (archive#1896): a remote caller can only
  *    search what a remote caller could see, otherwise `q` is a
  *    character-by-character oracle over content the response claims to
  *    have hidden. Redaction only runs on entries that already passed the
@@ -47,7 +47,7 @@
  * 3. **Honest about what it did not read.** A day file the scan could not
  *    even open (permission error, disappeared mid-scan) is counted in
  *    `unreadableFiles`, not silently skipped — and forces `truncated: true`
- *    (archive#1896 review round 2, HIGH #2), because the scan cannot claim
+ *    (archive#1896), because the scan cannot claim
  *    completeness for a day it never verified. A line that isn't valid
  *    JSON, or is valid JSON missing a recognizable `level`/`timestamp`, is
  *    skipped and counted in `skippedMalformedLines` rather than silently
@@ -72,9 +72,9 @@ const DEFAULT_SERVER_LOG_QUERY_LIMIT = 200;
 export const MAX_SERVER_LOG_QUERY_LIMIT = 1000;
 
 /**
- * Per-query cap on total bytes read off disk (archive#1896 review round 2,
- * HIGH #4). A single day file can legitimately reach the write side's
- * retention ceiling (256 MiB — `DEFAULT_SERVER_LOG_RETENTION.maxBytes` in
+ * Per-query cap on total bytes read off disk (archive#1896). A single day
+ * file can legitimately reach the write side's retention ceiling
+ * (256 MiB — `DEFAULT_SERVER_LOG_RETENTION.maxBytes` in
  * `server-log-store.ts`); reading one that large — even in chunks — is
  * real, measurable I/O and CPU work (~326ms/~455MB RSS measured against a
  * synchronous whole-file read at that size before this fix). 32 MiB bounds
@@ -253,8 +253,8 @@ const NEWLINE_BYTE = 0x0a;
 /**
  * Yields lines of `filePath` from the END of the file backward (most
  * recent line first), reading in bounded `REVERSE_READ_CHUNK_BYTES` chunks
- * rather than loading the whole file into memory at once (archive#1896
- * review round 2, HIGH #4). Splitting only ever happens on a literal `\n`
+ * rather than loading the whole file into memory at once (archive#1896).
+ * Splitting only ever happens on a literal `\n`
  * (0x0a) byte, which is safe against UTF-8 multi-byte boundaries — 0x0a
  * never occurs as a continuation byte in valid UTF-8, only as a real
  * newline — so chunk boundaries never corrupt a decoded line.
@@ -408,7 +408,7 @@ class FsServerLogReader implements ServerLogReader {
 
           // Redact only AFTER the cheap level/time filters pass (keeps the
           // hot path lean), and apply `q` to the SAME rendering the
-          // caller will receive — archive#1896 review round 2, HIGH #1:
+          // caller will receive (archive#1896):
           // matching `q` against pre-redaction text while returning a
           // redacted body lets a remote caller confirm an exact secret
           // character-by-character via match/no-match. Local callers
@@ -444,7 +444,7 @@ class FsServerLogReader implements ServerLogReader {
 
     // Stable sort by parsed timestamp — a multi-process/multi-writer day
     // file is not guaranteed to be in strict timestamp order just because
-    // it's in append order (archive#1896 review round 2, MEDIUM #5).
+    // it's in append order (archive#1896).
     matches.sort((left, right) => left.timeMs - right.timeMs);
 
     return {

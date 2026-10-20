@@ -6518,7 +6518,7 @@ export async function executeExecutionTargetMessage(
         readAuthority,
       );
       const metadata = sessionBinding(rootDetail);
-      // #764 (review round 2): same reserved-but-unstarted plain-continuation
+      // #764: same reserved-but-unstarted plain-continuation
       // tail as continueExecutionTargetMessage — fall back to the
       // lineage-aware read so the predecessor's binding governs instead of
       // dead-ending on the execution-binding error below.
@@ -7250,7 +7250,7 @@ export async function continueExecutionTargetMessage(
     readAuthority,
   );
   const metadata = sessionBinding(rootDetail);
-  // #764 (review round 2): when the lineage tail is a reserved-but-unstarted
+  // #764: when the lineage tail is a reserved-but-unstarted
   // plain continuation (no Session record, no handoff marker), the raw child
   // read is null. The lineage-aware read resolves that exact tail back to its
   // authorized predecessor, whose binding still governs the conversation —
