@@ -19,6 +19,7 @@ import {
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   type ProviderInterruptTurnResult,
@@ -46,7 +47,6 @@ import {
   MuseServeTimeoutError,
 } from './muse-serve-rpc.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
-import { isRecord } from '../../utils/is-record.js';
 
 /**
  * #2452: one Station session driven through a `muse serve` (MSP) host.

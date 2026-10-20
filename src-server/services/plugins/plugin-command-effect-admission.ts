@@ -7,6 +7,7 @@ import type {
   PluginCommandEffectRequirementContext,
 } from '@kontourai/station-contracts/plugin-command-effect';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import { isRecord } from '../../utils/is-record.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import { isExecutablePluginCommand } from './plugin-command-declarations.js';
 import {
@@ -25,7 +26,6 @@ import {
   type PluginRuntimeArtifact,
   pluginInstallationGeneration,
 } from './plugin-runtime-artifact.js';
-import { isRecord } from '../../utils/is-record.js';
 
 export type PluginCommandRequirementResolution =
   | 'available'

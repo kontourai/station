@@ -56,6 +56,7 @@ import {
   DEVICE_PUSH_PAYLOAD_MAX_BYTES,
 } from '@kontourai/station-contracts/device-tools';
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';
+import { isRecord } from '../../utils/is-record.js';
 import {
   DeviceToolError,
   locateExecutable,
@@ -64,7 +65,6 @@ import {
 } from './device-host-tools.js';
 import type { DeviceHubEndpoint } from './device-hub-endpoint.js';
 import { DeviceHostBusyError } from './device-shares.js';
-import { isRecord } from '../../utils/is-record.js';
 
 export type DeviceTool = 'xcrun' | 'adb';
 

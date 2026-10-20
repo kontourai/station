@@ -11,13 +11,13 @@ import {
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   buildConversationStatsView,
   buildEmptyConversationStatsView,
   type ConversationStats,
   resolveConversationUserMessageTokens,
 } from './conversation-stats-view.js';
-import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'conversation-manager' });
 

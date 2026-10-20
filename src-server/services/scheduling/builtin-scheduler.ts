@@ -235,8 +235,7 @@ export interface BuiltinSchedulerOptions {
   disposeMonitorTasks?: () => void;
 }
 
-const STARTER_SCHEDULED_CHECK_JOB_NAME =
-  SCHEDULER_STARTER_CHECK_JOB_NAME;
+const STARTER_SCHEDULED_CHECK_JOB_NAME = SCHEDULER_STARTER_CHECK_JOB_NAME;
 
 export interface PreparedStarterScheduledRun {
   readonly replayed: boolean;

@@ -28,7 +28,6 @@ import {
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import {
   canonicalize,
-  computeChainedReceiptId,
   HashChainedReceiptLog,
   readChainedReceipts,
 } from './receipt-chain.js';

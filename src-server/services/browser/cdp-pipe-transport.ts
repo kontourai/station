@@ -15,8 +15,9 @@
  *   stream cannot be resynchronized safely without reading the rest of the
  *   frame, and an unbounded buffer is a memory hazard.
  */
-import type { CdpTransport } from './browser-host.js';
+
 import { isRecord } from '../../utils/is-record.js';
+import type { CdpTransport } from './browser-host.js';
 
 /** Default incoming frame bound. Screencast JPEG frames are well under this. */
 const DEFAULT_CDP_MAX_MESSAGE_BYTES = 64 * 1024 * 1024;

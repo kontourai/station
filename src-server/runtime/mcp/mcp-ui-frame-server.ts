@@ -12,8 +12,8 @@ import { serve } from '@hono/node-server';
 import { buildHtmlReplyProxyDocument } from '@kontourai/station-shared/html-reply-document';
 import { MCP_UI_NETWORK_BOOTSTRAP_TAG } from '@kontourai/station-shared/mcp-ui-csp';
 import { Hono } from 'hono';
-import { mcpUiFrameServeTotal } from '../../telemetry/metrics.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
+import { mcpUiFrameServeTotal } from '../../telemetry/metrics.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
 
 const SECURITY_HEADERS: Record<string, string> = {

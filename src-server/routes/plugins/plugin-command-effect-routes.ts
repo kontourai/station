@@ -38,13 +38,13 @@ import {
   type PluginCommandEffectService,
   PluginCommandEffectsUnavailableError,
 } from '../../services/plugins/plugin-command-effects.js';
+import { isRecord } from '../../utils/is-record.js';
 import { errorMessage } from '../schemas/schemas.js';
 import {
   operatorOnly,
   type PluginPrincipalResolution,
 } from './plugin-identity-enumeration.js';
 import { personOnly } from './plugin-person-approval.js';
-import { isRecord } from '../../utils/is-record.js';
 
 export interface PluginCommandEffectRouteDeps {
   admission: PluginCommandEffectAdmission;

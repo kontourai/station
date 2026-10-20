@@ -402,7 +402,8 @@ export function createRuntimeServiceBundle(
       context.logger,
       acpManagedWorkspaceHome,
       context.eventBus,
-    ) ?? new ACPManager(context.logger, acpManagedWorkspaceHome, context.eventBus);
+    ) ??
+    new ACPManager(context.logger, acpManagedWorkspaceHome, context.eventBus);
 
   connectionService = factories.createConnectionService
     ? factories.createConnectionService(

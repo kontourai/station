@@ -52,14 +52,6 @@ export class DiffCommentValidationError extends Error {
   }
 }
 
-/** The project has no resolvable comment store (no working directory) → 404. */
-class DiffCommentStoreUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DiffCommentStoreUnavailableError';
-  }
-}
-
 export class DiffCommentService {
   private readonly acquireMutationLock: FileMutationLock;
   private readonly storeFactory: DiffCommentStoreFactory;

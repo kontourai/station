@@ -4751,9 +4751,7 @@ export async function continueDelegatedTask(
     // need an outbound round-trip. Operator/device callers fall through
     // to the forward below. Then the sender-currency probe: a revocation
     // that landed during target resolution refuses before the POST.
-    if (
-      isInboundDelegationPeer(input.inboundDeviceKind)
-    )
+    if (isInboundDelegationPeer(input.inboundDeviceKind))
       throw new ReceiverExecutionRefusal(
         'receiver_execution_forwarding_refused',
         RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_forwarding_refused,
@@ -4885,9 +4883,7 @@ export async function respondToDelegatedTaskRequest(
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     // Same no-onward-hop + sender-currency guards as the continue path.
-    if (
-      isInboundDelegationPeer(input.inboundDeviceKind)
-    )
+    if (isInboundDelegationPeer(input.inboundDeviceKind))
       throw new ReceiverExecutionRefusal(
         'receiver_execution_forwarding_refused',
         RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_forwarding_refused,
@@ -5205,8 +5201,7 @@ export async function delegateTask(
   // #484 no-onward-hop, derived BEFORE any effect from the verified caller
   // facts only (never body/userId/metadata) — see isInboundDelegationPeer.
   const inboundPeer =
-    portableIntent === true &&
-    isInboundDelegationPeer(input.inboundDeviceKind);
+    portableIntent === true && isInboundDelegationPeer(input.inboundDeviceKind);
   // The ONE environment resolution for this dispatch: the route never
   // resolves, so there is no second resolution to race these endpoints.
   const selectedTarget = await resolveTarget(

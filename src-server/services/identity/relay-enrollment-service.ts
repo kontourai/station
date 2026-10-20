@@ -31,6 +31,7 @@ import {
   jwtVerify,
 } from 'jose';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { isRecord } from '../../utils/is-record.js';
 import { readVerifiedVirtualApplicationRequest } from '../connections/virtual-application.js';
 import {
   openRelayEnrollmentJournal,
@@ -47,7 +48,6 @@ import {
 } from '../ssh/device-pairing-service.js';
 import type { ApplicationSessionService } from './application-session-service.js';
 import type { DeploymentAuthenticationService } from './deployment-authentication-service.js';
-import { isRecord } from '../../utils/is-record.js';
 
 const CLEANUP_TIMEOUT_MS = 15_000;
 const ENROLLMENT_DATABASE_NAME = 'relay-enrollment.sqlite';

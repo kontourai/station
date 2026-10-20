@@ -28,11 +28,11 @@ import {
   type NativePushIosRegistrationRequest,
   type NativePushRegistrationRequest,
 } from '@kontourai/station-contracts/native-push';
+import { isRecord } from '../../utils/is-record.js';
 import {
   readPrivateJsonFile,
   writePrivateJsonFileSync,
 } from './private-json-file.js';
-import { isRecord } from '../../utils/is-record.js';
 
 const ANDROID_FILE_NAME = 'native-push-registrations.json';
 const ANDROID_LABEL = 'Native push registrations';

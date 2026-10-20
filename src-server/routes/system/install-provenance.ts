@@ -53,10 +53,7 @@ const SOURCE_SERVER_ROOT = /^(dist-server[^/\\]*|src-server)$/;
  * rejects the resolveGitInfo cwd/argv fallbacks resolving some OTHER repo
  * than the one containing the module.
  */
-function isServerOfCheckout(
-  gitRoot: string,
-  moduleDir: string,
-): boolean {
+function isServerOfCheckout(gitRoot: string, moduleDir: string): boolean {
   const rel = relative(gitRoot, moduleDir);
   if (rel === '') return true;
   const first = rel.split(sep)[0] ?? '';
