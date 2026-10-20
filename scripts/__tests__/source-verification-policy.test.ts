@@ -59,8 +59,16 @@ const legacyMetadataJobs = [
   conclusion: id === 0 ? 'failure' : 'skipped',
 }));
 
-type Job = (typeof jobs)[number];
-type Run = typeof run & { head_branch?: string };
+type Job = Omit<(typeof jobs)[number], 'conclusion'> & {
+  conclusion: string | null;
+};
+type Run = Omit<typeof run, 'conclusion'> & {
+  conclusion: string | null;
+  head_branch?: string;
+  name?: string;
+  display_title?: string;
+  referenced_workflows?: Array<{ path: string; sha: string; ref: string }>;
+};
 
 function fixture() {
   const state = {
@@ -73,6 +81,10 @@ function fixture() {
     truncate: false,
     reads: 0,
     move: false,
+    metadataWorkflow: readFileSync(
+      new URL('../../.github/workflows/ci.yml', import.meta.url),
+      'utf8',
+    ),
   };
   const execute = async (eventName = 'workflow_dispatch', dryRun = false) => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -105,6 +117,14 @@ function fixture() {
           total_count: state.runs.length + (state.truncate ? 1 : 0),
           workflow_runs: state.runs,
         });
+      if (path === 'contents/.github/workflows/ci.yml') {
+        expect(parsed.searchParams.get('ref')).toBe(base);
+        return json({
+          path: '.github/workflows/ci.yml',
+          encoding: 'base64',
+          content: Buffer.from(state.metadataWorkflow).toString('base64'),
+        });
+      }
       if (path.startsWith('compare/')) return json(state.comparison);
       const detail = /^actions\/runs\/(\d+)$/.exec(path);
       if (detail)
@@ -404,6 +424,184 @@ describe('source verification reconciler API boundary', () => {
       expect((await execute()).state).not.toBe('success');
     },
   );
+  test.each(['pending', 'success'])(
+    'observed3974 cancelled metadata between newer metadata and genuine %s source does not mask source',
+    async (sourceState) => {
+      const { state, execute } = fixture();
+      const source = {
+        ...structuredClone(run),
+        id: 39477519649,
+        name: 'Source verification',
+        display_title: 'Source verification',
+        run_started_at: '2026-10-20T18:45:23Z',
+        status: sourceState === 'pending' ? 'pending' : 'completed',
+        conclusion: sourceState === 'pending' ? null : 'success',
+      };
+      const metadata = (id: number, time: string, conclusion: string): Run => ({
+        ...structuredClone(run),
+        id,
+        name: 'PR metadata',
+        display_title: 'PR metadata',
+        run_started_at: time,
+        conclusion,
+        referenced_workflows: [
+          {
+            path: `kontourai/station/.github/workflows/source-verification-policy.yml@${base}`,
+            sha: base,
+            ref: 'refs/heads/main',
+          },
+        ],
+      });
+      state.runs = [
+        metadata(39478123910, '2026-10-20T18:49:36Z', 'success'),
+        metadata(39477635301, '2026-10-20T18:46:11Z', 'cancelled'),
+        source,
+      ];
+      state.jobs.set(
+        source.id,
+        jobs.map((job) => ({
+          ...job,
+          status:
+            sourceState === 'pending' &&
+            ['fast-checks statics', 'Fast checks execution'].includes(job.name)
+              ? 'pending'
+              : 'completed',
+          conclusion:
+            sourceState === 'pending' &&
+            ['fast-checks statics', 'Fast checks execution'].includes(job.name)
+              ? null
+              : job.conclusion,
+        })),
+      );
+      for (const item of state.runs.slice(0, 2))
+        state.jobs.set(
+          item.id,
+          legacyMetadataJobs.map((job, index) => ({
+            ...job,
+            name: index === 0 ? 'PR title status publisher' : job.name,
+            conclusion: index === 0 ? item.conclusion : 'skipped',
+          })),
+        );
+      expect((await execute()).state).toBe(sourceState);
+    },
+  );
+
+  test.each([
+    'missing labels',
+    'source label',
+    'missing reference',
+    'wrong reference sha',
+    'untrusted ref',
+    'source run-name policy',
+    'source producer executed',
+    'source producer cancelled',
+    'title success',
+    'title failure',
+    'duplicate reference',
+  ])(
+    'cancelled metadata-like rows remain failure without trusted distinction: %s',
+    async (change) => {
+      const { state, execute, newer } = fixture();
+      newer('skipped');
+      const item = state.runs[0];
+      item.status = 'completed';
+      item.conclusion = 'cancelled';
+      item.name = 'PR metadata';
+      item.display_title = 'PR metadata';
+      item.referenced_workflows = [
+        {
+          path: `kontourai/station/.github/workflows/source-verification-policy.yml@${base}`,
+          sha: base,
+          ref: 'refs/heads/main',
+        },
+      ];
+      state.jobs.set(
+        item.id,
+        legacyMetadataJobs.map((job, index) => ({
+          ...job,
+          name: index === 0 ? 'PR title status publisher' : job.name,
+          conclusion: index === 0 ? 'cancelled' : 'skipped',
+        })),
+      );
+      if (change === 'missing labels') {
+        delete item.name;
+        delete item.display_title;
+      }
+      if (change === 'source label') item.display_title = 'Source verification';
+      if (change === 'missing reference') item.referenced_workflows = [];
+      if (change === 'wrong reference sha')
+        item.referenced_workflows[0].sha = advanced;
+      if (change === 'untrusted ref')
+        item.referenced_workflows[0].ref = 'refs/heads/feature';
+      if (change === 'source run-name policy')
+        state.metadataWorkflow =
+          'name: "PR: CI"\nrun-name: ${{ github.event.pull_request.title }}\n';
+      if (change === 'title success' || change === 'title failure')
+        state.jobs.get(item.id)![0].conclusion =
+          change === 'title success' ? 'success' : 'failure';
+      if (change === 'duplicate reference')
+        item.referenced_workflows.push({ ...item.referenced_workflows[0] });
+      if (change === 'source producer executed')
+        state.jobs
+          .get(item.id)!
+          .find((job) => job.name === 'fast-checks plan')!.conclusion =
+          'success';
+      if (change === 'source producer cancelled')
+        state.jobs
+          .get(item.id)!
+          .find((job) => job.name === 'fast-checks plan')!.conclusion =
+          'cancelled';
+      expect((await execute()).state).toBe('failure');
+    },
+  );
+
+  test('binds metadata to its actual referenced workflow after GitHub advances the reported PR base', async () => {
+    const { state, execute, newer } = fixture();
+    newer('skipped');
+    state.owners[0].base.sha = advanced;
+    state.runs[0].pull_requests[0].base.sha = advanced;
+    const item = state.runs[0];
+    item.conclusion = 'cancelled';
+    item.name = 'PR metadata';
+    item.display_title = 'PR metadata';
+    item.referenced_workflows = [
+      {
+        path: `kontourai/station/.github/workflows/source-verification-policy.yml@${base}`,
+        sha: base,
+        ref: 'refs/heads/main',
+      },
+    ];
+    state.jobs.get(item.id)![0].conclusion = 'cancelled';
+    expect((await execute()).state).toBe('success');
+    state.comparison.status = 'diverged';
+    expect((await execute()).state).toBe('failure');
+  });
+
+  test('unavailable immutable metadata policy cannot reuse older green', async () => {
+    const { state, execute, newer } = fixture();
+    newer('skipped');
+    const item = state.runs[0];
+    item.conclusion = 'cancelled';
+    item.name = 'PR metadata';
+    item.display_title = 'PR metadata';
+    item.referenced_workflows = [
+      {
+        path: `kontourai/station/.github/workflows/source-verification-policy.yml@${base}`,
+        sha: base,
+        ref: 'refs/heads/main',
+      },
+    ];
+    state.error = 'contents/';
+    await expect(execute()).rejects.toThrow('503');
+    expect(state.posts.at(-1)?.state).toBe('pending');
+  });
+
+  test('completed source producers retain their proof when only the parent tail was cancelled', async () => {
+    const { state, execute } = fixture();
+    state.runs[0].conclusion = 'cancelled';
+    expect((await execute()).state).toBe('success');
+  });
+
   test('publisher workflow checks out only trusted policy with narrowly isolated write authority', () => {
     const workflow = load(
       readFileSync(

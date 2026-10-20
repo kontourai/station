@@ -549,8 +549,11 @@ locally merely because `main` moved.
 Source execution and admission are separate: the `fast-checks` aggregate validates
 the actual plan, statics and shard receipts. The trusted source-policy publisher
 reconciles that result for the newest applicable exact-head source run, keeping
-metadata-only suites from replacing it. Missing or incomplete proof remains
-pending; failed or cancelled proof remains non-passing. The required-context
+metadata-only suites from replacing it. A cancelled metadata run is ignored
+only when GitHub's metadata labels, its referenced main policy revision and the
+immutable CI run-name policy agree, the title job is cancelled, and every source
+producer is skipped. Ambiguous metadata remains non-passing. Missing or incomplete
+source proof remains pending; failed or cancelled source proof remains non-passing. The required-context
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
 PR source computation has repository-wide FIFO ceilings: at most two statics
