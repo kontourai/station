@@ -518,6 +518,9 @@ function TaskWorkspaceContent({
   );
 }
 
+/** Space kept between the sticky page header and a revealed pane. */
+const REVEAL_GAP_PX = 8;
+
 /** Durable promoted workspace-file snapshots; no RelationGraph mirror. */
 function TaskRoomWorkspaceSection({
   task,
@@ -529,6 +532,70 @@ function TaskRoomWorkspaceSection({
   onOpenActionChange(action: WorkspacePaneHostOpenAction | null): void;
 }) {
   const discovery = useProjectTaskRoomDiscoveryQuery(task.id);
+  const roomRef = useRef<HTMLElement>(null);
+  // #3883: a pane opened from further down the page (Kept answers' Open
+  // Basis, the only consumer of the action published below; panes opened
+  // inside the room use the host's own action) lands in this room, which can
+  // be far above the reader. The host selects the pane and focuses its tab,
+  // the pane's name in the strip. Unless the room's tab strips were already
+  // in view when the open was asked for, the tab's group is then scrolled to
+  // the top so the pane itself is in view, not only its tab.
+  const revealFocusedPane = useCallback(() => {
+    const room = roomRef.current;
+    if (!room) return;
+    // The page's DetailHeader is sticky at the top of the same scroller, so
+    // "in view" starts below it, and a plain scroll to the start put the
+    // focused tab under it.
+    const header = room
+      .closest('.task-workspace')
+      ?.querySelector<HTMLElement>(':scope > .detail-header');
+    const inView = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      return (
+        rect.top >= (header?.getBoundingClientRect().bottom ?? 0) &&
+        rect.bottom <= window.innerHeight
+      );
+    };
+    // Measured now, before the host's focus frame scrolls the tab to the
+    // nearest edge.
+    const strips = [...room.querySelectorAll('[role="tablist"]')];
+    const roomWasInView = strips.length > 0 && strips.every(inView);
+    // After the host's own focus frame, which is scheduled first.
+    requestAnimationFrame(() => {
+      const tab = room.contains(document.activeElement)
+        ? document.activeElement
+        : null;
+      if (roomWasInView && tab && inView(tab)) return;
+      const target =
+        tab?.closest<HTMLElement>('.workspace-pane-host__group') ?? room;
+      // The margin holds the group below the header for this one scroll.
+      target.style.scrollMarginTop = header
+        ? `${header.getBoundingClientRect().height + REVEAL_GAP_PX}px`
+        : '';
+      target.scrollIntoView?.({ block: 'start' });
+      target.style.scrollMarginTop = '';
+    });
+  }, []);
+  const publishOpenAction = useCallback(
+    (action: WorkspacePaneHostOpenAction | null) =>
+      onOpenActionChange(
+        action && {
+          ...action,
+          open(instance, preparation, placement) {
+            const outcome = action.open(instance, preparation, placement);
+            if (outcome.ok && action.focusExisting?.(instance.instanceId))
+              revealFocusedPane();
+            return outcome;
+          },
+          focusExisting(instanceId) {
+            const found = action.focusExisting?.(instanceId) ?? false;
+            if (found) revealFocusedPane();
+            return found;
+          },
+        },
+      ),
+    [onOpenActionChange, revealFocusedPane],
+  );
   const runtime = useRef<WorkspacePaneHostRuntime | null>(null);
   if (!runtime.current) runtime.current = new WorkspacePaneHostRuntime();
   const hostRuntime = runtime.current;
@@ -569,7 +636,11 @@ function TaskRoomWorkspaceSection({
   if (!composition.document)
     return <p role="status">Task room document is unavailable.</p>;
   return (
-    <section className="task-workspace__room" aria-label="Task room workspace">
+    <section
+      ref={roomRef}
+      className="task-workspace__room"
+      aria-label="Task room workspace"
+    >
       {composition.degradedCapabilities.length ? (
         <p role="status">
           Task room degraded: {composition.degradedCapabilities.join(', ')}.
@@ -580,7 +651,7 @@ function TaskRoomWorkspaceSection({
         <WorkspacePaneHost
           document={composition.document}
           runtime={hostRuntime}
-          onOpenActionChange={onOpenActionChange}
+          onOpenActionChange={publishOpenAction}
           presentationLabel={(instance) =>
             resolveWorkspaceBasisMcpPaneOccurrence(instance)?.descriptor.name ??
             null

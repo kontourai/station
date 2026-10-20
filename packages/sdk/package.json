@@ -112,7 +112,7 @@
     "@kontourai/flow-agents": "6.5.1",
     "@kontourai/station-contracts": "^0.11.0",
     "@kontourai/station-shared": "^0.11.0",
-    "@kontourai/surface": "^6.1.0",
+    "@kontourai/surface": "^6.2.1",
     "@kontourai/thread": "0.5.0",
     "@kontourai/ui": "^1.19.0",
     "zod": "^4.6.6"

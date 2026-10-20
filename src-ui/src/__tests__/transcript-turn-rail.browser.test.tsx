@@ -233,6 +233,59 @@ test('a phone gets no gutter; the turn steps sit with Scroll to bottom at 44px',
   }
 });
 
+test('#3862: at the latest message a phone keeps Previous turn at the end of the settings row, not a row of its own', async () => {
+  const { browser, page, errors } = await turnRailBrowserFixture(PHONE);
+  try {
+    await page.waitForSelector('.chat-messages');
+    await settledScrollTop(page);
+    expect(
+      await page.getByRole('button', { name: 'Scroll to bottom' }).count(),
+    ).toBe(0);
+    const previous = page.getByRole('button', { name: 'Previous turn' });
+    await previous.waitFor();
+    expect(await page.getByRole('button', { name: 'Next turn' }).count()).toBe(
+      0,
+    );
+    const step = (await previous.boundingBox())!;
+    const chip = (await page
+      .getByRole('button', { name: 'Agent: Dev Agent' })
+      .boundingBox())!;
+    expect(step.width).toBeGreaterThanOrEqual(44);
+    expect(step.height).toBeGreaterThanOrEqual(44);
+    expect(step.x + step.width).toBeLessThanOrEqual(390);
+    // One row: the step shares the chip's line, after it.
+    expect(Math.abs(step.y - chip.y)).toBeLessThan(chip.height / 2);
+    expect(step.x).toBeGreaterThan(chip.x + chip.width);
+
+    const before = await settledScrollTop(page);
+    await previous.focus();
+    await page.keyboard.press('Enter');
+    const after = await settledScrollTop(page);
+    expect(after).toBeLessThan(before);
+    // The group grew to its away-from-the-end form around the same button.
+    await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
+    expect(await activeLabel(page)).toBe('Previous turn');
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('#3862: a desktop column with the rail shows no turn step at the latest message', async () => {
+  const { browser, page, errors } = await turnRailBrowserFixture(DESKTOP);
+  try {
+    await page.waitForSelector('.transcript-turn-rail__tick');
+    await settledScrollTop(page);
+    await frames(page);
+    expect(
+      await page.getByRole('button', { name: 'Previous turn' }).count(),
+    ).toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
 /** The rail's drawn viewport against the rows actually on screen. */
 async function drawnViewport(page: Page) {
   return page.evaluate(() => {

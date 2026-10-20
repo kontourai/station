@@ -40,9 +40,14 @@ today, and states that standing only in its accessible name. A notable standing
 (policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
 **Basis · Policy met**
 ([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
-The chip reads an answer's standing only while it is on screen, cancels a read
-that scrolls off screen unanswered, does not re-read a standing it holds while it
-stays mounted, and refreshes on an assessment or narrative update. A long
+In a narrow dock or phone row, Surface's label is cut short with an ellipsis
+after a whole **Basis ·**, and the full label stays in the chip's accessible
+name and tooltip.
+The chip reads an answer's standing only after the answer has stayed on screen
+for about 150ms, so a fling through history sends no read for answers it only
+passes. It cancels a read that scrolls off screen unanswered, does not re-read a
+standing it holds while it stays mounted, and refreshes on an assessment or
+narrative update. A long
 transcript unmounts far-off answers; one that returns is read again, because the
 Basis read re-checks access for each new chip. Pending or failed, it stays
 **Basis** and still opens.
@@ -359,7 +364,9 @@ message row starts a turn.
   the composer. The ticks are one tab stop: arrow keys move between turns
   (jumping as they go), Home and End reach the ends. The rail is hidden when
   the transcript column is narrower than 560px or shorter than 200px
-  (measured on the column, not the viewport).
+  (measured on the column, not the viewport); a hidden rail unmounts its
+  preview, so no Escape is spent on a preview nobody can see. A chat switch
+  starts the rail over, dropping any hover, focus or dismissed preview.
 - **Markers.** A tick carries at most one marker, from facts the rows already
   hold: a reply carrying the projected runtime error (`runtimeError`) marks
   the turn as ended with an error; otherwise a standalone sub-agent row marks
@@ -367,12 +374,23 @@ message row starts a turn.
   call, and interrupted turns, are not marked.
 - **Previous turn / Next turn.** Two steps sit beside Scroll to bottom
   whenever that control shows, at every width; on a phone they are the turn
-  navigation. Previous goes to the start of the turn in view when its prompt
-  is above the screen, otherwise to the turn before. The steps stay focusable
-  at either end, and announce the turn they reached (its position and prompt)
-  in a polite status region. Only a step announces; the region empties before
-  each announcement, so a repeat step is said again, and it is cleared on a
-  chat switch or when the loaded history changes.
+  navigation. At the latest message, where Scroll to bottom is absent, a
+  column too narrow for the rail keeps Previous turn alone in the same
+  composer slot (#3862). It needs no row of its own: in a narrow composer it
+  ends the settings row, which scrolls sideways and gives up the step's
+  width; while the status pill holds the activity row, it sits beside the
+  pill. The phone header is not used: its edge reserve holds only its two
+  44px controls. A transcript host with no composer slot (the floating
+  variant) shows no step at the latest message. Pressing it scrolls away from
+  the end, so the group grows to Previous, Next and Scroll to bottom around
+  the same Previous button, which keeps focus. Previous goes to the start of
+  the turn in view when its prompt is above the screen, otherwise to the turn
+  before. The steps stay focusable at either end, and announce the turn they
+  reached (its position and prompt) in a polite status region. Only a step
+  announces; the region empties before each announcement, so a repeat step
+  is said again. It is cleared on a chat switch, when older history finishes
+  loading, and when the number of loaded turns changes (another page of
+  older history, or a new turn).
 - **Positions.** A turn is named "Turn N of M". While older history is not
   loaded, the map covers only the loaded window, so it is named "Loaded turn
   N of M" instead, and the numbers change as earlier history loads.

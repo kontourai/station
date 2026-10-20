@@ -2516,7 +2516,14 @@ facts, insertion-order IDs, authority inferred from replay, or restored liveness
 
 **Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
 mounts `ProjectTaskRoomProvider`, `ProjectTaskRoomPresence`, `TaskRoomEditorPane`
-and `ProjectTaskRoomConversation` through `WorkspacePaneHost`.
+and `ProjectTaskRoomConversation` through `WorkspacePaneHost`. The page's
+Kept answers section opens Basis panes into that host (Open Basis, Open Whole
+Task Basis); the room section wraps the host's open action it publishes to
+the page (panes opened inside the room use the host's own) so the pane is
+selected and its tab takes focus. Unless the room's tab strips were already
+in view, the tab's pane group is then scrolled to the top of the viewport,
+just below the page's sticky header so the focused tab is not covered
+(#3883).
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.
@@ -3642,7 +3649,12 @@ Sources explains the reviewed-source contribution to one exact answer. It is not
 point-read Interface for one authorized Session answer. It sequences Thread,
 assessment, retained narrative, and reviewed-source owners once, fences
 authority after every await, then returns the existing Surface Basis projection
-and the exact reviewed-source contribution. `SessionInventoryModule` consumes
+and the exact reviewed-source contribution. Station builds the answer's input
+and Thread result contributions itself, so when Surface's parser rejects them
+the read is `unavailable` (503) and the runtime logs a Station Basis composition
+invariant; it never publishes Surface's fallback projection, whose gap would
+blame an owner. Whole Task Basis records that answer as an `unavailable` gap.
+Session ids are opaque and may contain `:`. `SessionInventoryModule` consumes
 that result through the pure `ReviewedSourceSessionInventoryAdapter`; it never
 opens a plugin, scans answers, or reads a whole Session to populate Sources.
 

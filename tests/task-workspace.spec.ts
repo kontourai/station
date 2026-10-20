@@ -133,7 +133,7 @@ test.describe
         repoRoot: primaryGitTopLevel,
         worktreePath: primaryGitTopLevel,
         branch: 'task-primary',
-        sourceSurface: 'ui',
+        sourceSurface: 'api',
       });
 
       for (const [kind, path] of [
@@ -198,6 +198,11 @@ test.describe
       await expect(
         page.getByText(primaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
+      // #3037 moved the binding into a collapsed disclosure; open it the way
+      // a person would before reading the branch.
+      await page
+        .locator('summary', { hasText: 'Task and workspace details' })
+        .click();
       await expect(
         page.getByText('task-primary', { exact: true }),
       ).toBeVisible();
@@ -285,6 +290,11 @@ test.describe
       await expect(
         page.getByText(secondaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
+      // #3037 moved the binding into a collapsed disclosure; open it the way
+      // a person would before reading the branch.
+      await page
+        .locator('summary', { hasText: 'Task and workspace details' })
+        .click();
       await expect(
         page.getByText('task-secondary', { exact: true }),
       ).toBeVisible();
@@ -426,30 +436,44 @@ test.describe
       // explicitly for both the attachment and its cross-project refusal control.
       await page.goto(`${live.ui}/projects/${projectSlug}?dock=open`);
       await expect(
-        page
-          .getByRole('button', { name: /^Manage Stations/ })
-          .getByLabel('connected'),
+        page.getByRole('button', { name: /^Choose Station — Connected/ }),
       ).toBeVisible({ timeout: 30_000 });
-      const newChat = page.getByTitle(/^New Chat/);
+      // #3369 replaced the agent-first picker with the dock's one "New chat"
+      // start surface: choose the Project and Agent on its chips, then Start.
+      const newChat = page
+        .getByRole('region', { name: 'Dock' })
+        .getByRole('button', { name: 'New chat', exact: true })
+        .first();
       await expect(newChat).toBeVisible({ timeout: 20_000 });
       await newChat.click();
-      // Chromium can paint this lazy route-transition dialog before its role
-      // is reflected in the accessibility snapshot. Keep the semantic DOM
-      // contract exact while avoiding that transient accessibility-tree race.
-      const picker = page.locator(
-        '.new-chat-modal[role="dialog"][aria-label="New Chat"]',
-      );
-      await expect(picker).toBeVisible();
-      await picker.locator('.new-chat-modal__context-button').click();
-      await picker.locator(`[data-context-value="${projectSlug}"]`).click();
+      const startDialog = page.getByRole('dialog', {
+        name: 'New chat',
+        exact: true,
+      });
+      const startForm = startDialog.getByRole('form', { name: 'Start work' });
+      await startForm.getByRole('button', { name: /^Project: / }).click();
+      await page
+        .getByRole('dialog', { name: 'Choose project' })
+        .getByRole('button', { name: new RegExp(projectSlug) })
+        .click();
       await expect(
-        picker.locator('.new-chat-modal__context-button'),
-      ).toContainText(projectSlug);
-      await picker.getByRole('button', { name: new RegExp(agentName) }).click();
-      const composer = page.getByPlaceholder(/^Type a message/);
-      await expect(composer).toBeVisible({ timeout: 20_000 });
-      await composer.fill('Give me the public answer.');
-      await composer.press('Enter');
+        startForm.getByRole('button', {
+          name: new RegExp(`^Project: ${projectSlug}`),
+        }),
+      ).toBeVisible();
+      await startForm.getByRole('button', { name: /^Agent:/ }).click();
+      const agentChooser = page.getByRole('dialog', { name: 'Choose agent' });
+      await agentChooser
+        .locator('.new-chat-modal__agent', { hasText: agentName })
+        .click();
+      await expect(agentChooser).toHaveCount(0);
+      await startForm
+        .getByRole('textbox', { name: 'What would you like done?' })
+        .fill('Give me the public answer.');
+      await startForm
+        .getByRole('button', { name: 'Start', exact: true })
+        .click();
+      await expect(startDialog).toHaveCount(0);
       await waitForVisibleAnswerThroughCapacityRetry(page, answer);
 
       const moreAnswerActions = page.getByRole('button', {
@@ -596,6 +620,56 @@ test.describe
       await confirm.focus();
       await confirm.press('Enter');
       await expect(attachDialog).toHaveCount(0);
+
+      // The pinned answer's real Session id is minted `${agentSlug}:${epoch}`;
+      // it must reach Basis as-is, with its Station input contribution
+      // (#418; Surface before 6.2.1 rejected the colon and Basis fell back).
+      expect(sessionId).toContain(':');
+      const basisReads = await page.evaluate(
+        async ({ sourceSessionId, sourceTurnId, keptTaskId }) => {
+          const read = async (path: string) => {
+            const response = await fetch(path);
+            return { status: response.status, text: await response.text() };
+          };
+          return {
+            direct: await read(
+              `/api/orchestration/sessions/${encodeURIComponent(sourceSessionId)}/turns/${encodeURIComponent(sourceTurnId)}/basis`,
+            ),
+            whole: await read(
+              `/api/tasks/${encodeURIComponent(keptTaskId)}/basis`,
+            ),
+          };
+        },
+        {
+          sourceSessionId: sessionId!,
+          sourceTurnId: turnId!,
+          keptTaskId: taskId,
+        },
+      );
+      for (const read of [basisReads.direct, basisReads.whole]) {
+        expect(read.text).not.toContain('unsupported-owner-version');
+        expect(read.text).not.toContain('1970-01-01');
+      }
+      const published = {
+        standing: 'execution-only',
+        answer: { state: 'available', value: { ref: { threadId: sessionId } } },
+        regions: {
+          inputs: [
+            expect.objectContaining({
+              ref: expect.objectContaining({ kind: 'input', sessionId }),
+            }),
+          ],
+        },
+      };
+      expect(basisReads.direct.status).toBe(200);
+      expect(JSON.parse(basisReads.direct.text)).toMatchObject({
+        success: true,
+        data: published,
+      });
+      expect(basisReads.whole.status).toBe(200);
+      expect(JSON.parse(basisReads.whole.text)).toMatchObject({
+        data: { answers: [{ projection: published }] },
+      });
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
       await expect(

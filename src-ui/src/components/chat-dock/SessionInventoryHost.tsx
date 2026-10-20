@@ -32,6 +32,7 @@ export function SessionInventoryHost({
   dockMode,
   fullscreen,
   onClose,
+  restoreFocusFallback,
 }: {
   scope: SessionInventoryScope;
   projectId?: string;
@@ -42,6 +43,8 @@ export function SessionInventoryHost({
   dockMode: DockMode;
   fullscreen: boolean;
   onClose(): void;
+  /** Focus target when `trigger` is no longer in the document. */
+  restoreFocusFallback?: () => void;
 }) {
   const [fullTrigger, setFullTrigger] = useState<{
     trigger: HTMLElement;
@@ -65,10 +68,13 @@ export function SessionInventoryHost({
   );
   const close = useCallback(
     (restoreFocus = true) => {
-      if (restoreFocus && trigger?.isConnected) trigger.focus();
+      if (restoreFocus) {
+        if (trigger?.isConnected) trigger.focus();
+        else restoreFocusFallback?.();
+      }
       onClose();
     },
-    [onClose, trigger],
+    [onClose, restoreFocusFallback, trigger],
   );
   const onHostOpened = useCallback((focus: () => boolean) => {
     setFocusFullHost(() => focus);
