@@ -73,7 +73,9 @@ class OnScreenObserver {
   constructor(readonly callback: IntersectionObserverCallback) {}
   observe(target: Element) {
     this.callback(
-      [{ target, isIntersecting: true }] as unknown as IntersectionObserverEntry[],
+      [
+        { target, isIntersecting: true },
+      ] as unknown as IntersectionObserverEntry[],
       this as unknown as IntersectionObserver,
     );
   }
@@ -171,11 +173,15 @@ async function answerMarkup(mobile: boolean): Promise<string> {
   );
   const chip = await screen.findByRole(
     'button',
-    { name: `${LABEL} for the answer “The build passed on the second attempt.”` },
+    {
+      name: `${LABEL} for the answer “The build passed on the second attempt.”`,
+    },
     { timeout: 5_000 },
   );
   expect(chip.textContent).toBe(LABEL);
-  expect(chip.getAttribute('title')).toMatch(/^Basis · Temporarily unavailable\. /);
+  expect(chip.getAttribute('title')).toMatch(
+    /^Basis · Temporarily unavailable\. /,
+  );
   const markup = container.innerHTML;
   unmount();
   return markup;
@@ -206,7 +212,8 @@ function measure() {
     chip: { left: box.left, right: box.right, width: box.width },
     bubble: bubble ? { left: bubble.left, right: bubble.right } : null,
     hittable: Boolean(hit && chip.contains(hit)),
-    leadWhole: lead.scrollWidth <= lead.clientWidth + 0.5 && lead.clientWidth > 0,
+    leadWhole:
+      lead.scrollWidth <= lead.clientWidth + 0.5 && lead.clientWidth > 0,
     time: time && {
       height: time.getBoundingClientRect().height,
       fontSize: Number.parseFloat(getComputedStyle(time).fontSize),
@@ -218,73 +225,76 @@ function measure() {
   };
 }
 
-describe.skipIf(!chromiumAvailable)('a long Basis standing fits its row', () => {
-  let browser: Awaited<ReturnType<typeof chromium.launch>>;
-  beforeAll(async () => {
-    browser = await chromium.launch();
-  });
-  afterAll(async () => {
-    await browser?.close();
-  });
+describe.skipIf(!chromiumAvailable)(
+  'a long Basis standing fits its row',
+  () => {
+    let browser: Awaited<ReturnType<typeof chromium.launch>>;
+    beforeAll(async () => {
+      browser = await chromium.launch();
+    });
+    afterAll(async () => {
+      await browser?.close();
+    });
 
-  it.each([280, 320, 360])(
-    'in a %ipx desktop dock it stays inside the bubble, whole "Basis · " and clickable',
-    async (dock) => {
-      const markup = await answerMarkup(false);
-      const page = await browser.newPage({
-        viewport: { width: 1280, height: 800 },
-      });
-      try {
-        await page.setContent(
-          `<!doctype html><style>${stylesheet()}</style><main style="width:${dock}px;overflow:hidden">${markup}</main>`,
-        );
-        expect(
-          await page.evaluate(() => matchMedia('(hover: hover)').matches),
-        ).toBe(true);
-        const fit = await page.evaluate(measure);
-        expect(fit.chip.left).toBeGreaterThanOrEqual(0);
-        expect(fit.bubble).not.toBeNull();
-        expect(fit.chip.left).toBeGreaterThanOrEqual(fit.bubble!.left);
-        expect(fit.chip.right).toBeLessThanOrEqual(fit.bubble!.right);
-        expect(fit.leadWhole).toBe(true);
-        expect(fit.hittable).toBe(true);
-      } finally {
-        await page.close();
-      }
-    },
-  );
+    it.each([280, 320, 360])(
+      'in a %ipx desktop dock it stays inside the bubble, whole "Basis · " and clickable',
+      async (dock) => {
+        const markup = await answerMarkup(false);
+        const page = await browser.newPage({
+          viewport: { width: 1280, height: 800 },
+        });
+        try {
+          await page.setContent(
+            `<!doctype html><style>${stylesheet()}</style><main style="width:${dock}px;overflow:hidden">${markup}</main>`,
+          );
+          expect(
+            await page.evaluate(() => matchMedia('(hover: hover)').matches),
+          ).toBe(true);
+          const fit = await page.evaluate(measure);
+          expect(fit.chip.left).toBeGreaterThanOrEqual(0);
+          expect(fit.bubble).not.toBeNull();
+          expect(fit.chip.left).toBeGreaterThanOrEqual(fit.bubble!.left);
+          expect(fit.chip.right).toBeLessThanOrEqual(fit.bubble!.right);
+          expect(fit.leadWhole).toBe(true);
+          expect(fit.hittable).toBe(true);
+        } finally {
+          await page.close();
+        }
+      },
+    );
 
-  it.each([320, 375])(
-    'in a %ipx phone row the timestamp keeps one line and the chip stays on screen',
-    async (width) => {
-      const markup = await answerMarkup(true);
-      const page = await browser.newPage({
-        viewport: { width, height: 800 },
-        hasTouch: true,
-        isMobile: true,
-      });
-      try {
-        await page.setContent(
-          `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><style>${stylesheet()}</style><main style="padding:8px">${markup}</main>`,
-        );
-        const fit = await page.evaluate(measure);
-        expect(fit.time).not.toBeNull();
-        // One line: a second would at least double a ~1.2em line box.
-        expect(fit.time!.height).toBeLessThan(1.8 * fit.time!.fontSize);
-        expect(fit.time!.whole).toBe(true);
-        expect(fit.time!.right).toBeLessThanOrEqual(fit.chip.left);
-        expect(fit.chip.left).toBeGreaterThanOrEqual(0);
-        expect(fit.chip.right).toBeLessThanOrEqual(width);
-        expect(fit.rowOverflow).toBe(false);
-        expect(fit.pageOverflow).toBe(false);
-        expect(fit.leadWhole).toBe(true);
-        expect(fit.hittable).toBe(true);
-      } finally {
-        await page.close();
-      }
-    },
-  );
-});
+    it.each([320, 375])(
+      'in a %ipx phone row the timestamp keeps one line and the chip stays on screen',
+      async (width) => {
+        const markup = await answerMarkup(true);
+        const page = await browser.newPage({
+          viewport: { width, height: 800 },
+          hasTouch: true,
+          isMobile: true,
+        });
+        try {
+          await page.setContent(
+            `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><style>${stylesheet()}</style><main style="padding:8px">${markup}</main>`,
+          );
+          const fit = await page.evaluate(measure);
+          expect(fit.time).not.toBeNull();
+          // One line: a second would at least double a ~1.2em line box.
+          expect(fit.time!.height).toBeLessThan(1.8 * fit.time!.fontSize);
+          expect(fit.time!.whole).toBe(true);
+          expect(fit.time!.right).toBeLessThanOrEqual(fit.chip.left);
+          expect(fit.chip.left).toBeGreaterThanOrEqual(0);
+          expect(fit.chip.right).toBeLessThanOrEqual(width);
+          expect(fit.rowOverflow).toBe(false);
+          expect(fit.pageOverflow).toBe(false);
+          expect(fit.leadWhole).toBe(true);
+          expect(fit.hittable).toBe(true);
+        } finally {
+          await page.close();
+        }
+      },
+    );
+  },
+);
 
 it.skipIf(chromiumAvailable)(
   'a long Basis standing fits its row — Chromium not installed',
