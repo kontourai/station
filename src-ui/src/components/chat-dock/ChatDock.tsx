@@ -1734,6 +1734,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         | 'hydrateMessages'
         | 'signal'
         | 'beforeFocus'
+        | 'revealDock'
       >,
     ) => {
       // #3724 review (BLOCKING): classify BEFORE navigating. Routing first
@@ -1760,7 +1761,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         model,
         acceptedModel,
         ...execution,
-        revealDock: !isFullscreenPlacement,
+        revealDock: execution?.revealDock !== false && !isFullscreenPlacement,
         conversationUpdatedAt,
       });
     },
@@ -1882,6 +1883,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         options?.model,
         options?.conversationUpdatedAt,
         options?.acceptedModel,
+        options?.revealDock === false ? { revealDock: false } : undefined,
       ),
     [openConversationInScopedPane],
   );
