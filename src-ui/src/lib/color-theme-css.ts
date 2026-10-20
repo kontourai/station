@@ -309,8 +309,9 @@ const STARTUP_ROLES: readonly ColorThemeRoleProperty[] = [
 
 /**
  * The splash's subset, plus the focus ring of its recovery button, scoped to
- * the splash element itself (`.station-startup`, which the startup HTML,
- * StartupScreen and the boot recovery all use). Scoped so the app is never
+ * the splash element itself (`.station-startup`: the startup HTML's splash and
+ * boot.ts's recovery screen; React's StartupScreen is a SkeletonBlock inside
+ * the app and is not covered). Scoped so the app is never
  * part-themed: until the family sheet has loaded, everything outside the
  * splash is wholly Station; once it loads, wholly the theme. Same root
  * conditions as the full sheet's role rules, so the splash resolves the flavor
