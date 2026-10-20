@@ -12,6 +12,20 @@ same labels:
 | Anonymous usage counts | `lite` | One daily aggregate, without an installation ID, account identity or content. A current shown-notice record is required. |
 | Detailed usage to help improve Station | `full` | Classified usage events with a monthly rotating installation code. Selecting this choice shows What's included; saving acknowledges that displayed revision before enabling detailed sharing. |
 
+Each choice has a short explanation and the same row spacing. Detailed's
+**What's included** begins with a short list: app/build and device information,
+feature and connection outcomes, a destination-specific monthly code, and the
+account/content/path information that is never collected. The full server-owned
+field definitions remain available in a nested, initially collapsed
+**Technical details** disclosure. Its position does not change the revision
+that Save acknowledges.
+
+Settings changes are drafts, not saves on selection. Choosing an option reveals
+the standard **Save / Discard** bar. Detailed shows the same inline explanation
+as first run and says to select **Save** to confirm. Only that Save action sends
+the required acknowledgements and writes the choice; the Settings intro does
+not send users back to the page they are already on.
+
 The primary choice applies to Kontour and the configured additional destination.
 Saving Detailed acknowledges each configured built-in destination separately
 before storing `full` for both. Kontour's acknowledgement is bound to its
@@ -31,12 +45,13 @@ notice prevents another prompt on remount; a changed notice revision prompts
 again. Off remains available in Settings. Resetting Station settings preserves
 sharing choices.
 
-When Do Not Track is on, the shared callout says nothing is shared. Saving still
-records the chosen setting for both built-in destinations, with the capability
-limit above, but never acknowledges detailed sharing. Removing Do Not Track
-requires confirmation of a saved detailed choice. It does not silently authorize
-that choice. Save failures use the existing page-callout tone system and leave
-the choice available to retry or dismiss.
+When Do Not Track is on, the shared callout says: “Do Not Track is on, so nothing
+is shared. The choice below applies if you turn it off.” Saving records the
+chosen setting for both built-in destinations without creating an acknowledgement.
+A Detailed choice without a current acknowledgement remains pending after Do
+Not Track is removed; a previously valid acknowledgement retains its existing
+meaning. Save failures use the existing page-callout tone system and leave the
+choice available to retry or dismiss.
 
 The app-wide disclosure stays closed when both effective publishers are Off
 and no product endpoint is configured. After a successful Off/Lite save, a

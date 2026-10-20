@@ -125,7 +125,15 @@ export function TelemetryTierSettings({
         />
         {primaryChoice !== 'full' &&
           (kontourChoice === 'full' || additionalChoice === 'full') &&
-          disclosure && <UsageSharingIncluded data={disclosure} />}
+          disclosure && (
+            <UsageSharingIncluded
+              data={disclosure}
+              saveLabel="Save"
+              dnt={Object.values(publishers ?? {}).some(
+                (state) => state?.reason === 'DNT',
+              )}
+            />
+          )}
         {primaryChoice === undefined && (
           <p>
             Custom choices are set in Advanced. Choosing an option here applies

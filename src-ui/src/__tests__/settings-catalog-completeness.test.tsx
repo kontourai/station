@@ -2538,6 +2538,18 @@ describe('settings catalog completeness', () => {
       expect(
         screen.getByRole('region', { name: "What's included" }),
       ).toBeTruthy();
+      expect(order).toEqual([]);
+      expect(
+        screen.getByText('Changes wait until you select Save.'),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          "Review what's included, then select Save to confirm detailed sharing.",
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(/You can change this in Privacy & sharing/),
+      ).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       await waitFor(() =>
         expect(authenticatedFetch).toHaveBeenCalledWith(

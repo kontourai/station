@@ -182,6 +182,7 @@ export function UsageSharingPrompt({
       }
     >
       <UsageSharingChoices
+        firstRun
         value={choice}
         onChange={setChoice}
         disabled={save.isPending || !status.data}

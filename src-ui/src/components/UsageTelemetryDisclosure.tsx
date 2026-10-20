@@ -464,7 +464,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     !status.data?.authorEndpoint &&
     (query.data.publishers
       ? Object.values(query.data.publishers).every(
-          (state) => state.tier === 'off',
+          (state) => state?.tier === 'off',
         )
       : query.data.telemetryEnabled === false);
   const dismissalRevision = query.data?.publishers

@@ -53,11 +53,16 @@ function readableSharingFields(text: string): string {
 
 /** One readable view of the server-owned definitions, for both sharing choices. */
 export function UsageSharingIncluded(
-  props: { data: SharingDisclosure } | { counts: SharingCounts },
+  props:
+    | { data: SharingDisclosure; saveLabel?: string; dnt?: boolean }
+    | { counts: SharingCounts },
 ) {
   const daily = 'counts' in props;
   return (
-    <section aria-label="What's included">
+    <section
+      aria-label="What's included"
+      className="usage-telemetry-disclosure__included-content"
+    >
       <h3>What's included</h3>
       {!daily && props.data.authorDisclosure && (
         <p>
@@ -66,12 +71,37 @@ export function UsageSharingIncluded(
         </p>
       )}
       {daily ? (
+        <p>
+          App version and device categories, grouped feature use and
+          customization, and counts of setup or connection trouble. No
+          installation identity, account or content.
+        </p>
+      ) : (
         <>
+          <ul>
+            <li>
+              App build and device information, feature use, and setup or
+              connection outcomes.
+            </li>
+            <li>
+              A random installation code changes monthly and is different for
+              each destination.
+            </li>
+            <li>
+              Never account identity, conversation content, file paths,
+              repository names, hostnames or branches.
+            </li>
+          </ul>
           <p>
-            App version and device categories, grouped feature use and
-            customization, and counts of setup or connection trouble. No
-            installation identity, account or content.
+            {props.dnt
+              ? `Select ${props.saveLabel ?? 'Save'} to keep this choice for when Do Not Track is off.`
+              : `Review what's included, then select ${props.saveLabel ?? 'Save'} to confirm detailed sharing.`}
           </p>
+        </>
+      )}
+      <details className="usage-telemetry-disclosure__technical">
+        <summary>Technical details</summary>
+        {daily ? (
           <ul>
             {Object.entries(props.counts).map(([field, detail]) => (
               <li key={field}>
@@ -92,48 +122,43 @@ export function UsageSharingIncluded(
               </li>
             ))}
           </ul>
-        </>
-      ) : (
-        <>
-          <p>
-            App and feature usage, with a random installation code that changes
-            each month. No account identity, conversation content, file paths,
-            repository names, hostnames or branches.
-          </p>
-          <p>
-            Each event includes a random retry code, times rounded to the
-            minute, and app build information: version, platform, CPU type,
-            release channel, source revision and whether the build has local
-            changes.
-          </p>
-          {props.data.envelope && (
+        ) : (
+          <>
+            <p>
+              Each event includes a random retry code, times rounded to the
+              minute, and app build information: version, platform, CPU type,
+              release channel, source revision and whether the build has local
+              changes.
+            </p>
+            {props.data.envelope && (
+              <ul>
+                {props.data.envelope.split('\n\n').map((block) => (
+                  <li key={block}>{readableSharingFields(block)}</li>
+                ))}
+              </ul>
+            )}
             <ul>
-              {props.data.envelope.split('\n\n').map((block) => (
-                <li key={block}>{readableSharingFields(block)}</li>
+              {Object.entries(props.data.events).map(([event, definition]) => (
+                <li key={event}>
+                  {definition.description}
+                  <ul>
+                    {Object.entries(definition.properties).map(
+                      ([property, detail]) => (
+                        <li key={property}>
+                          {property.replaceAll('_', ' ')}:{' '}
+                          {Array.isArray(detail.domain)
+                            ? detail.domain.join(', ')
+                            : detail.domain}
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                </li>
               ))}
             </ul>
-          )}
-          <ul>
-            {Object.entries(props.data.events).map(([event, definition]) => (
-              <li key={event}>
-                {definition.description}
-                <ul>
-                  {Object.entries(definition.properties).map(
-                    ([property, detail]) => (
-                      <li key={property}>
-                        {property.replaceAll('_', ' ')}:{' '}
-                        {Array.isArray(detail.domain)
-                          ? detail.domain.join(', ')
-                          : detail.domain}
-                      </li>
-                    ),
-                  )}
-                </ul>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+          </>
+        )}
+      </details>
     </section>
   );
 }
@@ -148,6 +173,7 @@ export function UsageSharingChoices({
   detailedAvailable = true,
   counts,
   onDetailedIntent,
+  firstRun = false,
 }: {
   value: TelemetryTier | undefined;
   onChange: (tier: TelemetryTier) => void;
@@ -158,14 +184,16 @@ export function UsageSharingChoices({
   counts?: SharingCounts;
   onDetailedIntent?: () => void;
   detailedAvailable?: boolean;
+  firstRun?: boolean;
 }) {
   const name = useId();
   return (
     <>
       <p>
-        Choose what usage information to share with Kontour. You can change this
-        in Privacy &amp; sharing.
+        Choose what usage information to share with Kontour.
+        {firstRun && ' You can change this in Privacy & sharing.'}
       </p>
+      {!firstRun && <p>Changes wait until you select Save.</p>}
       {host && <p>Also shared with: {host}</p>}
       {dnt && (
         <PageCallout
@@ -173,7 +201,8 @@ export function UsageSharingChoices({
           ariaLabel="Do Not Track"
           tone="info"
         >
-          Do Not Track is on, so nothing is shared.
+          Do Not Track is on, so nothing is shared. The choice below applies if
+          you turn it off.
         </PageCallout>
       )}
       <fieldset
@@ -187,9 +216,7 @@ export function UsageSharingChoices({
               type="radio"
               name={name}
               aria-label={SHARING_LABELS[tier]}
-              aria-describedby={
-                tier === 'lite' ? `${name}-description` : undefined
-              }
+              aria-describedby={`${name}-${tier}-description`}
               checked={value === tier}
               disabled={tier === 'full' && !detailedAvailable}
               onClick={() => {
@@ -199,11 +226,13 @@ export function UsageSharingChoices({
             />
             <span>
               {SHARING_LABELS[tier]}
-              {tier === 'lite' && (
-                <small id={`${name}-description`}>
-                  One daily count. No ID, no account, no content.
-                </small>
-              )}
+              <small id={`${name}-${tier}-description`}>
+                {tier === 'off'
+                  ? 'No automatic usage sharing.'
+                  : tier === 'lite'
+                    ? 'One daily count. No ID, no account, no content.'
+                    : 'Feature use. Monthly code. No account or content.'}
+              </small>
             </span>
           </label>
         ))}
@@ -214,7 +243,13 @@ export function UsageSharingChoices({
           <UsageSharingIncluded counts={counts} />
         </details>
       )}
-      {value === 'full' && data?.events && <UsageSharingIncluded data={data} />}
+      {value === 'full' && data?.events && (
+        <UsageSharingIncluded
+          data={data}
+          saveLabel={firstRun ? 'Save choice' : 'Save'}
+          dnt={dnt}
+        />
+      )}
     </>
   );
 }

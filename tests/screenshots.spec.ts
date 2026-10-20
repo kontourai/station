@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
-import { expect, type Page, type Route } from '@playwright/test';
+import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { contrastRatio } from './helpers/color-contrast';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -1712,6 +1712,29 @@ interface Screen {
   expectSkeleton?: boolean;
 }
 
+async function assertSharingRowRhythm(surface: Locator) {
+  const labels = surface.locator(
+    '.usage-telemetry-disclosure__choices > label',
+  );
+  await expect(labels).toHaveCount(3);
+  const boxes = await labels.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const { top, height, bottom } = node.getBoundingClientRect();
+      return { top, height, bottom };
+    }),
+  );
+  for (const box of boxes) expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(
+    Math.max(...boxes.map((box) => box.height)) -
+      Math.min(...boxes.map((box) => box.height)),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(boxes[1].top - boxes[0].bottom - (boxes[2].top - boxes[1].bottom)),
+  ).toBeLessThanOrEqual(1);
+  for (const label of await labels.all())
+    await expect(label.locator('small')).toBeVisible();
+}
+
 function telemetryConsentScreens(): Screen[] {
   return [DESKTOP, MOBILE].flatMap((viewport) =>
     (
@@ -1725,6 +1748,9 @@ function telemetryConsentScreens(): Screen[] {
         'settings-dnt',
         'outbox',
         'feedback',
+        ...(viewport === MOBILE
+          ? (['settings-dnt-after-fix', 'settings-detailed-expanded'] as const)
+          : []),
       ] as const
     ).map((mode) => {
       const dialogVisible = mode.startsWith('dialog-');
@@ -1732,7 +1758,9 @@ function telemetryConsentScreens(): Screen[] {
       const endpoint =
         mode === 'dialog-endpoint' ||
         mode === 'dialog-detailed' ||
-        mode === 'dialog-dnt';
+        mode === 'dialog-dnt' ||
+        mode === 'settings-dnt-after-fix' ||
+        mode === 'settings-detailed-expanded';
       const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
       let ownPage: Page;
       const device = viewport === MOBILE ? 'mobile' : 'desktop';
@@ -1765,7 +1793,10 @@ function telemetryConsentScreens(): Screen[] {
               async (route) => {
                 const response = await route.fetch();
                 const body = await response.json();
-                body.data.telemetryTier = { kontour: 'lite', operator: 'lite' };
+                body.data.telemetryTier = {
+                  kontour: 'lite',
+                  operator: 'lite',
+                };
                 body.data.productTelemetryEndpoint = endpoint
                   ? 'https://counts.example.test/events'
                   : '';
@@ -1859,7 +1890,9 @@ function telemetryConsentScreens(): Screen[] {
         },
         afterGoto: async (page) => {
           if (dialogVisible) {
-            const dialog = page.getByRole('dialog', { name: 'Usage sharing' });
+            const dialog = page.getByRole('dialog', {
+              name: 'Usage sharing',
+            });
             await expect(dialog).toBeVisible();
             await expect(
               dialog.getByRole('radio', {
@@ -1889,29 +1922,47 @@ function telemetryConsentScreens(): Screen[] {
                   name: 'Detailed usage to help improve Station',
                 })
                 .check();
+              const included = dialog.getByRole('region', {
+                name: "What's included",
+              });
               await expect(
-                dialog.getByRole('region', { name: "What's included" }),
+                included.getByText(
+                  /A random installation code changes monthly/,
+                ),
               ).toBeVisible();
+              const technical = included.locator(
+                '.usage-telemetry-disclosure__technical',
+              );
+              await expect(technical).not.toHaveAttribute('open', '');
+              await expect(technical.locator('li').first()).not.toBeVisible();
+              await technical
+                .getByText('Technical details', { exact: true })
+                .click();
+              await expect(technical.locator('li').first()).toBeVisible();
+              await technical
+                .getByText('Technical details', { exact: true })
+                .click();
+              await expect(technical.locator('li').first()).not.toBeVisible();
             }
             if (mode === 'dialog-light')
               await page.evaluate(() =>
                 document.documentElement.setAttribute('data-theme', 'light'),
               );
-            for (const label of await dialog
-              .locator('.usage-telemetry-disclosure__choices > label')
-              .all()) {
-              const box = await label.boundingBox();
-              expect(box?.height).toBeGreaterThanOrEqual(44);
-            }
+            await assertSharingRowRhythm(dialog);
             for (const name of ['Not now', 'Save choice']) {
-              const button = dialog.getByRole('button', { name, exact: true });
+              const button = dialog.getByRole('button', {
+                name,
+                exact: true,
+              });
               await expect(button).toBeInViewport();
               await button.click({ trial: true });
             }
             return;
           }
-          if (dnt) {
-            const dialog = page.getByRole('dialog', { name: 'Usage sharing' });
+          if (dnt && endpoint) {
+            const dialog = page.getByRole('dialog', {
+              name: 'Usage sharing',
+            });
             await dialog
               .getByRole('button', { name: 'Not now', exact: true })
               .click();
@@ -1925,6 +1976,48 @@ function telemetryConsentScreens(): Screen[] {
             });
           await choice.scrollIntoViewIfNeeded();
           await expect(choice).toBeChecked();
+          const main = page.getByRole('region', {
+            name: 'Usage sharing choices',
+          });
+          await expect(
+            main.getByText('Changes wait until you select Save.'),
+          ).toBeVisible();
+          await expect(
+            main.getByText(/You can change this in Privacy & sharing/),
+          ).toHaveCount(0);
+          await assertSharingRowRhythm(main);
+          if (
+            mode === 'settings-dnt-after-fix' ||
+            mode === 'settings-detailed-expanded'
+          ) {
+            await main
+              .getByRole('radio', {
+                name:
+                  mode === 'settings-dnt-after-fix'
+                    ? "Don't share"
+                    : 'Detailed usage to help improve Station',
+                exact: true,
+              })
+              .check();
+            const save = page.getByRole('button', {
+              name: 'Save',
+              exact: true,
+            });
+            await expect(save).toBeInViewport();
+            await save.click({ trial: true });
+            if (mode === 'settings-detailed-expanded') {
+              const included = main.getByRole('region', {
+                name: "What's included",
+              });
+              await included.scrollIntoViewIfNeeded();
+              await expect(
+                included.getByText(/Review what's included, then select Save/),
+              ).toBeVisible();
+              await expect(
+                included.locator('.usage-telemetry-disclosure__technical'),
+              ).not.toHaveAttribute('open', '');
+            }
+          }
           if (dnt)
             await expect(
               page.getByRole('region', { name: 'Do Not Track' }),
