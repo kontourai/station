@@ -8,7 +8,9 @@ existing saved choices, including a Detailed preference awaiting renewed
 confirmation. If the two destinations differ, no option is selected and Save
 is disabled until an option is chosen; Not now keeps the separate choices.
 Initial keyboard focus goes to the selected radio, or the first radio when
-none is selected. Settings → Privacy & sharing uses the same labels:
+none is selected. If startup is still covering the app, that focus is applied
+after the launch dialog closes. Background section navigation yields to the
+open sharing dialog. Settings → Privacy & sharing uses the same labels:
 
 | Display label | Config/API/CLI value | Meaning |
 | --- | --- | --- |

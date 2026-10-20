@@ -13,6 +13,7 @@ import {
   type Ref,
   type RefObject,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -24,6 +25,10 @@ import {
 } from '../hooks/useRecoveryConfig';
 import { useTelemetryNotice } from '../hooks/useTelemetryNotice';
 import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
+import {
+  afterInitialStartup,
+  initialStartupIsActive,
+} from '../lib/startup-presentation';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { PageCallout } from './PageCallout';
@@ -90,6 +95,11 @@ export function UsageSharingPrompt({
   const client = useQueryClient();
   const internalChoiceRef = useRef<HTMLInputElement>(null);
   const choiceRef = initialChoiceRef ?? internalChoiceRef;
+  useLayoutEffect(() => {
+    // The native startup dialog makes body portals inert until handoff.
+    if (initialStartupIsActive())
+      return afterInitialStartup(() => choiceRef.current?.focus());
+  }, [choiceRef]);
   const save = useMutation({
     mutationFn: async (action: {
       next: TelemetryTier;

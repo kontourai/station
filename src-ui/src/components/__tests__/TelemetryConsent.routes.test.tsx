@@ -1196,7 +1196,7 @@ test('notice failure after Save preserves the preference and reports only the no
   }
 });
 
-test.each(['close', 'escape'] as const)(
+test.each(['close', 'escape', 'backdrop'] as const)(
   'guided first-run %s records an explicit visible dismissal and preserves choices',
   async (exit) => {
     const { client, loader, service } = await publisherFixture();
@@ -1226,7 +1226,8 @@ test.each(['close', 'escape'] as const)(
       expect(calls('/lite-notices')).toHaveLength(0);
       if (exit === 'close')
         fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
-      else fireEvent.keyDown(dialog, { key: 'Escape' });
+      else if (exit === 'escape') fireEvent.keyDown(dialog, { key: 'Escape' });
+      else fireEvent.pointerDown(screen.getByRole('presentation'));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       await waitFor(async () =>
         expect(
