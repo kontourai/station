@@ -1,6 +1,5 @@
 import { resolveWorkspaceBasisMcpPaneOccurrence } from '@kontourai/station-basis-pane/workspace-basis-mcp-pane';
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
-import type { WorkspacePaneInstanceId } from '@kontourai/station-contracts/workspace-pane';
 import {
   WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID,
   WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR_ID,
@@ -519,6 +518,9 @@ function TaskWorkspaceContent({
   );
 }
 
+/** Space kept between the sticky page header and a revealed pane. */
+const REVEAL_GAP_PX = 8;
+
 /** Durable promoted workspace-file snapshots; no RelationGraph mirror. */
 function TaskRoomWorkspaceSection({
   task,
@@ -536,26 +538,29 @@ function TaskRoomWorkspaceSection({
   // selects the pane and focuses its tab, the pane's name in the strip; the
   // tab's group is then scrolled to the top so the pane itself is in view,
   // not only its tab.
-  const revealPane = useCallback(
-    (
-      host: WorkspacePaneHostOpenAction,
-      instanceId: WorkspacePaneInstanceId,
-    ) => {
-      if (!host.focusExisting?.(instanceId)) return;
-      // After the host's own focus frame, which is scheduled first.
-      requestAnimationFrame(() => {
-        const room = roomRef.current;
-        if (!room) return;
-        const tab = room.contains(document.activeElement)
-          ? document.activeElement
-          : null;
-        (tab?.closest('.workspace-pane-host__group') ?? room).scrollIntoView?.({
-          block: 'start',
-        });
-      });
-    },
-    [],
-  );
+  const revealFocusedPane = useCallback(() => {
+    // After the host's own focus frame, which is scheduled first.
+    requestAnimationFrame(() => {
+      const room = roomRef.current;
+      if (!room) return;
+      const tab = room.contains(document.activeElement)
+        ? document.activeElement
+        : null;
+      const target =
+        tab?.closest<HTMLElement>('.workspace-pane-host__group') ?? room;
+      // The page's DetailHeader is sticky at the top of the same scroller:
+      // a plain scroll to the start put the focused tab under it. The margin
+      // holds the group below the header for this one scroll.
+      const header = room
+        .closest('.task-workspace')
+        ?.querySelector<HTMLElement>(':scope > .detail-header');
+      target.style.scrollMarginTop = header
+        ? `${header.getBoundingClientRect().height + REVEAL_GAP_PX}px`
+        : '';
+      target.scrollIntoView?.({ block: 'start' });
+      target.style.scrollMarginTop = '';
+    });
+  }, []);
   const publishOpenAction = useCallback(
     (action: WorkspacePaneHostOpenAction | null) =>
       onOpenActionChange(
@@ -563,17 +568,18 @@ function TaskRoomWorkspaceSection({
           ...action,
           open(instance, preparation, placement) {
             const outcome = action.open(instance, preparation, placement);
-            if (outcome.ok) revealPane(action, instance.instanceId);
+            if (outcome.ok && action.focusExisting?.(instance.instanceId))
+              revealFocusedPane();
             return outcome;
           },
           focusExisting(instanceId) {
             const found = action.focusExisting?.(instanceId) ?? false;
-            if (found) revealPane(action, instanceId);
+            if (found) revealFocusedPane();
             return found;
           },
         },
       ),
-    [onOpenActionChange, revealPane],
+    [onOpenActionChange, revealFocusedPane],
   );
   const runtime = useRef<WorkspacePaneHostRuntime | null>(null);
   if (!runtime.current) runtime.current = new WorkspacePaneHostRuntime();

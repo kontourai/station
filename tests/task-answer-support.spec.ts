@@ -310,7 +310,9 @@ function outOfView(target: Locator): Promise<boolean> {
 /**
  * #3883: Open Basis lands the reader on the opened pane: focus on its tab
  * (the pane's name in the room's strip, selected) and the viewport on the
- * pane, wherever on the page the button was pressed.
+ * pane, wherever on the page the button was pressed. The focused tab must be
+ * the topmost thing at its own centre: the page's sticky header covered it
+ * while the tab was still inside the viewport's bounds.
  */
 async function expectOpenedPaneRevealed(page: Page, pane: Locator) {
   const focused = page.locator(':focus');
@@ -320,10 +322,17 @@ async function expectOpenedPaneRevealed(page: Page, pane: Locator) {
     .poll(() =>
       focused.evaluate((node) => {
         const rect = node.getBoundingClientRect();
-        return rect.top >= 0 && rect.bottom <= window.innerHeight;
+        const hit = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        );
+        return {
+          inViewport: rect.top >= 0 && rect.bottom <= window.innerHeight,
+          unobscured: hit !== null && node.contains(hit),
+        };
       }),
     )
-    .toBe(true);
+    .toEqual({ inViewport: true, unobscured: true });
   await expect
     .poll(() =>
       pane.evaluate((node) => {

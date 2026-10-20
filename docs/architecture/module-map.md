@@ -2443,7 +2443,8 @@ and `ProjectTaskRoomConversation` through `WorkspacePaneHost`. The page's
 Kept answers section opens Basis panes into that host (Open Basis, Open Whole
 Task Basis); the room section wraps the host's open action so a pane opened
 from further down the page is selected, its tab takes focus, and the tab's
-pane group is scrolled to the top of the viewport (#3883).
+pane group is scrolled to the top of the viewport, just below the page's
+sticky header so the focused tab is not covered (#3883).
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.
