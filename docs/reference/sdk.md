@@ -1298,6 +1298,50 @@ Accepts the same `{ projectSlug, workingDir }` location. Default count: 5;
 disabled unless both fields are nonempty. A `success: false` envelope currently
 becomes `[]`, which does not establish an empty repository history.
 
+### `useGitBranchesQuery(location, config?)`
+
+Accepts the same `{ projectSlug, workingDir }` location and reads
+`/api/coding/git/branches`, returning `GitBranch[]` (`name`, `sha`, a relative
+committer `date`, `current`). Disabled unless both fields are nonempty. A
+`success: false` envelope currently becomes `[]`, which does not establish a
+repository without branches.
+
+### `useReposQuery(workspace, config?)`
+
+Discovers the git repositories under `workspace` through `/api/coding/repos`
+and returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
+`DiscoveredRepo` carries its symlink-resolved `root`, `name`, `relativePath`
+and current `branch` (`''` for a detached HEAD or a repository the Project does
+not own). `config` is a `QueryConfig` plus an optional `projectSlug`. With a
+Project the server confines the folder to it; without one only the operator in
+person gets an answer. A `success: false` envelope currently becomes an empty
+result, so no repositories is not proof the folder holds none.
+
+### `useGitCheckoutMutation(projectSlug, workingDirectory)`
+
+`mutate({ branch, create? })` posts to `/api/coding/git/checkout` and resolves
+to `GitCheckoutResult` (`{ branch }`, the branch HEAD now names). `create`
+creates the branch from HEAD.
+
+### `useGitCommitMutation(projectSlug, workingDirectory)`
+
+`mutate({ message })` commits every change through `/api/coding/git/commit`
+and resolves to `GitCommitResult` (`{ sha }`). The server resolves the
+Project's own folder from `projectSlug`; `workingDirectory` selects a
+repository inside it.
+
+### `useGitPushMutation(projectSlug, workingDirectory)`
+
+`mutate({ remote?, branch?, setUpstream? })` pushes through
+`/api/coding/git/push` and resolves to `GitPushResult` (`{ output, remote }`).
+
+Commit and push are the Station operator's act: the server answers any other
+caller with `403`, and the SDK grants nothing of its own. Every git write
+rejects with the server's `error` sentence (a refused secret-looking file,
+repository configuration or remote is named there). A successful write
+invalidates that folder's `useGitStatusQuery`, `useGitBranchesQuery` and
+`useGitLogQuery` reads.
+
 ### `useProviderCommandsQuery(provider, config?)`
 
 Reads `/api/orchestration/providers/:provider/commands`; disabled for a missing

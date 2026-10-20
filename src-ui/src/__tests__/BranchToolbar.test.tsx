@@ -72,7 +72,8 @@ vi.mock('../hooks/useGitStatus', () => ({
   },
 }));
 
-vi.mock('../hooks/useGitActions', () => ({
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useReposQuery: () => state.repos,
   useGitBranchesQuery: () => state.branches,
   useGitCheckoutMutation: () => ({

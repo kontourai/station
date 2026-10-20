@@ -1,8 +1,10 @@
-import { useAvailableProjectLayoutsQuery } from '@kontourai/station-sdk';
+import {
+  useAvailableProjectLayoutsQuery,
+  useReposQuery,
+} from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
 import { looksLikeWorkspacePath } from '../components/modals/project-form-utils';
 import { mergeAvailableProjectLayouts } from '../components/registry/ProjectLayoutCatalog';
-import { useReposQuery } from './useGitActions';
 import { getRecentLayouts } from './useRecentLayouts';
 
 interface UseNewProjectStarterOptions {

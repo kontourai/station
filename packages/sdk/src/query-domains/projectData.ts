@@ -141,6 +141,229 @@ export function useGitLogQuery(
   );
 }
 
+/** A single git branch as returned by `GET /api/coding/git/branches`. */
+export interface GitBranch {
+  name: string;
+  sha: string;
+  /** Committer date, relative (`2 days ago`), as git formats it. */
+  date: string;
+  current: boolean;
+}
+
+/** A discovered git repository as returned by `GET /api/coding/repos`. */
+export interface DiscoveredRepo {
+  /** Absolute, symlink-resolved repository root. */
+  root: string;
+  /** Display name (the repository directory name). */
+  name: string;
+  /** Path of the repository relative to the workspace (`.` for itself). */
+  relativePath: string;
+  /**
+   * Current branch. `''` for a detached HEAD, and for a repository whose
+   * `.git` is not the Project's own (the server lists it but reads nothing).
+   */
+  branch: string;
+}
+
+/** Result of `GET /api/coding/repos`. */
+export interface ReposResult {
+  workspace: string;
+  /** True when the workspace directory is itself a git repository root. */
+  workspaceIsRepo: boolean;
+  repos: DiscoveredRepo[];
+}
+
+/** Server answer to a branch checkout: the branch HEAD now names. */
+export interface GitCheckoutResult {
+  branch: string;
+}
+
+/** Server answer to a commit. */
+export interface GitCommitResult {
+  sha: string;
+}
+
+/** Server answer to a push: git's output and the remote it pushed to. */
+export interface GitPushResult {
+  output: string;
+  remote: string;
+}
+
+/**
+ * List the branches of a folder in a Project (#2412). Same location and
+ * admission as {@link useGitStatusQuery}. A `success: false` envelope becomes
+ * `[]`, which does not establish a repository without branches.
+ */
+export function useGitBranchesQuery(
+  location: GitReadLocation | null | undefined,
+  config?: QueryConfig<GitBranch[]>,
+) {
+  return useApiQuery<GitBranch[]>(
+    ['git-branches', location?.workingDir ?? ''],
+    async () => {
+      if (!isGitReadLocation(location)) return [];
+      const apiBase = await _getApiBase();
+      const response = await authenticatedFetch(
+        `${apiBase}/api/coding/git/branches?${gitReadQuery(location)}`,
+      );
+      const result = (await response.json()) as GitEnvelope<GitBranch[]>;
+      if (!result.success) return [];
+      return result.data ?? [];
+    },
+    {
+      ...config,
+      enabled: isGitReadLocation(location) && (config?.enabled ?? true),
+      staleTime: config?.staleTime ?? 10_000,
+    },
+  );
+}
+
+/**
+ * Discover the git repositories under a workspace via `GET /api/coding/repos`,
+ * including a workspace that is not itself a repository but holds several.
+ *
+ * #2412: `projectSlug` names the Project the workspace belongs to, and the
+ * server refuses a folder outside it. Without one (a folder that is not a
+ * Project yet) only the operator in person gets an answer; anyone else gets
+ * none. A `success: false` envelope becomes an empty result, so "no repos"
+ * is not proof the folder holds none.
+ */
+export function useReposQuery(
+  workspace: string | null | undefined,
+  config: QueryConfig<ReposResult> & { projectSlug?: string } = {},
+) {
+  const { projectSlug, ...queryConfig } = config;
+  return useApiQuery<ReposResult>(
+    ['coding-repos', projectSlug ?? '', workspace ?? ''],
+    async () => {
+      const empty: ReposResult = {
+        workspace: workspace ?? '',
+        workspaceIsRepo: false,
+        repos: [],
+      };
+      if (!workspace) return empty;
+      const apiBase = await _getApiBase();
+      const response = await authenticatedFetch(
+        `${apiBase}/api/coding/repos?${
+          projectSlug ? `projectSlug=${encodeURIComponent(projectSlug)}&` : ''
+        }path=${encodeURIComponent(workspace)}`,
+      );
+      const result = (await response.json()) as GitEnvelope<ReposResult>;
+      if (!result.success || !result.data) return empty;
+      return result.data;
+    },
+    {
+      ...queryConfig,
+      enabled: !!workspace && (queryConfig.enabled ?? true),
+      staleTime: queryConfig.staleTime ?? 30_000,
+    },
+  );
+}
+
+interface GitEnvelope<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+/** POST a git write; a refusal rejects with the server's own sentence. */
+async function postGitWrite<T>(
+  route: 'checkout' | 'commit' | 'push',
+  body: Record<string, unknown>,
+): Promise<T> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/api/coding/git/${route}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+  const result = (await response.json()) as GitEnvelope<T>;
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `Request failed (${response.status})`);
+  }
+  return result.data as T;
+}
+
+/**
+ * Refresh the git reads of one folder (status, branches, log) after a write,
+ * so every surface reading that folder shows the new repository state.
+ */
+function useRefreshGitReads(workingDirectory: string) {
+  const queryClient = useQueryClient();
+  return () => {
+    for (const read of ['git-status', 'git-branches', 'git-log']) {
+      queryClient.invalidateQueries({ queryKey: [read, workingDirectory] });
+    }
+  };
+}
+
+/** Check out (or, with `create`, create) a branch in a Project's folder (#2412). */
+export function useGitCheckoutMutation(
+  projectSlug: string,
+  workingDirectory: string,
+) {
+  const refresh = useRefreshGitReads(workingDirectory);
+  return useMutation({
+    mutationFn: ({ branch, create }: { branch: string; create?: boolean }) =>
+      postGitWrite<GitCheckoutResult>('checkout', {
+        projectSlug,
+        path: workingDirectory,
+        branch,
+        create,
+      }),
+    onSuccess: refresh,
+  });
+}
+
+/**
+ * Commit all changes with a message.
+ *
+ * #2363: commit and push are the Station operator's act; the server refuses
+ * any other caller with 403. They run in the Project's own folder, which the
+ * server resolves from `projectSlug`; `workingDirectory` only names which
+ * repository inside it (a multi-repo workspace). A refusal (a secret-looking
+ * file, repository config Station will not run git with, a remote it will
+ * not push to) rejects the mutation with the server's message, which names
+ * the files or keys.
+ */
+export function useGitCommitMutation(
+  projectSlug: string,
+  workingDirectory: string,
+) {
+  const refresh = useRefreshGitReads(workingDirectory);
+  return useMutation({
+    mutationFn: ({ message }: { message: string }) =>
+      postGitWrite<GitCommitResult>('commit', {
+        projectSlug,
+        path: workingDirectory,
+        message,
+      }),
+    onSuccess: refresh,
+  });
+}
+
+/** Push the current branch to a remote. See {@link useGitCommitMutation}. */
+export function useGitPushMutation(
+  projectSlug: string,
+  workingDirectory: string,
+) {
+  const refresh = useRefreshGitReads(workingDirectory);
+  return useMutation({
+    mutationFn: (
+      args: { remote?: string; branch?: string; setUpstream?: boolean } = {},
+    ) =>
+      postGitWrite<GitPushResult>('push', {
+        projectSlug,
+        path: workingDirectory,
+        ...args,
+      }),
+    onSuccess: refresh,
+  });
+}
+
 export function useKnowledgeNamespacesQuery(
   projectSlug: string,
   config?: QueryConfig<KnowledgeNamespaceConfig[]>,

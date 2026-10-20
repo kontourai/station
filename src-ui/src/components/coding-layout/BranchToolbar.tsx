@@ -1,4 +1,12 @@
 import {
+  type DiscoveredRepo,
+  useGitBranchesQuery,
+  useGitCheckoutMutation,
+  useGitCommitMutation,
+  useGitPushMutation,
+  useReposQuery,
+} from '@kontourai/station-sdk';
+import {
   type ReactNode,
   useEffect,
   useId,
@@ -6,14 +14,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  type DiscoveredRepo,
-  useGitBranchesQuery,
-  useGitCheckoutMutation,
-  useGitCommitMutation,
-  useGitPushMutation,
-  useReposQuery,
-} from '../../hooks/useGitActions';
 import { useGitStatus } from '../../hooks/useGitStatus';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { Button } from '../Button';
@@ -100,7 +100,9 @@ export function BranchToolbar({
   }, [repoRoot, onActiveRepoChange]);
 
   const status = useGitStatus(projectSlug, repoRoot);
-  const branchesQuery = useGitBranchesQuery(projectSlug, repoRoot);
+  const branchesQuery = useGitBranchesQuery(
+    repoRoot ? { projectSlug, workingDir: repoRoot } : null,
+  );
   const checkout = useGitCheckoutMutation(projectSlug, repoRoot ?? '');
   const commit = useGitCommitMutation(projectSlug, repoRoot ?? '');
   const push = useGitPushMutation(projectSlug, repoRoot ?? '');
