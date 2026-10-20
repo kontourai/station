@@ -125,6 +125,10 @@ server.on('connection', (/** @type {net.Socket} */ socket) => {
   });
 });
 
+function reportListening() {
+  if (!protocol10) send({ type: 'listener.listening', name: 'api' });
+}
+
 function reportReady() {
   const address = server.address();
   const boundPort =
@@ -229,14 +233,17 @@ process.on(
         if (process.env.FAKE_CORE_NEVER_READY === '1') return;
         if (process.env.FAKE_CORE_SERVE_WITHOUT_READY === '1') {
           // Serving clients already, as a real core does well before ready.
-          server.listen(/** @type {any} */ (handle));
+          server.listen(/** @type {any} */ (handle), reportListening);
           return;
         }
         if (process.env.FAKE_CORE_NO_ADOPT === '1') {
           server.listen(port, host, reportReady);
           return;
         }
-        server.listen(/** @type {any} */ (handle), reportReady);
+        server.listen(/** @type {any} */ (handle), () => {
+          reportListening();
+          reportReady();
+        });
         return;
       }
       case 'listener.spares':

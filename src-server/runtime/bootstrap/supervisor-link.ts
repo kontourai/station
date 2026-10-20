@@ -383,6 +383,8 @@ export class SupervisorLink implements ListenerLink {
         closeQuietly(handle);
         throw error;
       }
+      // Connections the supervisor held for this listener come here now.
+      this.send({ type: 'listener.listening', name });
       const bound = server.address();
       if (typeof bound === 'object' && bound) {
         // The held socket wins: say so when configuration asks for another.

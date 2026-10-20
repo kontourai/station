@@ -248,6 +248,11 @@ describe('later generation: promote with held listeners', () => {
     expect(port).toBe(held.port);
     await expect(get(held.port)).resolves.toMatchObject({ body: 'ok' });
     expect(channel.types()).not.toContain('listener.bound');
+    // Protocol 1.1: connections held for it during a handoff come here now.
+    expect(channel.sent.at(-1)?.message).toEqual({
+      type: 'listener.listening',
+      name: 'api',
+    });
   });
 
   it('binds and reports a listener the supervisor does not hold yet', async () => {

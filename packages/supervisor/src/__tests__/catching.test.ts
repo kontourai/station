@@ -56,12 +56,15 @@ async function handOffUnderLoad(
 }
 
 describe('connection catching during a handoff (real processes)', () => {
-  it('holds connections made while the listener moves and serves each one on the next generation, through a handoff and a rollback', async () => {
+  it('holds connections made while the listener moves and serves each one on the next generation, through a handoff and two rollbacks', async () => {
     const home = makeTempDir('sup-catch-');
     const buildRoot = makeTempDir('sup-catch-build-');
     const entry = realpathSync(writeCoreVariant(buildRoot, 'core', {}));
     const badEntry = writeCoreVariant(buildRoot, 'bad-core', {
       FAKE_CORE_NEVER_READY: '1',
+    });
+    const servesThenFails = writeCoreVariant(buildRoot, 'serving-core', {
+      FAKE_CORE_SERVE_WITHOUT_READY: '1',
     });
     const supervisor = await startSupervisor({ home, entry, env: CATCH_ON });
     const load = startLoad(supervisor.port);
@@ -92,6 +95,27 @@ describe('connection catching during a handoff (real processes)', () => {
       ).toMatchObject({ outcome: 'rolled-back', generation: 4 });
       expect(supervisor.output()).toMatch(
         /passed \d+ connection\(s\) held during the handoff to generation 4/,
+      );
+      servedBefore = load.stats.ok;
+      await vi.waitFor(() =>
+        expect(load.stats.ok).toBeGreaterThan(servedBefore + 20),
+      );
+
+      // A trial that listens and serves, then misses readiness: it gets what
+      // was held from generation 4's drain, and its own drain is caught for
+      // the generation the rollback starts.
+      expect(
+        await supervisor.handoff({
+          entry: servesThenFails,
+          readinessTimeoutMs: 1_500,
+        }),
+        supervisor.output(),
+      ).toMatchObject({ outcome: 'rolled-back', generation: 6 });
+      expect(supervisor.output()).toContain(
+        'catching connections on 8 spare listener(s) while generation 5 drains',
+      );
+      expect(supervisor.output()).toMatch(
+        /passed \d+ connection\(s\) held during the handoff to generation 6/,
       );
       servedBefore = load.stats.ok;
       await vi.waitFor(() =>

@@ -218,8 +218,8 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
       ? {
           catchConnections: {
             spares: CATCH_SPARES,
-            createCatcher: (name, handle) =>
-              createNetCatcher(name, handle, log),
+            createCatcher: (name, handle, now) =>
+              createNetCatcher(name, handle, now, log),
           },
         }
       : {}),

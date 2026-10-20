@@ -16,10 +16,13 @@ function ignoreHeldError(): void {}
 export function createNetCatcher(
   name: string,
   handle: ListenerHandle,
+  now: () => number,
   log: (message: string) => void,
 ): ListenerCatcher {
   const held: Socket[] = [];
+  let lastCaughtAt = 0;
   const server = createServer({ pauseOnConnect: true }, (socket) => {
+    lastCaughtAt = now();
     socket.on('error', ignoreHeldError);
     held.push(socket);
   });
@@ -31,6 +34,9 @@ export function createNetCatcher(
   server.listen(handle as unknown as Parameters<typeof server.listen>[0]);
   return {
     name,
+    get lastCaughtAt() {
+      return lastCaughtAt;
+    },
     close(): HeldConnection[] {
       server.close();
       return held.splice(0).filter((socket) => !socket.destroyed);

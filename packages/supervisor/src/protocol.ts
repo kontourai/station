@@ -316,13 +316,24 @@ export interface ListenerSpareMessage {
   name: string;
 }
 
+/**
+ * Protocol 1.1: this generation now listens on the named adopted listener.
+ * Connections the supervisor held for it during a handoff go to the first
+ * generation that says so, as the kernel backlog would hand them to the
+ * first one that accepts.
+ */
+export interface ListenerListeningMessage {
+  type: 'listener.listening';
+  name: string;
+}
+
 /** Code is loaded; the home has not been touched. */
 export interface ParkedMessage {
   type: 'parked';
   /**
    * Protocol 1.1: this core speaks connection catching. It answers
-   * `listener.spares` while serving and serves `connection.adopt` (see
-   * `ListenerSparesMessage`). A supervisor catches during a handoff only when
+   * `listener.spares` while listening, reports `listener.listening`, and
+   * serves `connection.adopt` (see `ListenerSparesMessage`). A supervisor catches during a handoff only when
    * both the generation it drains and the trial said so; a 1.0 core ignores
    * `listener.spares` and closes an adopted connection as a stray handle.
    */
@@ -356,6 +367,7 @@ export interface CoreHandoffRequestMessage {
 export type CoreToSupervisorMessage =
   | ListenerBoundMessage
   | ListenerSpareMessage
+  | ListenerListeningMessage
   | ParkedMessage
   | ReadyMessage
   | DrainProgressMessage
@@ -382,10 +394,11 @@ export interface ListenerAdoptMessage {
 }
 
 /**
- * Protocol 1.1, sent only on Windows, to the serving generation before it is
- * drained: answer with `count` (1 to MAX_LISTENER_SPARES) `listener.spare`
- * messages for the named listener, then, when the drain comes, close that
- * listener only once no connection has reached it for a short quiet window.
+ * Protocol 1.1, sent only on Windows, to a generation that listens on the
+ * named listener, before it is drained: answer with `count` (1 to
+ * MAX_LISTENER_SPARES) `listener.spare` messages for that listener, then,
+ * when the drain comes, close it only once no connection has reached it for
+ * a short quiet window.
  *
  * Why: libuv on Windows keeps accepts (`AcceptEx`) posted on a listening
  * socket, and Windows completes a new connection into one as soon as its
@@ -394,9 +407,11 @@ export interface ListenerAdoptMessage {
  * the shared backlog. Windows hands a connection to the most recently posted
  * accept, so once the supervisor listens on the spares, connections go to it
  * instead of the generation about to close. The supervisor holds what it
- * accepts, unread, closes the spares, and passes what it held with
- * `connection.adopt` to the next generation that reports `ready`: the trial,
- * or the generation a rollback starts. A 1.0 core ignores this message.
+ * accepts, unread, and passes it with `connection.adopt` to the next
+ * generation that reports the listener listening (`listener.listening`) or,
+ * failing that, ready: the trial, or the generation a rollback starts. Once
+ * no connection has reached the spares for a quiet window, it closes them. A
+ * 1.0 core ignores this message.
  */
 export interface ListenerSparesMessage {
   type: 'listener.spares';

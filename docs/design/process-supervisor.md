@@ -493,32 +493,37 @@ Every path becomes a generation handoff:
     listener closes its accepts, resetting any connection completed into
     one; POSIX keeps such connections in the shared backlog. Windows hands a
     new connection to the most recently posted accept, so:
-    1. Before draining the serving generation, the supervisor asks it for
-       eight spare copies of each listener (`listener.spares`), listens on
+    1. Before draining a generation that listens (the serving one, or a
+       promoted trial that failed), the supervisor asks it for eight spare
+       copies of each listener it listens on (`listener.spares`), listens on
        them, and holds what it accepts, unread.
     2. The draining generation closes its listeners only once no connection
        has reached them for 50 ms, and at most 1 s after the drain began.
-    3. When the next generation reports ready (the trial, or the generation
-       a rollback starts), the supervisor closes the spares and passes each
-       held connection to it with `connection.adopt`, as the backlog would
-       have handed it to the first generation to accept. The core serves it
-       on the named listener. `net.Server` does not count such a connection,
-       so the drain waits on the core's own connection set.
+    3. The first generation to report a listener listening
+       (`listener.listening`) gets what was held for it, with
+       `connection.adopt`, as the backlog would have handed it to the first
+       generation to accept: the trial, or the generation a rollback starts.
+       Anything still held when a generation reports ready goes to it then.
+       The core serves it on the named listener. `net.Server` does not count
+       such a connection, so the drain waits on the core's own connection
+       set.
+    4. The supervisor closes the spares once none has accepted for 50 ms,
+       and at most 1 s later: the new generation's accepts are newer, but
+       one still booting can be slow to post its next.
 
     A core says it speaks this when it parks (`adoptsConnections`). The
-    supervisor catches only when both the draining generation and the trial
-    say so, so a 1.0 core on either side gets the earlier handoff with no
-    added wait, and a 1.0 supervisor never asks.
+    supervisor catches only when both the draining generation and the one
+    that will adopt say so, so a 1.0 core on either side gets the earlier
+    handoff with no added wait, and a 1.0 supervisor never asks.
 
     Measured with a standalone reproduction on a Windows host, 100 handoffs
     per run under 16 concurrent fresh-connection clients: without catching,
     85 of 100 handoffs reset a connection; with one spare per listener, 33;
     with eight spares and the draining generation closing at once, 3 in 700;
-    with the quiet close as well, none in 700. The spares close without
-    waiting for quiet: in 1,400 handoffs no connection reached one after the
-    next generation had listened. Closing any Windows listener can still
-    reset a connection completed into it in that instant, so this shrinks
-    the window rather than removing it; the tested cases saw no reset.
+    with the quiet close as well, none in 700. Closing any Windows listener
+    can still reset a connection completed into it in that instant, so the
+    quiet windows shrink that window rather than remove it; the tested cases
+    saw no reset.
   - `process.kill(pid, 'SIGTERM')` ends a process outright on Windows, so a
     core signalled that way does not run its SIGTERM drain.
 
