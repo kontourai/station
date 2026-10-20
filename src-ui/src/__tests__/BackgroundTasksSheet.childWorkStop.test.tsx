@@ -29,6 +29,18 @@ vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
   useOrchestrationSessionsQuery: () => ({ data: [] }),
   useOrchestrationSessionQuery: (...args: unknown[]) => sessionQuery(...args),
+  useOrchestrationSessionActivityQuery: (...args: unknown[]) => {
+    const detail = sessionQuery(...args);
+    return {
+      data: detail.data && {
+        session: detail.data.session,
+        events: detail.data.events.map((event: unknown, index: number) => ({
+          sequence: index + 1,
+          event,
+        })),
+      },
+    };
+  },
   useInterruptDelegatedTaskMutation: () => mutation(),
   useStopProviderTaskMutation: () => mutation(),
 }));

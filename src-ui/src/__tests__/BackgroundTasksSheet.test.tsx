@@ -12,6 +12,7 @@ vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => agents }));
 const useChatBackgroundTasks = vi.fn();
 const interruptTask = vi.fn();
 const useOrchestrationSessionQuery = vi.fn();
+const useOrchestrationSessionActivityQuery = vi.fn();
 const useInterruptDelegatedTaskMutation = vi.fn();
 // station#1877: the provider card's own task-scoped stop.
 const useStopProviderTaskMutation = vi.fn();
@@ -21,6 +22,8 @@ vi.mock('../hooks/useBackgroundTasks', () => ({
     useChatBackgroundTasks(...args),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionActivityQuery: (...args: unknown[]) =>
+    useOrchestrationSessionActivityQuery(...args),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: (...args: unknown[]) =>
@@ -91,6 +94,19 @@ describe('BackgroundTasksSheet', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-29T00:01:05.000Z'));
     interruptTask.mockReset();
+    useOrchestrationSessionActivityQuery.mockReset();
+    useOrchestrationSessionActivityQuery.mockImplementation(() => {
+      const detail = useOrchestrationSessionQuery();
+      return {
+        data: detail.data && {
+          session: detail.data.session,
+          events: detail.data.events.map((event: unknown, index: number) => ({
+            sequence: index + 1,
+            event,
+          })),
+        },
+      };
+    });
     useOrchestrationSessionQuery.mockReset();
     useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
     useInterruptDelegatedTaskMutation.mockReset();
@@ -358,9 +374,22 @@ describe('BackgroundTasksSheet', () => {
     ).toBeTruthy();
     expect(screen.queryByText('WrongChildTool')).toBeNull();
     expect(screen.queryByText('150 tokens · 1 tool use')).toBeNull();
+    expect(
+      useOrchestrationSessionQuery.mock.calls.some(
+        ([threadId, config]) =>
+          threadId === 'task:delegate-2' && config?.enabled,
+      ),
+    ).toBe(false);
     fireEvent.click(screen.getByRole('button', { expanded: false }));
+    expect(
+      useOrchestrationSessionQuery.mock.calls.some(
+        ([threadId, config]) =>
+          threadId === 'task:delegate-2' && config?.enabled,
+      ),
+    ).toBe(true);
     expect(screen.getByText('150 tokens · 1 tool use')).not.toBeNull();
-    expect(screen.getByText('Audit the release workflow')).not.toBeNull();
+    expect(screen.queryByText('Audit the release workflow')).toBeNull();
+    expect(screen.getByText('Run tests')).not.toBeNull();
   });
 
   // archive#4196: "N tokens" must not present a cache-exclusive figure as

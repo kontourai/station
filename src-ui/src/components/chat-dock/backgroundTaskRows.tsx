@@ -6,6 +6,7 @@
 
 import {
   useInterruptDelegatedTaskMutation,
+  useOrchestrationSessionActivityQuery,
   useOrchestrationSessionQuery,
   useStopProviderTaskMutation,
 } from '@kontourai/station-sdk';
@@ -98,13 +99,24 @@ export function TaskRow({
     entry.state === 'running' &&
     entry.stop?.kind === 'delegate-interrupt' &&
     delegateThreadId.length > 0;
-  // A subagent's reporter supplies identity only, never its title or accounting.
-  const detailThreadId = delegateThreadId || entry.sessionThreadId || '';
-  const detail = useOrchestrationSessionQuery(detailThreadId, {
-    enabled: detailThreadId.length > 0,
+  // A native child's reporter supplies engine identity, never its tools or usage.
+  const identityThreadId = delegateThreadId || entry.sessionThreadId || '';
+  const activity = useOrchestrationSessionActivityQuery(
+    identityThreadId,
+    undefined,
+    {
+      enabled: identityThreadId.length > 0,
+      staleTime: entry.state === 'running' ? 0 : 30_000,
+      refetchInterval:
+        delegateThreadId && entry.state === 'running' ? 2_000 : undefined,
+      retry: false,
+      cancelWhenInactive: true,
+    },
+  );
+  const detail = useOrchestrationSessionQuery(delegateThreadId, {
+    enabled: expanded && delegateThreadId.length > 0,
     staleTime: entry.state === 'running' ? 0 : 30_000,
-    refetchInterval:
-      delegateThreadId && entry.state === 'running' ? 2_000 : undefined,
+    refetchInterval: expanded && entry.state === 'running' ? 2_000 : undefined,
     retry: false,
     cancelWhenInactive: true,
   });
@@ -126,23 +138,16 @@ export function TaskRow({
   const usageTokens = usage
     ? (cacheInclusiveTotalTokens(usage.provider, usage) ?? usage.totalTokens)
     : undefined;
-  const hasDetail = Boolean(entry.detail) || Boolean(usage);
-  const transcriptTitle = useMemo(() => {
-    if (!delegateThreadId) return null;
-    const started = detail.data?.events.find(
-      (event) => event.method === 'turn.started',
-    );
-    if (!started?.prompt) return null;
-    const firstLine = started.prompt.split('\n')[0]?.trim();
-    if (!firstLine) return null;
-    return firstLine.length > 80 ? `${firstLine.slice(0, 79)}…` : firstLine;
-  }, [detail.data, delegateThreadId]);
+  const hasDetail = Boolean(entry.detail) || Boolean(delegateThreadId);
   const latestTool = useMemo(
     () =>
-      entry.state === 'running' && delegateThreadId && detail.data
-        ? latestChildTool(detail.data.events, delegateThreadId)
+      entry.state === 'running' && delegateThreadId && activity.data
+        ? latestChildTool(
+            activity.data.events.map(({ event }) => event),
+            delegateThreadId,
+          )
         : undefined,
-    [detail.data, delegateThreadId, entry.state],
+    [activity.data, delegateThreadId, entry.state],
   );
   const interrupt = useInterruptDelegatedTaskMutation();
   const stopRequested = interrupt.isPending || interrupt.isSuccess;
@@ -173,11 +178,11 @@ export function TaskRow({
         <span className="background-tasks-sheet__glyph">
           {entry.kind === 'agent' ? (
             <ChildWorkIdentity
-              provider={provider ?? detail.data?.session?.provider}
+              provider={provider ?? activity.data?.session?.provider}
               agent={
                 agent ??
-                (delegateThreadId && detail.data?.session && agents
-                  ? sessionIconAgent(detail.data.session, agents)
+                (delegateThreadId && activity.data?.session && agents
+                  ? sessionIconAgent(activity.data.session, agents)
                   : undefined)
               }
             />
@@ -187,7 +192,7 @@ export function TaskRow({
         </span>
         <span className="background-tasks-sheet__row-text">
           <strong className="background-tasks-sheet__title">
-            {transcriptTitle ?? entry.title}
+            {entry.title}
           </strong>
           <span className="background-tasks-sheet__meta">
             {entry.state === 'running' && (entry.latestTool || latestTool) ? (

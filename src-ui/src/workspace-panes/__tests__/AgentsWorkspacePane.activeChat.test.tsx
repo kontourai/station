@@ -50,6 +50,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
   useQueryClient: () => ({}),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
   useOrchestrationSessionsQuery: () => ({ data: [] }),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
