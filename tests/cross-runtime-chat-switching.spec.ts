@@ -1847,7 +1847,9 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
 
       await page
-        .getByRole('button', { name: 'Switch project — New chats, Beta Project' })
+        .getByRole('button', {
+          name: 'Switch project — New chats, Beta Project',
+        })
         .click();
       await dialog
         .getByRole('button', { name: 'New project', exact: true })

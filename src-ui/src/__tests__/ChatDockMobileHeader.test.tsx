@@ -206,8 +206,9 @@ describe('mobile conversation focus', () => {
     fireEvent.click(identity);
     expect(onOpenTaskSwitcher).toHaveBeenCalledOnce();
     expect(
-      screen.getByRole('button', { name: 'Switch project — New chats, Kontour AI' })
-        .textContent,
+      screen.getByRole('button', {
+        name: 'Switch project — New chats, Kontour AI',
+      }).textContent,
     ).toContain('Kontour AI');
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
     expect(
@@ -359,7 +360,8 @@ describe('mobile conversation focus', () => {
       projectSwitcher: null,
     });
     expect(
-      screen.getByRole('button', { name: 'Chats and tasks — New chat' }).textContent,
+      screen.getByRole('button', { name: 'Chats and tasks — New chat' })
+        .textContent,
     ).toBe('New chat');
     expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
   });
