@@ -50,10 +50,8 @@ queue is part of it. What that means in practice:
   check status over REST (`gh api repos/...`).
 - **Arm, confirm once with the query above, then stop.** Never poll the queue;
   a red or conflicted dequeue shows only on the PR itself.
-- **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
-  `Dependency review`, `Windows PR portable floor`, `build-ios-verification`,
-  `Merge-queue regression`
-  (the ruleset is the authority: `gh api repos/kontourai/station/rules/branches/main`).
+- **Required checks**: the ruleset is authoritative —
+  `gh api repos/kontourai/station/rules/branches/main`.
   Branches are NOT required
   to be up to date (`strict: false`), so you do not have to rebase onto every
   intervening commit — but two independently green PRs can still break `main`

@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import { engineConnectionId } from '../agent-identity';
 import { agentEngineValidationFindings } from '../agent-validation';
 import {
+  acpApprovalControl,
+  acpStationApprovalEngine,
   controlPlaneCapableEngineNames,
   ENGINE_CAPABILITY_MATRICES,
   engineControlPlaneCapability,
@@ -1077,6 +1079,36 @@ describe('subagent capability cells', () => {
     for (const [key, matrix] of Object.entries(ENGINE_CAPABILITY_MATRICES)) {
       if (matrix.subagentObservability.state !== 'none') continue;
       expect(matrix.subagentControl.state, `${key} control`).toBe('none');
+    }
+  });
+});
+
+describe('acpApprovalControl (#3290)', () => {
+  test('a command that launches OpenCode is Station-governed', () => {
+    for (const command of [
+      'opencode',
+      '  opencode ',
+      '/run/current-system/sw/bin/opencode',
+      'C:\\Program Files\\OpenCode\\opencode.exe',
+      'opencode.cmd',
+    ]) {
+      expect(acpStationApprovalEngine(command)).toBe('opencode');
+      expect(acpApprovalControl(command)).toBe('station');
+    }
+  });
+
+  test('every other command, a wrapper included, leaves the engine to decide', () => {
+    for (const command of [
+      'kiro-cli',
+      'npx',
+      'opencode-ai',
+      '/usr/bin/opencode/agent',
+      '',
+      undefined,
+      null,
+    ]) {
+      expect(acpStationApprovalEngine(command)).toBeUndefined();
+      expect(acpApprovalControl(command)).toBe('engine');
     }
   });
 });

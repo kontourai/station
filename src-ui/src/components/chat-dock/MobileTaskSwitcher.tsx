@@ -17,7 +17,7 @@ import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import {
   chatTaskSessionId,
-  type HomeTaskItem,
+  type HomeWorkItem,
 } from '../../views/home/home-view-model';
 import {
   openWorkItem,
@@ -73,7 +73,7 @@ export function MobileTaskSwitcher({
   onRetryLoad,
 }: {
   open: boolean;
-  tasks: HomeTaskItem[];
+  tasks: HomeWorkItem[];
   openChatSessionIds?: string[];
   activeChatSessionId: string | null;
   visualViewportStyle: CSSProperties;
@@ -100,7 +100,7 @@ export function MobileTaskSwitcher({
    *  close action. Optional — a host with no tab teardown hides the action. */
   onCloseChat?: (id: string) => void;
   /** Marks the rendered conversation version as seen before opening it. */
-  onAcknowledgeConversation?: (item: HomeTaskItem) => void;
+  onAcknowledgeConversation?: (item: HomeWorkItem) => void;
   /** Injectable clock for the recency boundary; defaults to wall time. */
   now?: number;
   /**

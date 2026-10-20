@@ -1337,12 +1337,15 @@ export function FilePreviewPane({
       setContextNotice('A shareable preview link is unavailable here.');
       return;
     }
-    void navigator.clipboard
-      .writeText(new URL(directLink, window.location.origin).toString())
-      .then(() => setContextNotice('Copied the preview link.'))
-      .catch(() =>
-        setContextNotice('Station could not copy the preview link.'),
-      );
+    void copyToClipboard(
+      new URL(directLink, window.location.origin).toString(),
+    ).then((copied) =>
+      setContextNotice(
+        copied
+          ? 'Copied the preview link.'
+          : 'Station could not copy the preview link.',
+      ),
+    );
   };
 
   const headSlots = usePaneHeadSlots();

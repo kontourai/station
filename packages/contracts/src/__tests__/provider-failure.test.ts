@@ -35,6 +35,8 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['stage_capacity', 'busy', true],
     ['continuation_engine_not_ready', 'unavailable', true],
     ['adoption_continuation_in_progress', 'busy', true],
+    ['acp-approval-takeover-failed', 'warning', false],
+    ['acp_approval_governance_refused', 'permission_denied', false],
     ['approval-escalation-requires-restart', 'warning', false],
     ['approval-full-access-not-granted', 'permission_denied', false],
     ['attachment_input_unsupported', 'input_unsupported', false],

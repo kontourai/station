@@ -14,7 +14,8 @@ import {
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { useIsMobile } from '../../hooks/useIsMobile';
+import { MOBILE_MEDIA_QUERY, useIsMobile } from '../../hooks/useIsMobile';
+import { copyToClipboard } from '../../lib/clipboard';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { observeRootTheme } from '../../lib/root-theme';
 import {
@@ -103,13 +104,13 @@ export function TerminalPanel({
     setWsError(null);
     setConnected(false);
 
-    // Bump the glyph size on phone-width viewports — xterm renders to a canvas,
-    // so the readable-text fix has to live in JS, not CSS. Mirrors the 768px
-    // mobile breakpoint used across the stylesheets.
+    // Bump the glyph size on a phone — xterm renders to a canvas, so the
+    // readable-text fix has to live in JS, not CSS. Read once at mount; a
+    // landscape phone counts, as it does for every other mobile affordance.
     const isMobileViewport =
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
-      window.matchMedia('(max-width: 768px)').matches;
+      window.matchMedia(MOBILE_MEDIA_QUERY).matches;
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -420,12 +421,11 @@ export function TerminalPanel({
   const copySelection = async () => {
     const terminalOutput = terminalRef.current?.getSelection() ?? '';
     if (!terminalOutput) return;
-    try {
-      await navigator.clipboard.writeText(terminalOutput);
-      setHandoffError(null);
-    } catch {
-      setHandoffError('Unable to copy the terminal selection.');
-    }
+    setHandoffError(
+      (await copyToClipboard(terminalOutput))
+        ? null
+        : 'Unable to copy the terminal selection.',
+    );
   };
 
   // Register as the active terminal writer only while this tab is visible, so

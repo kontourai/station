@@ -1,5 +1,9 @@
 import type { SetProviderRequest } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
+import {
+  type AcpApprovalControl,
+  acpApprovalControl,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -166,5 +170,15 @@ export class ACPManager {
    */
   getStatus(): ReturnType<typeof getACPManagerStatus> {
     return getACPManagerStatus(this.probes, this.configs, 0);
+  }
+
+  /**
+   * #3290: who decides which of this connection's actions ask, from the
+   * command it launches. `undefined` for a connection this manager does not
+   * hold (not configured, or disabled).
+   */
+  approvalControl(connectionId: string): AcpApprovalControl | undefined {
+    const config = this.configs.get(connectionId);
+    return config ? acpApprovalControl(config.command) : undefined;
   }
 }
