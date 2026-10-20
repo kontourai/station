@@ -1,21 +1,19 @@
 import {
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
   renameSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
   createStationAnswerBinding,
   type StationAnswerBinding,
 } from '@kontourai/station-contracts';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   AnswerAssessmentModule,
   stationAnswerAssessmentClaimProfile,
@@ -32,17 +30,11 @@ import {
 // "Answer support temporarily unavailable", because the guard refuses every
 // symlinked path component. The anchor is canonicalized once where it is
 // adopted; anything BELOW the anchor is still refused when it is a symlink.
-const directories: string[] = [];
-
-afterEach(() => {
-  for (const directory of directories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 /** A real directory plus a sibling symlink that aliases it, like /tmp. */
 function aliasedParent(): { real: string; alias: string } {
-  const base = mkdtempSync(join(realpathSync(tmpdir()), 'station-symanchor-'));
-  directories.push(base);
+  const base = realpathSync(makeTempDir('station-symanchor-'));
   const real = join(base, 'real');
   mkdirSync(real);
   const alias = join(base, 'alias');

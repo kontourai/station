@@ -1,14 +1,7 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, expect, test, vi } from 'vitest';
+import { expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { TaskAnswerSupportUnavailableError } from '../../services/evidence/task-answer-support-module.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { createPersonalTaskAnswerSupportModule } from '../routes/runtime-routes.js';
@@ -16,11 +9,7 @@ import { createPersonalTaskAnswerSupportModule } from '../routes/runtime-routes.
 // The Station home is canonicalized once in the composition root. Plugin-data
 // lives inside it, so a symlink planted under the home must stay refused while
 // a symlinked ANCESTOR of the home (macOS /tmp) must not.
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 const bundle = {
   schemaVersion: 5,
@@ -84,8 +73,7 @@ async function bundlesThrough(homeSpelling: string, realHome: string) {
 }
 
 function aliasedHome() {
-  const base = mkdtempSync(join(realpathSync(tmpdir()), 'station-symhome-'));
-  roots.push(base);
+  const base = realpathSync(makeTempDir('station-symhome-'));
   const real = join(base, 'real');
   mkdirSync(join(real, 'home'), { recursive: true });
   const alias = join(base, 'alias');
