@@ -470,3 +470,29 @@ test('a dropped connection that remounts the account boundary keeps the account 
   again.unmount();
   deviceSettingsStore.releaseBootAppearance();
 });
+
+test('a held appearance belongs to its account: switching person drops it', async () => {
+  fixture.get.mockResolvedValue({
+    schemaVersion: 1,
+    values: { theme: 'light', colorTheme: 'catppuccin' },
+  });
+  const seen = () => {
+    const { theme, colorTheme } = deviceSettingsStore.getSnapshot();
+    return { theme, colorTheme };
+  };
+  const view = render(tree(client()));
+  await waitFor(() =>
+    expect(seen()).toEqual({ theme: 'light', colorTheme: 'catppuccin' }),
+  );
+  view.unmount();
+  // Person B's preferences never arrive.
+  fixture.namespace = 'person-b';
+  fixture.get.mockRejectedValue(new Error('preferences unavailable'));
+  const other = render(tree(client()));
+  // B never sees A's appearance; B has the device's own until B's arrive.
+  expect(seen()).toEqual({ theme: 'dark', colorTheme: 'station' });
+  await waitFor(() => expect(fixture.get).toHaveBeenCalled());
+  expect(seen()).toEqual({ theme: 'dark', colorTheme: 'station' });
+  expect(deviceSettingsStore.getAppearanceSource()).not.toBe('cache');
+  other.unmount();
+});

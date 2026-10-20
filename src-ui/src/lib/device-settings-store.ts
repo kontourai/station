@@ -722,6 +722,12 @@ class DeviceSettingsStore {
    * page knows whose appearance applies (lib/appearance-cache.ts).
    */
   private bootAppearance: Appearance | null = null;
+  /**
+   * Whose appearance `bootAppearance` holds when the account binding set it
+   * (its authority namespace); `null` for the startup cache, which is per
+   * origin. A binding for a different namespace releases a held appearance.
+   */
+  private bootAppearanceOwner: string | null = null;
 
   constructor() {
     // Hydration is synchronous in this environment (localStorage reads are
@@ -944,6 +950,7 @@ class DeviceSettingsStore {
   reloadFromStorage = (): void => {
     this.envelope = this.loadOrMigrate();
     this.bootAppearance = bootAppearanceFrom(readAppearanceCache());
+    this.bootAppearanceOwner = null;
     this.snapshot = this.resolve();
     this.notify();
   };
@@ -972,6 +979,7 @@ class DeviceSettingsStore {
   releaseBootAppearance = (): void => {
     if (!this.bootAppearance) return;
     this.bootAppearance = null;
+    this.bootAppearanceOwner = null;
     this.snapshot = this.resolve();
     this.notify();
   };
@@ -981,8 +989,10 @@ class DeviceSettingsStore {
     if (
       this.bootAppearance &&
       keys.some((key) => (APPEARANCE_KEYS as readonly string[]).includes(key))
-    )
+    ) {
       this.bootAppearance = null;
+      this.bootAppearanceOwner = null;
+    }
   }
 
   /** Account values never enter the origin-wide device envelope. */
@@ -990,12 +1000,24 @@ class DeviceSettingsStore {
     values: AccountPreferences | undefined,
     write: (patch: AccountPreferencesPatch) => void,
     writable = true,
+    owner?: string,
   ): (() => void) => {
     const binding = { values, write, writable };
     this.account = binding;
+    // An appearance held for one account never stands in for another.
+    if (
+      this.bootAppearanceOwner !== null &&
+      owner !== this.bootAppearanceOwner
+    ) {
+      this.bootAppearance = null;
+      this.bootAppearanceOwner = null;
+    }
     // The account answered: its values, not the cache, are the appearance
     // from here on, including after this binding ends.
-    if (values) this.bootAppearance = null;
+    if (values) {
+      this.bootAppearance = null;
+      this.bootAppearanceOwner = null;
+    }
     this.snapshot = this.resolve();
     this.notify();
     return () => {
@@ -1015,6 +1037,7 @@ class DeviceSettingsStore {
           colorThemeFlavor,
           colorThemeAccent,
         };
+        this.bootAppearanceOwner = owner ?? null;
       }
       this.account = undefined;
       this.snapshot = this.resolve();
