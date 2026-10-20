@@ -60,16 +60,23 @@ describe('APPROVAL_MODE_OPTIONS copy', () => {
 });
 
 describe('full-access copy does not promise "no sandbox"', () => {
-  // Full access turns off approval prompts where the engine allows it. It
-  // does not lift Station's workspace confinement from a start that carries
-  // no full-access grant (a webhook start; `approval-posture.ts`
-  // startConfinement), so no description may promise "no sandbox" (#3918
-  // pinned the same for the Default approval mode setting).
-  test('the generic never option names the confinement and not "no sandbox"', () => {
+  // Full access turns off approval prompts where the engine allows it. A
+  // start that carries no full-access grant (a webhook start;
+  // `approval-posture.ts` startConfinement, applicableMode) gets a narrower
+  // setting: confinement where the engine can apply it (Codex, Claude Code),
+  // otherwise `auto` (ACP engines such as OpenCode, whose `auto` needs only
+  // `host` confinement). So no description may promise "no sandbox" (#3918
+  // pinned the same for the Default approval mode setting), nor claim that
+  // an ungranted start is confined.
+  test('the generic never option names the narrower setting and not "no sandbox"', () => {
     const never = APPROVAL_MODE_OPTIONS.find(
       (option) => option.value === 'never',
     );
-    expect(never?.description).toMatch(/workspace confinement/);
+    expect(never?.description).toMatch(
+      /Without a full-access grant, Station applies a narrower setting/,
+    );
+    expect(never?.description).toMatch(/otherwise automatic approval/);
+    expect(never?.description).not.toMatch(/still runs inside/);
     expect(never?.description.toLowerCase()).not.toContain('no sandbox');
   });
 
@@ -80,7 +87,7 @@ describe('full-access copy does not promise "no sandbox"', () => {
       ).not.toContain('no sandbox');
     }
     expect(approvalModeDescription('never', 'opencode')).toBe(
-      'Every action runs without asking, and subagents may run. Plan mode still blocks edits.',
+      'With full access granted, every action runs without asking and subagents may run. Without a grant, Station applies Auto: only file edits run on their own. Plan mode still blocks edits except to .opencode/plans/*.md.',
     );
   });
 });

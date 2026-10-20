@@ -61,14 +61,16 @@ describe('AgentEditorApprovalDefault', () => {
 
     expect(latest?.execution.approvalMode).toBe('never');
     expect(screen.getByText(/starts at full access/)).toBeTruthy();
-    // Full access does not lift workspace confinement from a start without a
-    // full-access grant (a webhook start), so the hint must not promise
-    // "no sandbox" (`approval-posture.ts` startConfinement; #3918).
+    // A start without a full-access grant (a webhook start) gets a narrower
+    // setting, not full access and not always confinement (`approval-posture.ts`
+    // applicableMode: ACP engines are lowered to `auto`), so the hint must
+    // promise neither "no sandbox" nor "still runs inside" confinement.
     expect(
       screen.getByText(
-        /still runs inside Station\u2019s workspace\s+confinement/,
+        /gets a narrower setting: workspace confinement where the engine supports it, otherwise automatic approval/,
       ),
     ).toBeTruthy();
+    expect(screen.queryByText(/still runs inside/)).toBeNull();
     expect(screen.queryByText(/no sandbox/i)).toBeNull();
     expect(buildAgentPayload(latest!).execution).toMatchObject({
       approvalMode: 'never',
