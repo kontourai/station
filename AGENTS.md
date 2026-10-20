@@ -96,7 +96,6 @@ Codex loads only this root automatically; read the routed scope explicitly. Clau
 | `packages/contracts/**` | [packages/contracts/AGENTS.md](packages/contracts/AGENTS.md) |
 | `packages/sdk/**` | [packages/sdk/AGENTS.md](packages/sdk/AGENTS.md) |
 | `tests/**` | [tests/AGENTS.md](tests/AGENTS.md) |
-| Code without a production caller, compatibility code, dated evidence directories | [docs/guides/code-hygiene.md](docs/guides/code-hygiene.md) (`UNWIRED(#N)`/`SUNSET(#N)` markers, retention lines) |
 
 Read [docs/glossary.md](docs/glossary.md), the affected canonical guide, and [docs/architecture/module-map.md](docs/architecture/module-map.md) only when their topic is in scope. Station consumes sibling Kontour products through published contracts, never their internals.
 
