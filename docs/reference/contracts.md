@@ -255,6 +255,8 @@ No existing diagnostic code is renamed or removed.
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
 | `continuation_place_refused` | `input_unsupported` | `false` |
+| `acp-approval-takeover-failed` | `warning` | `false` |
+| `acp_approval_governance_refused` | `permission_denied` | `false` |
 | `adoption_continuation_in_progress` | `busy` | `true` |
 | `approval-escalation-requires-restart` | `warning` | `false` |
 | `approval-full-access-not-granted` | `permission_denied` | `false` |
