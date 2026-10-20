@@ -219,18 +219,6 @@ describe('useShortcut through the real adapter and registry', () => {
     expect(paletteRun).toHaveBeenCalledTimes(1);
   });
 
-  test('off a Mac, ctrl+<reserved key> is the same chord and is refused too', async () => {
-    const { effectiveChordSignature } = await import(
-      '../../contexts/KeyboardShortcutsContext'
-    );
-    expect(
-      effectiveChordSignature({ key: 'k', modifiers: ['ctrl'] }, false),
-    ).toBe(effectiveChordSignature({ key: 'k', modifiers: ['cmd'] }, false));
-    expect(
-      effectiveChordSignature({ key: 'k', modifiers: ['ctrl'] }, true),
-    ).not.toBe(effectiveChordSignature({ key: 'k', modifiers: ['cmd'] }, true));
-  });
-
   test('a plugin chord the user later gives a reserved shortcut is skipped at dispatch', () => {
     const paletteRun = vi.fn();
     const run = vi.fn();

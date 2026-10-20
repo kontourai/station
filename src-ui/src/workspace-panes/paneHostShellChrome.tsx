@@ -154,7 +154,7 @@ export function usePaneConfirmChrome(
 }
 
 /** A prompt request: plain data, so the shell renders all of the dialog. */
-export interface PanePromptRequest {
+interface PanePromptRequest {
   title: string;
   label?: string;
   initial?: string;

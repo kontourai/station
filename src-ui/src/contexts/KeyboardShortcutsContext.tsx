@@ -63,7 +63,7 @@ export const SHORTCUT_CONTEXT_KEYS: readonly ShortcutContextKey[] = [
  * the owner into the key (`scope:<owner>/<name>`), so one plugin's scope can
  * never satisfy another's `when`, and none can set a kernel context key.
  */
-export type ShortcutScopeKey = `scope:${string}`;
+type ShortcutScopeKey = `scope:${string}`;
 export type ShortcutWhen =
   | ShortcutContextKey
   | ShortcutScopeKey
@@ -108,7 +108,7 @@ const RESERVED_SHORTCUT_IDS: ReadonlySet<string> = new Set(
  * The physical chord a binding fires on this platform: off a Mac, `cmd` IS
  * Control (see the dispatcher), so `cmd+k` and `ctrl+k` are one chord there.
  */
-export function effectiveChordSignature(
+function effectiveChordSignature(
   binding: { key: string; modifiers: readonly ShortcutModifier[] },
   mac: boolean = isMac,
 ): string {
