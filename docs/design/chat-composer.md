@@ -309,7 +309,10 @@ starting state before that) and eases in, and a settled row whose only content
 is reasoning keeps a collapsed **Reasoning · N words** disclosure. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
-and approval requests stay still. A running batch keeps one summary row
+and approval requests stay still. The streaming row's "Running <tool>" line
+and a queued steer's "Waiting for tools to finish" use the same running rule
+as the tool rows, so a call waiting on approval never reads as running in one
+place and not another. A running batch keeps one summary row
 ("4 commands · 3 done", past tense only once every call settled) and shows each
 running call on its own row beneath it, at most two and then "+N more", with
 its elapsed time after ten seconds. Reduced motion disables the highlight and
