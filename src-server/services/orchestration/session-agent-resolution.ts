@@ -6,8 +6,8 @@
  * when the session is starting as a real on-disk agent (a canonical
  * `metadata.agentSlug`) whose
  * provider has at least one session-delivery channel today (ACP tool
- * servers; Claude skills and, as of wave B, the authored system prompt; as
- * of wave C, muse/codex/ACP without a native systemPrompt channel receipt
+ * servers; Claude skills and the authored system prompt; muse/codex/ACP
+ * without a native systemPrompt channel receipt
  * the prompt `channel: 'first-turn'` instead of dropping it — see
  * `instructionsInFirstTurn` on `EngineCapabilityMatrix`). An authored
  * field — including an authored empty array — is the source of truth for
@@ -576,7 +576,7 @@ export function createSessionAgentResolver(
           ENGINE_CAPABILITY_MATRICES[input.provider]?.instructionsInFirstTurn
             ?.state === 'session'
         ) {
-          // archive#895 wave C: no native systemPrompt channel, but
+          // archive#895: no native systemPrompt channel, but
           // this engine's matrix names the `instructionsInFirstTurn`
           // fallback — deliver the authored prompt by prepending it into the
           // session's first turn instead (orchestration-service.ts's

@@ -13,8 +13,8 @@
  * a path inside, the Project folder; and the folder, `.git` included, is
  * fingerprinted before and after to show nothing under it was written.
  *
- * Probes ported from reviews of the first design (branch
- * `feat/plugin-publish-git-s6`, which ran git in the folder) are marked
+ * Probes ported from reviews of the first design (which ran git in the
+ * folder) are marked
  * "Ported"; each names the defect it found there.
  */
 import { execFileSync } from 'node:child_process';

@@ -1077,7 +1077,7 @@ describe('session.exited exit-code derivation (#3442)', () => {
     expect(projection.lifecycleState).toBe('completed');
   });
 
-  // archive#3451 (M1): exitCode 0 must FILL, not override, a failure
+  // archive#3451: exitCode 0 must FILL, not override, a failure
   // this same event stream already recorded. archive#3473 made this
   // reachable: finalizeUnexpectedExit now always synthesizes a runtime.error
   // before session.exited, and a process CAN die with an unresolved turn yet

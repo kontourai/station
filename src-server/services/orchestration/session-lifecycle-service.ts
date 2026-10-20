@@ -1138,7 +1138,7 @@ function deriveLifecycleTransition(
       // re-queuing from scratch) 'failed' is what the contract already
       // declares retryable.
       //
-      // archive#3451 (M1): `exitCode === 0` FILLS rather than
+      // archive#3451: `exitCode === 0` FILLS rather than
       // overrides. It is a real fact about the OS process, not the turn —
       // archive#3473's `finalizeUnexpectedExit` now always synthesizes a
       // `runtime.error` (folding `from` to 'failed') before publishing
@@ -1172,7 +1172,7 @@ function deriveLifecycleTransition(
       // restart, an explicit stop, a reap) is not a new outcome for the work.
       if (isSessionLifecycleStateAtRest(from)) return null;
       // `from === 'failed'` no longer needs its own arm here: the stopped
-      // guard above already returned for it (the M1 case is a strict
+      // guard above already returned for it (the exitCode-0 case is a strict
       // subset of the general rule).
       const to =
         event.exitCode === 0

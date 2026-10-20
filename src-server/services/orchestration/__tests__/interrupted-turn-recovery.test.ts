@@ -21,7 +21,7 @@
  * same file, which reconciles at construction exactly like a real restart.
  *
  * The presentation path is chosen by FileMemory occupancy, not by provider
- * (the H2 tests) — `fakeMemoryAdapter()` below
+ * — `fakeMemoryAdapter()` below
  * models a real `getMessages`/`getConversation`/`addMessage` store so tests
  * can seed either an EMPTY store or one with existing content, in either
  * direction, independent of `provider`.

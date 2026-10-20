@@ -19,14 +19,14 @@ import { interruptibleTurnIdForEvents } from './session-lifecycle-service.js';
  * The cancel-acknowledgement budget now lives in the orchestration contract
  * (`COOPERATIVE_STOP_BUDGET_MS`) rather than privately here: the browser's
  * Stop control has to outwait it, and a second hand-written copy of the
- * number in the UI would drift (UX audit T1).
+ * number in the UI would drift.
  */
 type StopSettlement = 'acknowledged' | 'completed' | 'deadline';
 
 /**
  * A Stop recorded before its turn existed.
  *
- * `clientTurnId` is what makes this safe (UX audit T1): keyed on the
+ * `clientTurnId` is what makes this safe: keyed on the
  * thread alone, a cancel whose intended turn never started stayed armed for
  * the whole TTL and would interrupt whatever turn started next. With the key,
  * the `sendTurn` path binds `turnId` the moment its dispatch resolves, and
@@ -43,7 +43,7 @@ interface PendingTurnInterrupt {
    * Turns whose `turn.started` this record has already seen while it was
    * still waiting for its binding.
    *
-   * UX audit T1: Claude and ACP publish `turn.started`
+   * Claude and ACP publish `turn.started`
    * BEFORE `sendTurn` returns the id, so the ordinary ordering is
    * start-then-bind — and the event-driven apply, correctly refusing to guess
    * which dispatch that start belonged to, had to stand down. Nothing then
@@ -159,7 +159,7 @@ export class CooperativeStop {
   /** One user-stop protocol per thread; concurrent stop commands join it. */
   private readonly cooperativeStops = new Map<string, CooperativeStopTask>();
   /**
-   * UX audit T1 (live verification): a Stop pressed between "the turn was
+   * A Stop pressed between "the turn was
    * dispatched" and "the engine's provider session exists" was refused with
    * `No provider session found for thread` — and that window covered EVERY
    * real press, because the composer's own Stop control disappeared before the
@@ -245,7 +245,7 @@ export class CooperativeStop {
       return;
     }
     if (event.turnId) pending.startedTurnIds.add(event.turnId);
-    // UX audit T1: a correlated cancel may only reach the turn its own
+    // A correlated cancel may only reach the turn its own
     // dispatch produced. Until that binding exists the record waits — a turn
     // starting now belongs to some other dispatch, and interrupting it would
     // stop work the user never asked to stop. The wait now ENDS, at
@@ -303,7 +303,7 @@ export class CooperativeStop {
    * Binds a pending Stop to the provider turn its own dispatch produced, or
    * drops it when that dispatch produced none. See {@link PendingTurnInterrupt}.
    *
-   * UX audit T1: this is also where a held cancel is
+   * This is also where a held cancel is
    * APPLIED, not merely recorded. Claude and ACP publish `turn.started` before
    * `sendTurn` returns its id, so in the ordinary case the event-driven apply
    * has already seen the start and stood down for want of a binding — and no
@@ -369,7 +369,7 @@ export class CooperativeStop {
       // A second Stop for the same thread rides the first one's task rather
       // than starting a second cancel (the pre-existing coalescing), and now
       // reports the SAME derived outcome instead of an untyped void the
-      // caller has to guess at (UX audit T1: a double-click must not produce
+      // caller has to guess at (a double-click must not produce
       // two different labels for one stop).
       return interruptTurnResultFor(
         threadId,

@@ -56,7 +56,7 @@ interface InterruptedTurnRecoveryDeps {
   ) => InterruptedTurnMemoryAdapter | undefined;
   /**
    * The service's projection+publish (`projectAndPublishEvent`). Returns
-   * boolean in-service and the M4 refusal
+   * boolean in-service and the refusal
    * branch READS it — a declined publish must retain the boundary row — so
    * unlike the CooperativeStop/FlowPolicySidecar precedent this is NOT
    * `void`. Narrowing it would silently convert "declined" into "done".
@@ -118,7 +118,7 @@ export interface InterruptedTurnMemoryAdapter {
 const INTERRUPTED_TURN_MEMORY_SCAN_LIMIT = 5;
 
 /**
- * archive#4080 (H2: delegates to the shared
+ * archive#4080 (delegates to the shared
  * `resolveConversationTranscriptSource` rather than re-deriving its own copy
  * of the lookup). Occupancy is decided
  * by the SAME two-step FileMemory lookup `readConversationMessages` uses —
@@ -327,7 +327,7 @@ export class InterruptedTurnRecovery {
    * on its own). Every banner this writes is gated on exactly one such row;
    * there is no code path that writes one without a matching row.
    *
-   * PRESENTATION PATH (H2): chosen the SAME
+   * PRESENTATION PATH: chosen the SAME
    * way the read path chooses it — `readConversationMessages` serves
    * FileMemory whenever it is non-empty for the thread, regardless of
    * provider, and the persisted-runtime-events projection otherwise. This
@@ -355,7 +355,7 @@ export class InterruptedTurnRecovery {
    * input" (that contract has no separate value for it). The SAME event
    * also carries the visible banner for every non-FileMemory-occupied
    * session (`runtime-event-projection.ts`'s `session.state-changed` case),
-   * gated on the dedicated `interruptedTurnBoundary` field (M3) rather than
+   * gated on the dedicated `interruptedTurnBoundary` field rather than
    * on the (sessionState, transitionReason, transitionSource) vocabulary
    * triple — see that field's own doc in `runtime-events.ts`.
    *
@@ -368,7 +368,7 @@ export class InterruptedTurnRecovery {
    * `turnId` = the boundary's `providerTurnId`) BEFORE the banner, for the
    * same reason an adapter publishes one on failure: it is the terminal
    * turn fact every fold already honors. Same idempotence (deterministic
-   * id + `hasEventId`) and same M4 refusal semantics as the banner. The
+   * id + `hasEventId`) and same refusal semantics as the banner. The
    * abort accepts through the turn-identity guard any real abort for that
    * turn would, and because the banner lands after it, the banner's
    * explicit `sessionState` stamp still decides the lifecycle: the turn
@@ -383,7 +383,7 @@ export class InterruptedTurnRecovery {
    * started and before any other turn started. Requests outside that window
    * are left alone.
    *
-   * IDEMPOTENCE (H1): the write→delete gap between a
+   * IDEMPOTENCE: the write→delete gap between a
    * banner landing and `resolveInterruptedTurnBoundary` closing its row is
    * a real crash window — a process that dies in it leaves the row for a
    * next boot to find again. Both write paths are therefore made
@@ -394,12 +394,12 @@ export class InterruptedTurnRecovery {
    * `metadata.interruptedTurnBoundaryId`, scanned for before writing. A
    * retry that finds either already present skips straight to close.
    *
-   * REFUSAL (M4): `projectAndPublishEvent` returns `false`
+   * REFUSAL: `projectAndPublishEvent` returns `false`
    * when it declines to publish (e.g. a quarantined thread) — honored here
    * by leaving the boundary row unresolved and logging, rather than
    * silently treating a declined publish as done.
    *
-   * INFORMATION CARRIED FORWARD (M5): the boundary row's
+   * INFORMATION CARRIED FORWARD: the boundary row's
    * own facts — prior state, provider turn id, owner id, its own
    * created/updated timestamps — are copied onto the event's
    * `interruptedTurnBoundary` payload before the row is deleted, so nothing
@@ -524,7 +524,7 @@ export class InterruptedTurnRecovery {
           // thread's latest turn start, the process died before it landed (or
           // the thread moved on): there is no turn to close or banner.
           const providerTurn = isProviderTurnBoundary(record);
-          // #2324 (L4): a send the engine accepted but never started (it
+          // #2324: a send the engine accepted but never started (it
           // was queued behind a turn the engine opened itself when the process
           // died) has no `turn.started` of its own — the start is published
           // only when the engine starts it. A newer start on the thread is then
@@ -611,7 +611,7 @@ export class InterruptedTurnRecovery {
             : undefined;
         const now = new Date().toISOString();
 
-        // ---- H2 core reshape: choose the presentation path by FileMemory
+        // ---- choose the presentation path by FileMemory
         // occupancy, exactly like the read path — never by provider. ----
         const memoryAdapter = agentSlug
           ? this.deps.memoryAdapterFor(agentSlug)
@@ -647,7 +647,7 @@ export class InterruptedTurnRecovery {
           }
         }
 
-        // ---- H1(a) + M3 + M5: idempotent, provenance-gated,
+        // ---- idempotent, provenance-gated,
         // fact-carrying lifecycle/banner event. ----
         //
         // station#2235: close the dead turn FIRST. A crashed turn otherwise
@@ -707,7 +707,7 @@ export class InterruptedTurnRecovery {
             .find((event) => event.payload.method === 'turn.started')?.sequence;
           // Bounded above by the next turn of a different id: a request
           // opened after another turn started belongs to work that is alive
-          // (the L4 case above can reach here with a newer turn running),
+          // (the #2324 case above can reach here with a newer turn running),
           // and its adapter is waiting on it. Same bound as the fold's.
           const supersededAtSequence =
             turnStartSequence === undefined
@@ -753,7 +753,7 @@ export class InterruptedTurnRecovery {
             }
           }
           if (requestSettlementDeclined) {
-            // M4 parity with the abort and banner below.
+            // Same refusal handling as the abort and banner below.
             this.deps.logger.warn(
               'Interrupted-turn request settlement was declined; leaving the boundary row for the next boot',
               {
@@ -789,7 +789,7 @@ export class InterruptedTurnRecovery {
                 : {}),
             });
             if (!published) {
-              // M4 parity with the banner below: a declined publish must
+              // Same refusal handling as the banner below: a declined publish must
               // not be treated as done — retain the row for the next boot.
               this.deps.logger.warn(
                 'Interrupted-turn abort event was declined; leaving the boundary row for the next boot',
@@ -835,7 +835,7 @@ export class InterruptedTurnRecovery {
             },
           });
           if (!published) {
-            // M4: a declined publish (e.g. a quarantined thread) must not
+            // A declined publish (e.g. a quarantined thread) must not
             // be treated as done — retain the row for the next boot.
             this.deps.logger.warn(
               'Interrupted-turn banner event was declined; leaving the boundary row for the next boot',
@@ -850,7 +850,7 @@ export class InterruptedTurnRecovery {
           }
         }
 
-        // ---- H1(b): idempotent FileMemory write, keyed on the SAME
+        // ---- idempotent FileMemory write, keyed on the SAME
         // boundaryId, only when that store is the session's real transcript. ----
         if (fileMemoryTarget && !fileMemoryTarget.alreadyBannered) {
           await memoryAdapter!.addMessage(
