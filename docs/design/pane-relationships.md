@@ -124,8 +124,13 @@ child already on its opener's route uses the existing layer's scoped guard once
 before returning; Cancel leaves history, placement, state and focus unchanged.
 A replacement layer or new guard supersedes that close. Back's caption uses the
 verified relation's captured opener label for plugins as well as conversations.
-Older records without the exact Project-pane reference retain their layout or
-Project fallback; their missing identity is never guessed from ambient context.
+An older kept record without that reference gains it only when the same exact
+Project-pane caller reopens its target. After guards answer, the existing lock
+rechecks the caller's Station, Project, installed generation, occurrence, target
+state and fence, and the unchanged source record before adding the missing
+reference. Other openers and existing references are never rewritten. Until
+that caller witnesses it, the old record retains its truthful layout or Project
+fallback; missing identity is never guessed from ambient context.
 
 ## Shell controls
 

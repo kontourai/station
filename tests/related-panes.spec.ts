@@ -24,6 +24,10 @@ import {
   installPluginWithConsent,
 } from './helpers/install-plugin';
 import { expectRegionTabs } from './helpers/region-placement';
+import {
+  expectUpgradedPluginOpener,
+  seedLegacyKeptPluginOpener,
+} from './helpers/related-pane-upgrade';
 
 const api = resolveE2EApiBase();
 const pluginId = 'related-reports';
@@ -121,18 +125,33 @@ test.describe('related panes from an installed plugin', () => {
       await expect(
         page.getByRole('article', { name: 'Weekly report' }),
       ).toContainText('Seven days of work, summarised.');
+      await page
+        .getByRole('button', { name: 'Keep open', exact: true })
+        .click();
+      const legacyHandle = await seedLegacyKeptPluginOpener(page);
+      await page.reload();
+      await expect(
+        page.getByRole('article', { name: 'Weekly report' }),
+      ).toContainText('Seven days of work, summarised.');
       if (width === 390) {
-        await page
-          .getByRole('button', { name: 'Keep open', exact: true })
-          .click();
-        await page.reload();
-        await expect(
-          page.getByRole('article', { name: 'Weekly report' }),
-        ).toContainText('Seven days of work, summarised.');
         await expect(
           page.getByRole('button', { name: 'Back to Reports', exact: true }),
         ).toBeVisible();
+        await page
+          .getByRole('button', { name: 'Back to Reports', exact: true })
+          .click();
       }
+      await openFromList(page, 'Open Weekly report');
+      if (width === 1280)
+        await expect(reports(page).getByRole('status')).toHaveText(
+          'Weekly report: focused, beside.',
+        );
+      await expectUpgradedPluginOpener(
+        page,
+        legacyHandle,
+        reportsDescriptor,
+        decodeURIComponent(reportsRoute.split('/').at(-1)!),
+      );
       await page
         .getByRole('button', { name: 'Up to Reports', exact: true })
         .click();

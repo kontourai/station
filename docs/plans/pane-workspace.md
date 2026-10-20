@@ -63,6 +63,12 @@ not yet accepted.
   chrome. The actual direct and sandboxed-frame browser callers click Up on
   desktop and phone and return to the exact Reports root. Source/focused/browser
   evidence is separate from pending independent, hosted and native acceptance.
+  The upgrade path is also implemented: reopening an old kept report from its
+  same admitted Project-pane occurrence adds only its missing exact reference
+  inside the existing locked focus transaction. Real direct/frame browser
+  journeys restore the old record shape, reload, reopen and click Up at both
+  widths; guard and scope/source changes refuse without mutation. Unwitnessed
+  legacy records retain their fallback, rather than guessing an opener.
 - [ ] Responsive folds preserve occurrence/controller/history identity.
   In #3875 for the phone layer only (Keep through replacement, Back, reopen).
 - [ ] Coding leases stable outlets without rewriting ambient arrangements.

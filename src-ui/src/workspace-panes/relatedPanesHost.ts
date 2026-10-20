@@ -39,6 +39,7 @@ import {
   type RegionModelValue,
   useRegionModelOptional,
 } from '../contexts/RegionModelContext';
+import { readPaneFence } from '../regions/pane-fence';
 import {
   type PaneOpener,
   type PaneRelation,
@@ -562,6 +563,28 @@ function createRelatedPanesHost(
             return admitted.ok ? null : admitted.reason;
           },
           confirms: (instanceId) => storedTargetIs(instanceId, target, station),
+          attestFocusedOpener: (relation) => {
+            const source = relation.opener.source;
+            const fence = readPaneFence(
+              window.localStorage,
+              relation.instanceId,
+            );
+            if (
+              !caller.projectPane ||
+              !ownedRelation(relation) ||
+              fence.status !== 'fenced' ||
+              fence.stationId !== station ||
+              source.kind !== 'plugin-occurrence' ||
+              source.projectPane !== undefined ||
+              source.projectSlug !== caller.projectSlug ||
+              source.layoutSlug !== caller.layoutSlug
+            )
+              return undefined;
+            return {
+              ...relation.opener,
+              source: { ...source, projectPane: caller.projectPane },
+            };
+          },
           reveal: (model, instanceId, options) =>
             model.openSurfaceInRegion(instanceId, {
               ...options,
