@@ -517,7 +517,10 @@ builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
 `progressSilence` (below) shows "No progress from <engine> for 4m" and the stall notice with a
-Stop button, and the user decides. On the exec fallback, Stop signals the
+Stop button, and the user decides. The watchdog's window is not armed while a
+tool call is open (`tool.started` without its `tool.completed`); the last
+call's completion re-arms it, so a long silent tool run is shown as the running
+tool, not as silence. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
 details describe the [exec adapter](../../src-server/providers/adapters/muse-adapter.ts).
