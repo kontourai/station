@@ -1093,7 +1093,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
   return (
     <>
-      <div className="settings">
+      <div className={hasChanges || overrideDirty ? 'settings settings--has-save' : 'settings'}>
         {highlightNotice}
         {/* archive#1826: the three-card "This device / Station / Defaults"
             legend is gone. It restated the taxonomy the grouped nav below
