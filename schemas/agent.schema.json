@@ -255,7 +255,7 @@
     "streaming": {
       "type": ["object", "null"],
       "deprecated": true,
-      "description": "Deprecated and ignored: Station reads none of these fields. Accepted so existing agent files still load. SUNSET(#3879).",
+      "description": "Deprecated and ignored: Station reads none of these fields. Accepted so existing agent files still load; removal is tracked in #3879.",
       "properties": {
         "useNewPipeline": {
           "type": "boolean",

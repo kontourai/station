@@ -772,6 +772,8 @@ const COMPOSITION_EDGES = Object.freeze([
 export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
+  // Walks examples/*/src for the SDK values the station dev mock must provide.
+  'packages/cli/src/__tests__/dev-sdk-mock-parity.test.ts',
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
   // Walks packages/sdk/src/client. Its packages/sdk/src/client/** edge selects
   // it, but a diff that escalates with more than 32 explicit tests runs none

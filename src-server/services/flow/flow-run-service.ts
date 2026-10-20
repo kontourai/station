@@ -69,10 +69,10 @@ export const FLOW_RUN_LOCATION_ALLOCATION_COLLISION =
 export const FLOW_RUN_LOCATION_NO_COMPLETE_CANDIDATE =
   'flow.run_location.no_complete_candidate';
 /** A directory resolved for this run id is not a usable run location. */
-export const FLOW_RUN_LOCATION_RESOLVED_DIR_INVALID =
+const FLOW_RUN_LOCATION_RESOLVED_DIR_INVALID =
   'flow.run_location.resolved_dir_invalid';
 /** Flow could not stat a run artifact for a reason other than absence. */
-export const FLOW_RUN_LOCATION_INSPECTION_FAILED =
+const FLOW_RUN_LOCATION_INSPECTION_FAILED =
   'flow.run_location.inspection_failed';
 
 /** Requested resource (run, definition, workspace) does not exist → 404. */

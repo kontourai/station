@@ -67,6 +67,7 @@
     "audit:code-health": "node scripts/run-fallow-audit.mjs --whole-tree",
     "veritas:fallow:advisory": "node scripts/run-fallow-audit.mjs",
     "fallow:baseline": "node scripts/fallow-baseline.mjs",
+    "fallow:ceiling": "node scripts/fallow-ceiling.mjs",
     "veritas:readiness": "npm exec -- veritas readiness --working-tree",
     "veritas:codex-hook:install": "flow-agents codex-governance-hook install .",
     "veritas:readiness:diff": "npm exec -- veritas readiness --changed-from main --changed-to HEAD",

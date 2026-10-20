@@ -109,7 +109,7 @@ function codingExecNotGranted(request: Request) {
 }
 
 /**
- * Bounds on every git call these routes make (#2363 review round 2). A
+ * Bounds on every git call these routes make (#2363). A
  * repository's own config can make git wait forever (an `include.path` of
  * a named pipe blocked status, log and branches indefinitely); on the
  * deadline `execFile` kills the child and the route answers 504 instead of

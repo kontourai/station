@@ -38,9 +38,6 @@ import { observeKnowledgeOperation } from './knowledge-observability.js';
 import { searchKnowledgeDocuments } from './knowledge-search.js';
 import { DEFAULT_KNOWLEDGE_NAMESPACE } from './knowledge-storage.js';
 
-/** @deprecated Use KnowledgeDocumentMeta from contracts. Kept for backward compat. */
-export type DocumentMeta = KnowledgeDocumentMeta;
-
 const DEFAULT_NS = DEFAULT_KNOWLEDGE_NAMESPACE;
 
 // ── Service ────────────────────────────────────────────────────────

@@ -1,0 +1,11 @@
+{
+  "revision": "5b44b1bd22ce2339bea68d4ae8302a2ad2b4fe80",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Formatting-only follow-up (biome) to the startup-readiness static test; assertions unchanged. Claims re-checked as in the preceding review of this change.","inputs":["docs/architecture/module-map.md","scripts/__tests__/startup-readiness-static.test.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Formatting-only follow-up (biome) to the startup-readiness static test; assertions unchanged. Claims re-checked as in the preceding review of this change.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/startup-readiness-static.test.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Formatting-only follow-up (biome) to the startup-readiness static test; assertions unchanged. Claims re-checked as in the preceding review of this change.","inputs":["docs/guides/native-shell-verification.md","scripts/__tests__/startup-readiness-static.test.ts"]}
+  ]
+}

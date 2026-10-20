@@ -14,7 +14,6 @@ interfaces and composition rules.
 | `src-shared/` | Checkout-level shared source |
 | `packages/` | Contracts, SDK, shared helpers, pairing, CLI, pane packages, the optional product telemetry receiver, the Monument durability kernel, the [experimental model runtime](development.md#packages), and the process supervisor |
 | `examples/` | Documented plugin and integration examples |
-| `experiments/` | Experiments with explicit limitations, not implied product support |
 
 New cross-package types belong in their owning module in `packages/contracts/`.
 Keep compatibility re-exports in `packages/shared/` for existing consumers.
@@ -30,11 +29,14 @@ Consume sibling Kontour products through published interfaces. The
 | `config/`, `schemas/` | Checked-in configuration and validation schemas |
 | `packaging/`, `patches/` | Distribution inputs and managed dependency patches |
 | `ops/` | Station-specific operational launch and release helpers |
-| `monitoring/` | Optional observability stack |
+| `deploy/` | Operator recipes for running Station or its companion services somewhere: the single-owner public HTTPS overlay (`public-ingress/`) and the push-notification gateway Worker (`push-gateway/`) |
+| `deployment/` | Configuration for separately deployed companion services that are not Station itself: the self-hosted routing broker (`self-hosted-broker/`) and the private telemetry companion with its optional diagnostics and developer monitoring profiles (`telemetry/`). [Deployment](deployment.md) says which directory holds what |
 | `assets/` | Application assets |
 | `docs/` | Guides, references, decisions, and public-site sources |
 | `.github/`, `.githooks/` | Hosted workflows, contribution forms, local hooks |
 | `.veritas/`, `.flow/`, `.agents/` | Governance and agent workflow inputs |
+| `fallow-baselines/` | Accepted code-health findings (dead code, duplication, complexity) that the code-health gate compares a change against. The gate reads them from the base revision, so a change cannot loosen its own allowance |
+| `gallery/` | Ignored output directory for the generated screenshot gallery; only its `.gitignore` is tracked |
 
 The root holds discovery files and configuration whose tools expect it there.
 Avoid adding one-off reports or alternative startup scripts at the root. Use

@@ -355,7 +355,7 @@ async function main() {
     )
       continue;
     const runs = [];
-    for (const status of ['queued', 'in_progress']) {
+    for (const status of ['queued', 'pending', 'in_progress']) {
       runs.push(
         ...(await listGithub(
           `actions/runs?event=pull_request_target&branch=${encodeURIComponent(pr.head.ref)}&status=${status}`,
@@ -378,7 +378,7 @@ async function main() {
         continue;
       const live = await github(`actions/runs/${run.id}`);
       if (
-        !['queued', 'in_progress'].includes(live.status) ||
+        !['queued', 'pending', 'in_progress'].includes(live.status) ||
         live.run_attempt !== run.run_attempt ||
         live.head_sha !== run.head_sha
       )

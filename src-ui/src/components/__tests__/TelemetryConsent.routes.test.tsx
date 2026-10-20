@@ -94,14 +94,16 @@ test.each(['full', 'lite'] as const)(
       env: {},
       fetch,
     });
+    const reconfigure = vi.spyOn(service, 'reconfigure');
     const app = new Hono();
     app.route(
       '/config',
       withOperatorPrincipal(
+        // Positional and untyped here (see serverModule): the callback is
+        // `onAppConfigPersisted`, the last parameter.
         createConfigRoutes(
           loader,
           logger,
-          undefined,
           undefined,
           undefined,
           undefined,
@@ -160,6 +162,11 @@ test.each(['full', 'lite'] as const)(
         screen.getByRole('button', { name: 'Turn off usage telemetry' }),
       );
       await waitFor(() => expect(advance).toHaveBeenCalledOnce());
+      expect(reconfigure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          telemetryTier: expect.objectContaining({ operator: 'off' }),
+        }),
+      );
       const persisted = JSON.parse(
         await readFile(join(home, 'config', 'app.json'), 'utf8'),
       );

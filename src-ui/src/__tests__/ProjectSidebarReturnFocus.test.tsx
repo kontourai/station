@@ -68,7 +68,8 @@ vi.mock('../contexts/NavigationContext', () => {
 vi.mock('../hooks/useBranding', () => ({
   useBranding: () => ({ appName: 'Station' }),
 }));
-vi.mock('../hooks/useIsMobile', () => ({
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => true,
 }));
 

@@ -28,6 +28,7 @@ import {
   type NativePushIosRegistrationRequest,
   type NativePushRegistrationRequest,
 } from '@kontourai/station-contracts/native-push';
+import { isRecord } from '../../utils/is-record.js';
 import {
   readPrivateJsonFile,
   writePrivateJsonFileSync,
@@ -195,10 +196,6 @@ export class NativePushRegistrationStoreError extends Error {
   constructor(label = ANDROID_LABEL) {
     super(`${label} are unreadable or unsafe`);
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isValidAndroidRequest(

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-20T10-05-38-674Z-6fd8ff6afa96",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-20T10:05:38.674Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:9d34778160693b23973e8048f8cfecde7cfec3c6870e17b2913f6a09d9d5532a",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-20T09-34-18-422Z-a7090a6c7140",
+  "validUntilDays": 90,
+  "notes": "Rewords the resolver-precedence entry that cited the strategy index: docs/strategy/README.md supplies the default Phase S1 resolution, not an active initiative; live priorities are tracked in GitHub issues. Descriptive text only; no enforcement change. Same owner approval as the citation repoint (2026-10-19 hygiene session, actor brian, #2722).",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-20T09-34-18-422Z-a7090a6c7140",
+    "approvalRef": "https://github.com/kontourai/station/issues/2722",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-20T10-05-38-674Z-6fd8ff6afa96",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "ee542bcfe47163ded7c34d33322b230214ba8f1163f671ff75c20dd9fc998ff8",
+        "validUntil": "2027-01-18T10:05:38.674Z"
+      },
+      "createdAt": "2026-10-20T10:05:38.674Z",
+      "updatedAt": "2026-10-20T10:05:38.674Z",
+      "status": "proposed",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "weak",
+        "reviewerAuthority": "none",
+        "evidenceStrength": "weak",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-20T10-05-38-674Z-6fd8ff6afa96",
+      "claimId": "veritas.attestation.policy-change-2026-10-20T10-05-38-674Z-6fd8ff6afa96",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Rewords the resolver-precedence entry that cited the strategy index: docs/strategy/README.md supplies the default Phase S1 resolution, not an active initiative; live priorities are tracked in GitHub issues. Descriptive text only; no enforcement change. Same owner approval as the citation repoint (2026-10-19 hygiene session, actor brian, #2722).",
+      "observedAt": "2026-10-20T10:05:38.674Z",
+      "collectedBy": "brian",
+      "integrityRef": "ee542bcfe47163ded7c34d33322b230214ba8f1163f671ff75c20dd9fc998ff8",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-20T10:05:38.674Z",
+        "validUntil": "2027-01-18T10:05:38.674Z",
+        "contentHash": "ee542bcfe47163ded7c34d33322b230214ba8f1163f671ff75c20dd9fc998ff8"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-20T10-05-38-674Z-6fd8ff6afa96.proposed",
+      "claimId": "veritas.attestation.policy-change-2026-10-20T10-05-38-674Z-6fd8ff6afa96",
+      "status": "proposed",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-20T10-05-38-674Z-6fd8ff6afa96"
+      ],
+      "createdAt": "2026-10-20T10:05:38.674Z"
+    }
+  },
+  "recordIntegrity": {
+    "algorithm": "veritas-attestation-record-v1",
+    "digest": "f102e177da20bdc557b82f56716fef216c449da11c18e4f85df06d977ff18656"
+  }
+}
