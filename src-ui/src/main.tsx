@@ -377,7 +377,10 @@ function renderApp(): void {
 // A themed person's family sheet was requested by startup-theme.js; the first
 // render waits for it (at most a few seconds) so the app never appears in
 // Station's colours after a themed splash. Without a theme this renders
-// synchronously, as before.
+// synchronously, as before. boot.ts awaits `rendered`, so a render that throws
+// after the wait reaches the same "could not finish loading" recovery as a
+// failed module load, instead of an unhandled rejection under the splash.
 const colorThemeSheet = whenColorThemeStylesheetSettled(document);
-if (colorThemeSheet) void colorThemeSheet.then(renderApp);
-else renderApp();
+export const rendered: Promise<void> = colorThemeSheet
+  ? colorThemeSheet.then(renderApp)
+  : Promise.resolve(renderApp());

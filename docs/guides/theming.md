@@ -70,7 +70,8 @@ render. The initial HTML and
 startup artwork through platform and authority resolution. One launch presentation
 survives React bootstrap handoffs outside the application root. The lightweight
 [boot entry](../../src-ui/src/boot.ts) starts painting before it imports the full
-app. A failed app import releases animation and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
+app. A failed app import, or a first render that throws after waiting for a
+color-theme stylesheet, releases animation and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
 bundle budget still counts the immediately loaded app's static JS/CSS closure
 through its Vite manifest, in addition to the visible boot assets. The mark begins centered,
 then moves left while Fraunces reveals `tation`, using the river as the S. The

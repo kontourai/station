@@ -181,9 +181,13 @@ export function AccountPreferencesProvider({
   }, [query.data, pending, pendingVersion]);
   useLayoutEffect(() => {
     // No person here: this device's own appearance applies, not the account
-    // appearance the startup path painted from its cache.
-    if (!eligible) deviceSettingsStore.releaseBootAppearance();
-  }, [eligible]);
+    // appearance the startup path painted from its cache. That includes a
+    // refused credential (401) and no connection at all, which report
+    // 'unavailable'; an unverified authority (offline, an older server) may
+    // still be the same person, so the cached appearance stays.
+    if (!eligible && authority.status !== 'unverified')
+      deviceSettingsStore.releaseBootAppearance();
+  }, [eligible, authority.status]);
   useLayoutEffect(() => {
     if (!eligible || !scope?.isCurrent()) return;
     return deviceSettingsStore.bindAccountPreferences(

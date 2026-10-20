@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -14,6 +15,7 @@ import {
   subscribeBrowserRelayAccountScope,
 } from '../lib/browserRelayAccountScope';
 import { captureBrowserRelayRoute } from '../lib/browserRelayRouteBinding';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import {
   getLocalUiSessionAttempt,
   recheckLocalUiSession,
@@ -281,6 +283,15 @@ export function LocalUiSessionGate({
       document.removeEventListener('visibilitychange', resume);
     };
   }, [effectiveResolution?.kind, recheckSession]);
+
+  // No session: the connect screen is this device's, not the account's whose
+  // appearance the startup path painted from its cache (lib/appearance-cache.ts).
+  // The protected tree, and with it the account boundary that otherwise
+  // releases that cache, never mounts here.
+  const noSession = effectiveResolution?.kind === 'access-required';
+  useLayoutEffect(() => {
+    if (noSession) deviceSettingsStore.releaseBootAppearance();
+  }, [noSession]);
 
   if (!effectiveResolution) {
     // The ONE loading treatment that legitimately replaces the shell: nothing

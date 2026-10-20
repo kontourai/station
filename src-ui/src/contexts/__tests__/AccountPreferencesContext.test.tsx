@@ -34,6 +34,7 @@ import {
 
 const fixture = vi.hoisted(() => ({
   namespace: 'person-a' as string | null,
+  status: undefined as 'verified' | 'unverified' | 'unavailable' | undefined,
   get: vi.fn<(...args: unknown[]) => Promise<AccountPreferencesView>>(),
   patch: vi.fn<(...args: unknown[]) => Promise<AccountPreferencesView>>(),
   scope: { isCurrent: () => true, apiBase: 'https://station.test' },
@@ -49,7 +50,7 @@ vi.mock('../ApiBaseContext', () => ({
 }));
 vi.mock('../AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
-    status: fixture.namespace ? 'verified' : 'unverified',
+    status: fixture.status ?? (fixture.namespace ? 'verified' : 'unverified'),
     namespace: fixture.namespace,
     observation: {
       principal: { kind: 'human', id: `human:fixture:${fixture.namespace}` },
@@ -89,6 +90,7 @@ beforeEach(() => {
   localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   fixture.namespace = 'person-a';
+  fixture.status = undefined;
   fixture.get
     .mockReset()
     .mockResolvedValue({ schemaVersion: 1, values: { theme: 'dark' } });
@@ -375,5 +377,37 @@ test('a cross-device conflict explains recovery and reloads the saved choice', a
       'Changed on another device. Reload before trying again.',
     ),
   ).toBeNull();
+  view.unmount();
+});
+
+test("a refused credential releases the previous account's cached appearance; an unverified authority keeps it", () => {
+  const seed = () => {
+    localStorage.setItem(
+      'station-appearance-v1',
+      JSON.stringify({
+        version: 1,
+        source: 'account',
+        theme: 'light',
+        colorTheme: 'nord',
+        colorThemeFlavor: null,
+        colorThemeAccent: null,
+      }),
+    );
+    deviceSettingsStore.reloadFromStorage();
+  };
+  // Offline or an older server: possibly the same person, so the cache holds.
+  seed();
+  fixture.namespace = null;
+  fixture.status = 'unverified';
+  let view = render(tree(client()));
+  expect(deviceSettingsStore.getAppearanceSource()).toBe('cache');
+  expect(screen.getByLabelText('Current theme').textContent).toBe('light');
+  view.unmount();
+  // A 401 (or no connection at all) reports 'unavailable': no person.
+  seed();
+  fixture.status = 'unavailable';
+  view = render(tree(client()));
+  expect(deviceSettingsStore.getAppearanceSource()).toBe('device');
+  expect(screen.getByLabelText('Current theme').textContent).toBe('dark');
   view.unmount();
 });

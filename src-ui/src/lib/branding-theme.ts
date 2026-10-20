@@ -387,31 +387,33 @@ export function colorThemeSurfaceViolations(
     '--k-panel': surfaces['--k-panel'],
   };
   const all = { ...page, '--k-panel-raised': surfaces['--k-panel-raised'] };
-  rate('--k-brand', values['--k-brand'], all, 4.5);
-  if (
-    values['--k-brand'] !== undefined ||
-    values['--k-brand-contrast'] !== undefined
-  ) {
-    // The text on the brand: the override's, else the theme's own.
-    if (values['--k-brand'] === undefined)
+  // A fill and the text on it are rated as a pair, the same way for the
+  // brand and the action: the override's text, else the theme's own; a text
+  // without its fill cannot be rated on this theme and yields to it.
+  const pair = (
+    fill: '--k-brand' | '--k-action',
+    text: '--k-brand-contrast' | '--k-action-contrast',
+    themeText: string,
+  ) => {
+    if (values[fill] === undefined && values[text] === undefined) return;
+    if (values[fill] === undefined) {
       violations.push({
         kind: 'color-theme-surface',
         mode,
-        property: '--k-brand-contrast',
-        surface: '--k-brand',
+        property: text,
+        surface: fill,
         ratio: 0,
         minimum: 4.5,
-        message: `${mode}: --k-brand-contrast without --k-brand cannot be rated against ${surfaces.family}/${surfaces.flavor}'s brand; the color theme's value is used`,
+        message: `${mode}: ${text} without ${fill} cannot be rated against ${surfaces.family}/${surfaces.flavor}'s ${fill}; the color theme's value is used`,
       });
-    else
-      rate(
-        '--k-brand-contrast',
-        values['--k-brand-contrast'] ?? surfaces.brandContrast,
-        { '--k-brand': values['--k-brand'] },
-        4.5,
-      );
-  }
+      return;
+    }
+    rate(text, values[text] ?? themeText, { [fill]: values[fill] }, 4.5);
+  };
+  rate('--k-brand', values['--k-brand'], all, 4.5);
+  pair('--k-brand', '--k-brand-contrast', surfaces.brandContrast);
   rate('--k-action', values['--k-action'], page, 4.5);
+  pair('--k-action', '--k-action-contrast', surfaces.actionContrast);
   rate('--k-focus', values['--k-focus'], page, 3);
   return violations;
 }

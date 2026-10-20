@@ -59,6 +59,12 @@ write and leaves them out of what it serves, so later additions need no
 sibling. Its patch schema stays strict: a key it cannot validate is refused,
 not silently dropped.
 
+The two documents are written separately, each under its own lock, so a
+patch naming keys in both is not atomic across them: if the second write
+fails, the first stays. The fields are independent preferences, so a partial
+write leaves no inconsistent pair; the client reports the failure as for any
+failed save.
+
 An older server still refuses a patch that contains these keys, so the client
 shows its existing save-failure notice and keeps the server's value. "Import
 previous preferences" sends one patch, so against such a server it fails whole
@@ -94,8 +100,9 @@ a drift test fails when any differs:
   51858 gzip bytes at the base commit and 52486 with this change (the splash
   subset), against 62698 when every theme sat in the entry sheet;
 - the splash subset (surfaces, text and focus for every flavor), imported by
-  the splash stylesheet so the first paint is themed while the family sheet
-  loads;
+  the splash stylesheet and scoped to the splash element, so the first paint
+  is themed while the family sheet loads and the app itself is never
+  part-themed;
 - a small runtime index the startup path resolves against, so the full
   catalog (about 7.5 KB gzip) loads only with the picker;
 - an index block in `public/startup-theme.js`.
@@ -105,11 +112,22 @@ sets `data-color-theme`, `data-color-theme-flavor` and
 `data-color-theme-accent` on `<html>`, inserts the family's sheet and a
 `<meta name="theme-color">` with the effective canvas. A script-inserted sheet
 does not block rendering, so `main.tsx` waits for it (at most three seconds)
-before the first render: the splash is themed from the subset, and the app
-never appears in Station's colours after it. With no theme it renders
-synchronously as before. On a live switch the applier changes the attributes
-only once the new family's sheet has settled. `color-scheme` is already set per
-mode by the tokens.
+before the first render: the splash is themed from the subset, and on the
+normal path the app never appears in Station's colours after it. The app has
+one rule: it is wholly Station until the family sheet has loaded, and wholly
+themed after, never theme surfaces with Station's accent. A sheet slower than
+the cap therefore shows the app in Station's colours until it arrives, while
+the attributes and `theme-color` already name the theme and a white-label
+brand is rated against the theme's surfaces. With no theme it renders
+synchronously as before. The first render is part of what `boot.ts` waits for,
+so a render that throws after that wait shows the same "could not finish
+loading" recovery as a failed module load. On a live switch the applier
+changes the attributes only once the new family's sheet has loaded. A sheet
+that fails is not claimed: on a live switch the previous selection stays in
+force, a failed startup request un-claims the theme, and the next apply
+requests the sheet again; failure never re-applies by itself, so a sheet that
+keeps failing cannot loop. `color-scheme` is already set per mode by the
+tokens.
 
 ### Signed-in people
 
@@ -122,14 +140,24 @@ Precedence, the same in the startup script, `resolveBootTheme` and the
 settings store's boot snapshot:
 
 1. An account-sourced cache wins until the page knows whose appearance
-   applies: the account's values arrive, the account boundary reports no
-   person, or the device's own appearance is chosen.
+   applies: the account's values arrive, the device's own appearance is
+   chosen, or the page resolves to no person. That last one is the session
+   gate's access check finding no session (the signed-out connect screen,
+   where the account boundary never mounts) and the account boundary seeing a
+   refused credential or no connection. An unverified authority (offline, an
+   older server) may still be the same person and keeps the cache. On release
+   the applier rewrites the cache as device-sourced.
 2. Otherwise the device envelope, then the legacy `theme` key, as before. A
    device-sourced cache is never read; the envelope is its source.
 
 So a signed-in person's last appearance is in force before first paint on a
 device that has rendered it once. A first visit, or a change made on another
 device since, still shows the previous appearance until the account answers.
+
+The cache is per origin, not per person or Station: a device shared by two
+people, or one origin used for several Stations, paints whichever account's
+appearance was rendered last until the account boundary resolves. It holds
+only a mode and palette ids, never account data.
 
 ## Precedence
 

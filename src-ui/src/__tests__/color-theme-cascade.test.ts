@@ -157,6 +157,10 @@ describe('color theme cascade', () => {
     sheetDelay?: number;
     /** The last-applied appearance cache (lib/appearance-cache.ts). */
     cache?: Record<string, unknown>;
+    /** How many family-sheet requests answer 404 before one succeeds. */
+    sheetFailures?: number;
+    /** Return before a slow family sheet has arrived. */
+    early?: boolean;
   }
 
   /**
@@ -179,6 +183,8 @@ describe('color theme cascade', () => {
         return route.fulfill({ contentType: 'text/javascript', body: harness });
       if (url.pathname.startsWith('/color-themes/')) {
         requested.push(`${url.pathname}${url.search}`);
+        if (requested.length <= (options.sheetFailures ?? 0))
+          return route.fulfill({ status: 404, body: 'missing' });
         if (options.sheetDelay)
           await new Promise((r) => setTimeout(r, options.sheetDelay));
         return route.fulfill({
@@ -217,7 +223,9 @@ describe('color theme cascade', () => {
           sessionStorage.setItem('cached', '1');
         }
       }, JSON.stringify(options.cache));
-    await page.goto(`${ORIGIN}/`);
+    await page.goto(`${ORIGIN}/`, {
+      waitUntil: options.early ? 'domcontentloaded' : 'load',
+    });
     return Object.assign(page, { requested });
   }
 
@@ -590,6 +598,134 @@ describe('color theme cascade', () => {
             () => document.querySelectorAll('link[rel="stylesheet"]').length,
           ),
         ).toBe(0);
+      } finally {
+        await page.close();
+      }
+    });
+
+    // What the app paints outside the splash: the page canvas, Station's
+    // accent and a primary button, sampled from computed styles.
+    const appSample = (page: Page) =>
+      page.evaluate(() => {
+        const root = getComputedStyle(document.documentElement);
+        const body = getComputedStyle(document.body);
+        const button = getComputedStyle(document.getElementById('primary')!);
+        const splash = document.getElementById('splash');
+        return {
+          bg: root.getPropertyValue('--k-bg').trim(),
+          action: root.getPropertyValue('--k-action').trim(),
+          accent: root.getPropertyValue('--accent-primary').trim(),
+          body: body.backgroundColor,
+          button: button.backgroundColor,
+          splash: splash
+            ? getComputedStyle(splash).getPropertyValue('--k-bg').trim()
+            : null,
+        };
+      });
+    // The kit's buttons transition their fill; sample settled colours.
+    const APP_BODY =
+      '<style>*,*::before,*::after{transition:none!important;animation:none!important}</style><div class="station-startup" id="splash"></div><button type="button" class="btn btn-primary" id="primary">Go</button>';
+
+    test('past the first-render cap a slow sheet leaves the app wholly Station, then wholly themed', async () => {
+      const page = await open(
+        `<script src="/startup-theme.js"></script><style>${startupCss}</style><style>${appCss}</style>`,
+        {
+          body: APP_BODY,
+          values: { colorTheme: 'tokyo-night', colorThemeFlavor: 'storm' },
+          sheetDelay: 4_000,
+          early: true,
+        },
+      );
+      try {
+        const storm = family('tokyo-night').dark.find((f) => f.id === 'storm')!;
+        // The splash is themed from its own subset...
+        const loading = await appSample(page);
+        expect(loading.splash).toBe(storm.roles['--k-bg']);
+        // ...and the app around it is Station in every sampled colour, never
+        // theme surfaces with Station's accent.
+        expect(loading).toMatchObject({ bg: '#0a0e13', action: '#5ce0c6' });
+        expect(toHex(loading.body)).toBe('#0a0e13');
+        expect(toHex(loading.button)).toBe('#5ce0c6');
+        await page.waitForFunction(
+          () =>
+            document.getElementById('station-color-theme')?.dataset.state ===
+            'loaded',
+        );
+        const loaded = await appSample(page);
+        expect(loaded.bg).toBe(storm.roles['--k-bg']);
+        expect(loaded.action).toBe(storm.accents.blue.brand);
+        expect(toHex(loaded.body)).toBe(storm.roles['--k-bg']);
+        expect(toHex(loaded.button)).toBe(storm.accents.blue.brand);
+      } finally {
+        await page.close();
+      }
+    });
+
+    test('a sheet that keeps failing leaves the app wholly Station, with nothing claimed', async () => {
+      const page = await open(
+        `<script src="/startup-theme.js"></script><style>${startupCss}</style><style>${appCss}</style><script src="/harness.js"></script>`,
+        {
+          body: APP_BODY,
+          values: { colorTheme: 'nord' },
+          sheetFailures: 99,
+        },
+      );
+      try {
+        await page.waitForFunction(
+          () =>
+            document.getElementById('station-color-theme')?.dataset.state ===
+            'failed',
+        );
+        await page.evaluate(() =>
+          (window as unknown as { harness: any }).harness.boot(),
+        );
+        const sample = await appSample(page);
+        expect(sample).toMatchObject({ bg: '#0a0e13', action: '#5ce0c6' });
+        expect(toHex(sample.body)).toBe('#0a0e13');
+        expect(toHex(sample.button)).toBe('#5ce0c6');
+        expect(await attributes(page)).toMatchObject({
+          colorTheme: null,
+          themeColor: null,
+        });
+        // A live switch to another failing family changes nothing either.
+        await page.evaluate(() =>
+          (window as unknown as { harness: any }).harness.store.set(
+            'colorTheme',
+            'gruvbox',
+          ),
+        );
+        await page.waitForTimeout(300);
+        expect(await attributes(page)).toMatchObject({ colorTheme: null });
+        expect((await appSample(page)).bg).toBe('#0a0e13');
+      } finally {
+        await page.close();
+      }
+    });
+
+    test('a family sheet that 404s at startup is not claimed, and the app asks again', async () => {
+      const page = await open(
+        `<script src="/startup-theme.js"></script><style>${appCss}</style><script src="/harness.js"></script>`,
+        { values: { colorTheme: 'nord' }, sheetFailures: 1 },
+      );
+      try {
+        // The startup request failed: Station colours, so no theme is claimed
+        // once the app's applier runs, and it requests the sheet again.
+        await page.waitForFunction(
+          () =>
+            document.getElementById('station-color-theme')?.dataset.state ===
+            'failed',
+        );
+        await page.evaluate(() =>
+          (window as unknown as { harness: any }).harness.boot(),
+        );
+        await stamped(page, 'nord');
+        const polar = family('nord').dark[0]!;
+        expect(page.requested).toHaveLength(2);
+        expect((await read(page))['--k-bg']).toBe(polar.roles['--k-bg']);
+        expect(await attributes(page)).toMatchObject({
+          colorTheme: 'nord',
+          themeColor: polar.roles['--k-bg'],
+        });
       } finally {
         await page.close();
       }
