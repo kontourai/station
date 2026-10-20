@@ -314,7 +314,13 @@ describe('Up to an exact Project plugin pane', () => {
   const path =
     '/projects/alpha/panes/pane%3Aplugin%253Areports%3Alist/instance%3Aplugin%3Aalpha-id%3Areports';
 
-  test.each(['cancel', 'station-change', 'new-guard', 'allow'])(
+  test.each([
+    'cancel',
+    'station-change',
+    'source-change',
+    'new-guard',
+    'allow',
+  ])(
     'a routed exact return rechecks %s and commits only through canonical navigation',
     async (answer) => {
       seedRelation(projectOpener);
@@ -328,33 +334,53 @@ describe('Up to an exact Project plugin pane', () => {
         },
         ID,
       );
-      const before = await settledStorageSnapshot();
-      act(() => screen.getByRole('button', { name: 'Up to Reports' }).click());
-      await act(async () => {
-        await Promise.resolve();
-      });
       let unregisterNew = () => {};
-      if (answer === 'station-change')
-        await act(async () => {
-          authoritySwitch.set?.({ station: 'station-b' });
-        });
-      if (answer === 'new-guard')
-        unregisterNew = navigationStore.registerNavigationGuard(
-          Symbol('new work'),
-          (accept) => accept(),
-          ID,
+      try {
+        await settledStorageSnapshot();
+        act(() =>
+          screen.getByRole('button', { name: 'Up to Reports' }).click(),
         );
-      await act(async () => {
-        proceed?.();
-      });
-      if (answer === 'allow')
-        await waitFor(() => expect(window.location.pathname).toBe(path));
-      else {
-        expect(window.location.pathname).toBe('/');
-        expect(await settledStorageSnapshot()).toEqual(before);
+        await act(async () => {
+          await Promise.resolve();
+        });
+        if (answer === 'station-change')
+          await act(async () => {
+            authoritySwitch.set?.({ station: 'station-b' });
+          });
+        if (answer === 'source-change')
+          await act(async () => {
+            const changed = {
+              ...projectOpener,
+              source: { ...projectOpener.source, projectSlug: 'beta' },
+            };
+            seedRelation(changed);
+            window.dispatchEvent(
+              new StorageEvent('storage', {
+                key: PANE_RELATIONS_STORAGE_KEY,
+                newValue: localStorage.getItem(PANE_RELATIONS_STORAGE_KEY),
+              }),
+            );
+          });
+        if (answer === 'new-guard')
+          unregisterNew = navigationStore.registerNavigationGuard(
+            Symbol('new work'),
+            (accept) => accept(),
+            ID,
+          );
+        const before = await settledStorageSnapshot();
+        await act(async () => {
+          proceed?.();
+        });
+        if (answer === 'allow')
+          await waitFor(() => expect(window.location.pathname).toBe(path));
+        else {
+          expect(window.location.pathname).toBe('/');
+          expect(await settledStorageSnapshot()).toEqual(before);
+        }
+      } finally {
+        unregisterNew();
+        unregister();
       }
-      unregisterNew();
-      unregister();
     },
   );
 
@@ -411,6 +437,30 @@ describe('Up to an exact Project plugin pane', () => {
     expect(asked).toBe(2);
     unregister();
   });
+
+  test.each([
+    { descriptorId: '', instanceId: 'instance:plugin:alpha-id:reports' },
+    {
+      descriptorId: 'pane:plugin%3Areports:list',
+      instanceId: 'different-instance',
+    },
+    {
+      descriptorId: ' pane:plugin%3Areports:list',
+      instanceId: 'instance:plugin:alpha-id:reports',
+    },
+  ])(
+    'an invalid exact pane reference does not silently offer a Project fallback: %j',
+    (projectPane) => {
+      seedRelation({
+        ...projectOpener,
+        source: { ...projectOpener.source, projectPane },
+      });
+      mount();
+      expect(
+        screen.queryByRole('button', { name: 'Up to Reports' }),
+      ).toBeNull();
+    },
+  );
 });
 
 test('a relation recorded on another Station offers no Up', () => {

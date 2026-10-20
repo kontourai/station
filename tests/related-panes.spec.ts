@@ -121,6 +121,18 @@ test.describe('related panes from an installed plugin', () => {
       await expect(
         page.getByRole('article', { name: 'Weekly report' }),
       ).toContainText('Seven days of work, summarised.');
+      if (width === 390) {
+        await page
+          .getByRole('button', { name: 'Keep open', exact: true })
+          .click();
+        await page.reload();
+        await expect(
+          page.getByRole('article', { name: 'Weekly report' }),
+        ).toContainText('Seven days of work, summarised.');
+        await expect(
+          page.getByRole('button', { name: 'Back to Reports', exact: true }),
+        ).toBeVisible();
+      }
       await page
         .getByRole('button', { name: 'Up to Reports', exact: true })
         .click();

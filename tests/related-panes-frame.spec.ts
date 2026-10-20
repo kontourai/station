@@ -299,13 +299,25 @@ test.describe('related panes from a plugin in the sandboxed frame', () => {
                 name: 'Weekly report',
               }),
             ).toContainText('Seven days of work, summarised.');
-            if (width === 390)
+            if (width === 390) {
+              await returnPage
+                .getByRole('button', { name: 'Keep open', exact: true })
+                .click();
+              await returnPage.reload();
+              await expect(
+                pluginFrame(returnPage, 'report').getByRole('article', {
+                  name: 'Weekly report',
+                }),
+              ).toContainText('Seven days of work, summarised.', {
+                timeout: 30_000,
+              });
               await expect(
                 returnPage.getByRole('button', {
                   name: 'Back to Reports',
                   exact: true,
                 }),
               ).toBeVisible();
+            }
             await returnPage
               .getByRole('button', { name: 'Up to Reports', exact: true })
               .click();

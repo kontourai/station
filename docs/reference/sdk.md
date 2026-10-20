@@ -2703,6 +2703,14 @@ admit a pane to a region, and related panes are opened only through this
 capability; legacy navigation (`useNavigation`, the frame's `navigate`
 message) is unchanged.
 
+For a direct Project-pane opener, Station captures the catalog-issued
+descriptor and instance IDs itself. The related pane's Up action returns to
+that exact pane through the canonical pane route, including after Keep and
+reload. It does not substitute the Project overview or accept a URL from the
+plugin. Cancellation and a changed Station or relation leave the current child
+in place. The phone Back caption names the captured opener; browser evidence
+for these returns is separate from native-shell acceptance.
+
 From a frame, each member is a request carrying an `id`, answered by one
 `pane-host/related-result` `{ id, data }`:
 `pane-host/related-open` `{ id, request }`, `pane-host/related-reveal`
