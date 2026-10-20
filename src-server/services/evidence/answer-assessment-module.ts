@@ -15,6 +15,7 @@ import {
   mkdirSync,
   openSync,
   renameSync,
+  type Stats,
   unlinkSync,
   writeSync,
 } from 'node:fs';
@@ -69,6 +70,13 @@ export const ANSWER_ASSESSMENT_UPDATED_EVENT = 'answer.assessment.updated';
 
 export class AnswerAssessmentConflictError extends Error {}
 export class AnswerAssessmentUnavailableError extends Error {}
+/**
+ * The index exists but cannot be a ledger this module wrote: it is oversized or
+ * does not parse. Unlike an I/O failure this does not clear on retry, so a read
+ * reports it as `corrupt` rather than `unavailable` ("Temporarily
+ * unavailable"). It extends the unavailable error so writers still refuse.
+ */
+export class AnswerAssessmentIndexCorruptError extends AnswerAssessmentUnavailableError {}
 export class AnswerAssessmentNotFoundError extends Error {}
 
 /**
@@ -519,8 +527,11 @@ export class AnswerAssessmentModule {
     current?: () => boolean;
   }): Promise<CapturedAssessment | { read: SurfaceAssessmentRead }> {
     const current = input.current ?? (() => true);
-    if (input.authority.mode === 'hosted' || !current())
-      return { read: unavailable() };
+    if (!current()) return { read: unavailable() };
+    // `publish` refuses every hosted authority, so no assessment can exist
+    // for a hosted answer. That is a permanent "not captured", not an outage.
+    if (input.authority.mode === 'hosted')
+      return { read: notCaptured(input.authorizedAnswer.observedAt) };
     const binding = bindingFor(input.authorizedAnswer);
     const principalId = `${input.authority.mode}:${input.authority.userId}`;
     let record: Record | undefined;
@@ -530,8 +541,13 @@ export class AnswerAssessmentModule {
           item.sessionId === binding.sessionId &&
           item.turnId === binding.turnId,
       );
-    } catch {
-      return { read: unavailable() };
+    } catch (error) {
+      return {
+        read:
+          error instanceof AnswerAssessmentIndexCorruptError
+            ? corrupt(input.authorizedAnswer.observedAt)
+            : unavailable(),
+      };
     }
     if (!record?.active)
       return { read: notCaptured(input.authorizedAnswer.observedAt) };
@@ -668,19 +684,32 @@ export class AnswerAssessmentModule {
     return this.readIndexReadOnly(true);
   }
   private readIndexReadOnly(allowMissing = false): Index {
+    let raw: string;
     try {
+      let stat: Stats;
       try {
-        lstatSync(this.indexPath);
+        stat = lstatSync(this.indexPath);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT' && allowMissing)
           return { schemaVersion: 1, records: [] };
         throw error;
       }
-      const raw = readBoundedRegularFile(this.indexPath);
+      // The writer never exceeds this bound, so an oversized regular file is
+      // not ours and stays that way; the bounded reader would only refuse it.
+      if (stat.isFile() && stat.size > MAX_INDEX_BYTES)
+        throw new AnswerAssessmentIndexCorruptError('Assessment index corrupt');
+      raw = readBoundedRegularFile(this.indexPath);
+    } catch (error) {
+      if (error instanceof AnswerAssessmentIndexCorruptError) throw error;
+      throw new AnswerAssessmentUnavailableError('Assessment unavailable');
+    }
+    // Writes are atomic renames and the read is identity-checked, so bytes
+    // that are oversized or do not parse are a damaged ledger, not a race.
+    try {
       if (Buffer.byteLength(raw) > MAX_INDEX_BYTES) throw new Error('large');
       return parseIndex(JSON.parse(raw));
-    } catch (_error) {
-      throw new AnswerAssessmentUnavailableError('Assessment unavailable');
+    } catch {
+      throw new AnswerAssessmentIndexCorruptError('Assessment index corrupt');
     }
   }
   private writeIndex(index: Index) {
