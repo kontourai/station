@@ -94,6 +94,9 @@ import {
   chromiumIsInstalled,
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
+import { NotificationContainer } from '../components/notifications/NotificationContainer';
+import { NavigationProvider } from '../contexts/NavigationContext';
+import { ToastProvider, toastStore } from '../contexts/ToastContext';
 
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1456, height: 900 };
@@ -342,6 +345,12 @@ const SIDEBAR_FOOTER_CSS_PATH = resolve(
   HERE,
   '../components/project-sidebar/ProjectSidebarFooter.css',
 );
+// The notification column under the toolbar's right end, where a pending
+// approval's pill sits — the competitor of the menus that end opens.
+const NOTIFICATION_CSS_PATH = resolve(
+  HERE,
+  '../components/notifications/NotificationContainer.css',
+);
 
 type MenuId =
   | 'overflow'
@@ -379,6 +388,8 @@ interface Shape {
    * asserts for every shape.
    */
   readonly openerLabel: string | null;
+  /** Render the real notification column with one pending approval. */
+  readonly pendingApproval?: boolean;
 }
 
 const SHAPES: readonly Shape[] = [
@@ -494,6 +505,7 @@ function buildFixtureCss(): string {
     resolveCssImports(REGION_CHOOSER_CSS_PATH),
     resolveCssImports(SIDEBAR_CSS_PATH),
     resolveCssImports(SIDEBAR_FOOTER_CSS_PATH),
+    resolveCssImports(NOTIFICATION_CSS_PATH),
   ].join('\n');
   assertNoImportsSurvive(css);
   return css;
@@ -533,6 +545,14 @@ async function renderShellMarkup(
   viewModel.showHelp = geometry !== null && shape.menu === 'help';
   viewModel.showOverflow = geometry !== null && shape.menu === 'overflow';
   viewModel.showNotifications = false;
+  toastStore.clear();
+  if (shape.pendingApproval)
+    toastStore.showToolApproval({
+      sessionId: 'session-approval',
+      toolName: 'write_file',
+      agentName: 'Builder',
+      actions: [],
+    });
 
   if (geometry) {
     // `RegionToolbarControls` and `ChatDockHeaderMoreMenu` both derive their
@@ -623,6 +643,14 @@ async function renderShellMarkup(
           )}
         </section>
       </div>
+      {/* Mounted after the app, as `main.tsx` mounts it. */}
+      {shape.pendingApproval && (
+        <NavigationProvider>
+          <ToastProvider>
+            <NotificationContainer />
+          </ToastProvider>
+        </NavigationProvider>
+      )}
     </div>,
   );
 
@@ -1070,6 +1098,85 @@ describe.skipIf(!chromiumAvailable)(
         ).toBe(true);
       },
     );
+
+    /**
+     * The toolbar's region controls end the header row (pane workspace
+     * contract), so the Right region's chooser opens straight into the
+     * notification column, where a pending approval's pill sits. A press
+     * aimed at a chooser row must land on that row: the open menu outranks
+     * the column (`--layer-toolbar-menu`). Hosted pr-smoke found the pill
+     * taking the press (`orchestration-chat-flow.spec.ts`, "Add to Right
+     * region" → Chat).
+     */
+    test('the Right region’s chooser rows take their own press over a pending approval', async () => {
+      const shape: Shape = {
+        name: 'the region chooser over a pending approval',
+        menu: 'region',
+        viewport: DESKTOP,
+        device: 'desktop',
+        backdropLabel: 'Close the Add to Right region menu',
+        openerLabel: 'Right region',
+        pendingApproval: true,
+      };
+      const geometry = await measureTrigger(shape);
+      const markup = await renderShellMarkup(shape, geometry);
+      cleanup();
+      document.body.innerHTML = '';
+      toastStore.clear();
+      const page = await browser.newPage({ viewport: shape.viewport });
+      try {
+        await page.setContent(fixtureHtml(markup));
+        await applyViewportVars(page, shape.viewport);
+        const result = await page.evaluate(() => {
+          const panel = document.querySelector<HTMLElement>(
+            '.region-chooser__menu',
+          );
+          const pill = document.querySelector<HTMLElement>(
+            '.notification-approval-queue__trigger',
+          );
+          const rows = [
+            ...(panel?.querySelectorAll<HTMLElement>('[role="menuitem"]') ??
+              []),
+          ];
+          const pillRect = pill?.getBoundingClientRect();
+          const overlaps = (rect: DOMRect) =>
+            Boolean(
+              pillRect &&
+                rect.left < pillRect.right &&
+                pillRect.left < rect.right &&
+                rect.top < pillRect.bottom &&
+                pillRect.top < rect.bottom,
+            );
+          return {
+            panel: Boolean(panel),
+            pill: Boolean(pill && pillRect && pillRect.width > 0),
+            rowsUnderPill: rows.filter((row) =>
+              overlaps(row.getBoundingClientRect()),
+            ).length,
+            stolen: rows
+              .map((row) => {
+                const rect = row.getBoundingClientRect();
+                const x = Math.round(rect.left + rect.width / 2);
+                const y = Math.round(rect.top + rect.height / 2);
+                const hit = document.elementFromPoint(x, y);
+                return row.contains(hit)
+                  ? null
+                  : `"${row.textContent?.trim()}" at (${x}, ${y}) hit ${
+                      hit?.className ?? 'null'
+                    }`;
+              })
+              .filter((entry) => entry !== null),
+          };
+        });
+        expect(result.panel, 'the chooser did not open').toBe(true);
+        expect(result.pill, 'no pending approval pill rendered').toBe(true);
+        // Not vacuous: the pill really lies under the open chooser's rows.
+        expect(result.rowsUnderPill).toBeGreaterThan(0);
+        expect(result.stolen).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    });
   },
 );
 
