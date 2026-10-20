@@ -91,19 +91,45 @@ export function SessionInventoryCompact({
     if (key && model?.repairedSelection)
       commitSessionInventorySelection(key, model.selection);
   }, [key, model]);
+  // Every state is the same sized aside: a bare one has no width in the
+  // dock's conversation row, so its loading and unavailable states rendered
+  // 2px wide and the panel seemed never to open.
+  const asideClass = `session-inventory-compact session-inventory-compact--${density}`;
   if (!requestScope || !key)
     return (
-      <aside aria-label="Chat inventory">Chat inventory is unavailable.</aside>
+      <aside className={asideClass} aria-label="Chat inventory">
+        Chat inventory is unavailable.
+      </aside>
     );
   if (inventory.isLoading)
     return (
-      <aside aria-label="Chat inventory">
+      <aside className={asideClass} aria-label="Chat inventory">
         <SkeletonBlock count={2} label="Loading Chat inventory" />
       </aside>
     );
-  if (inventory.error || !inventory.data)
+  if (!inventory.data)
     return (
-      <aside aria-label="Chat inventory">Chat inventory is unavailable.</aside>
+      <aside className={asideClass} aria-label="Chat inventory">
+        <div className="session-inventory-compact__heading">
+          <div>
+            <p>Basis</p>
+            <h2>Chat inventory</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Chat inventory"
+          >
+            ×
+          </button>
+        </div>
+        <p role="status" className="session-inventory-compact__intro">
+          Chat inventory is unavailable.
+        </p>
+        <button type="button" onClick={() => void inventory.refetch()}>
+          Retry
+        </button>
+      </aside>
     );
   if (!model) return null;
   const reportedGroups = model.groups.filter(
@@ -131,10 +157,7 @@ export function SessionInventoryCompact({
     .slice(0, 2);
   const firstGap = model.groups.flatMap((group) => group.gaps)[0];
   return (
-    <aside
-      className={`session-inventory-compact session-inventory-compact--${density}`}
-      aria-label="Chat inventory"
-    >
+    <aside className={asideClass} aria-label="Chat inventory">
       <div className="session-inventory-compact__heading">
         <div>
           <p>Basis</p>
@@ -153,6 +176,14 @@ export function SessionInventoryCompact({
         Highlights from this scope. Open full Basis to browse every group and
         exact detail.
       </p>
+      {inventory.error ? (
+        <p role="status">
+          Couldn’t refresh this inventory; showing the last read.{' '}
+          <button type="button" onClick={() => void inventory.refetch()}>
+            Retry
+          </button>
+        </p>
+      ) : null}
       <section
         className="session-inventory-compact__highlights"
         aria-label="Inventory highlights"
