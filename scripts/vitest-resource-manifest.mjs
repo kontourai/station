@@ -587,6 +587,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/documentation-value-bindings.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
+  // Runs the hygiene report CLI as a child against disposable Git trees and a
+  // fake `gh` child.
+  'scripts/__tests__/hygiene-report.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',
   // station#4464: pins the screenshot comparator's scope-integrity behavior
