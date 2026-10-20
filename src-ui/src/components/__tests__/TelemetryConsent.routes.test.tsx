@@ -996,6 +996,7 @@ test.each(['off', 'dismiss'] as const)(
       await act(async () => {
         await vi.advanceTimersByTimeAsync(12_000);
       });
+      expect(calls('/lite-notices')).toHaveLength(0);
       expect((await service.telemetryStatus()).liteNotices).toEqual({});
       expect(sent).toHaveLength(0);
       if (action === 'off') {
