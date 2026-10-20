@@ -1,0 +1,7 @@
+{
+  "revision": "1df6c4d11a4d464a0acd73d07051ca0862da0cc4",
+
+  "notes": [
+    {"path":"packages/basis-pane/README.md","note":"Described AnswerBasisAffordance as an answer's Basis entry that stays plain Basis unless Surface's standing for that answer is notable, then shows Surface's label. Checked against packages/basis-pane/src/AnswerBasisAffordance.tsx and its tests.","inputs":["packages/basis-pane/README.md"]}
+  ]
+}

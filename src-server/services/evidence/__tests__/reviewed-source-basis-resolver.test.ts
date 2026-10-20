@@ -46,7 +46,9 @@ vi.mock('../../plugins/plugin-runtime-artifact.js', () => ({
       : null,
 }));
 
+import { composeAuthorizedSessionAnswerBasis } from '../../projects/task-basis-module.js';
 import { ReviewedSourceBasisResolver } from '../reviewed-source-basis-resolver.js';
+import { reviewedSourceSessionInventoryRow } from '../reviewed-source-session-inventory-adapter.js';
 
 const exactRef = `fieldwork-reviewed-source:v1:${'a'.repeat(64)}`;
 const sourceEvidence = projectReviewedExtractionEvidence({
@@ -448,4 +450,118 @@ test('withholds the final reviewed-source contribution if its captured installat
   expect(result).toMatchObject({ state: 'restricted' });
   expect(result).not.toHaveProperty('value');
   expect(owner.acquisitions).toBe(1);
+});
+
+describe.sequential('Fieldwork owner review state (#2949)', () => {
+  const unknownCurrentness = {
+    apiVersion: 'fieldwork.kontourai.io/v1',
+    kind: 'ReviewedWebSourceCurrentness',
+    status: 'no-check',
+  };
+  const basisAnswer = {
+    ...answer,
+    sessionId: 'session-a',
+    turnId: 'turn-a',
+    observedAt: '2026-08-26T00:00:00.000Z',
+    inputs: [],
+    results: [],
+  };
+
+  async function resolve(state: string) {
+    owner.descriptor = { ...descriptor, review: { revision: 1, state } };
+    owner.currentness = unknownCurrentness;
+    return new ReviewedSourceBasisResolver({
+      projectHomeDir: '/tmp/station-review-source-table',
+      logger: {} as never,
+    }).read({
+      answer: basisAnswer as never,
+      assessment: captured as never,
+      authority,
+      current: () => true,
+    });
+  }
+
+  function sourceItem(projection: unknown) {
+    const { regions } = projection as {
+      regions: { sources: readonly unknown[] };
+    };
+    expect(regions.sources).toHaveLength(1);
+    return regions.sources[0];
+  }
+
+  test('counts an owner-reviewed source with an accepted decision as accepted', async () => {
+    const read = await resolve('reviewed');
+    expect(read).toMatchObject({
+      state: 'available',
+      value: [{ context: { review: 'accepted' } }],
+    });
+    const gaps = read?.state === 'available' ? read.value[0]?.gaps : undefined;
+    expect((gaps ?? []).map((gap) => gap.code)).not.toContain(
+      'reviewed-source-review-not-accepted',
+    );
+  });
+
+  test('never presents a grounding-refused source as accepted support, even with an accepted decision', async () => {
+    // The fixture's Survey decision is verified/accepted, so Surface alone
+    // would derive `accepted`; only Fieldwork's review.state says otherwise.
+    expect(
+      parseReviewedWebSourceDescriptor({
+        ...descriptor,
+        review: { revision: 1, state: 'grounding-refused' },
+      }),
+    ).toMatchObject({ review: { state: 'grounding-refused' } });
+    const read = await resolve('grounding-refused');
+    expect(read).toMatchObject({
+      state: 'available',
+      value: [
+        {
+          role: 'source',
+          context: { review: 'not-accepted', reviewedAt: null },
+          gaps: expect.arrayContaining([
+            expect.objectContaining({
+              code: 'reviewed-source-review-not-accepted',
+            }),
+          ]),
+        },
+      ],
+    });
+
+    // The Basis the product publishes (Surface re-parses every Fieldwork
+    // item) keeps the source visible as a not-accepted gap. The fixture's
+    // assessment is a partial shape, so compose with a not-captured one.
+    const projection = composeAuthorizedSessionAnswerBasis(
+      basisAnswer as never,
+      undefined,
+      undefined,
+      read,
+    );
+    expect(sourceItem(projection)).toMatchObject({
+      context: { review: 'not-accepted' },
+      gaps: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'reviewed-source-review-not-accepted',
+        }),
+      ]),
+    });
+    expect(
+      reviewedSourceSessionInventoryRow({
+        sessionId: 'session-a',
+        turnId: 'turn-a',
+        answerReferenceId: 'message-a',
+        contribution: read,
+        basis: projection as never,
+      }),
+    ).toMatchObject({
+      reviewedSource: { review: 'not-accepted' },
+      contributionGaps: expect.arrayContaining([
+        'reviewed-source-review-not-accepted',
+      ]),
+    });
+  });
+
+  test('fails closed on a review state the pinned contract does not define', async () => {
+    const read = await resolve('superseded');
+    expect(read).toMatchObject({ state: 'corrupt' });
+    expect(read).not.toHaveProperty('value');
+  });
 });

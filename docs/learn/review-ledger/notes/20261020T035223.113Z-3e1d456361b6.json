@@ -1,0 +1,7 @@
+{
+  "revision": "1df6c4d11a4d464a0acd73d07051ca0862da0cc4",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed against the inventory note that the chip's text grows to Surface's label for a notable standing: still one labelled action within the two-action cap, still the 28/44px floors; rendered at 1440 and 390px. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

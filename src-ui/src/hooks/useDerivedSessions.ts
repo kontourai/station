@@ -279,6 +279,7 @@ function deriveSession(
     providerOptions: chatState.providerOptions,
     lastAppliedApprovalMode: chatState.lastAppliedApprovalMode,
     approvalEscalationRejected: chatState.approvalEscalationRejected,
+    approvalTakeoverFailed: chatState.approvalTakeoverFailed,
     queuedApprovalMode: chatState.queuedApprovalMode,
     approvalPosture: chatState.approvalPosture,
     approvalPostureSequence: chatState.approvalPostureSequence,

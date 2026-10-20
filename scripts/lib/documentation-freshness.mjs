@@ -1,9 +1,9 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { collectDocumentationChanges } from '../documentation-impact.mjs';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 import {
   compileDocumentationReviews,
   reviewInputs,
@@ -87,12 +87,10 @@ export function isPullRequestContext(env) {
 }
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
-    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
-    maxBuffer: 64 * 1024 * 1024,
   });
 }
 

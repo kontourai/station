@@ -11,8 +11,11 @@ not grant any of those permissions.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
 entries, including `/connection-trust`, `/device-pairing`,
 `/application-channel`, `/application-channel-frames`, `/self-hosted-browser`, `/native-diagnostic-echo` and
-`/native-application`, `/native-enrollment` and `/relay-ice`,
-select TypeScript source. The former `/node-storage` entry is no longer exported.
+`/native-application`, `/native-enrollment`, `/relay-ice`,
+`/pairing-deep-link` (encode and parse pairing deep links and browser pairing
+links) and `/local-self-provision` (one or retried local self-provision
+attempts with their outcome) select TypeScript source. The former
+`/node-storage` entry is no longer exported.
 
 From a managed Station checkout, `npm run build --prefix packages/connect`
 runs TypeScript, copies React CSS and writes the distribution freshness stamp.

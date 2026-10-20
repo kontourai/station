@@ -1,0 +1,81 @@
+{
+  "revision": "7180c4048a70971cc0edd286c0de3e2b451d934f",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"docs/architecture/module-map.md changed in one sentence only: the CollaborativeEditorPaneController note now links archive#2890 instead of the deleted docs/design/collaborative-editor-pane.md and says the design record was deleted with it. This document makes no claim about that controller or that design file, so its claims are unaffected.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Repointed the SharedWorkingState note's link from the deleted docs/design/collaborative-editor-pane.md to archive#2890 and stated the record was deleted. Confirmed with git grep that CollaborativeEditorPaneController and the adapters it describes have no source hits; the do-not-reintroduce list is unchanged.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"module-map changed only in the collaborative-editor link; orchestration-decomposition-map changed only its inner status line (now historical, epic archive#4024 re-filed as #421) and issue references. This review's line 259 already treats the map as needing reconciliation with real callers, which matches.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md","docs/design/orchestration-decomposition-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Generated station-docs-content.ts changed only by regenerating module-map's collaborative-editor sentence (npm run docs:mcp:generate). This document's claims about the MCP build are unaffected.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/design/README.md","note":"Regenerated with npm run docs:index after deleting collaborative-editor-pane.md and changing two titles (archive#1375, #70). docs:index:check and docs:links:check pass.","inputs":["docs/design/README.md"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Issue references only: Phase 1 shipped items now cite archive#36 and archive#38 (archive PR titles for the code block and render_component tool match the text). No behaviour claim changed.","inputs":["docs/design/ai-ui-bridge-expansion.md"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Rewrote the 2026-09-22 status block in past tense: ADR 0019's 2.0 state and migration shipped (pane state version '2.0' handled in src-ui/src/regions/region-surface-panes.ts and useOpenInRegion.ts; ADR 0019's header says implemented). Platform availability is stated as the route for Web/PWA and mobile, deferring verification evidence to the Browser workspace guide. Issue references in this file were also repaired (pre-reset numbers to archive# or their mapped public numbers, checked by title in both repositories).","inputs":["docs/design/browser-preview-pane-mvp.md"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Added a reading-status banner. Confirmed routing.ts holds the tab allowlist (logs/system/telemetry/memory/archive), not-found on unknown tabs, and the /monitoring and /sys/monitoring redirects; App.tsx registers the 'd' shortcut. The monitoring guide lacks the section list, redirects and shortcuts, so the banner says this page is their only description; that gap is reported for the guide owner. Body unchanged.","inputs":["docs/design/developer-surface.md"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Inner status now says it was blocked on archive#2043 with archive#898 open when written, and that both are now closed (gh issue view in the archive). Banner unchanged. Issue references in this file were also repaired (pre-reset numbers to archive# or their mapped public numbers, checked by title in both repositories).","inputs":["docs/design/mobile-credential-authority.md"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Added a reading-status banner naming the contract, station-runtime.ts composition (STATION_NATIVE_ENROLLMENT_PILOT read at station-runtime.ts:3550) and the self-hosted broker guide, and repeating the existing qualification limits. Body unchanged.","inputs":["docs/design/native-relay-enrollment.md"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Inner status line now says the map is historical, that its last full derivation is Part II (2026-08-25), and that epic archive#4024 was re-filed as #421 (open). This matches the banner. The 55 slice and epic references were rewritten to archive#N or mapped numbers.","inputs":["docs/design/orchestration-decomposition-map.md"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Banner now routes current frame usage to guides/plugins.md 'The pane-host contract, from a frame' (that section describes WorkspacePaneHostContract; workspace-pane-authoring.md does not), and keeps pane authoring for descriptors. Status line notes #465 closed and #469/#461 open (mapped from archive #4201/#4220/#4190). Issue references in this file were also repaired (pre-reset numbers to archive# or their mapped public numbers, checked by title in both repositories).","inputs":["docs/design/pane-host-contract.md"]},
+
+    {"path":"docs/design/project-membership.md","note":"Inner status now says the no-implemented-API statement held when the contract was approved, and that the membership service, routes and runtime composition named in the banner shipped under #488 (closed); #497 (open) still owns the two-human journey. Checked issue states with gh.","inputs":["docs/design/project-membership.md"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Banner and slice plan now say slices 1 (#3244) and 3 (#3761) are built. Confirmed delegate.ts accepts portable-project, source-commit and attempt-id flags and docs/reference/cli.md has 'Require a source version before execution'. git grep finds no result-return implementation, so slices 2, 4 and 5 stay unbuilt.","inputs":["docs/design/remote-execution-preparation.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Only the inner status line changed: 'incremental implementation (2026-07-30)' is now marked as the status when written, pointing to the numbered slices for what shipped. Issue references in this file were not changed because four open PRs edit it.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Inner status now dated 2026-07-28 and says slices 1-3 shipped. Dropped rotted line numbers from the supersession table (PairedDeviceKind is now at environment-security.ts:945, not :393), naming files only. An explicit anchor keeps the old #loopback-scopes-are-not-an-exception-station1198 target, which guides/connections.md links. Issue references in this file were also repaired (pre-reset numbers to archive# or their mapped public numbers, checked by title in both repositories).","inputs":["docs/design/station-peer-pairing.md"]},
+
+    {"path":"docs/design/station-topology.md","note":"The status line is now a reading-status banner and notes #479 is closed. No other change.","inputs":["docs/design/station-topology.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Status line is now dated 2026-10-09 (the file's last change) and notes #3034 is open. No other change; open PR #3727 edits later sections.","inputs":["docs/design/task-room-agent-requests.md"]},
+
+    {"path":"docs/design/work-plane-composition.md","note":"Added a note at the top of Problem: it is the 2026-07-20 baseline; slice S6 deleted SessionBoardView.tsx (absent from the tree) and mounted ConsoleBoardView (archive#765, archive title confirms).","inputs":["docs/design/work-plane-composition.md"]},
+
+    {"path":"docs/plans/1364-owner-source-observation--grounding.md","note":"Added an Implemented banner naming knowledge-source-observation-policy.ts, packages/sdk/src/client/learning-source.ts and the SDK reference section 'Inspect a learning source'; all three exist and the section describes the route.","inputs":["docs/plans/1364-owner-source-observation--grounding.md"]},
+
+    {"path":"docs/strategy/README.md","note":"Listed station-delivery-retirement.md (its 409 flow.definition.retired claim matches src-server/routes/evidence/flow-runs.ts:143) and task-experience-composition.md, previously unlinked.","inputs":["docs/strategy/README.md"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Footer now states it is a dated snapshot and that current @kontourai pins are in package.json and pnpm-lock.yaml. Versions in the snapshot were not refreshed. Issue references in this file were also repaired (pre-reset numbers to archive# or their mapped public numbers, checked by title in both repositories).","inputs":["docs/strategy/kontour-integration-surface.md"]},
+
+    {"path":"docs/strategy/local-merge-readiness.md","note":"Inner status now says 'status when recorded (historical)' and uses past tense for the zero-step failure condition, agreeing with the historical banner. Path unchanged because scripts cite it.","inputs":["docs/strategy/local-merge-readiness.md"]},
+
+    {"path":"docs/strategy/task-experience-composition.md","note":"Banner now says #42 was closed not planned when batched into #580, and #580 (open) lists it as a checklist item (gh issue view 42 last comment and #580 body). Issue references in this file were also repaired (pre-reset numbers to archive# or their mapped public numbers, checked by title in both repositories).","inputs":["docs/strategy/task-experience-composition.md"]},
+
+    {"path":"docs/strategy/veritas/brownfield-gap-log.md","note":"Added a note that scripts/verify-convergence.mjs and the guardrail-usefulness inventory were removed before the public reset (neither exists in this repository's history from c526c4a93bd on) and that the families live in .veritas/proof-families/repo-guardrails.families.json.","inputs":["docs/strategy/veritas/brownfield-gap-log.md"]},
+
+    {"path":"docs/strategy/veritas/migration-0.5-record.md","note":"Added a note that the 0.3-era files it names no longer exist and that its tables record where each went (the tables already classify them migrated or retired). Issue references in this file were also repaired (pre-reset numbers to archive# or their mapped public numbers, checked by title in both repositories).","inputs":["docs/strategy/veritas/migration-0.5-record.md"]},
+
+    {"path":"packages/connect/CHANGELOG.md","note":"Retained the private native-relay-invitation-expiry note in Private bundled changes, matching the earlier retained Connect notes, because connect is private and privatePackages.version is false so changeset version never consumes it. npm run changesets:check passes with 4 changesets.","inputs":["packages/connect/CHANGELOG.md"]}
+  ]
+}

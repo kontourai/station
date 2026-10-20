@@ -1,7 +1,6 @@
 /**
  * Shared free-port allocation for test/dev harnesses that boot Station
- * instances. Previously duplicated across run-e2e-suite.mjs and
- * proof-phase1-no-aws-startup.mjs (and hand-rolled/hardcoded in cli-agent-e2e).
+ * instances, so each harness does not hand-roll or hardcode its own ports.
  */
 import { createServer } from 'node:http';
 

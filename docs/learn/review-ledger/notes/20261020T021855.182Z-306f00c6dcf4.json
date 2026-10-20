@@ -1,0 +1,9 @@
+{
+  "revision": "b38aeefb18a879efb7bd09b13159a6fb29f7f86c",
+
+  "notes": [
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Comment-only delta in packages/sdk/src/client/knowledge.ts and query-domains/knowledgeStores.ts (plan labels rewritten, #2722). No rendered surface, route or data shape changed, so the captured screen is unaffected; not re-captured.","inputs":["docs/learn/media/repository-knowledge.png","packages/sdk/src/client/knowledge.ts","packages/sdk/src/query-domains/knowledgeStores.ts"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Comment-only delta in packages/sdk/src/client/knowledge.ts and query-domains/knowledgeStores.ts (plan labels rewritten, #2722). No rendered surface, route or data shape changed, so the captured screen is unaffected; not re-captured.","inputs":["docs/learn/media/repository-knowledge-narrow.png","packages/sdk/src/client/knowledge.ts","packages/sdk/src/query-domains/knowledgeStores.ts"]}
+  ]
+}

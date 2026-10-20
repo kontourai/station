@@ -1,0 +1,9 @@
+{
+  "revision": "5079572139db4eb1a4b793fc9e45b71ffeb4fdeb",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Review round 1 (#3906): the pure/environment-free rule now names stall-watchdog as its one exception. readWithStallWatchdog races a caller-supplied ReadableStream reader against an ambient setTimeout because the SDK chat stream and the server agent bridge share one implementation (archive#1256); it imports no Node built-in. Re-checked contracts src: no other setTimeout/setInterval, and fleet-routing-receipt's now = Date.now() default remains the only clock read.","inputs":["packages/contracts/AGENTS.md"]},
+
+    {"path":"packages/contracts/CLAUDE.md","note":"Imports the paired AGENTS.md, which now names the stall-watchdog exception. No change here.","inputs":["packages/contracts/CLAUDE.md","packages/contracts/AGENTS.md"]}
+  ]
+}

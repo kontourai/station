@@ -647,6 +647,30 @@ Station's theme supplies light/dark values. An independent host must provide
 the applicable variables and component styles; importing a component does not
 install Station's theme.
 
+## Subpaths without a reference section
+
+The [SDK reference](../../docs/reference/sdk.md) documents most surfaces. These
+subpaths are exported but not described there yet. Most keep a feature's hooks
+out of the first-paint root barrel.
+
+- Basis and answers: `/task-basis` and `/answer-basis` (Basis queries that take
+  captured host authority), `/answer-support` (support bundles, claims and
+  cards), `/answer-assessment-events` and `/answer-narrative-events` (owner
+  update events and the Basis queries they refresh).
+- Outputs and Session inventory: `/task-outputs`, `/session-outputs`
+  (inspection point queries), `/session-output-actions` (keep a Session output
+  in a Task), `/session-inventory`, `/task-user-input-references`.
+- Activity: `/live-activity` and `/action-operations` (lazy Activity feeds).
+- Flow gates: `/client/flow-gate-evaluations`.
+- Setup and devices: `/setup-imports` and `/setup-imports-query` (existing-setup
+  import), `/mobile-devices-query` (Device pane inventory and sessions),
+  `/core-update-restart-status` (the update watchdog's restart outcome).
+- Workspace Panes: `/workspace-browser-preview` and `/workspace-file-preview`
+  (opt-in, browser-safe pane contracts with no host implementation).
+- Client plumbing: `/client-origin` (request origin headers),
+  `/notification-read` (mark an enveloped notification read), `/error-state`
+  (the shared error state component).
+
 ## Related packages
 
 - [`@kontourai/station-shared`](https://www.npmjs.com/package/@kontourai/station-shared)
