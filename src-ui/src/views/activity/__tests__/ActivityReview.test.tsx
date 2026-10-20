@@ -144,6 +144,7 @@ async function mount() {
   });
   return {
     ...view,
+    client,
     refresh: () =>
       view.rerender(
         <QueryClientProvider client={client}>
@@ -229,6 +230,14 @@ test('review and siblings preserve the main selection, search, visible ordering 
   listElement.scrollTop = 83;
   await quickReview('Review beta');
   await within(review()).findByText('Transcript: Review beta');
+  fireEvent.click(within(review()).getByRole('button', { name: 'Previous' }));
+  await waitFor(() =>
+    expect(within(review()).getByText('Transcript: Review alpha')).toBeTruthy(),
+  );
+  fireEvent.click(within(review()).getByRole('button', { name: 'Next' }));
+  await waitFor(() =>
+    expect(within(review()).getByText('Transcript: Review beta')).toBeTruthy(),
+  );
   expect(
     within(list())
       .getByRole('button', { name: 'Review alpha' })
@@ -424,3 +433,19 @@ test.each([403, 404, 503])(
     expect(network.read).toHaveBeenCalledTimes(count);
   },
 );
+
+test('a denied refresh retires cached detail controls instead of promoting stale authorized data', async () => {
+  const { client } = await mount();
+  await quickReview('Review beta');
+  await within(review()).findByText('Transcript: Review beta');
+  responseStatus = 403;
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['activity-review'] });
+  });
+  await within(review()).findByText('Station denied access to this activity');
+  expect(within(review()).getByRole('button', { name: 'Open' })).toHaveProperty(
+    'disabled',
+    true,
+  );
+  expect(within(review()).queryByText('Transcript: Review beta')).toBeNull();
+});

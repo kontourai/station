@@ -79,6 +79,7 @@ function ActivityReviewPane({ id }: { id: string }) {
       relations.stationId,
       apiBase,
       state?.threadId,
+      state?.projectSlug,
     ],
     enabled: state !== null,
     retry: false,
@@ -143,6 +144,7 @@ function ActivityReviewPane({ id }: { id: string }) {
   };
   const session = query.data?.session;
   const exact =
+    !query.error &&
     state &&
     session &&
     session.threadId === state.threadId &&
