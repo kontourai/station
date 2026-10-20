@@ -21,8 +21,7 @@
   white-space: nowrap;
 }
 
-.appearance__hint,
-.appearance__current {
+.appearance__hint {
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);
 }
@@ -94,7 +93,7 @@
 /* ── Theme gallery ── */
 .appearance-theme__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--k-space-3);
 }
 
@@ -139,7 +138,10 @@
   margin-bottom: var(--k-space-1);
   padding: 8px;
   border-radius: var(--k-radius-sm);
-  aspect-ratio: 16 / 10;
+  /* A fixed height, not an aspect ratio: a wide card would otherwise be
+     mostly empty canvas. */
+  height: 104px;
+  box-sizing: border-box;
   /* The card's own border sits on Station's panel; this one separates the
      preview from it whatever the theme's canvas is. */
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 14%, transparent);
@@ -251,10 +253,10 @@
 }
 
 .appearance-choice__dot {
-  width: 14px;
-  height: 14px;
-  border: 2px solid;
-  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-text) 22%, transparent);
 }
 
 /* ── Accent ── */
@@ -286,6 +288,11 @@
 }
 
 @media (max-width: 768px), (pointer: coarse) {
+  /* A keyboard shortcut is not something a touch screen can press. */
+  .appearance__hint {
+    display: none;
+  }
+
   .appearance-mode__option,
   .appearance-choice {
     display: inline-flex;

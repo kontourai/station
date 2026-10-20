@@ -154,7 +154,10 @@ describe('Appearance page', () => {
     fireEvent.click(within(accents).getByRole('radio', { name: 'Peach' }));
     expect(deviceSettingsStore.getSnapshot().colorThemeAccent).toBe('peach');
     expect(attributes().accent).toBe('peach');
-    expect(screen.getByText('Peach')).toBeTruthy();
+    // The choice is named in text, not only shown as a ring around a colour.
+    expect(
+      screen.getByText('Buttons, links and focus. Peach is selected.'),
+    ).toBeTruthy();
   });
 
   // A custom hex `accentColor` wins over a theme's accent (lane A's

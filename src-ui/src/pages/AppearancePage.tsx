@@ -298,9 +298,10 @@ export function AppearancePage() {
                     <span
                       className="appearance-choice__dot"
                       aria-hidden="true"
+                      // The flavor's canvas with its accent in the corner: a
+                      // swatch, not something that reads as a radio button.
                       style={{
-                        background: flavor.swatch.background,
-                        borderColor: flavor.swatch.text,
+                        background: `linear-gradient(135deg, ${flavor.swatch.background} 55%, ${flavor.swatch.accent} 55%)`,
                       }}
                     />
                     {flavor.label}
@@ -319,12 +320,7 @@ export function AppearancePage() {
             description={
               custom
                 ? `Your custom accent ${custom} is in use on every theme. Choosing an accent here replaces it.`
-                : 'Buttons, links and focus.'
-            }
-            status={
-              !custom && accentLabel ? (
-                <span className="appearance__current">{accentLabel}</span>
-              ) : undefined
+                : `Buttons, links and focus. ${accentLabel ?? 'The default'} is selected.`
             }
           >
             <div

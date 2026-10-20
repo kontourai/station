@@ -342,6 +342,12 @@
 }
 
 /* ── Accent Color Picker ── */
+.settings__appearance-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .settings__section-nav {
   margin-bottom: 1.25rem;
 }

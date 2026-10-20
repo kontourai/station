@@ -1281,10 +1281,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       {...settingsRow('theme')}
                       description="Switch light and dark here. Color themes are on the Appearance page."
                       control={
-                        <>
+                        <span className="settings__appearance-controls">
                           <ThemeToggle />
                           <OpenAppearanceButton />
-                        </>
+                        </span>
                       }
                     />
                     {isMobile && (
