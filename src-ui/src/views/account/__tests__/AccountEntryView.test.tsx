@@ -12,6 +12,7 @@ import {
 } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { AccountEntryPage, AccountEntryView } from '../AccountEntryView';
 
 const apiBase = 'https://station.example.test';
@@ -717,5 +718,19 @@ describe('invitation entry through real account SDK requests', () => {
     expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe(
       '',
     );
+  });
+});
+
+describe('account sign-out and appearance', () => {
+  test('signing out releases the cached account appearance', async () => {
+    const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
+    signedIn = true;
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+    await waitFor(() =>
+      expect(calls.some((call) => call.path.endsWith('/sign-out'))).toBe(true),
+    );
+    await waitFor(() => expect(release).toHaveBeenCalledTimes(1));
+    release.mockRestore();
   });
 });

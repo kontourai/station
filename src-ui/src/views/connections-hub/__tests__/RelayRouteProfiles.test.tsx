@@ -249,6 +249,7 @@ vi.mock('../../../platform/native/relayKeyApproval', () => ({
   },
 }));
 
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { NativeStationProfileStorage } from '../../../platform/native/stationProfileStorage';
 import { RelayRouteProfiles } from '../RelayRouteProfiles';
 
@@ -1947,6 +1948,7 @@ describe('RelayRouteProfiles', () => {
   });
 
   test('remote sign-out requires the typed revocation receipt and remains distinct from local retirement', async () => {
+    const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
     configureEnrollmentReadyRoute();
     selectNativeRelayRoute();
     mocks.accountSessionActive = true;
@@ -1962,6 +1964,9 @@ describe('RelayRouteProfiles', () => {
     );
     expect(mocks.accountLogout).toHaveBeenCalledTimes(1);
     expect(mocks.accountRetire).not.toHaveBeenCalled();
+    // Signed out on this device: its own appearance replaces the account's.
+    expect(release).toHaveBeenCalledTimes(1);
+    release.mockRestore();
     expect(
       screen.queryByLabelText('Project invitation link or code'),
     ).toBeNull();
@@ -1971,6 +1976,7 @@ describe('RelayRouteProfiles', () => {
   });
 
   test('does not claim remote revocation when sign-out outcome is unknown', async () => {
+    const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
     configureEnrollmentReadyRoute();
     selectNativeRelayRoute();
     mocks.accountSessionActive = true;
@@ -1995,6 +2001,9 @@ describe('RelayRouteProfiles', () => {
       screen.queryByText(/confirmed this account session was revoked/),
     ).toBeNull();
     expect(mocks.accountRetire).not.toHaveBeenCalled();
+    // The local session is retired either way, so the appearance is released.
+    expect(release).toHaveBeenCalledTimes(1);
+    release.mockRestore();
   });
 
   test('does not forward an accepted invitation after the selected route epoch changes', async () => {
