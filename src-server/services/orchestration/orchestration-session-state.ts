@@ -70,6 +70,7 @@ import {
   isUnattributedRuntimeError,
   nextTurnIdentityAnchor,
   projectSessionLifecycle,
+  type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
 import {
   SESSION_START_INDETERMINATE_CODE,
@@ -1361,6 +1362,11 @@ function extractTerminalTurnAt(
     if (!event) continue;
     if (turnId && event.turnId && event.turnId !== turnId) continue;
     if (
+      events[latestStart]?.invocationId !== undefined &&
+      event.invocationId !== events[latestStart]?.invocationId
+    )
+      continue;
+    if (
       event.method === 'turn.completed' ||
       event.method === 'turn.aborted' ||
       (event.method === 'runtime.error' && !isDeferredRetriableTurnError(event))
@@ -2043,7 +2049,7 @@ function deriveAgentRunStatus(options: {
   // terminal — it retains the last-started turn's id for the session's
   // life (MEDIUM 3) — so this variable's name understates it slightly:
   // "the identity anchor", not merely "the preceding turn's id".
-  let turnIdentityAnchor: string | undefined;
+  let turnIdentityAnchor: TurnIdentityAnchor | undefined;
   for (const event of options.events) {
     switch (event.method) {
       case 'session.started':
@@ -2095,6 +2101,12 @@ function deriveAgentRunStatus(options: {
           agentRunStatusFromSessionState(event.sessionState) ?? 'running';
         break;
       case 'runtime.error':
+        if (
+          typeof turnIdentityAnchor === 'object' &&
+          (event.turnId !== undefined || event.invocationId !== undefined) &&
+          !acceptsTurnTerminalEvent(event, turnIdentityAnchor)
+        )
+          break;
         // UX audit AW-8 (live): the SAME rule as `session.exited` below, for
         // the route the audit actually reproduced. Killing a pooled Claude
         // Code engine after its turn had finished published
@@ -2295,12 +2307,18 @@ function extractRuntimeThreadId(resumeCursor: unknown): string | undefined {
 function findTerminalFailureEvent(
   events: CanonicalRuntimeEvent[],
 ): Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }> | undefined {
-  let turnIdentityAnchor: string | undefined;
+  let turnIdentityAnchor: TurnIdentityAnchor | undefined;
   let lastFailure:
     | Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }>
     | undefined;
   for (const event of events) {
     if (event.method === 'runtime.error') {
+      if (
+        typeof turnIdentityAnchor === 'object' &&
+        (event.turnId !== undefined || event.invocationId !== undefined) &&
+        !acceptsTurnTerminalEvent(event, turnIdentityAnchor)
+      )
+        continue;
       lastFailure = event;
     } else if (
       (event.method === 'turn.completed' || event.method === 'turn.aborted') &&

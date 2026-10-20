@@ -5,9 +5,9 @@
 
   "state": "partial",
 
-  "summary": "Scoped delta review: Reviewed Tier 1 ownership and import isolation, default versus host terminal authority, retention and the explicit boundary-integration deferral.",
+  "summary": "Scoped delta review: Reviewed Tier 1 ownership and import isolation, default versus host terminal authority, retention and bounded Station source adoption through 029068f7728.",
 
-  "limits": "No independent provider, device or release qualification. The Station coordinator has not switched to this API. Existing unchanged primitive descriptions are not a new subsystem-wide audit.",
+  "limits": "No independent provider, device or release qualification. Station source uses this API for boundary writes and current/witness terminal reads, source-approved at 029068f7728; installed native-origin fidelity, older executables, concurrent writers and whole-runtime qualification remain unverified. Existing unchanged primitive descriptions are not a new subsystem-wide audit.",
 
   "sources": [
     "packages/monument/src/port.ts",
@@ -44,7 +44,41 @@
 
     "packages/monument/src/testing/index.ts",
 
-    "packages/monument/src/__tests__/crash-point-compatibility.test.ts"
+    "packages/monument/src/__tests__/crash-point-compatibility.test.ts",
+
+    "packages/monument/src/decisions/turn-boundary.ts",
+
+    "packages/monument/src/decisions/prepared-settlement.ts",
+
+    "src-server/services/turn-idempotency.ts",
+
+    "src-server/services/orchestration/session-turn-boundary.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/services/orchestration/conversation-lineage.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/services/__tests__/turn-idempotency.test.ts",
+
+    "src-server/services/orchestration/__tests__/session-turn-boundary.test.ts",
+
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts",
+
+    "packages/monument/src/decisions/invocation-terminal.ts",
+
+    "packages/monument/src/__tests__/invocation-terminal.test.ts",
+
+    "packages/monument/src/__tests__/sqlite-invocation-terminal.test.ts",
+
+    "src-server/services/orchestration/prepared-turn-intent.ts"
   ],
 
   "checks": []

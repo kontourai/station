@@ -150,7 +150,19 @@
 
     "src-server/routes/orchestration/session-agent-control.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts",
+
+    "src-server/services/orchestration/session-turn-wait.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/session-turn-wait.test.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-result-delivery.test.ts",
+
+    "docs/architecture/module-map.md",
+
+    "src-server/services/orchestration/delegation-result-delivery.ts"
   ],
 
   "checks": [

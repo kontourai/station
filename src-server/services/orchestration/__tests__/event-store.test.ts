@@ -5749,15 +5749,26 @@ describe('EventStore', () => {
 
     const prepare = vi.spyOn(DatabaseSync.prototype as any, 'prepare');
     store = new EventStore(databasePath);
-    const payloadQueries = prepare.mock.calls
-      .map(([sql]) => String(sql))
-      .filter((sql) =>
-        sql.includes('SELECT payload FROM orchestration_events'),
-      );
+    const allQueries = prepare.mock.calls.map(([sql]) => String(sql));
+    const payloadQueries = allQueries.filter((sql) =>
+      sql.includes('SELECT payload FROM orchestration_events'),
+    );
     prepare.mockRestore();
 
     // The bounded project-label upgrade adds its latest metadata lookup and
     // one no-op legacy-label probe. Every projection read remains capped.
+    console.info(
+      '[high-volume-payload-queries]',
+      JSON.stringify(payloadQueries),
+    );
+    expect(
+      allQueries.filter(
+        (sql) =>
+          sql.includes(
+            "('turn.completed','turn.aborted','runtime.error','session.exited')",
+          ) && /SELECT (event\.)?payload FROM orchestration_events/.test(sql),
+      ),
+    ).toEqual([]);
     expect(payloadQueries).toHaveLength(5);
     expect(payloadQueries.every((sql) => sql.includes('LIMIT'))).toBe(true);
     expect(payloadQueries.join('\n')).not.toContain("'turn.completed'");
@@ -6770,6 +6781,339 @@ describe('EventStore', () => {
   // superset queries grouped in memory), so agreement here is real evidence,
   // not tautology.
   describe('listSessionProjectionEventsForThreads (station#4466 batched read)', () => {
+    test('positive start seeks stay indexed across large legacy-only and raw-suffix histories', () => {
+      const database = store['db'];
+      const size = 6000;
+      const createdAt = '2030-01-01T00:00:00Z';
+      store.appendEvent({
+        eventId: 'indexed-B',
+        provider: 'claude',
+        threadId: 'raw-suffix',
+        turnId: 'N',
+        invocationId: 'B',
+        method: 'turn.started',
+        prompt: 'B',
+        createdAt,
+      });
+      const insert = database.prepare(
+        'INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence) VALUES (?,?,?,?,?,?,?,?,?)',
+      );
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        for (const threadId of ['legacy-only', 'raw-suffix'])
+          for (let index = 1; index <= size; index++) {
+            const event = {
+              eventId: `${threadId}:raw:${index}`,
+              provider: 'claude',
+              threadId,
+              turnId: 'N',
+              method: 'turn.started',
+              prompt: 'unassigned',
+              createdAt,
+            };
+            insert.run(
+              event.eventId,
+              event.provider,
+              threadId,
+              'N',
+              event.method,
+              JSON.stringify(event),
+              createdAt,
+              index + 1,
+              (threadId === 'legacy-only' ? 0 : size) + index + 1,
+            );
+          }
+        database.exec('COMMIT');
+      } catch (cause) {
+        database.exec('ROLLBACK');
+        throw cause;
+      }
+      database.exec('DROP INDEX idx_events_positive_turn_start');
+      store.close();
+      const originalExec = DatabaseSync.prototype.exec;
+      let indexBuildMs = 0;
+      const observedBuild = vi
+        .spyOn(DatabaseSync.prototype, 'exec')
+        .mockImplementation(function (
+          this: InstanceType<typeof DatabaseSync>,
+          sql: unknown,
+        ) {
+          const before = performance.now();
+          const result = originalExec.call(this, sql);
+          if (
+            typeof sql === 'string' &&
+            sql.startsWith('CREATE INDEX idx_events_positive_turn_start')
+          )
+            indexBuildMs = performance.now() - before;
+          return result;
+        });
+      try {
+        store = new EventStore(join(dir, 'orchestration.sqlite'));
+      } finally {
+        observedBuild.mockRestore();
+      }
+      console.info(
+        '[positive-start-existing-data-build]',
+        JSON.stringify({ legacyStarts: size, rawSuffix: size, indexBuildMs }),
+      );
+      const started = performance.now();
+      const direct = capturePreparedStatements(store, () => {
+        expect(
+          store
+            .listSessionProjectionEvents('raw-suffix')
+            .some((row) => row.id === 'indexed-B'),
+        ).toBe(true);
+        store.listSessionProjectionEvents('legacy-only');
+      });
+      const singleMs = performance.now() - started;
+      const batchStarted = performance.now();
+      const batch = capturePreparedStatements(store, () => {
+        expect(
+          store
+            .listSessionProjectionEventsForThreads([
+              'legacy-only',
+              'raw-suffix',
+            ])
+            .get('raw-suffix')
+            ?.some((row) => row.id === 'indexed-B'),
+        ).toBe(true);
+      });
+      const selected = [...direct, ...batch].filter(
+        ({ sql }) =>
+          sql.includes("'$.metadata.trigger'") &&
+          sql.includes("method = 'turn.started'"),
+      );
+      expect(selected).toHaveLength(3);
+      const plans = selected.map((statement) => capturedPlan(store, statement));
+      console.info(
+        '[positive-start-work]',
+        JSON.stringify({
+          startsPerThread: size,
+          singleMs,
+          batchMs: performance.now() - batchStarted,
+          statements: selected,
+          plans,
+        }),
+      );
+      if (process.env.STATION_POSITIVE_START_EVIDENCE_PATH)
+        writeFileSync(
+          process.env.STATION_POSITIVE_START_EVIDENCE_PATH,
+          JSON.stringify(
+            {
+              startsPerThread: size,
+              indexBuildMs,
+              singleMs,
+              batchMs: performance.now() - batchStarted,
+              statements: selected,
+              plans,
+            },
+            null,
+            2,
+          ),
+        );
+      for (const plan of plans) {
+        expect(plan).toContain('idx_events_positive_turn_start');
+        expect(plan).not.toContain('USE TEMP B-TREE');
+      }
+    });
+
+    test.each(['absent', 'wrong'] as const)(
+      'a required positive-start index that is %s refuses instead of scanning',
+      (mode) => {
+        store.appendEvent({
+          eventId: 'required-index-B',
+          provider: 'claude',
+          threadId: 'required-index',
+          turnId: 'N',
+          invocationId: 'B',
+          method: 'turn.started',
+          prompt: 'B',
+          createdAt: '2030-01-01T00:00:00Z',
+        });
+        store['db'].exec('DROP INDEX idx_events_positive_turn_start');
+        if (mode === 'wrong')
+          store['db'].exec(
+            'CREATE INDEX idx_events_positive_turn_start ON orchestration_events(thread_id,sequence DESC)',
+          );
+        expect(() =>
+          store.listSessionProjectionEvents('required-index'),
+        ).toThrow('positive-start index');
+        expect(() =>
+          store.listSessionProjectionEventsForThreads(['required-index']),
+        ).toThrow('positive-start index');
+      },
+    );
+
+    test.each(['legacy-corrupt', 'suffix-corrupt', 'older-corrupt'] as const)(
+      'indexed canonical malformed-start blocker preserves %s semantics',
+      (mode) => {
+        const db = store['db'];
+        const raw = (id: string, sequence: number, payload: string) =>
+          db
+            .prepare(
+              'INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence) VALUES(?,?,?,?,?,?,?,?,?)',
+            )
+            .run(
+              id,
+              'claude',
+              'corrupt-index',
+              'N',
+              'turn.started',
+              payload,
+              '2030-01-01T00:00:00Z',
+              sequence,
+              sequence,
+            );
+        if (mode !== 'legacy-corrupt')
+          raw(
+            'valid-index-B',
+            mode === 'older-corrupt' ? 3 : 1,
+            JSON.stringify({
+              eventId: 'valid-index-B',
+              provider: 'claude',
+              threadId: 'corrupt-index',
+              turnId: 'N',
+              invocationId: 'B',
+              method: 'turn.started',
+              prompt: 'B',
+              createdAt: '2030-01-01T00:00:00Z',
+            }),
+          );
+        const captured =
+          mode === 'older-corrupt'
+            ? capturePreparedStatements(store, () => {
+                store.listSessionProjectionEvents('corrupt-index');
+                store.listSessionProjectionEventsForThreads(['corrupt-index']);
+              }).filter(({ sql }) =>
+                sql.includes('INDEXED BY idx_events_positive_turn_start'),
+              )
+            : [];
+        raw('malformed-index-start', 2, '{invalid');
+        raw(
+          'raw-index-suffix',
+          4,
+          JSON.stringify({
+            eventId: 'raw-index-suffix',
+            provider: 'claude',
+            threadId: 'corrupt-index',
+            turnId: 'N',
+            method: 'turn.started',
+            prompt: 'raw',
+            createdAt: '2030-01-01T00:00:00Z',
+          }),
+        );
+        if (mode === 'older-corrupt') {
+          expect(captured).toHaveLength(2);
+          for (const statement of captured) {
+            const rows = db
+              .prepare(statement.sql)
+              .all(...statement.values) as Array<{
+              id: string;
+              payload: string;
+            }>;
+            expect(rows).toHaveLength(1);
+            expect(rows[0]?.id).toBe('valid-index-B');
+            expect(() => JSON.parse(rows[0]!.payload)).not.toThrow();
+          }
+        }
+        for (const read of [
+          () => store.listSessionProjectionEvents('corrupt-index'),
+          () => store.listSessionProjectionEventsForThreads(['corrupt-index']),
+        ]) {
+          expect(read).toThrow();
+        }
+      },
+    );
+
+    test('positive-start migration builds retained history atomically and is idempotent on reopen', () => {
+      const path = join(dir, 'index-migration.sqlite');
+      const first = new EventStore(path);
+      first.appendEvent({
+        eventId: 'migration-B',
+        provider: 'claude',
+        threadId: 'migration-B',
+        turnId: 'N',
+        invocationId: 'B',
+        method: 'turn.started',
+        prompt: 'B',
+        createdAt: '2030-01-01T00:00:00Z',
+      });
+      first['db'].exec('DROP INDEX idx_events_positive_turn_start');
+      const before = first['db']
+        .prepare('SELECT * FROM orchestration_events')
+        .all();
+      first.close();
+      const originalExec = DatabaseSync.prototype.exec;
+      const fault = vi
+        .spyOn(DatabaseSync.prototype, 'exec')
+        .mockImplementation(function (
+          this: InstanceType<typeof DatabaseSync>,
+          sql: unknown,
+        ) {
+          const result = originalExec.call(this, sql);
+          if (
+            typeof sql === 'string' &&
+            sql.startsWith('CREATE INDEX idx_events_positive_turn_start')
+          )
+            throw new Error('after actual index build');
+          return result;
+        });
+      try {
+        expect(() => new EventStore(path)).toThrow('after actual index build');
+      } finally {
+        fault.mockRestore();
+      }
+      const inspect = new DatabaseSync(path);
+      expect(
+        inspect
+          .prepare(
+            "SELECT 1 FROM sqlite_schema WHERE name='idx_events_positive_turn_start'",
+          )
+          .get(),
+      ).toBeUndefined();
+      expect(
+        inspect.prepare('SELECT * FROM orchestration_events').all(),
+      ).toEqual(before);
+      inspect.close();
+      const started = performance.now();
+      const migrated = new EventStore(path);
+      const schema = migrated['db']
+        .prepare(
+          "SELECT sql FROM sqlite_schema WHERE name='idx_events_positive_turn_start'",
+        )
+        .get();
+      expect(
+        migrated
+          .listSessionProjectionEvents('migration-B')
+          .some((row) => row.id === 'migration-B'),
+      ).toBe(true);
+      expect(
+        migrated['db'].prepare('SELECT * FROM orchestration_events').all(),
+      ).toEqual(before);
+      console.info(
+        '[positive-start-index-build]',
+        JSON.stringify({
+          elapsedMs: performance.now() - started,
+          retainedEvents: before.length,
+          schema,
+        }),
+      );
+      migrated.close();
+      const reopened = new EventStore(path);
+      expect(
+        reopened['db']
+          .prepare(
+            "SELECT sql FROM sqlite_schema WHERE name='idx_events_positive_turn_start'",
+          )
+          .get(),
+      ).toEqual(schema);
+      reopened['db'].exec(
+        'DROP INDEX idx_events_positive_turn_start; CREATE INDEX idx_events_positive_turn_start ON orchestration_events(thread_id)',
+      );
+      reopened.close();
+      expect(() => new EventStore(path)).toThrow('positive-start index');
+    });
+
     test('the latest-any slot seeks once per requested thread instead of ranking history', () => {
       for (const threadId of ['seek-a', 'seek-b']) {
         seedProjectionThread(threadId, 'ordinary');
@@ -7766,38 +8110,150 @@ describe('EventStore', () => {
       ],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
-    await new Promise<void>((resolve, reject) => {
-      holder.once('error', reject);
-      holder.stdout.once('data', () => resolve());
+    const stdout = { head: Buffer.alloc(0), tail: Buffer.alloc(0), bytes: 0 };
+    const stderr = { head: Buffer.alloc(0), tail: Buffer.alloc(0), bytes: 0 };
+    const retain = (output: typeof stdout, chunk: Buffer) => {
+      output.bytes += chunk.length;
+      const headBytes = Math.min(16_384 - output.head.length, chunk.length);
+      output.head = Buffer.concat([output.head, chunk.subarray(0, headBytes)]);
+      output.tail = Buffer.concat([
+        output.tail,
+        chunk.subarray(headBytes),
+      ]).subarray(-16_384);
+    };
+    const snapshot = (output: typeof stdout) => ({
+      text:
+        output.bytes > output.head.length + output.tail.length
+          ? `${output.head.toString('utf8')}\n[${output.bytes - output.head.length - output.tail.length} bytes omitted]\n${output.tail.toString('utf8')}`
+          : Buffer.concat([output.head, output.tail]).toString('utf8'),
+      bytes: output.bytes,
+      retainedBytes: output.head.length + output.tail.length,
+      truncated: output.bytes > output.head.length + output.tail.length,
+      retention:
+        'first 16384 bytes and last 16384 bytes; omitted middle if truncated',
     });
-    const first = new EventStore(path);
-    await new Promise<void>((resolve, reject) => {
-      holder.once('error', reject);
-      holder.once('exit', (code) =>
-        code === 0 ? resolve() : reject(new Error(`holder exited ${code}`)),
+    // Decoded from the unchanged child script's stdout literal, not any data chunk.
+    const lockMarker = Buffer.from('locked\n');
+    let markerTail = Buffer.alloc(0);
+    let lockObserved = false;
+    let phase = 'waiting for lock marker';
+    let spawnError: {
+      name: string;
+      message: string;
+      stack?: string;
+      code?: unknown;
+    } | null = null;
+    let exit: { code: number | null; signal: NodeJS.Signals | null } | null =
+      null;
+    holder.stderr.on('data', (chunk: Buffer) => retain(stderr, chunk));
+    holder.once('error', (error) => {
+      spawnError = {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        code: 'code' in error ? error.code : undefined,
+      };
+    });
+    holder.once('exit', (code, signal) => {
+      exit = { code, signal };
+    });
+    const ready = new Promise<'locked' | 'closed'>((resolve) => {
+      holder.stdout.on('data', (chunk: Buffer) => {
+        retain(stdout, chunk);
+        const pending = Buffer.concat([markerTail, chunk]);
+        if (!lockObserved && pending.includes(lockMarker)) {
+          lockObserved = true;
+          resolve('locked');
+        }
+        markerTail = pending.subarray(-(lockMarker.length - 1));
+      });
+      holder.once('close', () => resolve('closed'));
+    });
+    // Resolve rather than reject: even an early failure is observed after both pipes close.
+    const closed = new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>((resolve) => {
+      holder.once('close', (code, signal) => resolve({ code, signal }));
+    });
+    const reached: string[] = [];
+    let first: EventStore | undefined;
+    let second: EventStore | undefined;
+    const failure = (outcome: Awaited<typeof closed>) =>
+      new Error(
+        `holder failed during ${phase}: ${JSON.stringify({
+          ...outcome,
+          exit,
+          spawnError,
+          lockObserved,
+          stdout: snapshot(stdout),
+          stderr: snapshot(stderr),
+        })}`,
       );
-    });
-    const second = new EventStore(path);
-    recoveryLedger(first).arm({
-      fingerprint: 'after-migration:turn:capacity:account',
-      threadId: 'after-migration',
-      provider: 'codex',
-      sourceEventId: 'event',
-      sourceTurnId: 'turn',
-      failureKind: 'capacity',
-      scope: 'account',
-      decision: 'retry-now',
-      dueAt: '2026-08-13T00:00:00.000Z',
-      maxAttempts: 1,
-      outcome: 'armed',
-      createdAt: '2026-08-13T00:00:00.000Z',
-      updatedAt: '2026-08-13T00:00:00.000Z',
-    });
-    expect(
-      recoveryLedger(second).find('after-migration:turn:capacity:account'),
-    ).toBeTruthy();
-    first.close();
-    second.close();
+    try {
+      if ((await ready) !== 'locked' || spawnError) throw failure(await closed);
+      reached.push('actual lock marker observed');
+      phase = 'first EventStore constructor';
+      first = new EventStore(path);
+      reached.push('first EventStore constructor returned');
+      phase = 'holder stream closure';
+      const outcome = await closed;
+      if (spawnError || outcome.code !== 0 || outcome.signal !== null)
+        throw failure(outcome);
+      reached.push('holder closed with code 0 and no signal');
+      phase = 'second EventStore constructor';
+      second = new EventStore(path);
+      reached.push('second EventStore constructor returned');
+      phase = 'cross-store recovery arm/find';
+      recoveryLedger(first).arm({
+        fingerprint: 'after-migration:turn:capacity:account',
+        threadId: 'after-migration',
+        provider: 'codex',
+        sourceEventId: 'event',
+        sourceTurnId: 'turn',
+        failureKind: 'capacity',
+        scope: 'account',
+        decision: 'retry-now',
+        dueAt: '2026-08-13T00:00:00.000Z',
+        maxAttempts: 1,
+        outcome: 'armed',
+        createdAt: '2026-08-13T00:00:00.000Z',
+        updatedAt: '2026-08-13T00:00:00.000Z',
+      });
+      expect(
+        recoveryLedger(second).find('after-migration:turn:capacity:account'),
+      ).toBeTruthy();
+      reached.push('original cross-store recovery arm/find assertion passed');
+      phase = 'assertions complete';
+    } finally {
+      const close = await closed;
+      try {
+        process.stdout.write(
+          `\n<<<STATION_EVENT_STORE_RECOVERY_HOLDER_JSON_BEGIN>>>\n${JSON.stringify(
+            {
+              test: 'waits through writer contention before recovery-settlement migration',
+              pid: holder.pid,
+              executable: process.execPath,
+              databasePath: path,
+              lockMarkerHex: lockMarker.toString('hex'),
+              lockObserved,
+              phase,
+              reached,
+              spawnError,
+              exit,
+              close,
+              stdout: snapshot(stdout),
+              stderr: snapshot(stderr),
+            },
+            null,
+            2,
+          )}\n<<<STATION_EVENT_STORE_RECOVERY_HOLDER_JSON_END>>>\n`,
+        );
+      } finally {
+        first?.close();
+        second?.close();
+      }
+    }
   });
 
   test('reads bounded event pages after a stable per-thread sequence', () => {

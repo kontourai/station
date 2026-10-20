@@ -128,8 +128,10 @@ request returns the same typed `403` and no engine starts.
 An Agent that messages, interrupts, or waits on an existing Session uses
 station-control's [Session control](../guides/self-configuring-agent.md#session-control)
 tools, which call their own agent-only routes under
-`/api/orchestration/session-control` rather than the routes above. Its
-read-only companions, `list_project_activity` and `get_session_digest`, call
+`/api/orchestration/session-control` rather than the routes above. That guide
+also distinguishes ordinary idle from a verified requested-work settlement,
+including the history-dependent limit on untagged terminal acknowledgement.
+Its read-only companions, `list_project_activity` and `get_session_digest`, call
 `/api/orchestration/session-activity` (see
 [Station Control Project Activity](api.md#station-control-project-activity)) and
 read as the calling Session's owner within the caller's Project.
@@ -190,7 +192,7 @@ GET /api/orchestration/conversations/<conversationId>/turn-deliveries/<clientTur
 
 The lookup is read-only: it never sends, claims or releases anything. An empty
 id, a `conversationId` over 512 characters or a `clientTurnId` over 200 is
-refused with `400`; any other lookup answers `200` with `data.outcome`:
+refused with `400`. A successful lookup answers `200` with `data.outcome`:
 
 | `outcome` | Meaning | Send the same key again? |
 | --- | --- | --- |
@@ -202,8 +204,32 @@ refused with `400`; any other lookup answers `200` with `data.outcome`:
 | `expired` | The turn was sent and retention evicted its record. | No. |
 | `unknown` | Nothing here holds the key, and this Station forwards the conversation's sends to another Station or Environment, so it can prove nothing: the Project named by `projectSlug` defaults to another Environment, or this Station process forwarded a keyed send for the conversation (also when the conversation began here). | No — treat it like `indeterminate`. |
 
+An authorized lookup that finds an explicitly settled prepared turn instead
+answers `409` with this error envelope, not a successful delivery outcome:
+
+```json
+{
+  "success": false,
+  "error": "This turn was cancelled. A new request requires a new turn key.",
+  "code": "client_turn_settled",
+  "disposition": "cancelled"
+}
+```
+
+The actual disposition is `cancelled` or `definitively-refused`. For the latter,
+the fixed message is `This turn was definitively refused. A new request requires
+a new turn key.` Neither case invents a provider turn ID or represents settlement
+as `started`, `expired` or `indeterminate`. An ordinary POST that retries the
+retained settled key is also refused with `client_turn_settled`; a deliberate
+new request must use a new `clientTurnId`. The successful foreground handle and
+lookup DTO are unchanged. This compatibility contract adds no HTTP operation
+for preparing, cancelling or resuming a turn.
+
 A conversation you may not read answers like a key nothing holds, so the
-lookup reveals nothing about other callers' conversations. `received` comes
+lookup reveals nothing about other callers' conversations. Read authorization
+precedes claim inspection: an unreadable local conversation still answers
+`200` with `not-received`, without a settlement code or disposition. The existing
+forwarding rules above still apply to an absence answer. `received` comes
 from the request being handled in this Station process, so a Station that
 restarted answers from the turn ledger alone; pass `projectSlug` when the send
 named a Project, so a Project that runs elsewhere answers `unknown` rather than
@@ -265,7 +291,11 @@ another device and a restart.
   with `data.outcome: "queued"` and the held `entry`. Otherwise it is sent at
   once, with the usual receipt. A send refused because the engine opened a turn
   itself (`provider_turn_in_progress`) or is still starting
-  (`provider_session_starting`) is held too.
+  (`provider_session_starting`) can be held before its keyed dispatch begins.
+  If the keyed dispatch has begun and is definitively refused, it closes that
+  key: HTTP `409`, `success: false`, `code: "client_turn_settled"`, and the
+  actual `disposition`. It is never queued again under that key. A new explicit
+  user request needs a new key; clients must not generate one automatically.
 - The same body sent again under the same key, while the conversation is still
   busy or holds other messages, answers the same entry (`sent`, with its
   `turnId`, once Station sent it). Sent when the conversation is idle and

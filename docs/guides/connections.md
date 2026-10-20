@@ -1001,8 +1001,7 @@ Connections that still
 need setup remain visible with their status, but cannot create an invalid
 selection.
 
-Favorites, recent choices, hidden models, and model order are saved on this
-device. Manage a connection's model list from its detail page. **Use project
+Favorites, recent choices, hidden models, and model order are saved for your verified person on this Station and follow that person across devices. Without a person-bound preference scope, they remain on this device. If account preferences are unavailable, changes are refused until they can be reloaded. Manage a connection's model list from its detail page. **Use project
 default**, **Use agent default**, or the other named reset shown in the picker
 restores both the default connection and model for a model-only choice.
 An engine override instead offers **Use Agent defaults**; in an existing

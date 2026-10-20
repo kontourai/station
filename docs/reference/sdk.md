@@ -3560,10 +3560,12 @@ Do not resend that turn automatically; open the conversation instead. Other
 refusals leave `outcome` unset.
 `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
 asks Station what became of one send by its `clientTurnId`, for example after
-the connection dropped before the answer arrived. It is read-only and returns a
-`TurnDeliveryInspection`; only `not-received` means the same key may be sent
+the connection dropped before the answer arrived. It is read-only and, on success,
+returns a `TurnDeliveryInspection`; only `not-received` means the same key may be sent
 again. A Station without the lookup answers `404`, which throws a refusal
-rather than reading as `not-received`. The
+rather than reading as `not-received`. An explicitly settled key answers HTTP
+`409` with `client_turn_settled` and its actual disposition; that is a refusal,
+not a successful delivery outcome or permission to resend the key. The
 [Session API](session-api.md) defines each outcome.
 `queueExecutionMessage(apiBase, input)` sends a follow-up that Station holds in
 the conversation's inbox while its turn runs (#3568). It needs `conversationId`
@@ -3571,8 +3573,16 @@ and `clientTurnId`, takes no approval pick, and resolves
 `{ outcome: 'started', receipt }` or a `ConversationInboxQueuedReceipt`
 (`outcome: 'queued'`). A Station that predates the inbox, and any send it
 cannot hold (attachments, a target other than the conversation's binding),
-refuses a busy send as before, so keep the message on
-`provider_turn_in_progress` or `provider_session_starting`.
+can refuse a send before its keyed dispatch begins with
+`provider_turn_in_progress` or `provider_session_starting`; that message can
+wait for the Session to be free. On a current Station, a begun keyed send
+refused with one of those busy codes answers HTTP `409` with
+`client_turn_settled` and its actual disposition only when authorized inspection
+of the original key proves its retained settlement. Other first definitive
+adapter refusals preserve their original actionable error envelope even when
+the key has closed. A subsequent authorized lookup or same-key retry reports
+the retained closed-key `409`. Never retry a settled key or generate a
+replacement key automatically. A deliberate new user request requires a new key.
 `listConversationInbox(apiBase, conversationId)` lists the held messages and
 `cancelConversationInboxEntry(apiBase, conversationId, clientTurnId)` withdraws
 one, or dismisses one that is `unconfirmed` or `refused`.

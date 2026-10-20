@@ -339,6 +339,18 @@ Session by its `sessionId`, without creating a task.
   never interrupts: a timeout leaves the Session running, and the caller calls
   again. Wait with the `sessionId` and `eventCursor` that `send_to_session`
   returned. A calling Session may hold at most 4 waits at once, and Station 256.
+  Idle describes current activity; it does not by itself acknowledge requested
+  work. An unscoped ordinary terminal can supply a new settlement only when
+  the host proves the thread inactive and genuinely inputless, with no retained
+  captured-input audit. A thread with capture history can therefore be idle
+  while a requested settlement remains unverified. Active requested work whose
+  producer emits only untagged observations remains running and unacknowledged.
+  A positively scoped terminal uses the actual current boundary or validated
+  retirement witness and complete canonical scope; its invocation is never
+  inferred from a native turn ID. A separately proved older settlement can
+  still satisfy its cursor while newer work is active. See the
+  [boundary contract](../architecture/module-map.md#sessionturnboundaryauthority)
+  for these conservative source limits.
 - Send and interrupt carry a `requestKey`. Repeating a call that delivered or
   interrupted, with the same key and arguments, returns the first answer
   (`replayed: true`) without acting again; the same key with different arguments
@@ -486,9 +498,11 @@ these rules.
    worker wrote.
    An agent that delegates through its own Session-bound Station Control
    connection (Claude Code, Codex, or an ACP engine) does not need to poll for
-   a child it started on this Station. When the child's turn ends, Station delivers its
-   result to the delegating conversation once. An idle conversation gets a
-   new turn. A running one is steered if its engine accepts mid-turn input;
+   a child it started on this Station. After Station verifies the child's eligible
+   settlement, it attempts delivery of the result to the delegating conversation.
+   Unproved terminal association is held; a raw native completion alone is not
+   proof of requested-work settlement. The result keeps one delivery identity
+   across retries. An idle conversation gets a new turn. A running one is steered if its engine accepts mid-turn input;
    otherwise the result waits until that turn ends. The new turn or steer
    carries the same owner attribution as the `delegate_task` call: a Codex or
    ACP token is not proof of who presented it, so their results arrive

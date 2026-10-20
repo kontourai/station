@@ -285,6 +285,11 @@ export interface CanonicalRuntimeEventBase {
   threadId: string;
   createdAt: string;
   turnId?: string;
+  /**
+   * Server-owned invocation identity, supplied only with an originating
+   * request/stream association. Attribution, never authority or a client key.
+   */
+  invocationId?: string;
   itemId?: string;
   requestId?: string;
   sessionState?: SessionLifecycleState;

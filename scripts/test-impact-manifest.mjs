@@ -202,6 +202,7 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
     tests: Object.freeze([
       'src-server/routes/orchestration/__tests__/attachments.routes.test.ts',
       'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
+      'src-server/services/orchestration/__tests__/event-store-append-statements.test.ts',
       'src-server/services/orchestration/__tests__/event-store-corruption-watch.test.ts',
       'src-server/services/orchestration/__tests__/event-store-quarantine.test.ts',
       'src-server/services/orchestration/__tests__/event-store-tool-images.test.ts',

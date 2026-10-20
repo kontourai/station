@@ -24,7 +24,7 @@ native framework loops.
 | Machine | Durable record | Rule |
 | --- | --- | --- |
 | Turn dedup | one claim per key, with its owner, invocation state and optional versioned input digest | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. A key whose resolved row retention evicted answers `expired`: the effect ran, and the key is never claimed afresh. |
-| Turn boundary | one row per provider invocation | `prepared` → `invoking` → `accepted` or `indeterminate`. After a crash, a dead owner's `prepared` row is removed, an `invoking` row becomes `indeterminate`, and both `accepted` and `indeterminate` rows are reported until their owner retires them. |
+| Turn boundary | one active fence per invocation, optionally with an opaque immutable intent binding | Ordinary intent uses `reserved` → `prepared` → `invoking` → `accepted` or `indeterminate`. Preparation links an optional pending dedup key; begin changes both fences in one transaction. After a crash, complete prepared intent is retained as a separate resumable candidate. Explicit resume compares both dead exact owners and revisions before transferring them. Dead reservations and inputless legacy preparation are removed; invoking becomes indeterminate. Legacy lifecycle, task-dispatch and engine-opened acceptance remain unchanged. |
 | Request keys | one row per caller, tool and key, with a digest | A reused key with a different digest is a conflict. A stored attempt without a result is never treated as new. |
 | Inbox | one entry per inbox and key: its digest, opaque payload, FIFO sequence, state and recorded placement | A reused key with a different digest is a conflict; with the same digest it answers the stored entry, and a refused or cancelled one is queued again. The head (oldest unsettled entry) is claimed with its placement in the same transaction, before the host's effect, and only one entry per inbox is `placing`. A `placing` entry is never claimed afresh: after a crash the host re-drives it under the same key. An `unconfirmed` head blocks the inbox until it is cancelled, or until the host proves its effect and resolves it to `placed` or back to `queued`; a `refused` one does not. |
 | Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
@@ -44,6 +44,34 @@ Each storage operation is one command, executed as one atomic transaction by an
 adapter. The decision for a command is a pure function of the records it
 reads. Host projections join that transaction as synchronous participants: a
 participant can refuse a command before it writes, or abort it after.
+
+The prepared binding contains only invocation/input/intent digests, an opaque
+body reference and an optional dedup key. It supplies no body storage, host
+read/resume API, automatic replay or invocation terminal attribution. Hosts
+retain authorization, body verification and effect invocation. Mixed-version
+writers need host fencing; additive columns alone cannot protect prepared
+intent from a legacy writer's cleanup. See the [protocol](README.md#reconcile-after-a-restart).
+
+Explicit prepared cancellation and definitive adapter refusal use separate
+trusted compound commands. They compare both full owners/revisions, intent and
+pending/begun link, then retain a passive same-table settlement audit and a
+non-reclaimable dedup outcome together. Settlement retains opaque intent/bodyRef;
+it neither stores nor deletes the host body. Passive rows occupy no active or
+accepted-capacity slot, and reads/recovery/terminal retirement exclude them.
+Only explicit thread forgetting removes the boundary audit. Deliberate host
+dedup-prefix deletion can erase dedup retention independently and never grants
+resume permission for a retained settled invocation. The kernel adds no host
+API, automatic retry, dormant Session-start protocol or new deletion authority.
+
+Station's consumer facade maps retained dedup settlement to a typed
+`client_turn_settled` refusal with the actual disposition; the authorized delivery
+GET answers 409 while the successful lookup DTO and unreadable-conversation
+non-disclosure remain unchanged. An ordinary same-key send is refused and a new
+request needs a new key, never a fabricated provider result. Station binds its
+existing intent/settlement columns and stores retirement custody on the same
+prepared-input audit row. Bindings without those columns retain only their
+legacy commands. Explicit host thread deletion keeps its existing authority;
+concurrent old writers and installed runtime behavior need separate qualification.
 
 ## What it does not own
 
@@ -116,7 +144,7 @@ vite or vitest configs are accepted limits, left to review.
   inbox holds at most `inboxMaxUnsettled` unsettled entries; a submit past it
   answers `capacity` and writes nothing. `inbox.forget` removes one inbox
   outright, for a host whose conversation was deleted.
-- **Terminal-turn facts:** by default the kernel records provider turn ids a
+- **Terminal-turn facts:** inputless legacy rows use retained provider turn ids a
   thread has seen end, which make a later acceptance of the same id
   `ambiguous`. Those default facts are retired by `turnBoundary.forgetThread`.
   A host with an event log supplies `terminalSeen` inside the transaction
@@ -124,7 +152,7 @@ vite or vitest configs are accepted limits, left to review.
   supplying `KernelTerminalFacts` to its transaction step): observation and forgetting do not maintain a second
   terminal source. Session-terminal ordering can use the host's persisted
   sequence and an existing boundary creation-fence column; NULL legacy fences
-  and turn-scoped generations retain timestamps. Optional fixed-at-open
+  and inputless legacy turn generations retain timestamps. Optional fixed-at-open
   `retiredBoundaryIds` facts filter only possible-effect polling; raw rows,
   listing and recovery remain unchanged. Station binds that projection to
   canonical events using the same predicate as physical cleanup. Polling takes
@@ -133,3 +161,39 @@ vite or vitest configs are accepted limits, left to review.
   before raw recovery at boot. Claim, prepare, observe and reconcile retain
   pending retries. Its host adapter retains admission and storage-error
   classification on the existing tables and connection.
+
+
+## Invocation terminal ownership
+
+Intent-aware acceptance uses `turnBoundary.acceptInvocation` with the full
+owned pre-accept boundary and independent original begun dedup snapshot.
+Current or witnessed records must match exact expected/accepted/indeterminate
+images and original/resolved-only dedup images. Unknown/contradictory terminal
+evidence blocks acknowledgement; overlapping expected/indeterminate images
+remain conservatively ambiguous. Generic acceptance cannot bypass this command.
+
+Owned memory and SQLite retain exact invocation facts and full pre-deletion
+witnesses in the existing terminal area; SQLite schema four transactionally
+preserves legacy strings and all other machine data. Witness precedes deletion
+in the same transaction, and raw listing contains no completed fence. Host mode
+uses only its canonical events and existing prepared-intent audit row via the
+fixed-at-open synchronous find/readObservation/readRetirement/recordRetirement
+bundle. The raw read verifies every field of an actual retained observation,
+including false eligibility and absent boundaries; find separately owns eligible
+complete-set disposition. Missing/malformed/Promise/mismatched observations
+reject without a fallback or shadow source. The host
+must provide the complete bundle and intent binding; legacy commands remain
+available without it. No second store, public capability or async repair exists.
+
+Ordinary retirement matches exact invocation without clocks, subject to the
+actual target's native identity. Full retained eligible scope consistency runs
+before provider/event filters, then code-point event selection. Session sequence,
+legacy accepted/native/time, passive audit and explicit forget rules remain.
+Facts/witnesses can grow without bound until explicit deletion; dedup retention
+can independently make acknowledgement stale. A late contradiction after an
+already committed deletion makes later acknowledgement stale without recreating
+a fence or retroactively retracting release. Neither terminal disposition nor
+row absence authorizes replay. Station source consumes this protocol through
+its actual canonical event/audit connection and private begun claim snapshots.
+Producer attribution, supported-writer fencing and actual effect-count/native/
+runtime qualification remain host-owned. See [the exact protocol](README.md#invocation-terminal-acknowledgement).

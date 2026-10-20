@@ -56,6 +56,7 @@ import {
   acceptsTurnTerminalEvent,
   isDeferredRetriableTurnError,
   nextTurnIdentityAnchor,
+  type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
 
 const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
@@ -434,7 +435,7 @@ export function wireTurnCompletionNotifications(
   // cleared entirely by the returned disposer below (review round 3 LOW 2)
   // so unwiring this listener does not leave timers (each retaining a
   // closure over both Maps) alive for up to 24h afterward.
-  const turnIdentityAnchors = new Map<string, string>();
+  const turnIdentityAnchors = new Map<string, TurnIdentityAnchor>();
   const turnIdentityAnchorEvictionTimers = new Map<
     string,
     ReturnType<typeof setTimeout>
@@ -532,7 +533,11 @@ export function wireTurnCompletionNotifications(
           // guard on the identical events.
           if (
             (event.method === 'turn.completed' ||
-              event.method === 'turn.aborted') &&
+              event.method === 'turn.aborted' ||
+              (event.method === 'runtime.error' &&
+                typeof previousAnchor === 'object' &&
+                (event.turnId !== undefined ||
+                  event.invocationId !== undefined))) &&
             !acceptsTurnTerminalEvent(event, previousAnchor)
           ) {
             turnCompletionNotificationOps.add(1, {

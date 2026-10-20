@@ -108,6 +108,14 @@ import {
 import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migrations/013-session-work-items.js';
 import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-turn-boundary-sequence-fence.js';
 import { migrateSessionParentMentions } from '../../domain/migrations/016-session-parent-mentions.js';
+import { ensurePreparedTurnIntents } from '../../domain/migrations/017-prepared-turn-intents.js';
+import { ensureInvocationTerminalRetirement } from '../../domain/migrations/018-invocation-terminal-retirement.js';
+import {
+  assertPositiveTurnStartIndex,
+  ensurePositiveTurnStartIndex,
+  POSITIVE_TURN_START_INDEX,
+  POSITIVE_TURN_START_SQL,
+} from '../../domain/migrations/019-positive-turn-start-index.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -224,6 +232,7 @@ import {
   DRAFT_ENDING_TURN_METHODS,
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
+import { decodeTurnIntent } from './prepared-turn-intent.js';
 import {
   PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS,
   type ProjectTaskRoomAppendReceiptReadResult,
@@ -314,6 +323,7 @@ import {
   queryTranscriptMessages,
 } from './transcript-search-queries.js';
 import {
+  createPreparedTurnClaim,
   createTurnDeduplicator,
   type TurnDeduplicator,
 } from './turn-deduplicator.js';
@@ -348,15 +358,17 @@ class EventAppendTransactionLostError extends Error {
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 
 // The polling projection and writer cleanup must classify exactly the same rows.
-const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state != 'lifecycle' AND purpose != 'task-dispatch'
+const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', 'settled') AND purpose != 'task-dispatch'
             AND (? IS NULL OR thread_id = ?)
             AND EXISTS (
               SELECT 1 FROM orchestration_events AS event
                WHERE event.thread_id = orchestration_turn_boundaries.thread_id
+                 AND NOT (event.method = 'runtime.error' AND event.provider = 'codex' AND COALESCE(json_extract(event.payload, '$.retriable'), 0) = 1)
                  AND (
                    (
                      (event.method = 'session.exited'
                       OR (event.method = 'runtime.error' AND event.turn_id IS NULL
+                          AND json_extract(event.payload, '$.invocationId') IS NULL
                           AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
                      AND (
                        (orchestration_turn_boundaries.created_sequence IS NULL
@@ -365,7 +377,12 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state != 'lifecycle' AND pur
                      )
                    )
                    OR (
-                     orchestration_turn_boundaries.state = 'accepted'
+                     orchestration_turn_boundaries.invocation_id IS NULL
+                     AND orchestration_turn_boundaries.input_digest IS NULL
+                     AND orchestration_turn_boundaries.intent_digest IS NULL
+                     AND orchestration_turn_boundaries.body_ref IS NULL
+                     AND orchestration_turn_boundaries.dedup_key IS NULL
+                     AND orchestration_turn_boundaries.state = 'accepted'
                      AND event.created_at >= orchestration_turn_boundaries.created_at
                      AND event.turn_id = orchestration_turn_boundaries.provider_turn_id
                      AND event.method IN ('turn.completed', 'turn.aborted', 'runtime.error')
@@ -388,6 +405,9 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state != 'lifecycle' AND pur
                    )
                  )
             )`;
+const CANONICAL_TERMINAL_TARGET = `state NOT IN ('lifecycle','settled') AND purpose != 'task-dispatch'
+  AND prepared_settlement IS NULL
+  AND (invocation_id IS NOT NULL OR input_digest IS NOT NULL OR intent_digest IS NOT NULL OR body_ref IS NOT NULL OR dedup_key IS NOT NULL)`;
 const MESSAGE_SEARCH_BACKGROUND_WRITE = Symbol('message-search-backfill');
 /** Last-resort ingress ceiling; upstream adapters own useful projection. */
 export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
@@ -1290,12 +1310,15 @@ interface RankedMethodFact {
 }
 
 /**
- * A stable composite key for a `(threadId, turnId)` pair, joined on a NUL
- * byte rather than a printable separator so a threadId/turnId that happened
- * to contain the separator could never manufacture a collision.
+ * Encode the full selected identity without delimiter collisions; legacy
+ * native-only selections retain an absent invocation discriminator.
  */
-function pairKey(threadId: string, turnId: string): string {
-  return `${threadId}\u0000${turnId}`;
+function pairKey(
+  threadId: string,
+  turnId: string,
+  invocationId?: string,
+): string {
+  return JSON.stringify([threadId, turnId, invocationId ?? null]);
 }
 
 const SESSION_STATE_FACT_METHODS = [
@@ -1962,7 +1985,7 @@ export interface EventStoreCommitObserver {
 export interface TurnActivitySeed {
   head?: { globalSequence: number; createdAt: string };
   /** #2324: `trigger` is read from the turn's first `turn.started`. */
-  openTurn?: { startedAt: string; trigger?: 'provider' };
+  openTurn?: { startedAt: string; invocationId?: string; trigger?: 'provider' };
   tools: Array<{
     method: 'tool.started' | 'tool.completed';
     callId: string;
@@ -1984,6 +2007,9 @@ export class EventStore {
   private readonly databasePath: string;
   private htmlReplyPageStore?: ReturnType<typeof createHtmlReplyPages>;
   private readonly db: InstanceType<typeof DatabaseSync>;
+  private appendEventInsert?: ReturnType<EventStore['db']['prepare']>;
+  private appendEventInsertOrIgnore?: ReturnType<EventStore['db']['prepare']>;
+  private appendEventHighWaterUpdate?: ReturnType<EventStore['db']['prepare']>;
   /** Persisted with this store so issued cursors survive a Station restart. */
   private readonly declaredOutputCursorKey: Buffer;
   private readonly sessionInventoryCursorKey: Buffer;
@@ -2271,6 +2297,8 @@ export class EventStore {
       ensureOrchestrationTurnDedupColumns(this.db);
       ensureOrchestrationBoundaryPurpose(this.db);
       ensureTurnBoundarySequenceFence(this.db);
+      ensurePreparedTurnIntents(this.db);
+      ensureInvocationTerminalRetirement(this.db);
       this.turnDedupPersistence = createSqliteTurnDedupPersistence({
         db: this.db,
         maxEntries: this.turnDedupMaxEntries,
@@ -2286,6 +2314,7 @@ export class EventStore {
       ensureCredentialApplicationCommitPendingIndex(this.db);
       ensureOrchestrationEventStoreColumns(this.db);
       migrateSessionParentMentions(this.db);
+      ensurePositiveTurnStartIndex(this.db);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -3706,26 +3735,28 @@ export class EventStore {
       workItemAdmission = this.takeSessionWorkItemAdmission(event, observedAt);
       nextSequence = this.nextSequence(event.threadId);
       globalSequence = this.nextGlobalSequence();
-      const insert = this.db
-        .prepare(
-          `${declaredOutputs.length || event.method === 'tool.completed' ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
+      const insertSlot =
+        declaredOutputs.length || event.method === 'tool.completed'
+          ? 'appendEventInsertOrIgnore'
+          : 'appendEventInsert';
+      const insert = (this[insertSlot] ??= this.db.prepare(
+        `${declaredOutputs.length || event.method === 'tool.completed' ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
           (id, provider, thread_id, turn_id, method, request_id, session_state, payload, created_at, observed_at, sequence, global_sequence)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          event.eventId,
-          event.provider,
-          event.threadId,
-          event.turnId ?? null,
-          event.method,
-          requestId,
-          event.sessionState ?? null,
-          serializedPayload,
-          event.createdAt,
-          observedAt,
-          nextSequence,
-          globalSequence,
-        ) as { changes: number };
+      )).run(
+        event.eventId,
+        event.provider,
+        event.threadId,
+        event.turnId ?? null,
+        event.method,
+        requestId,
+        event.sessionState ?? null,
+        serializedPayload,
+        event.createdAt,
+        observedAt,
+        nextSequence,
+        globalSequence,
+      ) as { changes: number };
       if (insert.changes === 0) {
         // Exact terminal event replay is idempotent only when every opaque
         // handle was already consumed by that same event. A different event
@@ -3811,11 +3842,9 @@ export class EventStore {
         this.db.exec('RELEASE SAVEPOINT append_event_history');
         replayedSequence = Number(existing.sequence);
       } else {
-        this.db
-          .prepare(
-            'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
-          )
-          .run(globalSequence);
+        (this.appendEventHighWaterUpdate ??= this.db.prepare(
+          'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
+        )).run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
@@ -3823,6 +3852,7 @@ export class EventStore {
         this.projectRequestState(event, requestId, nextSequence);
         this.projectSessionProjectionFacts(event);
         this.recordDeclaredOutputs(event, declaredOutputs);
+        this.observeInsertedInvocationTerminal(event);
         if (workItemAdmission) this.faults.sessionWorkItemAdmission?.();
         if (workItemAdmission?.kind === 'association')
           this.recordSessionWorkItemAssociation(
@@ -3865,6 +3895,22 @@ export class EventStore {
     );
     this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
+  }
+
+  private observeInsertedInvocationTerminal(
+    event: CanonicalRuntimeEvent,
+  ): void {
+    if (
+      event.invocationId === undefined ||
+      !['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+        event.method,
+      )
+    )
+      return;
+    // Exact verification reads the inserted canonical fact on this transaction.
+    const observed = this.sessionTurnBoundaries.observe(event);
+    if (observed.kind !== 'applied')
+      throw new Error('Invocation terminal observation unavailable.');
   }
 
   /**
@@ -4582,6 +4628,7 @@ export class EventStore {
         this.projectMessageSearchEvent(event);
         this.projectRequestState(event, requestId, nextSequence);
         this.projectSessionProjectionFacts(event);
+        this.observeInsertedInvocationTerminal(event);
       }
       this.db.exec('RELEASE SAVEPOINT append_event_if_absent_history');
     } catch (error) {
@@ -5039,7 +5086,8 @@ export class EventStore {
       .prepare(
         `SELECT thread_id, turn_id, created_at, global_sequence,
                 substr(json_extract(payload, '$.prompt'), 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
-                json_extract(payload, '$.metadata.trigger') AS turn_trigger
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger,
+                json_extract(payload, '$.invocationId') AS invocation_id
            FROM orchestration_events
           WHERE ${isTurnStart} AND global_sequence < ?
           ORDER BY global_sequence DESC LIMIT ?`,
@@ -6413,11 +6461,16 @@ export class EventStore {
     // slot it anchors — see `latestTerminalEventForTurn`'s docblock for why
     // the terminal slot must be scoped to THIS turn's id, not the thread's
     // latest terminal.
-    const latestTurnStarted = this.latestEventByMethod(
+    const latestObservedStart = this.latestEventByMethod(
       threadId,
       'turn.started',
       bounded,
     );
+    const positiveStart = this.latestPositiveTurnStarted(threadId, bounded);
+    const latestTurnStarted =
+      positiveStart?.payload.invocationId !== undefined
+        ? positiveStart
+        : latestObservedStart;
     // The verified selected open request supplies pending-review evidence;
     // another request's later resolution must not erase it.
     const unresolvedRequests =
@@ -6469,6 +6522,8 @@ export class EventStore {
       // fold no-op (e.g. `request.resolved`, `session.state-changed` alone) —
       // see the "orphan terminal" test below for one such change, pinned
       // rather than left implicit.
+      latestObservedStart,
+      positiveStart,
       latestTurnStarted,
       // archive#3557: the counterweight the block above already forecasts.
       // `firstTurnStartedWithPrompt`/`latestEventByMethod('turn.started')`
@@ -6496,10 +6551,15 @@ export class EventStore {
             threadId,
             latestTurnStarted.turnId,
             bounded,
+            latestTurnStarted.payload.invocationId,
           )
         : undefined,
       this.latestEventByMethods(threadId, LIFECYCLE_METHODS, bounded),
-      this.latestCurrentTurnRuntimeErrorEvent(threadId, bounded),
+      this.latestCurrentTurnRuntimeErrorEvent(
+        threadId,
+        bounded,
+        latestTurnStarted,
+      ),
       ...this.listSessionProjectionFactEvents(threadId, bounded),
       ...unresolvedRequests,
       ...this.listRequestSettlementFacts(threadId, unresolvedRequests, bounded),
@@ -6507,6 +6567,48 @@ export class EventStore {
     return [...new Map(facts.map((event) => [event.id, event])).values()].sort(
       (left, right) => left.sequence - right.sequence,
     );
+  }
+
+  private latestPositiveTurnStarted(
+    threadId: string,
+    bounded: boolean,
+  ): PersistedRuntimeEvent | undefined {
+    assertPositiveTurnStartIndex(this.db);
+    const row = this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
+       FROM orchestration_events INDEXED BY ${POSITIVE_TURN_START_INDEX} WHERE thread_id = ? AND method = 'turn.started' AND (${POSITIVE_TURN_START_SQL})
+       ORDER BY sequence DESC LIMIT 1`,
+      )
+      .get(threadId);
+    return row ? this.mapEventRow(row) : undefined;
+  }
+
+  private fetchPositiveTurnStarted(
+    threadIds: readonly string[],
+  ): Map<string, PersistedRuntimeEvent> {
+    assertPositiveTurnStartIndex(this.db);
+    const result = new Map<string, PersistedRuntimeEvent>();
+    for (const chunk of this.chunkArray(
+      threadIds,
+      EVENT_STORE_BATCH_CHUNK_SIZE,
+    )) {
+      const rows = this.db
+        .prepare(
+          `WITH start_identity_threads(thread_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')})
+         SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.sequence, event.global_sequence
+         FROM start_identity_threads JOIN orchestration_events AS event ON event.rowid = (
+           SELECT rowid FROM orchestration_events INDEXED BY ${POSITIVE_TURN_START_INDEX} WHERE thread_id = start_identity_threads.thread_id
+             AND method = 'turn.started' AND (${POSITIVE_TURN_START_SQL}) ORDER BY sequence DESC LIMIT 1
+         )`,
+        )
+        .all(...chunk);
+      for (const row of rows) {
+        const event = this.mapEventRow(row);
+        result.set(event.threadId, event);
+      }
+    }
+    return result;
   }
 
   /**
@@ -6597,10 +6699,29 @@ export class EventStore {
   private latestCurrentTurnRuntimeErrorEvent(
     threadId: string,
     bounded = false,
+    latestTurn?: PersistedRuntimeEvent,
   ): PersistedRuntimeEvent | undefined {
-    const event = this.latestEventByMethod(threadId, 'runtime.error', bounded);
+    const invocationId = latestTurn?.payload.invocationId;
+    const row =
+      invocationId === undefined
+        ? undefined
+        : this.db
+            .prepare(
+              `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
+       FROM orchestration_events WHERE thread_id = ? AND method = 'runtime.error'
+       AND ((turn_id = ? AND json_extract(payload, '$.invocationId') = ?) OR
+         (turn_id IS NULL AND json_extract(payload, '$.invocationId') IS NULL))
+       ORDER BY sequence DESC LIMIT 1`,
+            )
+            .get(threadId, latestTurn?.turnId ?? null, invocationId);
+    const event =
+      invocationId === undefined
+        ? this.latestEventByMethod(threadId, 'runtime.error', bounded)
+        : row
+          ? this.mapEventRow(row)
+          : undefined;
     if (!event) return undefined;
-    if (!event.turnId) {
+    if (!event.turnId && event.payload.invocationId === undefined) {
       // Session-scoped (archive#3485): retained until a strictly later
       // PROVEN completion shows the session recovered — see the docblock
       // for the allowlist decision and what deliberately does not count.
@@ -6608,12 +6729,7 @@ export class EventStore {
         ? undefined
         : event;
     }
-    const latestTurn = this.latestEventByMethod(
-      threadId,
-      'turn.started',
-      bounded,
-    );
-    if (!latestTurn) return event;
+    if (!event.turnId || !latestTurn) return event;
     // Supersession is a question about turn IDENTITY, not about sequence. One
     // turn can be announced more than once — `claude-adapter.ts`'s steer path
     // publishes a second `turn.started` with the SAME turn id mid-turn — so a
@@ -6738,6 +6854,7 @@ export class EventStore {
     threadId: string,
     turnId: string,
     bounded = false,
+    invocationId?: string,
   ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
@@ -6745,10 +6862,15 @@ export class EventStore {
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ?
            AND method IN ('turn.completed', 'turn.aborted')
+           ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
          ORDER BY sequence DESC
          LIMIT 1`,
       )
-      .get(threadId, turnId) as any;
+      .get(
+        threadId,
+        turnId,
+        ...(invocationId === undefined ? [] : [invocationId]),
+      ) as any;
     return row ? this.mapEventRow(row) : undefined;
   }
 
@@ -6957,6 +7079,8 @@ export class EventStore {
 
     const rankedMethodFacts = this.fetchRankedMethodFacts(uniqueThreadIds);
     const latestAnyEventByThread = this.fetchLatestAnyEvent(uniqueThreadIds);
+    const positiveStartByThread =
+      this.fetchPositiveTurnStarted(uniqueThreadIds);
     const firstPromptedTurnByThread =
       this.fetchFirstTurnStartedWithPrompt(uniqueThreadIds);
     const projectionFactsByThread = this.groupMappedEventRowsByThread(
@@ -6995,13 +7119,26 @@ export class EventStore {
     // own turn-started row. Both depend on facts the ranked-method query
     // above already resolved, so they run as a SECOND small round of
     // queries rather than growing the first one's shape.
-    const terminalPairs: Array<{ threadId: string; turnId: string }> = [];
+    const terminalPairs: Array<{
+      threadId: string;
+      turnId: string;
+      invocationId?: string;
+    }> = [];
     const ownTurnStartPairs: Array<{ threadId: string; turnId: string }> = [];
     for (const threadId of uniqueThreadIds) {
       const methodFacts = rankedMethodFacts.get(threadId);
-      const latestTurnStarted = methodFacts?.get('turn.started')?.latest;
+      const latestObservedStart = methodFacts?.get('turn.started')?.latest;
+      const positiveStart = positiveStartByThread.get(threadId);
+      const latestTurnStarted =
+        positiveStart?.payload.invocationId !== undefined
+          ? positiveStart
+          : latestObservedStart;
       if (latestTurnStarted?.turnId) {
-        terminalPairs.push({ threadId, turnId: latestTurnStarted.turnId });
+        terminalPairs.push({
+          threadId,
+          turnId: latestTurnStarted.turnId,
+          invocationId: latestTurnStarted.payload.invocationId,
+        });
       }
       const runtimeError = methodFacts?.get('runtime.error')?.latest;
       if (
@@ -7017,6 +7154,12 @@ export class EventStore {
       "method IN ('turn.completed', 'turn.aborted')",
       'DESC',
     );
+    const currentErrorByPair = this.fetchTurnScopedEvent(
+      terminalPairs.filter((pair) => pair.invocationId !== undefined),
+      "method = 'runtime.error'",
+      'DESC',
+      true,
+    );
     const ownTurnStartByPair = this.fetchTurnScopedEvent(
       ownTurnStartPairs,
       "method = 'turn.started'",
@@ -7025,8 +7168,23 @@ export class EventStore {
 
     for (const threadId of uniqueThreadIds) {
       const methodFacts = rankedMethodFacts.get(threadId);
-      const latestTurnStarted = methodFacts?.get('turn.started')?.latest;
-      const latestRuntimeError = methodFacts?.get('runtime.error')?.latest;
+      const latestObservedStart = methodFacts?.get('turn.started')?.latest;
+      const positiveStart = positiveStartByThread.get(threadId);
+      const latestTurnStarted =
+        positiveStart?.payload.invocationId !== undefined
+          ? positiveStart
+          : latestObservedStart;
+      const unscopedRuntimeError = methodFacts?.get('runtime.error')?.latest;
+      const latestRuntimeError =
+        latestTurnStarted?.payload.invocationId !== undefined
+          ? currentErrorByPair.get(
+              pairKey(
+                threadId,
+                latestTurnStarted.turnId ?? '',
+                latestTurnStarted.payload.invocationId,
+              ),
+            )
+          : unscopedRuntimeError;
       // Mirrors `latestCurrentTurnRuntimeErrorEvent` exactly (archive#3442):
       // see that method's docblock above for the full reasoning. The
       // session-scoped branch (archive#3485) calls the SAME
@@ -7082,9 +7240,17 @@ export class EventStore {
         methodFacts?.get('session.configured')?.first,
         methodFacts?.get('session.configured')?.latest,
         firstPromptedTurnByThread.get(threadId),
+        latestObservedStart,
+        positiveStart,
         latestTurnStarted,
         latestTurnStarted?.turnId
-          ? terminalByPair.get(pairKey(threadId, latestTurnStarted.turnId))
+          ? terminalByPair.get(
+              pairKey(
+                threadId,
+                latestTurnStarted.turnId,
+                latestTurnStarted.payload.invocationId,
+              ),
+            )
           : undefined,
         latestLifecycleEvent,
         latestCurrentTurnRuntimeError,
@@ -7237,7 +7403,7 @@ export class EventStore {
    * The latest (`order === 'DESC'`) or first (`'ASC'`) row matching
    * `methodFilter` for each requested `(threadId, turnId)` pair — mirrors
    * {@link latestTerminalEventForTurn} and {@link turnStartedEvent}, batched
-   * via a `(thread_id, turn_id) IN (VALUES (?,?), ...)` row-value list,
+   * by joining requested native/invocation identities before ranking,
    * chunked at {@link EVENT_STORE_BATCH_CHUNK_SIZE} pairs. Two-phase and
    * payload-deferred like the method-ranked query. (The planner satisfies it
    * via `idx_events_history_projection (thread_id, method)` plus bloom
@@ -7247,32 +7413,51 @@ export class EventStore {
    * request no turn-scoped facts at all).
    */
   private fetchTurnScopedEvent(
-    pairs: ReadonlyArray<{ threadId: string; turnId: string }>,
+    pairs: ReadonlyArray<{
+      threadId: string;
+      turnId: string;
+      invocationId?: string;
+    }>,
     methodFilter: string,
     order: 'ASC' | 'DESC',
+    includeSessionErrors = false,
   ): Map<string, PersistedRuntimeEvent> {
     const result = new Map<string, PersistedRuntimeEvent>();
     if (pairs.length === 0) return result;
     for (const chunk of this.chunkArray(pairs, EVENT_STORE_BATCH_CHUNK_SIZE)) {
-      const valuesPlaceholders = chunk.map(() => '(?, ?)').join(', ');
-      const values = chunk.flatMap((pair) => [pair.threadId, pair.turnId]);
+      const valuesPlaceholders = chunk.map(() => '(?, ?, ?)').join(', ');
+      const values = chunk.flatMap((pair) => [
+        pair.threadId,
+        pair.turnId,
+        pair.invocationId ?? null,
+      ]);
       const rows = this.db
         .prepare(
-          `WITH ranked AS (
-             SELECT rowid AS rid, thread_id, turn_id,
-               ROW_NUMBER() OVER (PARTITION BY thread_id, turn_id ORDER BY sequence ${order}) AS rn
-             FROM orchestration_events
-             WHERE (thread_id, turn_id) IN (VALUES ${valuesPlaceholders})
-               AND ${methodFilter}
+          `WITH requested(thread, native, invocation) AS (VALUES ${valuesPlaceholders}), ranked AS (
+             SELECT event.rowid AS rid, requested.thread AS selected_thread, requested.native AS selected_native, requested.invocation AS selected_invocation,
+               ROW_NUMBER() OVER (PARTITION BY requested.thread, requested.native, requested.invocation ORDER BY sequence ${order}) AS rn
+             FROM orchestration_events AS event JOIN requested
+               ON event.thread_id = requested.thread AND (
+                 (event.turn_id = requested.native AND (requested.invocation IS NULL OR json_extract(event.payload, '$.invocationId') = requested.invocation))
+                 ${includeSessionErrors ? "OR (event.turn_id IS NULL AND json_extract(event.payload, '$.invocationId') IS NULL)" : ''}
+               )
+             WHERE ${methodFilter}
            )
-           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence
+           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence, ranked.selected_thread, ranked.selected_native, ranked.selected_invocation
            FROM ranked
            INNER JOIN orchestration_events AS event ON event.rowid = ranked.rid
            WHERE ranked.rn = 1`,
         )
         .all(...values) as any[];
       for (const row of rows) {
-        result.set(pairKey(row.thread_id, row.turn_id), this.mapEventRow(row));
+        result.set(
+          pairKey(
+            row.selected_thread,
+            row.selected_native,
+            row.selected_invocation ?? undefined,
+          ),
+          this.mapEventRow(row),
+        );
       }
     }
     return result;
@@ -7360,6 +7545,7 @@ export class EventStore {
     turnId: string,
     methods: readonly string[],
     limit: number,
+    invocationId?: string,
   ): PersistedRuntimeEvent[] {
     if (methods.length === 0) {
       throw new Error('An event-method query requires at least one method');
@@ -7374,10 +7560,17 @@ export class EventStore {
           `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
            FROM orchestration_events
            WHERE thread_id = ? AND turn_id = ? AND method IN (${placeholders})
+             ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
            ORDER BY sequence ASC
            LIMIT ?`,
         )
-        .all(threadId, turnId, ...methods, limit) as Record<string, unknown>[]
+        .all(
+          threadId,
+          turnId,
+          ...methods,
+          ...(invocationId === undefined ? [] : [invocationId]),
+          limit,
+        ) as Record<string, unknown>[]
     ).map((row) => this.mapEventRow(row));
   }
 
@@ -7423,6 +7616,7 @@ export class EventStore {
   readTurnActivitySeed(
     threadId: string,
     openTurnId: string | undefined,
+    invocationId?: string,
   ): TurnActivitySeed {
     const head = this.db
       .prepare(
@@ -7436,7 +7630,7 @@ export class EventStore {
       threadId,
     );
     const open = openTurnId
-      ? this.readOpenTurnActivitySeed(threadId, openTurnId)
+      ? this.readOpenTurnActivitySeed(threadId, openTurnId, 2_000, invocationId)
       : { tools: [], toolsTruncated: false };
     return {
       ...(head
@@ -7461,17 +7655,29 @@ export class EventStore {
     threadId: string,
     turnId: string,
     toolLimit = 2_000,
+    invocationId?: string,
   ): Pick<TurnActivitySeed, 'openTurn' | 'tools' | 'toolsTruncated'> {
     const started = this.db
       .prepare(
         `SELECT sequence, created_at,
-                json_extract(payload, '$.metadata.trigger') AS turn_trigger
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger,
+                json_extract(payload, '$.invocationId') AS invocation_id
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
+           ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
          ORDER BY sequence ASC LIMIT 1`,
       )
-      .get(threadId, turnId) as
-      | { sequence: number; created_at: string; turn_trigger: unknown }
+      .get(
+        threadId,
+        turnId,
+        ...(invocationId === undefined ? [] : [invocationId]),
+      ) as
+      | {
+          sequence: number;
+          created_at: string;
+          turn_trigger: unknown;
+          invocation_id: unknown;
+        }
       | undefined;
     if (!started) return { tools: [], toolsTruncated: false };
     const rows = this.db
@@ -7484,9 +7690,15 @@ export class EventStore {
          FROM orchestration_events
          WHERE thread_id = ? AND method IN ('tool.started', 'tool.completed')
            AND sequence > ?
+           ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
          ORDER BY sequence ASC LIMIT ?`,
       )
-      .all(threadId, started.sequence, toolLimit + 1) as Array<{
+      .all(
+        threadId,
+        started.sequence,
+        ...(invocationId === undefined ? [] : [invocationId]),
+        toolLimit + 1,
+      ) as Array<{
       method: 'tool.started' | 'tool.completed';
       call_id: unknown;
       tool_name: unknown;
@@ -7508,6 +7720,9 @@ export class EventStore {
     return {
       openTurn: {
         startedAt: started.created_at,
+        ...(typeof started.invocation_id === 'string'
+          ? { invocationId: started.invocation_id }
+          : {}),
         ...(started.turn_trigger === PROVIDER_TURN_TRIGGER
           ? { trigger: PROVIDER_TURN_TRIGGER }
           : {}),
@@ -11429,6 +11644,89 @@ export class EventStore {
     return this.sessionTurnBoundaries;
   }
 
+  readInputlessTurnDisposition(threadId: string) {
+    return this.sessionTurnBoundaries.readInputlessTurnDisposition(threadId);
+  }
+
+  readInvocationTerminal(
+    threadId: string,
+    invocationId: string,
+    providerTurnId?: string,
+  ) {
+    return this.sessionTurnBoundaries.readInvocationTerminal(
+      threadId,
+      invocationId,
+      providerTurnId,
+    );
+  }
+
+  preparedInvocationForClientTurn(
+    threadId: string,
+    clientTurnId: string,
+  ): string | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT owner_json FROM orchestration_turn_dedup WHERE dedup_key = ?',
+      )
+      .get(turnDedupKey(threadId, clientTurnId)) as
+      | { owner_json: string }
+      | undefined;
+    if (!row) throw new Error('Turn result custody is unavailable.');
+    const owner = JSON.parse(row.owner_json) as {
+      preparedInvocationId?: unknown;
+      preparedUpdatedAt?: unknown;
+    };
+    if (
+      owner.preparedInvocationId === undefined &&
+      owner.preparedUpdatedAt === undefined
+    )
+      return undefined;
+    if (
+      typeof owner.preparedInvocationId !== 'string' ||
+      typeof owner.preparedUpdatedAt !== 'string'
+    )
+      throw new Error('Turn result custody is incomplete.');
+    const input = this.readPreparedTurnIntent(
+      threadId,
+      owner.preparedInvocationId,
+    );
+    if (!input || input.capture.clientTurnId !== clientTurnId)
+      throw new Error('Turn result input is unavailable.');
+    return owner.preparedInvocationId;
+  }
+
+  /** Private persistence read; the service supplies current Session authority before calling. */
+  readPreparedTurnIntent(threadId: string, invocationId: string) {
+    const row = this.db
+      .prepare(`SELECT envelope_json, input_digest, intent_digest
+      FROM orchestration_prepared_turns WHERE thread_id = ? AND invocation_id = ?`)
+      .get(threadId, invocationId) as
+      | {
+          envelope_json: string;
+          input_digest: string;
+          intent_digest: string;
+        }
+      | undefined;
+    if (!row) return null;
+    const capture = decodeTurnIntent({
+      envelopeJson: row.envelope_json,
+      inputDigest: row.input_digest,
+      intentDigest: row.intent_digest,
+      invocationId,
+      threadId,
+    });
+    const state =
+      (
+        this.db
+          .prepare(`SELECT state FROM orchestration_turn_boundaries
+      WHERE thread_id = ? AND invocation_id = ?`)
+          .get(threadId, invocationId) as
+          | { state: SessionTurnBoundaryRecord['state'] }
+          | undefined
+      )?.state ?? 'indeterminate';
+    return { capture, state };
+  }
+
   /**
    * Route composition does not publish until this startup gate is available.
    * A short bounded backoff handles transient SQLite ownership hand-off; a
@@ -11476,16 +11774,22 @@ export class EventStore {
 
   private composeSessionTurnBoundaries(): SessionTurnBoundaryAuthority {
     return createSessionTurnBoundaryAuthority({
-      coordinator: createSqliteSessionTurnBoundaryCoordinator({
-        db: this.db,
-        head: () => this.headGlobalSequence(),
-        retiredBoundaryIds: (threadId) =>
-          this.retiredSessionTurnBoundaryIds(threadId),
-        reconcileTerminals: (threadId) =>
-          this.reconcileSessionTurnTerminalsFromEvents(threadId),
-        transactionLost: (cause) =>
-          new EventAppendTransactionLostError({ cause }),
-      }),
+      coordinator: this.turnIdempotence.composePreparedClaims((binding) =>
+        createSqliteSessionTurnBoundaryCoordinator({
+          db: this.db,
+          head: () => this.headGlobalSequence(),
+          retiredBoundaryIds: (threadId) =>
+            this.retiredSessionTurnBoundaryIds(threadId),
+          reconcileTerminals: (threadId) =>
+            this.reconcileSessionTurnTerminalsFromEvents(threadId),
+          transactionLost: (cause) =>
+            new EventAppendTransactionLostError({ cause }),
+          preparedClaims: {
+            ...binding,
+            adopt: (key) => createPreparedTurnClaim(this.turnIdempotence, key),
+          },
+        }),
+      ),
       owner: this.recoveryLedgerOwner,
       processIdentity: this.recoveryProcessIdentity,
     });
@@ -11601,10 +11905,42 @@ export class EventStore {
   }
 
   private reconcileSessionTurnTerminalsFromEvents(threadId?: string): void {
+    // Retry the original private acceptance even when its boundary was already retired.
+    this.sessionTurnBoundaries.retryPendingTransitions();
+    const applicable = this.db
+      .prepare(
+        `SELECT 1 FROM orchestration_turn_boundaries WHERE (? IS NULL OR thread_id = ?) AND ${CANONICAL_TERMINAL_TARGET} LIMIT 1`,
+      )
+      .get(threadId ?? null, threadId ?? null);
+    const events = applicable
+      ? (this.db
+          .prepare(
+            `SELECT event.payload FROM orchestration_events AS event
+       WHERE (? IS NULL OR event.thread_id = ?) AND event.method IN ('turn.completed','turn.aborted','runtime.error','session.exited')
+         AND EXISTS (SELECT 1 FROM orchestration_turn_boundaries AS target
+           WHERE target.thread_id = event.thread_id AND ${CANONICAL_TERMINAL_TARGET})`,
+          )
+          .all(threadId ?? null, threadId ?? null) as Array<{
+          payload: string;
+        }>)
+      : [];
+    for (const row of events) {
+      const event = JSON.parse(row.payload) as CanonicalRuntimeEvent;
+      if (
+        event.invocationId !== undefined ||
+        event.method === 'session.exited' ||
+        (event.method === 'runtime.error' && event.turnId === undefined)
+      ) {
+        const result = this.sessionTurnBoundaries.observe(event);
+        if (result.kind !== 'applied')
+          throw new Error('Invocation terminal cleanup unavailable.');
+      }
+    }
     this.db
       .prepare(
         `DELETE FROM orchestration_turn_boundaries
-          WHERE ${SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE}`,
+          WHERE invocation_id IS NULL AND input_digest IS NULL AND intent_digest IS NULL AND body_ref IS NULL AND dedup_key IS NULL
+          AND ${SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE}`,
       )
       .run(
         threadId ?? null,
@@ -12816,6 +13152,9 @@ export class EventStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
+      this.db
+        .prepare('DELETE FROM orchestration_prepared_turns WHERE thread_id = ?')
+        .run(threadId);
       this.htmlReplyPages().deleteThread(threadId);
       // Every retired or active search projection retains bodies independently
       // of canonical events, so none may outlive a deliberately deleted thread.

@@ -780,6 +780,7 @@ type ClaudeSessionRecord = {
    */
   confinementPending?: true;
   nativeOwnershipBindingKey?: string;
+  preparedResumeBindingKey?: string;
   nativeOwnershipClaimed?: true;
 };
 
@@ -1392,6 +1393,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       sessionId,
       ...(sourceCursor ? { affinity: sourceCursor.sourceAffinity } : {}),
     };
+  }
+
+  preparedTurnBinding(threadId: string) {
+    const record = this.sessions.get(threadId);
+    const nativeIdentity =
+      record && this.nativeSessionIdentity(record.session.resumeCursor);
+    return record?.preparedResumeBindingKey && nativeIdentity
+      ? { bindingKey: record.preparedResumeBindingKey, nativeIdentity }
+      : undefined;
   }
 
   private readonly events = new AsyncEventQueue();
@@ -2071,6 +2081,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       engineStderrTail: engineProcess.stderrTail,
       engineProcess,
       nativeOwnershipBindingKey: ownershipBindingKey,
+      preparedResumeBindingKey: resumeBindingKey,
       ...(nativeId && this.options.nativeSessionOwnership
         ? { nativeOwnershipClaimed: true as const }
         : {}),

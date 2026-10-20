@@ -182,6 +182,7 @@ import {
   type TaskRoomWorkScope,
 } from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
+import { TurnIdempotencySettledError } from '../../services/turn-idempotency.js';
 import {
   orchestrationStreamDuration,
   orchestrationStreamPresenceOps,
@@ -2477,6 +2478,19 @@ export function createOrchestrationRoutes(
     // #3568: set once this send may wait in its conversation's inbox; a
     // busy refusal from the dispatch below then queues it instead.
     let queueOnBusyRefusal: (() => Response | undefined) | undefined;
+    let inspectBusySettlement: (() => unknown) | undefined;
+    const settledRefusal = (error: unknown) =>
+      error instanceof TurnIdempotencySettledError
+        ? c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code: error.code,
+              disposition: error.disposition,
+            },
+            409,
+          )
+        : undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -2715,6 +2729,18 @@ export function createOrchestrationRoutes(
         // Only the join wait a same-key retry may spend; never the send.
         joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
+      const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
+      if (body.conversationId && body.clientTurnId) {
+        const conversationId = body.conversationId;
+        const clientTurnId = body.clientTurnId;
+        inspectBusySettlement = () =>
+          orchestrationService.inspectTurnDelivery(
+            conversationId,
+            clientTurnId,
+            readAuthorityFor(c),
+            inputDigest,
+          );
+      }
       // #3568: a follow-up to a busy conversation waits in its inbox rather
       // than being refused. Only for a caller that may read the conversation,
       // whose body names exactly the binding the inbox will continue through,
@@ -2740,7 +2766,6 @@ export function createOrchestrationRoutes(
         ))
       ) {
         const inbox = deps.threadInbox!;
-        const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
         if (
           orchestrationService.inspectTurnDelivery(
             followUp.conversationId,
@@ -2847,14 +2872,27 @@ export function createOrchestrationRoutes(
           { outcome: 'queued', entry: error.entry },
           error.entry,
         );
+      const settled = settledRefusal(error);
+      if (settled) return settled;
       const busyCode = errorCode(error);
-      if (
-        queueOnBusyRefusal &&
-        busyCode &&
-        INBOX_BUSY_REFUSAL_CODES.has(busyCode)
-      ) {
-        const held = queueOnBusyRefusal();
-        if (held) return held;
+      if (busyCode && INBOX_BUSY_REFUSAL_CODES.has(busyCode)) {
+        try {
+          inspectBusySettlement?.();
+        } catch (inspectionError) {
+          const closed = settledRefusal(inspectionError);
+          if (closed) return closed;
+          // An unavailable or unauthorized inspection supplies no settlement.
+        }
+        if (queueOnBusyRefusal) {
+          try {
+            const held = queueOnBusyRefusal();
+            if (held) return held;
+          } catch (queueError) {
+            const closed = settledRefusal(queueError);
+            if (closed) return closed;
+            throw queueError;
+          }
+        }
       }
       const refused =
         delegationRefusal(c, error) ??
@@ -3134,11 +3172,26 @@ export function createOrchestrationRoutes(
         );
       const answer = (data: TurnDeliveryInspection) =>
         c.json({ success: true, data });
-      const durable = orchestrationService.inspectTurnDelivery(
-        conversationId,
-        clientTurnId,
-        readAuthorityFor(c),
-      );
+      let durable: ReturnType<OrchestrationService['inspectTurnDelivery']>;
+      try {
+        durable = orchestrationService.inspectTurnDelivery(
+          conversationId,
+          clientTurnId,
+          readAuthorityFor(c),
+        );
+      } catch (error) {
+        if (error instanceof TurnIdempotencySettledError)
+          return c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code: error.code,
+              disposition: error.disposition,
+            },
+            409,
+          );
+        throw error;
+      }
       // A turn the ledger settled outranks the request still being answered.
       // Only the public fields: the ledger also names the Session a live
       // claim is on (for a resend to join), which this answer never shows.

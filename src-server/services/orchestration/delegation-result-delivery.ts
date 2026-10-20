@@ -102,6 +102,7 @@ import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   evaluateSessionWait,
   type SessionSettledTurn,
+  type SessionTurnWaitPorts,
   type SessionWaitFoldEvent,
 } from './session-turn-wait.js';
 import type { SqliteDatabase } from './sqlite-database.js';
@@ -1062,6 +1063,7 @@ export interface DelegationResultDeliveryPorts {
     turnId: string,
     methods: readonly string[],
     limit: number,
+    invocationId?: string,
   ): readonly DelegationResultOutputEvent[];
   /** The conversation a Session belongs to (itself when it has none). */
   conversationOf(threadId: string): string;
@@ -1069,6 +1071,8 @@ export interface DelegationResultDeliveryPorts {
   currentSessionId(conversationId: string): string;
   /** Whether the live coordinator holds a turn the log has not shown yet. */
   coordinatorBusy(threadId: string): boolean;
+  readInputlessTurnDisposition?: SessionTurnWaitPorts['readInputlessTurnDisposition'];
+  readInvocationTerminal?: SessionTurnWaitPorts['readInvocationTerminal'];
   /** The recorded owner of a Session, read from its start record. */
   sessionOwnerId(threadId: string): string | undefined;
   /**
@@ -1243,8 +1247,15 @@ function storedTurnOutput(
   ports: Pick<DelegationResultDeliveryPorts, 'turnEvents'>,
   threadId: string,
   turnId: string,
+  invocationId?: string,
 ): { text: string; incomplete: boolean } {
-  const completed = ports.turnEvents(threadId, turnId, ['turn.completed'], 1);
+  const completed = ports.turnEvents(
+    threadId,
+    turnId,
+    ['turn.completed'],
+    1,
+    invocationId,
+  );
   const outputText = (
     completed[0]?.payload as { outputText?: unknown } | undefined
   )?.outputText;
@@ -1255,6 +1266,7 @@ function storedTurnOutput(
     turnId,
     ['content.text-delta'],
     DELEGATION_RESULT_OUTPUT_MAX_EVENTS + 1,
+    invocationId,
   );
   return {
     text: deltas
@@ -1266,6 +1278,93 @@ function storedTurnOutput(
       .join(''),
     incomplete: deltas.length > DELEGATION_RESULT_OUTPUT_MAX_EVENTS,
   };
+}
+
+type ResultSettlementIdentity =
+  | {
+      threadId: string;
+      kind: 'invocation' | 'native';
+      value: string;
+      nativeOnlyLegacy?: true;
+    }
+  | { threadId: string; kind: 'sequence'; value: number };
+const RESULT_SETTLEMENT_CODEC = 'station.delegation-result/2';
+function settlementKey(identity: ResultSettlementIdentity): string {
+  return JSON.stringify([
+    RESULT_SETTLEMENT_CODEC,
+    identity.threadId,
+    identity.kind,
+    identity.value,
+  ]);
+}
+function readSettlementIdentity(
+  row: DelegationResultRow,
+): ResultSettlementIdentity | undefined {
+  if (row.transitionKey.startsWith('[')) {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(row.transitionKey);
+    } catch {
+      return undefined;
+    }
+    if (
+      !Array.isArray(decoded) ||
+      decoded.length !== 4 ||
+      decoded[0] !== RESULT_SETTLEMENT_CODEC ||
+      decoded[1] !== row.childSessionId ||
+      JSON.stringify(decoded) !== row.transitionKey
+    )
+      return undefined;
+    const threadId = row.childSessionId;
+    const kind: unknown = decoded[2];
+    const value: unknown = decoded[3];
+    if (
+      (kind === 'invocation' || kind === 'native') &&
+      typeof value === 'string' &&
+      value !== '' &&
+      (kind !== 'native' || row.childTurnId === value)
+    )
+      return { threadId, kind, value };
+    if (
+      kind === 'sequence' &&
+      typeof value === 'number' &&
+      Number.isSafeInteger(value) &&
+      value > 0 &&
+      row.childTurnId === undefined
+    )
+      return { threadId, kind, value };
+    return undefined;
+  }
+  const prefix = `settled:${row.childSessionId}:`;
+  if (!row.transitionKey.startsWith(prefix)) return undefined;
+  const value = row.transitionKey.slice(prefix.length);
+  if (value === row.childTurnId) {
+    // Old native and invocation encodings overlap; absence of a witness cannot disambiguate them.
+    return value.startsWith('invocation-')
+      ? undefined
+      : {
+          threadId: row.childSessionId,
+          kind: 'native',
+          value,
+          nativeOnlyLegacy: true,
+        };
+  }
+  if (value.startsWith('invocation-') && value.length > 'invocation-'.length)
+    return {
+      threadId: row.childSessionId,
+      kind: 'invocation',
+      value: value.slice('invocation-'.length),
+    };
+  if (row.childTurnId === undefined && /^sequence-[1-9][0-9]*$/.test(value)) {
+    const sequence = Number(value.slice('sequence-'.length));
+    if (Number.isSafeInteger(sequence))
+      return {
+        threadId: row.childSessionId,
+        kind: 'sequence',
+        value: sequence,
+      };
+  }
+  return undefined;
 }
 
 function deliveryIdFor(childConversationId: string, transitionKey: string) {
@@ -1460,6 +1559,8 @@ export class DelegationResultDelivery {
 
   private foldPorts() {
     return {
+      readInvocationTerminal: this.ports.readInvocationTerminal,
+      readInputlessTurnDisposition: this.ports.readInputlessTurnDisposition,
       foldEvents: (threadId: string) => this.ports.foldEvents(threadId),
       headSequence: (threadId: string) => this.ports.headSequence(threadId),
       coordinatorBusy: (threadId: string) =>
@@ -1518,10 +1619,48 @@ export class DelegationResultDelivery {
       );
     const settled = view.settledTurn;
     if (view.state !== 'idle' || !settled) return;
-    const transitionKey = `settled:${thread}:${settled.turnId ?? `sequence-${settled.sequence}`}`;
+    if (
+      settled.invocationId !== undefined &&
+      this.ports.readInvocationTerminal?.(
+        thread,
+        settled.invocationId,
+        settled.turnId,
+      )?.kind !== 'found'
+    )
+      return;
+    if (
+      settled.invocationId === undefined &&
+      this.ports.readInputlessTurnDisposition?.(thread)?.kind !== 'inputless'
+    )
+      return;
+    const identity: ResultSettlementIdentity =
+      settled.invocationId !== undefined
+        ? { threadId: thread, kind: 'invocation', value: settled.invocationId }
+        : settled.turnId !== undefined
+          ? { threadId: thread, kind: 'native', value: settled.turnId }
+          : { threadId: thread, kind: 'sequence', value: settled.sequence };
+    const transitionKey = settlementKey(identity);
     if (this.ports.store.has(childConversationId, transitionKey)) return;
+    for (const row of this.ports.store.listForChild(childConversationId)) {
+      const retained = readSettlementIdentity(row);
+      if (retained && settlementKey(retained) === transitionKey) return;
+      if (
+        row.childSessionId === thread &&
+        row.childTurnId === settled.turnId &&
+        (retained === undefined ||
+          (retained.kind === 'native' && retained.nativeOnlyLegacy === true) ||
+          ((row.state === 'pending' || row.state === 'claimed') &&
+            !this.canDeliverRow(row)))
+      )
+        return;
+    }
     const output = settled.turnId
-      ? storedTurnOutput(this.ports, thread, settled.turnId)
+      ? storedTurnOutput(
+          this.ports,
+          thread,
+          settled.turnId,
+          settled.invocationId,
+        )
       : { text: '', incomplete: false };
     this.ports.store.record(
       {
@@ -1573,8 +1712,44 @@ export class DelegationResultDelivery {
     this.inFlight.set(key, run);
   }
 
+  private canDeliverRow(row: DelegationResultRow): boolean {
+    const identity = readSettlementIdentity(row);
+    if (!identity) return false;
+    if (
+      identity.kind !== 'invocation' &&
+      this.ports.readInputlessTurnDisposition?.(row.childSessionId)?.kind !==
+        'inputless'
+    )
+      return false;
+    if (identity.kind === 'native' && identity.nativeOnlyLegacy) {
+      try {
+        if (
+          this.ports
+            .foldEvents(row.childSessionId)
+            .some(
+              ({ event }) =>
+                event.turnId === row.childTurnId &&
+                event.invocationId !== undefined,
+            )
+        )
+          return false;
+      } catch {
+        return false;
+      }
+    }
+    return (
+      identity.kind !== 'invocation' ||
+      this.ports.readInvocationTerminal?.(
+        row.childSessionId,
+        identity.value,
+        row.childTurnId,
+      )?.kind === 'found'
+    );
+  }
+
   private async attempt(row: DelegationResultRow): Promise<void> {
     const store = this.ports.store;
+    if (!this.canDeliverRow(row)) return;
     const owner = store.owner(row.childConversationId);
     if (!owner) return store.settle(row, 'refused', 'owner-missing');
     let pinned: { branch: SessionDeliveryBranch; threadId: string } | undefined;

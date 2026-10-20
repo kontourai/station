@@ -1,6 +1,5 @@
 type WorkspaceState = {
   activeThreads: Set<string>;
-  terminalDuringStart: Set<string>;
   starting: number;
   exclusive: boolean;
   waiters: Array<() => void>;
@@ -23,12 +22,17 @@ export class WorkspaceExecutionBarrier {
     this.workspaceByThread.set(threadId, workspaceKey);
     try {
       const result = await operation();
-      if (!state.terminalDuringStart.delete(threadId) && retain())
-        state.activeThreads.add(threadId);
+      if (retain()) state.activeThreads.add(threadId);
       else this.workspaceByThread.delete(threadId);
       return result;
     } catch (error) {
-      this.releaseThread(threadId);
+      if (retain()) {
+        state.activeThreads.add(threadId);
+        this.workspaceByThread.set(threadId, workspaceKey);
+      } else {
+        state.activeThreads.delete(threadId);
+        this.workspaceByThread.delete(threadId);
+      }
       throw error;
     } finally {
       state.starting -= 1;
@@ -58,8 +62,7 @@ export class WorkspaceExecutionBarrier {
     this.workspaceByThread.delete(threadId);
     const state = this.states.get(workspaceKey);
     if (!state) return;
-    if (!state.activeThreads.delete(threadId) && state.starting > 0)
-      state.terminalDuringStart.add(threadId);
+    state.activeThreads.delete(threadId);
     this.drain(workspaceKey, state);
   }
 
@@ -80,7 +83,6 @@ export class WorkspaceExecutionBarrier {
     if (!state) {
       state = {
         activeThreads: new Set(),
-        terminalDuringStart: new Set(),
         starting: 0,
         exclusive: false,
         waiters: [],

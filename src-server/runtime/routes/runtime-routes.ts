@@ -4610,6 +4610,13 @@ export function configureRuntimeRoutes(
         context.orchestrationService.currentConversationSessionId(
           conversationId,
         ),
+      readInputlessTurnDisposition: (threadId: string) =>
+        eventStore.readInputlessTurnDisposition(threadId),
+      readInvocationTerminal: (
+        threadId: string,
+        invocationId: string,
+        turnId?: string,
+      ) => eventStore.readInvocationTerminal(threadId, invocationId, turnId),
       coordinatorBusy: (threadId: string) =>
         context.orchestrationService.hasActiveTurn(threadId),
       sessionOwnerId: (threadId: string) =>
@@ -4642,6 +4649,8 @@ export function configureRuntimeRoutes(
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.threadInboxStore(),
+      hasPossibleEffect: (threadId) =>
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       // The live continuation's own rule (`canContinueConversation`): the
       // conversation's recorded owner, or a reader a personal Station lets
       // continue it.
@@ -4701,9 +4710,15 @@ export function configureRuntimeRoutes(
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
-      turnEvents: (threadId, turnId, methods, limit) =>
+      turnEvents: (threadId, turnId, methods, limit, invocationId) =>
         eventStore
-          .listTurnEventsByMethods(threadId, turnId, methods, limit)
+          .listTurnEventsByMethods(
+            threadId,
+            turnId,
+            methods,
+            limit,
+            invocationId,
+          )
           .map((stored) => ({
             ...(stored.turnId ? { turnId: stored.turnId } : {}),
             method: stored.method,

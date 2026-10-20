@@ -279,6 +279,7 @@ import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
+import { TurnIdempotencySettledError } from '../turn-idempotency.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
@@ -389,6 +390,11 @@ import {
   trackOrchestrationSession,
 } from './orchestration-session-state.js';
 import { type OrchestrationStreamPresenceSubject } from './orchestration-stream-presence.js';
+import {
+  captureTurnIntent,
+  type PreparedTurnIntentView,
+  samePreparedValue,
+} from './prepared-turn-intent.js';
 import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
 import {
   inspectRequestEvent,
@@ -7207,6 +7213,7 @@ export class OrchestrationService {
               ),
           });
           const {
+            invocationId: _untrustedInvocationId,
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
             expectedInputRequest: _expectedInputRequest,
@@ -7605,15 +7612,6 @@ export class OrchestrationService {
                       // same key is indeterminate instead of a second send.
                       // A throw here has invoked nothing: the boundary stays
                       // `prepared` and the claim is released.
-                      ownedClientTurnClaim?.beginInvocation();
-                      const begun = boundary.beginInvocation(
-                        new Date().toISOString(),
-                      );
-                      if (begun.kind !== 'applied') {
-                        claimOutcome = 'retain';
-                        boundary.indeterminate(new Date().toISOString());
-                        throw new SessionTurnStartIndeterminateError();
-                      }
                       let providerAccepted = false;
                       let providerInvoked = false;
                       let turnCorrelation:
@@ -7786,6 +7784,57 @@ export class OrchestrationService {
                             }
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            if (boundary.prepareIntent) {
+                              const captured = captureTurnIntent(turnInput, {
+                                binding: this.preparedTurnBinding(
+                                  turnInput.threadId,
+                                ),
+                                requiresFreshCompanions: Boolean(
+                                  nativeMemory ||
+                                    nativeOutputRelay ||
+                                    nativeForeground ||
+                                    experienceReference ||
+                                    experienceContext ||
+                                    internal?.receiverExecutionAdmission ||
+                                    internal?.foregroundInvocationAdmission ||
+                                    internal?.nativeMemoryReadAuthority ||
+                                    submittedInput.expectedInputRequest,
+                                ),
+                              });
+                              const prepared = boundary.prepareIntent(
+                                captured,
+                                ownedClientTurnClaim,
+                                new Date().toISOString(),
+                              );
+                              if (prepared.kind !== 'applied') {
+                                if (prepared.kind === 'stale')
+                                  throw new Error(
+                                    'Prepared turn input could not be retained; no provider call was made.',
+                                  );
+                                claimOutcome = 'retain';
+                                throw new SessionTurnStartIndeterminateError();
+                              }
+                              turnInput = captured.adapterInput;
+                            } else {
+                              ownedClientTurnClaim?.beginInvocation();
+                            }
+                            const begun = boundary.beginInvocation(
+                              new Date().toISOString(),
+                            );
+                            if (begun.kind !== 'applied') {
+                              claimOutcome = 'retain';
+                              throw new SessionTurnStartIndeterminateError();
+                            }
+                            if (turnInput.invocationId)
+                              this.clientOriginTurns.bindInvocation(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
+                            if (turnInput.invocationId)
+                              this.sessionExecutionCoordinator.markTurnBegun(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
                             providerInvoked = true;
                             const send = () =>
                               nativeForeground
@@ -7887,9 +7936,33 @@ export class OrchestrationService {
                           context?.principal,
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
+                          turnInput.invocationId,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
+                        }
+                        const legacyOriginEvent =
+                          this.clientOriginTurns.takeLegacyRouting(
+                            turnInput.threadId,
+                            accepted.turnId,
+                          );
+                        if (legacyOriginEvent)
+                          this.projectAndPublishEvent(legacyOriginEvent);
+                        if (turnInput.invocationId) {
+                          const settled = boundary.accepted(
+                            accepted.turnId,
+                            new Date().toISOString(),
+                          );
+                          if (settled.kind !== 'applied') {
+                            claimOutcome = 'retain';
+                            throw new SessionTurnStartIndeterminateError();
+                          }
+                          this.sessionExecutionCoordinator.markTurnAccepted(
+                            turnInput.threadId,
+                            accepted.turnId,
+                            turnInput.invocationId,
+                          );
+                          return accepted;
                         }
                         if (
                           !this.sessionExecutionCoordinator.markTurnAccepted(
@@ -7940,6 +8013,15 @@ export class OrchestrationService {
                         ) {
                           throw error;
                         }
+                        if (!providerInvoked && claimOutcome !== 'retain') {
+                          const retired = boundary.notInvoked();
+                          if (retired.kind === 'applied') {
+                            claimOutcome = 'release';
+                            throw error;
+                          }
+                          claimOutcome = 'retain';
+                          throw new SessionTurnStartIndeterminateError();
+                        }
                         if (
                           !providerInvoked &&
                           (error instanceof ReceiverExecutionRefusal ||
@@ -7984,6 +8066,20 @@ export class OrchestrationService {
                           throw error;
                         }
                         if (error instanceof SendTurnRefusedError) {
+                          if (boundary.recordDefinitiveRefusal) {
+                            claimOutcome = 'retain';
+                            const settled = boundary.recordDefinitiveRefusal(
+                              new Date().toISOString(),
+                            );
+                            if (settled.kind !== 'applied')
+                              throw new SessionTurnStartIndeterminateError();
+                            if (turnInput.invocationId)
+                              this.sessionExecutionCoordinator.settleInvocation(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
+                            throw error;
+                          }
                           // The adapter refused the turn BEFORE its first
                           // provider-visible effect, so no engine was invoked
                           // and no `turn.started` was published even though
@@ -8131,6 +8227,7 @@ export class OrchestrationService {
                       ? undefined
                       : identity.key;
                   })(),
+                  true,
                 );
               };
               try {
@@ -8577,6 +8674,16 @@ export class OrchestrationService {
                 context?.clientOrigin,
                 context?.principal,
               );
+              const steerInvocationId =
+                this.sessionExecutionCoordinator.invocationForTurn(
+                  command.threadId,
+                  activeTurnId,
+                );
+              if (steerInvocationId)
+                this.clientOriginTurns.bindInvocation(
+                  command.threadId,
+                  steerInvocationId,
+                );
               try {
                 await this.withCurrentSkillExperience(command.threadId, () => {
                   this.assertAdapterCurrent(adapter);
@@ -8601,10 +8708,19 @@ export class OrchestrationService {
                 activeTurnId,
                 context?.clientOrigin,
                 context?.principal,
+                undefined,
+                undefined,
+                steerInvocationId,
               );
               if (earlySteerOriginEvent) {
                 this.projectAndPublishEvent(earlySteerOriginEvent);
               }
+              const legacySteerEvent = this.clientOriginTurns.takeLegacyRouting(
+                command.threadId,
+                activeTurnId,
+              );
+              if (legacySteerEvent)
+                this.projectAndPublishEvent(legacySteerEvent);
               this.assertAdapterCurrentAfterCommand(adapter);
             } catch (error) {
               if (steerInput) {
@@ -8991,6 +9107,7 @@ export class OrchestrationService {
           // so routes answer the exact 403 (never a 400 with a bare
           // message) and session-turn-boundary receipts stay truthful.
           error instanceof ReceiverExecutionRefusal ||
+          error instanceof TurnIdempotencySettledError ||
           // #2494: a respawn refused for its confinement started nothing.
           error instanceof ConfinementRefusedError
             ? ('rejected' as const)
@@ -9038,6 +9155,7 @@ export class OrchestrationService {
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
           error instanceof AttachmentInputUnsupportedError ||
+          error instanceof TurnIdempotencySettledError ||
           error instanceof ApprovalGovernanceRefusedError ||
           error instanceof ClientTurnInputConflictError ||
           error instanceof TurnSubmissionUnsupportedError ||
@@ -11914,17 +12032,20 @@ export class OrchestrationService {
     // still shows the turn running. It settles before the in-memory
     // observers run, so one that throws cannot strand a stop whose terminal
     // is already stored (#3561 review F3).
-    this.cooperativeStop.settleCompletedTurn(
-      event.threadId,
-      event.turnId,
-      event.method,
-    );
+    if (this.sessionExecutionCoordinator.ownsTurnEvent(event))
+      this.cooperativeStop.settleCompletedTurn(
+        event.threadId,
+        event.turnId,
+        event.method,
+      );
     if (!committed) return false;
     const projectedEvent = this.observeCommittedEvent(
       event,
       committed,
       quarantined,
     );
+    if (!isCoalescableDelta(event))
+      this.sessionExecutionCoordinator.observe(projectedEvent);
     // The event-store append is the retirement boundary. Do not use an
     // adapter's cleared activeTurnId or a queue-drain edge: a bound native
     // scope remains valid until its ordered durable terminal is committed.
@@ -11933,7 +12054,8 @@ export class OrchestrationService {
         projectedEvent.method === 'turn.aborted' ||
         (projectedEvent.method === 'runtime.error' &&
           !isDeferredRetriableTurnError(projectedEvent))) &&
-      projectedEvent.turnId
+      projectedEvent.turnId &&
+      !this.sessionExecutionCoordinator.hasActiveTurn(projectedEvent.threadId)
     ) {
       this.nativeOutputGrants.retireTerminal(
         projectedEvent.threadId,
@@ -11956,8 +12078,6 @@ export class OrchestrationService {
       this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
-    if (!isCoalescableDelta(event))
-      this.sessionExecutionCoordinator.observe(projectedEvent);
     this.monitoringBridge.onRuntimeEvent(projectedEvent);
     // archive#3451 finding 5: a failed turn used to be either mis-counted as
     // `completed` (pre-#3442) or dropped from this metric entirely — count it
@@ -12072,7 +12192,9 @@ export class OrchestrationService {
       sessionReadModel: this.sessionReadModel,
     });
     const declaredOutputs =
-      projectedEvent.method === 'turn.completed' && projectedEvent.turnId
+      projectedEvent.method === 'turn.completed' &&
+      projectedEvent.turnId &&
+      this.sessionExecutionCoordinator.ownsTurnEvent(projectedEvent)
         ? [
             ...this.nativeOutputDeclarations.takeTerminalAdmissions(
               projectedEvent.threadId,
@@ -12152,7 +12274,8 @@ export class OrchestrationService {
     // stalled turn's window (#2436).
     if (
       !isCoalescableDelta(event) &&
-      event.method !== 'session.approval-mode-set'
+      event.method !== 'session.approval-mode-set' &&
+      this.sessionExecutionCoordinator.ownsTurnEvent(event)
     )
       this.turnProgress.observe(event);
     this.threadProviders.set(event.threadId, event.provider);
@@ -12168,7 +12291,11 @@ export class OrchestrationService {
       event.method === 'turn.aborted' ||
       event.method === 'runtime.error'
     ) {
-      this.clientOriginTurns.retire(event.threadId, event.turnId);
+      this.clientOriginTurns.retire(
+        event.threadId,
+        event.turnId,
+        event.invocationId,
+      );
     }
     // Adapter-agnostic activity telemetry: adapters stay metric-free (the
     // sessionStateDuration precedent), so provider activity notifications
@@ -12642,6 +12769,222 @@ export class OrchestrationService {
   /** The configured local owner can supply native prompt history across Session boundaries. */
   supportsNativeMemoryContinuity(): boolean {
     return this.options.eventStore !== undefined;
+  }
+
+  async readPreparedTurnIntent(
+    threadId: string,
+    invocationId: string,
+    authority: SessionReadAuthority,
+  ): Promise<PreparedTurnIntentView | null> {
+    this.initialize();
+    if (
+      !isSessionReadAuthority(authority) ||
+      !this.sessionAuthz.canReadSession(threadId, authority)
+    )
+      return null;
+    const stored = this.options.eventStore?.readPreparedTurnIntent(
+      threadId,
+      invocationId,
+    );
+    if (!stored || !this.sessionAuthz.canReadSession(threadId, authority))
+      return null;
+    return {
+      invocationId,
+      threadId,
+      clientTurnId: stored.capture.clientTurnId,
+      inputDigest: stored.capture.intent.inputDigest,
+      intentDigest: stored.capture.intent.intentDigest,
+      state: stored.state,
+      input: stored.capture.input,
+    };
+  }
+
+  private preparedTurnBinding(threadId: string): Record<string, unknown> {
+    const session =
+      this.options.eventStore?.readSessionByThread(threadId) ??
+      this.sessionReadModel.get(threadId);
+    if (!session) throw new Error('Prepared turn input is unavailable.');
+    const metadata = this.readLatestSessionStartMetadata(threadId);
+    const start = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.started',
+    )?.payload;
+    const nativeBindingKey =
+      start?.method === 'session.started'
+        ? start.metadata?.nativeResumeBindingKey
+        : undefined;
+    const liveBinding = this.options.adapterRegistry
+      .get(session.provider)
+      ?.preparedTurnBinding?.(threadId);
+    return {
+      provider: session.provider,
+      resumeCursor: session.resumeCursor ?? null,
+      cwd: session.cwd ?? null,
+      environmentId: metadata?.environmentId ?? null,
+      nativeBindingKey: liveBinding?.bindingKey ?? nativeBindingKey ?? null,
+      liveBinding: liveBinding ?? null,
+      connectionId: metadata?.connectionId ?? null,
+      agentId: metadata?.agentSlug ?? null,
+    };
+  }
+
+  /** Explicit replay of never-begun retained bytes; dormant engines require their own start protocol. */
+  async resumePreparedTurnIntent(
+    threadId: string,
+    invocationId: string,
+    authority: SessionReadAuthority,
+  ): Promise<ProviderTurnStartResult> {
+    const unavailable = () => new Error('Prepared turn input is unavailable.');
+    const authorized = () =>
+      isSessionReadAuthority(authority) &&
+      this.sessionAuthz.canReadSession(threadId, authority) &&
+      !this.quarantinedThreads.has(threadId) &&
+      !this.isReadOnlyAttachedSession(threadId);
+    this.initialize();
+    if (!authorized()) throw unavailable();
+    const stored = this.options.eventStore?.readPreparedTurnIntent(
+      threadId,
+      invocationId,
+    );
+    if (
+      stored?.state !== 'prepared' ||
+      stored.capture.resumeGuard.requiresFreshCompanions ||
+      stored.capture.adapterInput.confinement === 'host' ||
+      stored.capture.adapterInput.reviewIsolation ||
+      typeof stored.capture.resumeGuard.binding.nativeBindingKey !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(
+        stored.capture.resumeGuard.binding.nativeBindingKey,
+      ) ||
+      stored.capture.resumeGuard.binding.resumeCursor === null ||
+      stored.capture.resumeGuard.binding.liveBinding === null ||
+      !samePreparedValue(
+        stored.capture.resumeGuard.binding,
+        this.preparedTurnBinding(threadId),
+      )
+    )
+      throw unavailable();
+    this.assertTurnAdmitted(threadId);
+    const provider =
+      this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    const adapter = provider && this.options.adapterRegistry.get(provider);
+    if (!adapter || !(await adapter.hasSession(threadId)) || !authorized())
+      throw unavailable();
+    const live = (await adapter.listSessions()).find(
+      (session) => session.threadId === threadId,
+    );
+    if (
+      !live ||
+      live.status === 'closed' ||
+      live.status === 'dead' ||
+      !samePreparedValue(
+        live.resumeCursor ?? null,
+        stored.capture.resumeGuard.binding.resumeCursor,
+      ) ||
+      !authorized()
+    )
+      throw unavailable();
+    const posture = this.approvalPosture.decision(threadId);
+    if (posture?.approvalMode === 'connection-default') throw unavailable();
+    const confinement = this.approvalPosture.standingConfinement(
+      threadId,
+      this.readStartConfinementStamp(threadId),
+    );
+    const current = () => {
+      try {
+        this.assertTurnAdmitted(threadId);
+        return (
+          authorized() &&
+          this.isAdapterCurrent(adapter) &&
+          this.approvalPosture.decision(threadId)?.sequence ===
+            posture?.sequence &&
+          this.approvalPosture.standingConfinement(
+            threadId,
+            this.readStartConfinementStamp(threadId),
+          ) === confinement &&
+          samePreparedValue(
+            stored.capture.resumeGuard.binding,
+            this.preparedTurnBinding(threadId),
+          )
+        );
+      } catch {
+        return false;
+      }
+    };
+    const freshOptions = await this.replayModelOptionsWithPosture(
+      threadId,
+      adapter.provider,
+      stored.capture.adapterInput.modelOptions,
+    );
+    if (
+      !samePreparedValue(
+        freshOptions ?? null,
+        stored.capture.adapterInput.modelOptions ?? null,
+      ) ||
+      !current()
+    )
+      throw unavailable();
+    const cwd = this.options.eventStore?.readSessionByThread(threadId)?.cwd;
+    const workspace = cwd
+      ? await resolveWorkspaceIdentity(cwd, 'local')
+      : undefined;
+    return this.sessionExecutionCoordinator.runPreparedTurnStart(
+      threadId,
+      async () => {
+        if (!current()) throw unavailable();
+        const owned = this.sessionStartBoundaries.resumePrepared?.(
+          stored.capture,
+          new Date().toISOString(),
+          current,
+        );
+        if (owned?.kind !== 'owner') throw unavailable();
+        const begun = owned.claim.beginInvocation(new Date().toISOString());
+        if (begun.kind !== 'applied') {
+          owned.turnClaim?.retain();
+          throw unavailable();
+        }
+        this.sessionExecutionCoordinator.markTurnBegun(
+          threadId,
+          stored.capture.intent.invocationId,
+        );
+        try {
+          const result = await adapter.sendTurn(stored.capture.adapterInput);
+          if (
+            owned.claim.accepted(result.turnId, new Date().toISOString())
+              .kind !== 'applied'
+          )
+            throw unavailable();
+          owned.turnClaim?.resolve(result.turnId);
+          this.sessionExecutionCoordinator.markTurnAccepted(
+            threadId,
+            result.turnId,
+            stored.capture.intent.invocationId,
+          );
+          return result;
+        } catch (error) {
+          if (
+            error instanceof SendTurnRefusedError &&
+            owned.claim.recordDefinitiveRefusal
+          ) {
+            owned.turnClaim?.retain();
+            const settled = owned.claim.recordDefinitiveRefusal(
+              new Date().toISOString(),
+            );
+            if (settled.kind === 'applied') {
+              this.sessionExecutionCoordinator.settleInvocation(
+                threadId,
+                stored.capture.intent.invocationId,
+              );
+              throw error;
+            }
+            throw new SessionTurnStartIndeterminateError();
+          }
+          owned.claim.indeterminate(new Date().toISOString());
+          owned.turnClaim?.retain();
+          throw new SessionTurnStartIndeterminateError();
+        }
+      },
+      workspace && workspace.kind !== 'remote' ? workspace.key : undefined,
+    );
   }
 
   private async captureNativeMemoryHistory(

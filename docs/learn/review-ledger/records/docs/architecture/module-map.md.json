@@ -996,6 +996,22 @@
 
     "src-server/knowledge-index/embedding-identity.ts",
 
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/fixtures/legacy-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
+
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx",
+
+    "src-server/services/__tests__/turn-idempotency.test.ts",
+
+    "src-server/services/orchestration/__tests__/session-turn-boundary.test.ts",
+
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts",
+
     "src-ui/src/lib/task-shaping.ts",
 
     "src-ui/src/components/chat/TaskShapingComposer.tsx",
@@ -1025,16 +1041,6 @@
     "src-server/routes/orchestration/tasks.ts",
 
     "src-ui/src/contexts/active-chats-state.ts",
-
-    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
-
-    "src-server/services/orchestration/__tests__/fixtures/legacy-turn-boundary.ts",
-
-    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
-
-    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
-
-    "src-ui/src/contexts/AccountPreferencesProvider.tsx",
 
     "src-server/services/layouts/personal-board-authoring.ts",
 
@@ -1079,6 +1085,30 @@
     "src-server/services/orchestration/attachment-staging-service.ts",
 
     "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts",
+
+    "packages/monument/src/decisions/invocation-terminal.ts",
+
+    "packages/monument/src/__tests__/invocation-terminal.test.ts",
+
+    "packages/monument/src/__tests__/sqlite-invocation-terminal.test.ts",
+
+    "src-server/services/orchestration/prepared-turn-intent.ts",
+
+    "src-server/services/orchestration/session-turn-wait.ts",
+
+    "src-server/services/orchestration/conversation-turn-activity.ts",
+
+    "src-server/services/orchestration/delegation-result-delivery.ts",
+
+    "src-server/domain/migrations/019-positive-turn-start-index.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-result-delivery.test.ts",
+
+    "src-server/services/orchestration/__tests__/conversation-turn-activity.test.ts",
+
+    "src-server/services/orchestration/__tests__/prepared-turn-intent-crash.process.test.ts",
+
+    "src-server/services/orchestration/__tests__/event-store.test.ts",
 
     "packages/telemetry-broker/src/lite-store.ts",
 

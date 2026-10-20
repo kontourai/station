@@ -790,6 +790,15 @@ export class CodexAdapter implements ProviderAdapterShape {
     };
   }
 
+  preparedTurnBinding(threadId: string) {
+    const record = this.transport.getSession(threadId);
+    const nativeIdentity =
+      record && this.nativeSessionIdentity(record.session.resumeCursor);
+    return record?.preparedResumeBindingKey && nativeIdentity
+      ? { bindingKey: record.preparedResumeBindingKey, nativeIdentity }
+      : undefined;
+  }
+
   private readonly transport: CodexAdapterTransport;
   private readonly processFactory: (
     appHomeEnv?: Record<string, string>,
@@ -1869,6 +1878,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       resumeCursor: input.resumeCursor,
       nowIso: () => this.now().toISOString(),
     });
+    record.preparedResumeBindingKey = resumeBindingKey;
     if (sourceAffinity) {
       this.transport.setStdoutIngressLimit(
         record,

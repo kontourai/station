@@ -288,6 +288,7 @@ describe('ClaudeAdapter', () => {
         await adapter.startSession({
           provider: 'claude',
           threadId: 'binding-source',
+          resumeCursor: 'native-source',
         });
         const event = (await iterator.next()).value;
         const bindingKey =
@@ -296,9 +297,13 @@ describe('ClaudeAdapter', () => {
             : undefined;
         if (typeof bindingKey !== 'string')
           throw new Error('No observed source binding');
-        await adapter.stopSession('binding-source');
         if (changed === 'home') home = '/profiles/replacement';
         else profileRef = 'replacement';
+        expect(adapter.preparedTurnBinding('binding-source')).toMatchObject({
+          bindingKey,
+          nativeIdentity: { sessionId: 'native-source' },
+        });
+        await adapter.stopSession('binding-source');
         const invocations = mockQuery.mock.calls.length;
         await expect(
           adapter.startSession({

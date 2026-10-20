@@ -155,9 +155,9 @@ export class SessionStartRefusedError extends Error {
 /**
  * #2324: a send refused because the engine is running a turn it opened on
  * its own (`PROVIDER_TURN_TRIGGER`). Accepting it would fold the message
- * into a reply nobody asked for. Retryable: the same send succeeds once that
- * turn closes, so orchestration forwards the code and clients keep the
- * message queued rather than dropping it.
+ * into a reply nobody asked for. Before dispatch entry, a busy request may
+ * wait in the inbox. A keyed send that has begun and is definitively refused
+ * closes that key; a new explicit request requires a new key.
  */
 export class ProviderTurnInProgressError extends SendTurnRefusedError {
   readonly code = PROVIDER_TURN_IN_PROGRESS_CODE;
@@ -349,6 +349,12 @@ export interface ProviderNativeSessionIdentity {
   affinity?: ProviderSessionSourceAffinity;
 }
 
+/** Live launch facts held by the adapter, rather than inferred from persisted events. */
+interface ProviderPreparedTurnBinding {
+  readonly bindingKey: string;
+  readonly nativeIdentity: ProviderNativeSessionIdentity;
+}
+
 export interface ProviderDiscardSessionRecovery {
   sourceAffinity?: ProviderSessionSourceAffinity;
   sourceSessionId?: string;
@@ -417,6 +423,9 @@ export interface ProviderAdapterShape {
   nativeSessionIdentity?(
     resumeCursor: unknown,
   ): ProviderNativeSessionIdentity | undefined;
+  preparedTurnBinding?(
+    threadId: string,
+  ): ProviderPreparedTurnBinding | undefined;
 
   startSession(input: ProviderSessionStartInput): Promise<ProviderSession>;
   /** Optional independent-continuation capability for attached sessions. */

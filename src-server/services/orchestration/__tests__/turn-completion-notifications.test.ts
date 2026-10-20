@@ -230,6 +230,46 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     rmSync(dir, { force: true, recursive: true });
   });
 
+  test('stale invocation error on reused N cannot schedule B failure, exact B remains positive', async () => {
+    await emit('orchestration:event', {
+      event: baseEvent({
+        method: 'turn.started',
+        invocationId: 'A',
+        turnId: 'N',
+      }),
+    });
+    await emit('orchestration:event', {
+      event: baseEvent({
+        method: 'turn.started',
+        invocationId: 'B',
+        turnId: 'N',
+      }),
+    });
+    await emit('orchestration:event', {
+      event: baseEvent({
+        method: 'runtime.error',
+        invocationId: 'A',
+        turnId: 'N',
+        severity: 'error',
+        message: 'late A error',
+      }),
+    });
+    expect(await notificationService.list()).toHaveLength(0);
+    await emit('orchestration:event', {
+      event: baseEvent({
+        method: 'runtime.error',
+        invocationId: 'B',
+        turnId: 'N',
+        severity: 'error',
+        message: 'exact B error',
+      }),
+    });
+    expect(await notificationService.list()).toHaveLength(1);
+    expect((await notificationService.list())[0]).toMatchObject({
+      category: 'turn-failed',
+    });
+  });
+
   // #2589: the phone alert channels leave a notification to the
   // agent-activity card only when its writer marked it as on the card. An
   // ephemeral (webhook) session is not in the read model the card is built
