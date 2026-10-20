@@ -6,21 +6,24 @@
  *   turn, see their own title and a count of the other's.
  * - opening `/events` reports the client's build to the server update
  *   coordinator, the trigger for a newer-client check.
+ * - the coordinator's bus subscription is the runtime's real event bus, so
+ *   a settings save (`config:changed`) reaches its policy re-evaluation.
  */
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
-import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
-import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
-import { Hono } from 'hono';
-import { afterEach, describe, expect, test, vi } from 'vitest';
-import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { EventBus } from '../../../services/orchestration/event-bus.js';
-import { ServerUpdateCoordinator } from '../../../services/server-update/server-update-coordinator.js';
-import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
-import { configureRuntimeRoutes } from '../runtime-routes.js';
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { CLIENT_ORIGIN_HEADER } from "@kontourai/station-contracts/client-origin";
+import { DEFAULT_GRANT_PAIRING_SCOPE } from "@kontourai/station-contracts/environment-security";
+import type { SessionReadAuthority } from "@kontourai/station-contracts/tenancy";
+import { SERVER_EVENTS } from "@kontourai/station-contracts/runtime-events";
+import { Hono } from "hono";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { trackTempDirs } from "../../../__test-utils__/temp-dirs.js";
+import { EventBus } from "../../../services/orchestration/event-bus.js";
+import { ServerUpdateCoordinator } from "../../../services/server-update/server-update-coordinator.js";
+import { DevicePairingService } from "../../../services/ssh/device-pairing-service.js";
+import { configureRuntimeRoutes } from "../runtime-routes.js";
 
-vi.mock('../runtime-route-support.js', () => {
+vi.mock("../runtime-route-support.js", () => {
   const stub = new Proxy({}, { get: () => () => undefined });
   return {
     configureRuntimeSupportServices: () => ({
@@ -40,7 +43,7 @@ function deepStub<T extends object>(overrides: T): T {
     get(target, property) {
       if (property in target) return Reflect.get(target, property);
       const proxy: unknown = new Proxy(() => undefined, {
-        get: (_target, property) => (property === 'then' ? undefined : proxy),
+        get: (_target, property) => (property === "then" ? undefined : proxy),
       });
       return proxy;
     },
@@ -48,23 +51,23 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const LOOPBACK = {
-  incoming: { socket: { remoteAddress: '127.0.0.1' } },
+  incoming: { socket: { remoteAddress: "127.0.0.1" } },
 } as never;
 const makeTempDir = trackTempDirs();
 
 function pairDevice(pairing: DevicePairingService, name: string) {
   const offer = pairing.createOffer({
-    endpoint: 'https://station.example.test',
+    endpoint: "https://station.example.test",
     scope: DEFAULT_GRANT_PAIRING_SCOPE,
-    kind: 'device',
+    kind: "device",
   });
   const request = pairing.requestPairing({
-    requesterPosition: 'off-box',
+    requesterPosition: "off-box",
     offerId: offer.offerId,
     proof: offer.challenge,
     deviceName: name,
   });
-  pairing.confirmRequest(request.requestId, { kind: 'presented-credential' });
+  pairing.confirmRequest(request.requestId, { kind: "presented-credential" });
   const device = pairing.exchange({
     offerId: offer.offerId,
     proof: offer.challenge,
@@ -77,7 +80,7 @@ function pairDevice(pairing: DevicePairingService, name: string) {
   };
 }
 
-describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
+describe("configureRuntimeRoutes: the server update seams (#3851 F10)", () => {
   const streams: AbortController[] = [];
   afterEach(() => {
     for (const stream of streams.splice(0)) stream.abort();
@@ -85,28 +88,28 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
   });
 
   async function setup() {
-    const homeDir = makeTempDir('station-server-update-wiring-');
-    mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
+    const homeDir = makeTempDir("station-server-update-wiring-");
+    mkdirSync(join(homeDir, "security"), { mode: 0o700 });
     const pairing = new DevicePairingService({
       homeDir,
-      environmentId: '55555555-5555-4555-8555-555555555555',
+      environmentId: "55555555-5555-4555-8555-555555555555",
     });
-    const phone = pairDevice(pairing, 'phone fixture');
-    const laptop = pairDevice(pairing, 'laptop fixture');
+    const phone = pairDevice(pairing, "phone fixture");
+    const laptop = pairDevice(pairing, "laptop fixture");
     // Both run a turn; each session is owned by its device.
     const sessions = [
       {
-        threadId: 'phone-session',
+        threadId: "phone-session",
         owner: phone.owner,
-        displayTitle: 'Phone task',
-        provider: 'codex',
+        displayTitle: "Phone task",
+        provider: "codex",
         hasActiveTurn: true,
       },
       {
-        threadId: 'laptop-session',
+        threadId: "laptop-session",
         owner: laptop.owner,
-        displayTitle: 'Laptop task',
-        provider: 'claude',
+        displayTitle: "Laptop task",
+        provider: "claude",
         hasActiveTurn: true,
       },
     ];
@@ -118,8 +121,8 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
         authority: SessionReadAuthority | { kind: string },
         options?: { threadIds?: readonly string[] },
       ) => {
-        const userId = 'userId' in authority ? authority.userId : null;
-        readAuthorities.push(userId ?? 'internal');
+        const userId = "userId" in authority ? authority.userId : null;
+        readAuthorities.push(userId ?? "internal");
         return sessions
           .filter((session) => userId === null || session.owner === userId)
           .filter(
@@ -132,10 +135,11 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
       // lists it, the restart still stops it (review round 2 item 4).
       listActiveTurnThreadIds: () => [
         ...sessions.map((session) => session.threadId),
-        'webhook-session',
+        "webhook-session",
       ],
     });
     const app = new Hono();
+    const eventBus = new EventBus();
     const context = deepStub({
       projectMembership: undefined,
       projectSharedTasks: undefined,
@@ -146,7 +150,7 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
       app,
       port: 4322,
       appConfig: {},
-      eventBus: new EventBus(),
+      eventBus,
       orchestrationService,
       acpBridge: { getStatus: () => ({ connections: [] }) },
       configLoader: {
@@ -166,7 +170,7 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
       monitoringEvents: [],
       orchestrationEventStore: deepStub({
         sessionTurnBoundaryAuthority: () => ({
-          reconcile: () => ({ kind: 'available', interrupted: [] }),
+          reconcile: () => ({ kind: "available", interrupted: [] }),
         }),
       }),
       taskGraphService: { listTasks: () => [] },
@@ -188,24 +192,32 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
         devicePairing: pairing,
       }),
     });
-    Reflect.set(context as object, 'buildRuntimeContext', () => context);
+    Reflect.set(context as object, "buildRuntimeContext", () => context);
     const noted = vi.spyOn(
       ServerUpdateCoordinator.prototype,
-      'noteClientBuild',
+      "noteClientBuild",
     );
     const result = configureRuntimeRoutes(
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
     result.serverUpdate.stop();
-    return { app, phone, laptop, readAuthorities, noted };
+    return {
+      app,
+      phone,
+      laptop,
+      readAuthorities,
+      noted,
+      eventBus,
+      serverUpdate: result.serverUpdate,
+    };
   }
 
-  test('each caller sees its own running turn and only a count of the rest, an ephemeral one included', async () => {
+  test("each caller sees its own running turn and only a count of the rest, an ephemeral one included", async () => {
     const { app, phone, laptop, readAuthorities } = await setup();
     const turnsFor = async (credential: string) => {
       const response = await app.request(
-        '/api/system/core-update/running-turns',
+        "/api/system/core-update/running-turns",
         { headers: { Authorization: `Bearer ${credential}` } },
         LOOPBACK,
       );
@@ -217,13 +229,13 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
     };
     expect(await turnsFor(phone.credential)).toEqual({
       turns: [
-        expect.objectContaining({ title: 'Phone task', engine: 'codex' }),
+        expect.objectContaining({ title: "Phone task", engine: "codex" }),
       ],
       hiddenCount: 2,
     });
     expect(await turnsFor(laptop.credential)).toEqual({
       turns: [
-        expect.objectContaining({ title: 'Laptop task', engine: 'claude' }),
+        expect.objectContaining({ title: "Laptop task", engine: "claude" }),
       ],
       hiddenCount: 2,
     });
@@ -232,23 +244,58 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
     expect(readAuthorities).toContain(laptop.owner);
   });
 
-  test('opening /events reports the client’s build to the update coordinator', async () => {
+  test("opening /events reports the client’s build to the update coordinator", async () => {
     const { app, phone, noted } = await setup();
     const controller = new AbortController();
     streams.push(controller);
     const response = await app.request(
-      '/events',
+      "/events",
       {
         headers: {
           Authorization: `Bearer ${phone.credential}`,
-          'X-Station-Client-Session': 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
-          [CLIENT_ORIGIN_HEADER]: '1;web;9.9.9+abcdef0',
+          "X-Station-Client-Session": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          [CLIENT_ORIGIN_HEADER]: "1;web;9.9.9+abcdef0",
         },
         signal: controller.signal,
       },
       LOOPBACK,
     );
     expect(response.status).toBe(200);
-    await vi.waitFor(() => expect(noted).toHaveBeenCalledWith('9.9.9+abcdef0'));
+    await vi.waitFor(() => expect(noted).toHaveBeenCalledWith("9.9.9+abcdef0"));
+  });
+
+  test("a settings save on the runtime bus reaches the coordinator’s policy re-evaluation", async () => {
+    const { eventBus, serverUpdate } = await setup();
+    // This fixture is no launcher-run archive, so start() subscribes nothing
+    // (only a launcher-run server listens). Make the subscription start()
+    // would make, through the deps the runtime composed, and route it the
+    // way start() does: what is under test is that those deps reach the
+    // runtime's bus and that a config event is one the coordinator acts on.
+    const deps = Reflect.get(serverUpdate, "deps") as {
+      subscribe?: (
+        listener: (message: {
+          event: string;
+          data?: Record<string, unknown>;
+        }) => void,
+      ) => () => void;
+    };
+    const onBusEvent = Reflect.get(serverUpdate, "onBusEvent") as (message: {
+      event: string;
+      data?: Record<string, unknown>;
+    }) => void;
+    const settingsChanged = vi
+      .spyOn(serverUpdate, "settingsChanged")
+      .mockResolvedValue(undefined);
+    expect(deps.subscribe).toBeTypeOf("function");
+    const unsubscribe = deps.subscribe!((message) =>
+      onBusEvent.call(serverUpdate, message),
+    );
+    eventBus.emit(SERVER_EVENTS.AGENTS_CHANGED, {});
+    expect(settingsChanged).not.toHaveBeenCalled();
+    // The literal the config routes emit (src-server/routes/system/config.ts).
+    expect(SERVER_EVENTS.CONFIG_CHANGED).toBe("config:changed");
+    eventBus.emit(SERVER_EVENTS.CONFIG_CHANGED, { source: "config" });
+    expect(settingsChanged).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 });
