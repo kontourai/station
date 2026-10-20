@@ -10,7 +10,8 @@
 
 Status: **proposed for owner/architecture ratification**  
 Issue: [archive#529](https://github.com/kontourai/station-archive/issues/529)  
-Parent: [#30](https://github.com/kontourai/station/issues/30)
+Parent: [#30](https://github.com/kontourai/station/issues/30), closed as batched
+into the open [#1228](https://github.com/kontourai/station/issues/1228) knowledge epic.
 
 ## Decision summary
 
