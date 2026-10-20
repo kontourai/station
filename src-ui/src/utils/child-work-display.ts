@@ -71,11 +71,19 @@ export function latestChildTool(
   latestTool?: OrchestrationSessionEventWindow['latestTool'],
 ): string | undefined {
   if (latestTool !== undefined) return latestTool?.name;
+  const turnId = events.findLast(
+    (event) => event.threadId === threadId && event.method === 'turn.started',
+  )?.turnId;
   for (let index = events.length - 1; index >= 0; index--) {
     const event = events[index];
     if (event.threadId !== threadId) continue;
-    if (event.method === 'tool.started') return event.toolName;
-    if (event.method === 'turn.started') return undefined;
+    if (
+      event.method === 'tool.started' &&
+      (!turnId || !event.turnId || event.turnId === turnId)
+    )
+      return event.toolName;
+    if (event.method === 'turn.started' && event.turnId !== turnId)
+      return undefined;
   }
   return undefined;
 }

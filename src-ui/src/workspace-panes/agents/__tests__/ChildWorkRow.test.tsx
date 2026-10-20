@@ -310,15 +310,40 @@ test('a collapsed delegate polls one bounded turn, shows its own tool, and clear
 
   events.push({
     ...base,
+    turnId: 'turn-new',
+    eventId: 'steer',
+    method: 'turn.started',
+    prompt: 'Continue the same work',
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_050);
+  });
+  expect(
+    screen.getByText('Read', { selector: '.child-work-activity__name' }),
+  ).toBeTruthy();
+
+  events.push({
+    ...base,
     turnId: 'turn-next',
     eventId: 'reset',
     method: 'turn.started',
     prompt: 'Next task',
   });
+  events.push({
+    ...base,
+    turnId: 'turn-new',
+    eventId: 'late-old-turn-tool',
+    method: 'tool.started',
+    toolName: 'LateOldTool',
+    itemId: 'late-old',
+    toolCallId: 'late-old',
+    arguments: {},
+  });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2_050);
   });
   expect(screen.queryByText('Read')).toBeNull();
+  expect(screen.queryByText('LateOldTool')).toBeNull();
 
   latestTool = { turnId: 'turn-next', name: 'Write' };
   events.length = 0;
@@ -349,7 +374,7 @@ test('a collapsed delegate polls one bounded turn, shows its own tool, and clear
   expect(screen.queryByText('OlderTool')).toBeNull();
   expect(screen.getByText('Working')).toBeTruthy();
   expect(useOrchestrationSessionQuery).not.toHaveBeenCalled();
-  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(5);
   for (const [url] of fetcher.mock.calls) {
     expect(url).toBe(
       'http://station.test/api/orchestration/sessions/delegate-live/event-window?direction=newest&turnLimit=1',
@@ -359,7 +384,7 @@ test('a collapsed delegate polls one bounded turn, shows its own tool, and clear
   await act(async () => {
     await vi.advanceTimersByTimeAsync(4_000);
   });
-  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(5);
   client.clear();
 });
 
