@@ -1,5 +1,6 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
@@ -21,6 +22,8 @@ import {
 import { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
+import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -36,6 +39,7 @@ import {
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
 import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
+import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
 import { projectMcpServers } from '../../services/projects/project-tools.js';
@@ -3199,7 +3203,7 @@ export class StationRuntime {
   }
 
   private applyPersistedTelemetryConfiguration(config: AppConfig): void {
-    this.usageTelemetry?.reconfigure(config);
+    this.usageTelemetry?.reconfigure(config, true);
     reconfigureOtelTelemetryDelivery(config);
   }
 
@@ -3217,11 +3221,71 @@ export class StationRuntime {
         buildProvenance: this.buildProvenanceSnapshot ?? null,
         logger: this.logger,
         telemetrySecretResolver: this.secretBindingAdministration,
+        dailyFacts: async () => {
+          const homeDir = this.configLoader.getProjectHomeDir();
+          const pluginsDir = `${homeDir}/plugins`;
+          const countBucket = (count: number): '0' | '1' | '2-3' | '4+' =>
+            count === 0 ? '0' : count === 1 ? '1' : count <= 3 ? '2-3' : '4+';
+          const profile = new DistributionProfileService(
+            homeDir,
+            undefined,
+            this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+          );
+          const home = deriveWorkspaceHomeRoleStatus({
+            projectHomeDir: homeDir,
+            pluginsDir,
+            listContributions: () =>
+              profile.listPluginWorkspacePaneContributions(),
+          });
+          const branding = getBrandingProvider();
+          const [name, logo, theme, welcome] = await Promise.all([
+            branding.getAppName(),
+            branding.getLogo?.(),
+            branding.getTheme?.(),
+            branding.getWelcomeMessage?.(),
+          ]);
+          return {
+            paired_devices_bucket: countBucket(
+              this.environmentSecurityService.devicePairing.listDevices()
+                .length,
+            ),
+            // Installed packages have no authoritative public telemetry catalog yet.
+            private_plugins_bucket: countBucket(
+              scanInstalledPluginInventory(pluginsDir).filter(
+                (entry) => entry.state === 'valid',
+              ).length,
+            ),
+            home_replaced: home.state === 'granted',
+            branding_overridden:
+              name !== 'Station' || !!logo || !!theme || !!welcome,
+            // A saved layout may be a default copy, not evidence of customization.
+            layouts_customized: 'unknown',
+          };
+        },
       });
       this.usageTelemetry = telemetry;
       // Assignment precedes this await so subsequent PUTs reach the live owner.
       await telemetry.loadDisclosureReceipt();
       this.orchestrationService.setUsageTelemetry(telemetry);
+      this.eventBus.subscribe((frame) => {
+        if (
+          frame.event === SERVER_EVENTS.PLUGINS_INSTALLED ||
+          frame.event === SERVER_EVENTS.PLUGINS_REMOVED
+        ) {
+          void telemetry
+            .track(
+              frame.event === SERVER_EVENTS.PLUGINS_INSTALLED
+                ? 'plugin_installed'
+                : 'plugin_removed',
+              { plugin: 'custom' },
+            )
+            .catch((error) =>
+              this.logger.warn('Plugin telemetry observation failed', {
+                error: errorMessage(error),
+              }),
+            );
+        }
+      });
       return;
     }
     throw new Error(

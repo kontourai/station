@@ -65,6 +65,10 @@ import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
 } from '@kontourai/station-shared/process-identity';
+import {
+  LITE_TELEMETRY_INVENTORY_REVISION,
+  liteTelemetryNoticeText,
+} from '@kontourai/station-shared/product-telemetry';
 import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { SERVICE_LAUNCHER_ENV } from '@kontourai/station-shared/service-launcher-protocol';
 import {
@@ -4512,6 +4516,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // The desktop addresses this to its own sidecar; a server started from a
   // desktop terminal must still log to its stdout log file (#2327).
   delete serverEnv.STATION_STDOUT_LOGS;
+  delete serverEnv.STATION_STDOUT_HANDSHAKE;
   const internalApiToken = randomBytes(32).toString('base64url');
   const uiBootstrapToken = randomBytes(32).toString('base64url');
   serverEnv.STATION_INTERNAL_API_TOKEN = internalApiToken;
@@ -4565,6 +4570,22 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         poll: process.env.STATION_DEV_WATCH_POLL === '1',
       })
     : undefined;
+  let telemetryNoticesToShow: Array<'kontour' | 'operator'> = [
+    'kontour',
+    'operator',
+  ];
+  try {
+    const state = JSON.parse(
+      readFileSync(join(projectHome, 'config', 'telemetry-daily.json'), 'utf8'),
+    );
+    telemetryNoticesToShow = telemetryNoticesToShow.filter(
+      (publisher) =>
+        state.notices?.[publisher]?.inventoryRevision !==
+        LITE_TELEMETRY_INVENTORY_REVISION,
+    );
+  } catch {
+    // The server records the log receipt asynchronously after HTTP readiness.
+  }
   let serverProc: ReturnType<typeof spawn>;
   try {
     serverProc = spawn(
@@ -4786,6 +4807,8 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           { childAlive: childAliveProbe(uiProc.pid), signal },
         ),
     ]);
+    for (const publisher of telemetryNoticesToShow)
+      console.error(liteTelemetryNoticeText(publisher));
     const activeApiBase = activeLocalApiBase(host, serverPort);
     if (activeApiBase) {
       publishActiveLocalStation(

@@ -15,11 +15,14 @@
  */
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
+import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-scopes.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { FileSecretBindingAdministration } from '../../../services/secrets/secret-binding-administration.js';
 import {
   FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
@@ -217,6 +220,7 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       }),
     );
     await result.kitLifecycleReady;
+    assertRuntimeHttpRouteCoverage(app.routes);
 
     const beforeReady = await app.request(
       '/api/usage-telemetry/disclosure',
@@ -526,7 +530,7 @@ describe('persisted telemetry configuration during Agent activation', () => {
                         protocol: 'station-product-probe/v1',
                         sourceId: '22222222-2222-4333-8444-555555555555',
                         inventoryRevision:
-                          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+                          PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
                         checkedAt: '2026-10-11T06:00:00.000Z',
                         storage: 'postgres-schema-v1',
                       },
@@ -645,13 +649,13 @@ describe('persisted telemetry configuration during Agent activation', () => {
         const during = await live.deliveryStatus();
         if (productChanged) {
           expect(pendingSignal?.aborted).toBe(true);
-          expect(during.queued).toBe(0);
+          expect(during.queued).toBe('telemetryEnabled' in update ? 0 : 1);
           expect(during.counts.withdrawn).toBe(1);
           if ('telemetryEnabled' in update)
             expect(during.phase).toBe('disabled');
         } else {
           expect(pendingSignal?.aborted).toBe(false);
-          expect(during.queued).toBe(1);
+          expect(during.queued).toBe(collectorChanged ? 2 : 1);
           expect(during.lastAcknowledged).toEqual(before.lastAcknowledged);
         }
         expect(getOtelTelemetryDeliveryStatus().phase).toBe(
@@ -980,6 +984,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
     runtime.secretBindingAdministration = bindings;
     runtime.buildProvenanceSnapshot = null;
     runtime.orchestrationService = { setUsageTelemetry: vi.fn() };
+    runtime.eventBus = new EventBus();
     let releaseActivation!: () => void;
     const activation = new Promise<void>((resolve) => {
       releaseActivation = resolve;

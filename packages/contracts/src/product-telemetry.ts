@@ -224,8 +224,13 @@ export interface TelemetryOutboxEntry {
     | 'unconfigured'
     | 'overflow'
     | 'expired'
-    | 'transport';
-  payload: StationDailyPing | ProductTelemetryBatch | TelemetryFeedback;
+    | 'transport'
+    | 'invalid';
+  payload:
+    | StationDailyPing
+    | ProductTelemetryBatch
+    | TelemetryFeedback
+    | { event: 'telemetry_dropped'; count: number };
 }
 
 /** The single public inventory for Station product usage telemetry. */
@@ -411,15 +416,16 @@ export const PRODUCT_TELEMETRY_ENVELOPE = {
     inventory_revision:
       'SHA-256 of the disclosed envelope and event inventory.',
     distinct_id:
-      'SHA-256 of a separate random installation UUID concatenated with the UTC YYYY-MM; rotates monthly and is not a person identity.',
+      'SHA-256 of a separate random installation UUID concatenated with the publisher ID and UTC YYYY-MM; rotates monthly and is not a person identity.',
     events: 'One through twenty inventory observations.',
   },
   observation: {
     event_id: 'Random UUID assigned once at observation; unchanged on retry.',
     event: 'One name from the classified event inventory.',
     occurred_at:
-      'Canonical UTC producer wall-clock time when track was called.',
-    observed_at: 'Canonical UTC producer wall-clock time at buffer admission.',
+      'Canonical UTC producer wall-clock time when track was called, rounded down to the minute.',
+    observed_at:
+      'Canonical UTC producer wall-clock time at buffer admission, rounded down to the minute.',
     build:
       'Allowlisted immutable process build metadata; missing facts stay absent.',
     properties: 'Only the event-specific classified properties below.',

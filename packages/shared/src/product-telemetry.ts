@@ -379,6 +379,12 @@ export const LITE_TELEMETRY_INVENTORY_REVISION = createHash('sha256')
   .update(renderLiteTelemetryInventory())
   .digest('hex');
 
+export function liteTelemetryNoticeText(
+  publisher: 'kontour' | 'operator',
+): string {
+  return `Station telemetry (${publisher}): Lite sends one identifier-free daily aggregate when a destination is configured. Turn off with station telemetry set ${publisher} off; DO_NOT_TRACK also forces Off. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.`;
+}
+
 /** A sender must show the new notice whenever this revision changes. */
 export function hasCurrentLiteTelemetryNotice(
   receipt: { inventoryRevision: string } | undefined,
@@ -386,9 +392,13 @@ export function hasCurrentLiteTelemetryNotice(
   return receipt?.inventoryRevision === LITE_TELEMETRY_INVENTORY_REVISION;
 }
 
-export function monthlyTelemetryId(installSecret: string, date: Date): string {
+export function monthlyTelemetryId(
+  installSecret: string,
+  date: Date,
+  publisherId: string,
+): string {
   return createHash('sha256')
-    .update(installSecret + date.toISOString().slice(0, 7))
+    .update(installSecret + publisherId + date.toISOString().slice(0, 7))
     .digest('hex');
 }
 
@@ -426,7 +436,8 @@ export function mapRuntimeVersionToTelemetryVersion(version: string): string {
     : 'custom';
 }
 
-/** Registry membership comes from the public catalog, never from a syntactic ID match. */
+/** Senders validate version format with semver; receivers supply their release list.
+ * Registry membership comes from the public catalog, never from a syntactic ID match. */
 export function parseStationDailyPing(
   value: unknown,
   publicRegistryIds: readonly string[] = [],

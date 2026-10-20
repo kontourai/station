@@ -245,6 +245,18 @@ async function runProducersCommand(parsed: ParsedCoreArgs): Promise<void> {
 }
 
 export async function runTelemetryCommand(args: string[]): Promise<void> {
+  const publisherFlag = args.indexOf('--publisher');
+  if (
+    publisherFlag !== -1 &&
+    args[publisherFlag + 1] &&
+    !args[publisherFlag + 1].startsWith('--')
+  ) {
+    args = [
+      ...args.slice(0, publisherFlag),
+      `--publisher=${args[publisherFlag + 1]}`,
+      ...args.slice(publisherFlag + 2),
+    ];
+  }
   const parsed = parseCoreArgs(args);
   if (parsed.positionals[0] === 'producers') {
     await runProducersCommand(parsed);
@@ -268,6 +280,15 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       throw new Error(
         'Telemetry choices require a running Station; use its authenticated configuration API.',
       );
+  } else if (action === 'outbox') {
+    if (
+      publisher !== undefined ||
+      (parsed.flags.publisher !== undefined &&
+        !['kontour', 'operator'].includes(String(parsed.flags.publisher)))
+    )
+      throw new Error(
+        'Usage: station telemetry outbox [--publisher=kontour|operator]',
+      );
   } else if (action !== 'status' || publisher !== undefined) {
     throw new Error(
       'Usage: station telemetry status | station telemetry set <publisher> <tier> | station telemetry producers <create|list|revoke>',
@@ -275,6 +296,20 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
   }
   const resolved = resolveApiBaseDetailed(parsed);
   configureApiCredential(parsed, resolved.apiBase);
+  if (action === 'outbox') {
+    const filter =
+      typeof parsed.flags.publisher === 'string'
+        ? `?publisher=${encodeURIComponent(parsed.flags.publisher)}`
+        : '';
+    const entries = await requestJson<unknown[]>(
+      resolved.apiBase,
+      `/api/usage-telemetry/outbox${filter}`,
+    );
+    console.log(
+      JSON.stringify(entries, null, parsed.flags.json ? undefined : 2),
+    );
+    return;
+  }
   if (action === 'set')
     await requestJson(resolved.apiBase, '/config/app', {
       method: 'PUT',

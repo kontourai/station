@@ -3,6 +3,7 @@ import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-c
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { zodSchema } from 'ai';
+import packageJson from '../../../package.json' with { type: 'json' };
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
@@ -132,6 +133,7 @@ import {
   isGuideExcerptLimitError,
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
@@ -6839,8 +6841,13 @@ export function configureRuntimeRoutes(
         isBoundRuntimeLocalOperator(request) &&
         isRequestPrincipalCurrent(request),
       (config) => {
-        context.getUsageTelemetry?.()?.reconfigure(config);
+        context.getUsageTelemetry?.()?.reconfigure(config, true);
         reconfigureOtelTelemetryDelivery(config);
+      },
+      async (publisher, reason) => {
+        await context
+          .getUsageTelemetry?.()
+          ?.recordTierLowering(publisher, reason);
       },
     ),
   );
@@ -7421,7 +7428,31 @@ export function configureRuntimeRoutes(
             request.headers.get(CLIENT_ORIGIN_HEADER) ?? undefined,
           ).build,
         );
-        return clientStreamPresence.connect(request);
+        const lease = clientStreamPresence.connect(request);
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        const native = getRuntimeNativeDeviceProofPrincipal(request);
+        // The header is reported metadata, accepted only on an authenticated connection.
+        // The existing mobile origin does not distinguish iOS from Android.
+        const reported =
+          resolveClientOriginForRequest(request).reported.surface;
+        if (
+          (principal || native) &&
+          (reported === 'desktop' || reported === 'web' || reported === 'cli')
+        ) {
+          void context
+            .getUsageTelemetry?.()
+            ?.track('client_connected', {
+              surface: reported,
+              device_class: reported === 'desktop' ? 'desktop' : 'other',
+              version: packageJson.version,
+            })
+            .catch((error) =>
+              context.logger.warn('Connection telemetry observation failed', {
+                error: errorMessage(error),
+              }),
+            );
+        }
+        return lease;
       },
       isPairedDeviceConnectionCurrent: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);

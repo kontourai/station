@@ -11,9 +11,10 @@ evidence:
 
 This records the whole program direction. The foundation supplies contracts,
 configuration, migration, policy, monthly Full identity, CLI status/choice, and
-disclosure inventories and per-publisher Settings controls. Daily sending, a transparency ledger, publisher-specific consent UI,
-plugin publishers, receiver changes, dashboards, release injection and deployment
-remain separate lanes. This decision does not assert that any of them is deployed.
+disclosure inventories and per-publisher Settings controls. The daily sender lane
+adds completed-day Lite pings, the bounded local ledger, action-bound feedback and
+CLI/log notices. Publisher-specific consent UI, plugin publishers, receiver
+changes, dashboards, release injection and deployment remain separate lanes. This decision does not assert that any of them is deployed.
 The numbered ADR directory is frozen; new decisions use this topic-keyed record.
 
 ## Consent and publishers
@@ -25,13 +26,13 @@ stored in `telemetryTier` in Station configuration. Plugin publisher registratio
 and storage are future work. Sinks are independent: an operator endpoint never
 replaces, disables or grants consent to an author endpoint.
 
-Off sends nothing for that publisher. Lite is the default: one identifier-free
+Off stops automatic telemetry for that publisher. Explicit feedback for a recent
+lowering is the limited exception described below. Lite is the default: one identifier-free
 daily aggregate per publisher, after clear notice and with an always-available
 Off switch. It requires no acknowledgement. Headless/CLI/portable/Docker startup
 must print a one-time notice and record its inventory revision before Lite sends.
-An updated Lite inventory requires showing the updated notice. That notice and
-startup behavior belong to the daily sender lane, and no Lite sender exists in
-this foundation.
+An updated Lite inventory requires showing the updated notice. The daily sender implements that notice and startup behavior; desktop sidecars
+retain the UI receipt gate.
 
 Full is an explicit choice and requires the current inventory-bound disclosure
 acknowledgement. A changed Full inventory invalidates that acknowledgement. The
@@ -86,7 +87,7 @@ plugin names are permitted. Existing Full build/time metadata remains disclosed.
 New event definitions do not install new producers.
 
 Full `distinct_id` is SHA-256 of the existing random per-install UUID concatenated
-with UTC `YYYY-MM`. It rotates monthly and is never account-derived. No account
+with the publisher ID and UTC `YYYY-MM`. It rotates monthly and is never account-derived. No account
 files are read for telemetry. Identity is accessed only after Full admission and
 an endpoint is configured. Lite cannot reuse this identity. Keep retry batches
 within their identity period in a future durable sender; receivers cannot treat
@@ -99,10 +100,10 @@ means no feedback transmission; it must not create another background signal.
 
 ## Transparency and receivers
 
-A local outbox ledger will record every sent or dropped payload with publisher,
-tier, outcome and reason. Retain at most 30 days and 5 MiB, evicting oldest first;
-serve it through an authenticated API, Settings, and `station telemetry outbox`.
-This foundation defines its type and limits; it does not implement that ledger.
+The daily sender records sent payloads and coalesced dropped-observation counts
+with publisher, tier, outcome and reason in a local ledger. It retains at most
+30 days and 5 MiB, evicting oldest first, and is exposed through an authenticated
+API and `station telemetry outbox`. Settings presentation is a later UI lane.
 `station telemetry status` and `station telemetry set <publisher> <tier>` use the
 running Station's authenticated APIs and report effective policy reasons.
 
@@ -213,10 +214,11 @@ decision before changing a deployed privacy claim.
 
 The server's build banner supplies `STATION_AUTHOR_TELEMETRY_ENDPOINT`; source
 execution has an empty constant, and runtime environment cannot enable it.
-Official release workflows may inject an owner-managed repository variable in
-a later lane. Fork, development and Docker workflows must leave it empty unless
+Official release workflows inject an owner-managed repository variable when
+configured; see [author telemetry in official builds](../guides/release-rings.md#author-telemetry-in-official-builds).
+Fork, development and Docker workflows must leave it empty unless
 the owner deliberately changes their distribution policy. There is no hardcoded
-Kontour URL. Exposing a build constant adds no sender.
+Kontour URL. An empty build constant leaves the author sender inert.
 
 Do not deploy the broker, set that repository variable, publish artifacts, or
 enable real traffic as part of this program's implementation lanes. Each is an
@@ -285,3 +287,18 @@ Known residual: operator and `access:manage` callers can submit full tier maps
 without compare-and-swap. Serialized per-publisher merging preserves omitted
 publishers, but a stale full-map write can replace another caller's intervening
 choice. This foundation does not add conflict detection for those callers.
+
+
+The Lite sender reports only yesterday's completed UTC snapshot, with no backlog.
+Non-desktop starts use a first-start log notice even when a UI port is configured;
+the CLI mirrors new notices to its launching terminal. Desktop starts retain the
+UI notice gate. Unknown channel, distribution and layout-customization facts are
+explicit `unknown` values, and the changed Lite inventory invalidates old notices.
+
+Full IDs now hash `install_secret || publisherId || YYYY-MM`, separating Kontour
+and operator within the month. This disclosed envelope change also resets Full
+receipts independently of wording revision 2. Tier-change requests can include an
+optional fixed-enum reason, sent once before the lower choice is applied,
+including Off. Standalone feedback requires a lowering within 10 minutes and is
+limited to one per publisher per UTC day, sharing that budget with inline
+tier-lowering reasons. DNT permits neither path.

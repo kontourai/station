@@ -82,7 +82,19 @@
 
     "src-server/routes/system/__tests__/config-telemetry-paired.routes.test.ts",
 
-    "src-ui/src/__tests__/authorityRecoveryScope.test.tsx"
+    "src-ui/src/__tests__/authorityRecoveryScope.test.tsx",
+
+    "src-server/services/telemetry-publisher-service.ts",
+
+    "src-server/services/telemetry-local-state.ts",
+
+    "src-server/services/__tests__/telemetry-publishers.test.ts",
+
+    "src-server/utils/logger.ts",
+
+    "src-server/routes/system/build-provenance.ts",
+
+    "src-server/security/coding-authority.ts"
   ],
 
   "checks": [

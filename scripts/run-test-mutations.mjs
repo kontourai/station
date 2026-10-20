@@ -133,6 +133,95 @@ export const MUTATIONS = [
     ],
   },
   {
+    id: 'telemetry-daily-duplicate',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'persists one daily attempt across simultaneous flushes and a real service restart',
+    files: [
+      {
+        path: 'src-server/services/telemetry-publisher-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "        if ((state.attempted[publisher] ?? '') >= today) continue;",
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-empty-author',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'keeps author inert with an empty build constant even when runtime environment supplies one',
+    files: [
+      {
+        path: 'src-server/services/telemetry-publisher-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '? this.options.configuration().authorEndpoint',
+            '? this.options.configuration().authorEndpoint || this.options.operatorEndpoint()',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-full-at-lite',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'never sends a Full event at Lite; Full needs its own receipt and uses the monthly ID',
+    files: [
+      {
+        path: 'src-server/services/usage-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.resolvedConfiguration().publishers[this.publisher].tier === 'full'",
+            "this.resolvedConfiguration().publishers[this.publisher].tier !== 'off'",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-outbox-unbounded',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'outbox evicts oldest entries at both the 30-day and actual serialized 5 MiB bounds',
+    files: [
+      {
+        path: 'src-server/services/telemetry-local-state.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              'while (bytes > TELEMETRY_OUTBOX_LIMITS.maxBytes && entries.length)',
+              'while (false && entries.length)',
+            ),
+            'maxBytes: TELEMETRY_OUTBOX_LIMITS.maxBytes, label:',
+            'maxBytes: TELEMETRY_OUTBOX_LIMITS.maxBytes * 2, label:',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-muted-headless-notice',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'notice is recorded once per inventory and desktop/web must record the shown revision before Lite',
+    files: [
+      {
+        path: 'src-server/utils/logger.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  process.stderr.write(',
+            "  if (process.env.STATION_STDOUT_LOGS !== '0') process.stderr.write(",
+          ),
+      },
+    ],
+  },
+  {
     id: 'telemetry-hosted-first-write',
     test: 'src-server/__tests__/telemetry.test.ts',
     failure:

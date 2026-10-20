@@ -50,7 +50,7 @@ function createMockConfigLoader(
     mutateAppConfig: vi
       .fn()
       .mockImplementation(async (mutate: any) =>
-        loader.updateAppConfig(mutate({ ...config })),
+        loader.updateAppConfig(await mutate({ ...config })),
       ),
   };
 }
@@ -1654,7 +1654,7 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
       contribution: stale,
     });
     loader.mutateAppConfig.mockImplementation(async (mutate: any) => {
-      mutate({
+      await mutate({
         defaultModel: 'claude-3',
         region: 'us-east-1',
         contribution: winner,
@@ -1936,6 +1936,68 @@ describe('first-run decisions', () => {
 });
 
 describe('PUT /config/app refusal diagnostics', () => {
+  test.each([
+    { telemetryTier: { operator: 'off' }, telemetryFeedbackReason: 'privacy' },
+    {
+      telemetryTier: { operator: 'off' },
+      telemetryFeedbackReason: 'private text',
+    },
+    { telemetryFeedbackReason: 'privacy' },
+  ])(
+    'refuses and logs agent feedback before reason validation ($telemetryFeedbackReason)',
+    async (body) => {
+      mockLogger.warn.mockClear();
+      const loader = createMockConfigLoader({
+        telemetryTier: { operator: 'full' },
+      });
+      const feedback = vi.fn();
+      const app = new Hono();
+      app.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+          kind: 'internal',
+          credential: 'internal-test',
+          authority: 'operator-credential',
+          source: 'bearer',
+        });
+        await next();
+      });
+      app.route(
+        '/',
+        createConfigRoutes(
+          loader as never,
+          mockLogger,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          feedback,
+        ),
+      );
+      const response = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(403);
+      expect(mockLogger.warn.mock.calls).toEqual([
+        [
+          'App config update refused',
+          {
+            reason: 'telemetry_choice_not_granted',
+            principalKind: 'internal',
+            deviceKind: 'none',
+          },
+        ],
+      ]);
+      expect(loader.updateAppConfig).not.toHaveBeenCalled();
+      expect(feedback).not.toHaveBeenCalled();
+    },
+  );
+
   test.each([
     {
       reason: 'telemetry_choice_not_granted',

@@ -6,13 +6,13 @@ Station has three separate measurement paths:
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
 | OTel metrics and traces | OpenTelemetry SDK → configured collector | Saved collector address or `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
-| Full product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, operator tier resolves to Full, DO_NOT_TRACK permits sending, and the current disclosure receipt is acknowledged |
+| Product-usage telemetry | Independent publisher sinks owned by `UsageTelemetryService` | A configured address and resolved tier; Lite requires shown notice, Full requires that publisher's current disclosure receipt |
 
 Full product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every
 event. Full product telemetry is pseudonymous: its installation hash rotates
 monthly and is never linked to an account by Station. Lite is identifier-free
-by contract, but has no sender in this foundation. The optional [product receiver](../../packages/telemetry-broker/README.md)
+by contract and sends only the completed previous UTC day after notice. The optional [product receiver](../../packages/telemetry-broker/README.md)
 authenticates separate product source keys, durably commits PostgreSQL observations,
 and deduplicates retained source/event UUIDs. Its operator queries describe received
 observations with unknown delivery coverage; these observations are separate from
@@ -442,7 +442,7 @@ in its Tempo data source. No manual import is needed.
 | `STATION_EVENT_LOG_RETENTION_DAYS` | No | `30` | UTC daily monitoring files retained on disk. |
 | `STATION_EVENT_LOG_MAX_BYTES` | No | `268435456` | Maximum retained monitoring-event bytes; the active UTC day's file is protected. |
 
-Product observations use separate `STATION_PRODUCT_TELEMETRY_*` variables and
+Operator Full observations use separate `STATION_PRODUCT_TELEMETRY_*` variables and
 disclosure authority; see [usage telemetry](../reference/usage-telemetry.md).
 Legacy names remain supported until a separate release decision. Bootstrap
 notices name aliases or conflicts without printing key material.

@@ -1,0 +1,7 @@
+{
+  "revision": "e5c7f81de029fa66a1aeafb65053493bb225d430",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Re-read the Data and privacy paragraph against the regenerated working policy and inventory owner. Networked features still have separate destinations; product sending needs an endpoint, notice or Full disclosure as applicable. Minute-rounded timestamps and the shared feedback budget clarify the existing inventory without changing this guide's distinction between declared settings and verified delivery.","inputs":["docs/user/concepts.md","docs/privacy-policy.md"]}
+  ]
+}

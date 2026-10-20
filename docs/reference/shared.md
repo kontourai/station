@@ -76,6 +76,15 @@ retention and operator-only counts belong to the
 [Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
 
 
+`mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to `preview` and
+returns undefined for unmapped labels. Full omits that field; Lite supplies
+`unknown` at its sender. `parseStationDailyPing` uses the receiver's configured
+release list by default; the sender selects `semver` to admit valid versions
+or `custom` without claiming catalog membership.
+`mapRuntimeVersionToTelemetryVersion` preserves SemVer within the 64-character
+bound and maps other running versions to `custom` before daily validation.
+Source/fork versions can reuse a release version.
+
 `parseProductTelemetryCommitReceipt` additionally requires the exact requested
 event-ID set, valid timestamp and matching inserted/duplicate counts before a
 sender can remove that batch. `parseProductTelemetryProbeRequest` and

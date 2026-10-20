@@ -19,7 +19,11 @@ import {
   PAIRING_SCOPE_INFERENCE_INVOKE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
-import type { TelemetryTier } from '@kontourai/station-contracts/product-telemetry';
+import {
+  TELEMETRY_FEEDBACK_REASONS,
+  type TelemetryFeedbackReason,
+  type TelemetryTier,
+} from '@kontourai/station-contracts/product-telemetry';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -254,6 +258,10 @@ export function createConfigRoutes(
   readProject?: (slug: string) => ProjectConfig | undefined,
   authorizeContributionMutation?: (request: Request) => boolean,
   onAppConfigPersisted?: (config: AppConfig) => void,
+  onTelemetryTierLowering?: (
+    publisher: 'kontour' | 'operator',
+    reason?: TelemetryFeedbackReason,
+  ) => Promise<void>,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -444,6 +452,25 @@ export function createConfigRoutes(
     try {
       configOps.add(1, { op: 'update_app' });
       const body = getBody(c);
+      if (
+        Object.hasOwn(body as object, 'telemetryFeedbackReason') &&
+        requestMayBeAnAgent(c.req.raw)
+      )
+        throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
+      const reason = (body as Record<string, unknown>).telemetryFeedbackReason;
+      if (
+        reason !== undefined &&
+        (!TELEMETRY_FEEDBACK_REASONS.some((allowed) => allowed === reason) ||
+          !Object.hasOwn(body as object, 'telemetryTier'))
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'telemetryFeedbackReason requires a tier change and a fixed-enum reason.',
+          },
+          400,
+        );
       if (Object.hasOwn(body as object, 'telemetryTier')) {
         const tiers = (body as Record<string, unknown>).telemetryTier;
         if (
@@ -687,7 +714,10 @@ export function createConfigRoutes(
         );
       }
 
-      const { accepted, ignored, violations } = sanitizeAppConfigUpdate(body);
+      const settings = { ...(body as Record<string, unknown>) };
+      delete settings.telemetryFeedbackReason;
+      const { accepted, ignored, violations } =
+        sanitizeAppConfigUpdate(settings);
       if (violations.length > 0) {
         return c.json(
           {
@@ -762,9 +792,10 @@ export function createConfigRoutes(
       const priorBuiltinEngineConnectionId =
         priorConfig.builtinAgentEngineConnectionId;
       const contributionRequested = Object.hasOwn(accepted, 'contribution');
+      const lowerings: Array<'kontour' | 'operator'> = [];
       const update = async (beginMutation: () => void) => {
         beginMutation();
-        const updated = await configLoader.mutateAppConfig((current) => {
+        const updated = await configLoader.mutateAppConfig(async (current) => {
           if (writesTelemetryChoice) {
             const next = mergeAppConfigUpdate(current, accepted);
             const rank = { off: 0, lite: 1, full: 2 } as const;
@@ -784,6 +815,11 @@ export function createConfigRoutes(
               >;
               const before = current.telemetryTier?.[key] ?? defaults[key].tier;
               const after = next.telemetryTier?.[key] ?? defaults[key].tier;
+              if (
+                rank[after] < rank[before] &&
+                (key === 'kontour' || key === 'operator')
+              )
+                lowerings.push(key);
               telemetryChanges[key] = { before, after };
             }
             if (
@@ -828,6 +864,19 @@ export function createConfigRoutes(
             !mayRaiseDefaultToFullAccess
           ) {
             throw new Error(FULL_ACCESS_DEFAULT_NOT_GRANTED);
+          }
+          for (const publisher of lowerings) {
+            try {
+              await onTelemetryTierLowering?.(
+                publisher,
+                reason as TelemetryFeedbackReason | undefined,
+              );
+            } catch (error) {
+              logger.warn(
+                'Telemetry feedback unavailable; applying the lower tier.',
+                { error },
+              );
+            }
           }
           return accepted;
         });

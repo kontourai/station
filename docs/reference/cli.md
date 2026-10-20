@@ -708,6 +708,7 @@ publisher's choice through its authenticated configuration API:
 station telemetry status
 station telemetry set kontour off
 station telemetry set operator full
+station telemetry outbox --publisher operator
 ```
 
 Status prints each publisher's tier and reason: `DNT`, `policy`, `default`,
@@ -717,8 +718,11 @@ been acknowledged. DNT forces Off. Changing one publisher preserves the other.
 Operator environment-limited status also explains that restoring Full delivery requires an
 explicit config choice (`station telemetry set operator full`) and acknowledgement
 in Settings; a legacy environment true plus a receipt no longer enables Full.
-Lite sending and `station telemetry outbox` belong to later implementation lanes;
-these commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
+The outbox command prints the local 30-day/5-MiB payload ledger, optionally
+filtered by publisher. Non-desktop `station start` and `service run` print Lite
+notices in the terminal after readiness when the pre-launch state lacks a current
+receipt; unattended starts retain the first-start notice in
+their logs. These commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
 
 `station telemetry producers` manages the tokens external telemetry producers
 (for example Flow Agents' Codex and Claude Code hooks) send to Station's

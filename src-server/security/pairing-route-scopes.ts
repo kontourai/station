@@ -699,6 +699,20 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/api/usage-telemetry/feedback:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/feedback',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/usage-telemetry/lite-notices:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/lite-notices',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/usage-telemetry/connection-checks:manage',
     method: 'POST',
     prefix: '/api/usage-telemetry/connection-checks',

@@ -170,6 +170,34 @@ describe('telemetry commands', () => {
     });
     expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
   });
+  test.each([['--publisher=operator'], ['--publisher', 'operator']])(
+    'outbox prints the server ledger with publisher filter %j',
+    async (...filter) => {
+      const entries = [
+        {
+          publisher: 'operator',
+          tier: 'lite',
+          outcome: 'dropped',
+          reason: 'off',
+          payload: { event: 'station_daily' },
+        },
+      ];
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ success: true, data: entries }),
+      );
+      const { runTelemetryCommand } = await import('../commands/telemetry.js');
+      await runTelemetryCommand([
+        'outbox',
+        ...filter,
+        '--json',
+        '--api-base=http://127.0.0.1:43129',
+      ]);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://127.0.0.1:43129/api/usage-telemetry/outbox?publisher=operator',
+      );
+      expect(consoleLog).toHaveBeenCalledWith(JSON.stringify(entries));
+    },
+  );
   test('invalid publisher/tier is refused before any request', async () => {
     const { runTelemetryCommand } = await import('../commands/telemetry.js');
     await expect(
