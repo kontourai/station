@@ -1,5 +1,7 @@
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type TestInfo } from '@playwright/test';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   installMockOrchestrationSse,
@@ -40,10 +42,20 @@ async function reviewItem(page: Page, title: string) {
   const row = page
     .locator('#station-main .split-pane__item-row')
     .filter({ has: page.getByRole('button', { name: title, exact: true }) });
-  await row.getByRole('button', { name: 'More actions', exact: true }).click();
+  await row.getByRole('button', { name: 'More actions', exact: true }).focus();
+  await page.keyboard.press('Enter');
   await page
     .getByRole('menuitem', { name: 'Quick review', exact: true })
-    .click();
+    .press('Enter');
+}
+
+async function capture(page: Page, testInfo: TestInfo, name: string) {
+  const path = testInfo.outputPath(name);
+  await page.screenshot({ path: testInfo.outputPath(name) });
+  if (process.env.STATION_E2E_GALLERY_DIR) {
+    mkdirSync(process.env.STATION_E2E_GALLERY_DIR, { recursive: true });
+    copyFileSync(path, resolve(process.env.STATION_E2E_GALLERY_DIR, name));
+  }
 }
 
 test('Activity reviews filtered siblings in Related with Main preserved, and uses one real phone child history entry', async ({
@@ -84,6 +96,9 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
     .click();
   const search = main.getByPlaceholder('Search activity…');
   await search.fill('Review activity');
+  await main
+    .getByRole('combobox', { name: 'Kind', exact: true })
+    .selectOption('conversations');
   const list = main.locator('.split-pane__list');
   await expect(
     main.getByRole('button', { name: 'Other activity 02', exact: true }),
@@ -91,9 +106,7 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   await list.hover();
   await page.mouse.wheel(0, 200);
   const scrollBefore = await list.evaluate((element) => element.scrollTop);
-  await page.screenshot({
-    path: testInfo.outputPath('activity-review-before.png'),
-  });
+  await capture(page, testInfo, 'activity-review-before.png');
   await reviewItem(page, 'Review activity 04');
   const review = page.getByRole('region', {
     name: 'Activity quick review',
@@ -102,6 +115,26 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   await expect(
     review.getByRole('heading', { name: 'Review activity 04', exact: true }),
   ).toBeVisible();
+  await expect(
+    review.getByRole('heading', { name: 'Quick review', exact: true }),
+  ).toBeFocused();
+  const composer = review.getByRole('textbox', {
+    name: 'Message',
+    exact: true,
+  });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Unsent related review reply');
+  await expect(
+    review.getByRole('button', { name: 'Opened', exact: true }),
+  ).toBeDisabled();
+  await review.getByRole('button', { name: 'Next', exact: true }).click();
+  const cancel = page.getByRole('dialog', {
+    name: 'Unsaved Changes',
+    exact: true,
+  });
+  await cancel.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(composer).toHaveValue('Unsent related review reply');
+  await composer.fill('');
   await expect(
     page.locator('.chat-dock--right .activity-review'),
   ).toBeVisible();
@@ -170,9 +203,7 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
       (value) => document.documentElement.setAttribute('data-theme', value),
       theme,
     );
-    await page.screenshot({
-      path: testInfo.outputPath(`activity-review-${theme}.png`),
-    });
+    await capture(page, testInfo, `activity-review-${theme}.png`);
   }
   await review
     .getByRole('button', { name: 'Close review', exact: true })
@@ -195,9 +226,14 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   await expect(
     review.getByRole('heading', { name: 'Review activity 04', exact: true }),
   ).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath('activity-review-phone.png'),
-  });
+  for (const control of ['Previous', 'Next']) {
+    const bounds = await review
+      .getByRole('button', { name: control, exact: true })
+      .boundingBox();
+    expect(bounds?.width).toBeGreaterThanOrEqual(44);
+    expect(bounds?.height).toBeGreaterThanOrEqual(44);
+  }
+  await capture(page, testInfo, 'activity-review-phone.png');
   await review
     .getByRole('button', { name: 'Up to Activity', exact: true })
     .click();

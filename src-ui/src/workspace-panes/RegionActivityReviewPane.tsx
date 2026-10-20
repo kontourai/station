@@ -12,7 +12,10 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
+import { IconButton } from '../components/IconButton';
+import { ArrowLeftGlyph, ArrowRightGlyph } from '../components/icons/Glyph';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useActivityReview } from '../contexts/ActivityReviewContext';
@@ -103,7 +106,10 @@ function ActivityReviewPane({ id }: { id: string }) {
     source !== null &&
     source.stationId === relation.stationId &&
     source.apiBase === apiBase &&
-    openerSelectionKey(source.opener) === openerSelectionKey(relation.opener);
+    source.opener.occurrenceId === relation.opener.occurrenceId &&
+    (relation.kept ||
+      openerSelectionKey(source.opener) ===
+        openerSelectionKey(relation.opener));
   const index = sameSource
     ? source.items.findIndex(
         (item) =>
@@ -177,43 +183,59 @@ function ActivityReviewPane({ id }: { id: string }) {
         <h2 tabIndex={-1} ref={heading}>
           Quick review
         </h2>
-        <Button
-          variant="ghost"
+        <IconButton
+          aria-label="Previous"
+          title="Previous visible activity"
           size="sm"
           disabled={!previous || pending}
           onClick={() => previous && move(previous.threadId)}
         >
-          Previous
-        </Button>
-        <Button
-          variant="ghost"
+          <ArrowLeftGlyph />
+        </IconButton>
+        <IconButton
+          aria-label="Next"
+          title="Next visible activity"
           size="sm"
           disabled={!next || pending}
           onClick={() => next && move(next.threadId)}
         >
-          Next
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={!exact || pending || !relation || relation.kept}
-          onClick={() => void open()}
-        >
-          {relation?.kept ? 'Opened' : 'Open'}
-        </Button>
-        {action?.kind === 'rehydrate' && (
-          <Button variant="ghost" size="sm" onClick={openConversation}>
-            Open conversation
-          </Button>
-        )}
-        <Button variant="ghost" size="sm" onClick={() => review.close(id)}>
-          Close review
-        </Button>
+          <ArrowRightGlyph />
+        </IconButton>
+        <ActionRow
+          overflowLabel="More review actions"
+          primary={
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!exact || pending || !relation || relation.kept}
+              onClick={() => void open()}
+            >
+              {relation?.kept ? 'Opened' : 'Open'}
+            </Button>
+          }
+          secondary={
+            <Button variant="ghost" size="sm" onClick={() => review.close(id)}>
+              Close review
+            </Button>
+          }
+          overflow={
+            action?.kind === 'rehydrate'
+              ? [
+                  {
+                    key: 'open-conversation',
+                    label: 'Open conversation',
+                    onSelect: openConversation,
+                  },
+                ]
+              : []
+          }
+        />
       </div>
       {index < 0 && (
         <p className="activity-review__notice" role="status">
-          This item is outside Activity’s current visible results. Return to
-          Activity to choose another item.
+          {sameSource
+            ? 'This item is outside Activity’s current visible results. Return to Activity to choose another item.'
+            : 'Activity is no longer showing this review’s source. Return to Activity to start a new review.'}
         </p>
       )}
       {!state ? (
@@ -247,6 +269,7 @@ function ActivityReviewPane({ id }: { id: string }) {
           <SessionDetail
             key={`${apiBase}\0${session.threadId}`}
             apiBase={apiBase}
+            persistDraft
             session={session}
             onTaskChanged={() => void query.refetch()}
             getSelectionIntent={() => intent.current}

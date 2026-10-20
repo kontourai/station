@@ -15,7 +15,15 @@ import {
 } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useToast } from '../../contexts/ToastContext';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
@@ -88,6 +96,7 @@ function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
 }
 
 export function AttachedSessionDetail({
+  persistDraft = false,
   apiBase,
   chatFontSize = 14,
   showHeader = false,
@@ -110,6 +119,7 @@ export function AttachedSessionDetail({
   onRetryCapabilityRecovery,
   visualViewport,
 }: {
+  persistDraft?: boolean;
   /**
    * #3552: the same chat everywhere. Activity's pane has no surrounding
    * chrome, so it shows the conversation's name and origin above it; the dock
@@ -219,7 +229,21 @@ export function AttachedSessionDetail({
   );
   const [replyRequested, setReplyRequested] = useState(false);
   const unavailableReasonId = useId();
-  const [draft, setDraft] = useState('');
+  const [localDraft, setLocalDraft] = useState('');
+  const savedDraft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
+    persistDraft
+      ? chatDraftsStore.getActivityDraft(apiBase, session.threadId)
+      : '',
+  );
+  const draft = persistDraft ? savedDraft : localDraft;
+  const setDraft = useCallback(
+    (value: string) => {
+      if (persistDraft)
+        chatDraftsStore.setActivityDraft(apiBase, session.threadId, value);
+      else setLocalDraft(value);
+    },
+    [persistDraft, apiBase, session.threadId],
+  );
   const confirmedDraft = useRef('');
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
@@ -496,7 +520,7 @@ export function AttachedSessionDetail({
     };
     receive();
     return subscribeAttachedContinuationHandoff(receive);
-  }, [handsOff, session.threadId, continuationSupported]);
+  }, [handsOff, session.threadId, continuationSupported, setDraft]);
 
   return (
     <section

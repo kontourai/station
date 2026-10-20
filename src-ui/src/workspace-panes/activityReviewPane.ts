@@ -2,6 +2,7 @@ import {
   parseWorkspacePaneInstance,
   WORKSPACE_PANE_CONTRACT_VERSION,
 } from '@kontourai/station-contracts/workspace-pane';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { removeFencedRecord, removePaneFence } from '../regions/pane-fence';
 import type { PaneRelationTarget } from '../regions/pane-relations';
 
@@ -77,7 +78,7 @@ export function activityReviewInstance(id: string) {
 }
 
 export function prepareActivityReviewPane(state: ActivityReviewPaneState) {
-  const id = `activity-review:${crypto.randomUUID().replaceAll('-', '')}`;
+  const id = `activity-review:${randomCorrelationId().replaceAll('-', '')}`;
   const storage = window.localStorage;
   const key = `${STATE_PREFIX}${id}`;
   let written = false;

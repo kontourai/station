@@ -319,10 +319,18 @@ function ActivityUp({
   const model = useRegionModelOptional();
   const leaveFor = useLeaveFor(instanceId);
   const relations = usePaneRelations();
+  const live = useRef({ model, relations });
+  live.current = { model, relations };
   const up = () => {
     if (opener.source.kind !== 'activity') return;
+    const station = relations.stationId;
+    const sourceSelection = relations.currentSelection('activity');
+    const current = () =>
+      live.current.relations.stationId === station &&
+      live.current.relations.currentSelection('activity') === sourceSelection;
     const selected = opener.source.selectedThreadId;
     const reveal = () => {
+      if (!current()) return;
       const unchanged =
         relations.currentSelection('activity') === `activity:${selected ?? ''}`;
       if (!unchanged && selected)
@@ -330,7 +338,7 @@ function ActivityUp({
       else showSurface('activity');
     };
     if (model?.phoneLayer?.surfaceId === instanceId)
-      model.closePhoneLayer(reveal);
+      model.closePhoneLayer(reveal, current);
     else leaveFor('activity', reveal);
   };
   return <UpButton label={opener.label} onUp={up} />;

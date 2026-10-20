@@ -12,6 +12,10 @@
   font-size: var(--k-text-sm);
 }
 
+.activity-review__toolbar > .icon-button {
+  --icon-button-size: 44px;
+}
+
 .activity-review__detail {
   display: flex;
   flex: 1 1 auto;

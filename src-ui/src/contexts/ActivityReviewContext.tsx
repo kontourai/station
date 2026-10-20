@@ -77,7 +77,12 @@ export function ActivityReviewProvider({ children }: { children: ReactNode }) {
         source.restoreFocus();
     };
     if (initialModel.phoneLayer?.surfaceId === instanceId) {
-      initialModel.closePhoneLayer(restoreFocus);
+      initialModel.closePhoneLayer(
+        restoreFocus,
+        () =>
+          live.current.relations.stationId === relation.stationId &&
+          live.current.relations.relationOf(instanceId) === relation,
+      );
       return;
     }
     const region = occupiedDockRegion(initialModel.readRegions(), instanceId);

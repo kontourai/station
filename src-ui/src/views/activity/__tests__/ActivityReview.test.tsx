@@ -119,7 +119,7 @@ function App() {
           <RegionModelProvider>
             <PaneRelationsProvider>
               <ActivityReviewProvider>
-                <SessionsView apiBase="http://station.test" />
+                <SessionsView apiBase="http://station.test" quickReview />
                 <RelatedRegion />
               </ActivityReviewProvider>
             </PaneRelationsProvider>
@@ -289,28 +289,77 @@ test('dataset changes remove adjacency without falling through to unfiltered ite
   expect(within(review()).getByText('Transcript: Review beta')).toBeTruthy();
 });
 
-test('a target removed from the filtered source while its covered owner answers a guard is refused without writes', async () => {
-  const view = await mount();
+test.each(['removed-target', 'station-changed', 'new-guard'])(
+  'an Activity open rechecks %s after its covered owner answers a guard',
+  async (change) => {
+    const view = await mount();
+    await quickReview('Review alpha');
+    await within(review()).findByText('Transcript: Review alpha');
+    let proceed: (() => void) | undefined;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('covered work'),
+      (accept) => {
+        proceed = accept;
+      },
+      model.regions.right.occupant,
+    );
+    await settledStorageSnapshot();
+    await quickReview('Review beta');
+    expect(proceed).toBeDefined();
+    let unregisterNew = () => {};
+    if (change === 'removed-target') {
+      sessions = sessions.filter((item) => item.threadId !== 'b');
+      view.refresh();
+    } else if (change === 'station-changed') {
+      await act(async () => {
+        authoritySwitch.set?.({ station: 'station-b' });
+      });
+    } else {
+      unregisterNew = navigationStore.registerNavigationGuard(
+        Symbol('newly dirty'),
+        (accept) => accept(),
+        model.regions.right.occupant,
+      );
+    }
+    const before = await settledStorageSnapshot();
+    await act(async () => {
+      proceed?.();
+    });
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(saved()[0]?.target).toMatchObject({ threadId: 'a' });
+    unregisterNew();
+    unregister();
+  },
+);
+
+test('a delayed Close cannot remove a review that moved to another region', async () => {
+  await mount();
   await quickReview('Review alpha');
   await within(review()).findByText('Transcript: Review alpha');
+  const id = model.regions.right.occupant;
+  if (!id) throw new Error('No review');
   let proceed: (() => void) | undefined;
   const unregister = navigationStore.registerNavigationGuard(
-    Symbol('covered work'),
+    Symbol('close owner'),
     (accept) => {
       proceed = accept;
     },
-    model.regions.right.occupant,
+    id,
   );
+  await waitFor(() => expect(saved()[0]?.kept).toBe(true));
+  fireEvent.click(
+    within(review()).getByRole('button', { name: 'Close review' }),
+  );
+  await act(async () => {
+    model.placeSurface(id, 'bottom');
+  });
   const before = await settledStorageSnapshot();
-  await quickReview('Review beta');
-  expect(proceed).toBeDefined();
-  sessions = sessions.filter((item) => item.threadId !== 'b');
-  view.refresh();
   await act(async () => {
     proceed?.();
   });
   expect(await settledStorageSnapshot()).toEqual(before);
-  expect(within(review()).getByText('Transcript: Review alpha')).toBeTruthy();
+  expect(model.regions.bottom.panes).toContain(id);
+  expect(saved()).toHaveLength(1);
   unregister();
 });
 

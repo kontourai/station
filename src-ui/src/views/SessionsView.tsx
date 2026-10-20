@@ -295,6 +295,7 @@ function ActivityRowMeta({
 
 export function SessionsView({
   apiBase,
+  quickReview = false,
   sessionId,
   focusHint,
   intentToken,
@@ -302,6 +303,7 @@ export function SessionsView({
   onContinueInChat,
 }: {
   apiBase: string;
+  quickReview?: boolean;
   sessionId?: string;
   /**
    * Region-owned one-shot intent for a selected session's evidence:
@@ -376,7 +378,8 @@ export function SessionsView({
   const review = useActivityReview();
   const relations = usePaneRelations();
   const regionModel = useRegionModelOptional();
-  const hasReviewSource = regionModel?.regions.main.occupant === 'activity';
+  const hasReviewSource =
+    quickReview && regionModel?.regions.main.occupant === 'activity';
   const regionModelRef = useRef(regionModel);
   useLayoutEffect(() => {
     regionModelRef.current = regionModel;

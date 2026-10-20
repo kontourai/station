@@ -24,6 +24,7 @@ export function SessionDetail({
   presentation = 'inspector',
   openingContinuation,
   continuationCreated,
+  persistDraft,
 }: {
   /** Activity hands an external conversation's message to the dock. */
   onContinueInChat?: (draft: string) => void;
@@ -31,6 +32,7 @@ export function SessionDetail({
   presentation?: 'inspector' | 'chat';
   openingContinuation?: boolean;
   continuationCreated?: boolean;
+  persistDraft?: boolean;
   apiBase: string;
   chatFontSize?: number;
   session: OrchestrationSessionSummary;
@@ -114,6 +116,7 @@ export function SessionDetail({
         <AttachedSessionDetail
           key={session.threadId}
           apiBase={apiBase}
+          persistDraft={persistDraft}
           showHeader={presentation !== 'chat'}
           chatFontSize={chatFontSize}
           openingContinuation={openingContinuation}

@@ -108,6 +108,29 @@ test.describe('related panes from an installed plugin', () => {
     }
   });
 
+  test('a real SDK plugin child names its captured Reports opener in the phone Back control', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(reportsRoute);
+    await expect(
+      reports(page).getByRole('heading', { name: 'Reports' }),
+    ).toBeVisible({ timeout: 30_000 });
+    await openFromList(page, 'Open Weekly report');
+    await expect(
+      page.getByRole('article', { name: 'Weekly report' }),
+    ).toContainText('Seven days of work, summarised.');
+    await page
+      .getByRole('button', { name: 'Back to Reports', exact: true })
+      .click();
+    await expect(
+      page.getByRole('article', { name: 'Weekly report' }),
+    ).toHaveCount(0);
+    await expect(
+      reports(page).getByRole('heading', { name: 'Reports' }),
+    ).toBeVisible();
+  });
+
   test('opens, replaces, focuses, keeps and closes its own report panes, and a removed plugin’s pane runs no plugin code', async ({
     page,
   }) => {
