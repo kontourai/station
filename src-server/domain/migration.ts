@@ -12,9 +12,9 @@ import type {
   LayoutDefinition,
 } from '@kontourai/station-contracts/layout';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import { createLogger } from '../utils/logger.js';
 import { FileStorageAdapter } from './file-storage-adapter.js';
 import { runOrchestrationEventMigration } from './migrations/003-orchestration-events.js';
-import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger({ name: 'startup-migration' });
 
