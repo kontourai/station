@@ -7,6 +7,7 @@ import type {
   PluginCommandEffectRequirementContext,
 } from '@kontourai/station-contracts/plugin-command-effect';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import { isRecord } from '../../utils/is-record.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import { isExecutablePluginCommand } from './plugin-command-declarations.js';
 import {
@@ -115,10 +116,6 @@ const CONTEXT_FIELDS = [
   'taskId',
 ] as const;
 const CONTEXT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 /** Strict route-seam parse; unknown fields are refused, never ignored. */
 function parsePluginCommandEffectAdmissionRequest(

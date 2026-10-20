@@ -233,7 +233,7 @@ export function EnginesStep({
           </ul>
           {/* A batch with a FAILURE has not done what the chapter offered to
               do, so it does not get a single "Continue" that walks on as if it
-              had (review H1). The two honest exits are: try the ones that
+              had. The two honest exits are: try the ones that
               failed again, or go on WITHOUT them — and the second one is not a
               completed first run, which is why it is a different callback and
               not this one with a different label. Warnings are not failures:

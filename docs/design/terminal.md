@@ -1,5 +1,7 @@
 # Integrated terminal
 
+Status: Proposal — unscheduled; no tracking issue as of 2026-10-20.
+
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. Nothing here is implemented yet; the current behavior is
 > owned by [`TerminalService`](../../src-server/services/terminal/terminal-service.ts),
@@ -57,8 +59,8 @@ stack has structural problems that incremental fixes would not remove:
   `-o nopromptsp`; `COLORTERM=truecolor`; scrubbed server-private variables.
 - Ghostty's official `libghostty-vt` emulator compiled to WebAssembly, with
   a Station-owned browser surface (input, IME, selection, links, rendering).
-- Splits and groups, thread-scoped layout reconciled against the server's
-  session list, keep-mounted recent drawers.
+- Splits and groups kept in a per-binding server record reconciled against
+  the live session list, keep-mounted recent drawers.
 - "Add to chat" as a composer chip with line ranges; URL and `path:line:col`
   links routed to the preview pane and the editor.
 - Script runs whose completion is detected by a per-run random end marker
@@ -111,8 +113,9 @@ resize, signal, list, and journal reads. Two implementations:
   is the fallback when no supervisor is present.
 
 The supervisor survives a core server restart or upgrade, not a machine
-reboot. After a reboot, Station restores the layout instead: the same
-terminals reopen in the same working directories with their journals shown
+reboot. After a reboot, Station restores instead: the server record reopens
+the same terminals, groups, and splits, and the pane workspace restores where
+they are shown. The terminals reopen in the same working directories with their journals shown
 above a "restored after restart" divider. Nothing is re-run automatically.
 
 #### Session kinds
@@ -134,7 +137,9 @@ only spawns, relays bytes, and writes journals.
 
 ### Sessions
 
-A session's identity is `(projectId, bindingKey, terminalId)`, where
+Every session has a server-generated `terminalId` that is unique across the
+instance; today's ids are unique only within a project and are replaced. The
+session also records `(projectId, bindingKey)`, its authorization scope, where
 `bindingKey` is a thread, a worktree, or the project itself. The server
 resolves the working directory from the binding: thread worktree, else the
 configured project working directory. A client may request a subdirectory,
@@ -205,10 +210,19 @@ route ships.
 
 ### Client runtime
 
-A terminal session store in `@kontourai/station-sdk` owns sockets, channels, sequence
-tracking, the bounded client buffer, and command serialization (lifecycle
-commands in order, resize latest-wins). UI components subscribe to it; React
-state never enters the render loop.
+`@kontourai/station-sdk` exports the whole client terminal:
+
+- A terminal session store that owns sockets, channels, sequence tracking,
+  the bounded client buffer, and command serialization (lifecycle commands in
+  order, resize latest-wins). UI components subscribe to it; React state
+  never enters the render loop.
+- The terminal view component: the emulator adapter below, its input, and
+  its accessibility mirror.
+
+The Coding layout uses only this public surface and the `terminal` pane
+target described under Plugins, the same surface a plugin gets. A boundary test fails if anything
+under `src-ui/src/components/coding-layout/` imports terminal internals. A
+sample plugin opens and renders a terminal pane, which proves the parity.
 
 ### Emulator
 
@@ -273,12 +287,48 @@ regression. The emulator phase does not ship until this exists:
   terminal route.
 - The Coding layout keeps a resizable lower drawer with tabs, groups, and up
   to four splits per group.
-- Layout state (open, height, groups, active terminal) is stored per binding
-  on the server and reconciled with the live session list. This replaces the
-  unscoped `coding-terminal-tabs` sessionStorage key.
+- State has two owners, and no field is written by both:
+  - **Presentation** belongs to the pane workspace contract (#3875): whether
+    the terminal pane or drawer is shown, where, its toggles, and its size or
+    height. Coding's panel writer and the region arrangement keep these.
+  - **Content** belongs to the terminal server record, stored per binding and
+    reconciled with the live session list: which terminals and groups exist,
+    the split arrangement and sizes inside the terminal pane, and the active
+    terminal. This replaces the unscoped `coding-terminal-tabs`
+    sessionStorage key.
+- Terminal identity is the server's `terminalId`. Presentation state is keyed
+  by Station and `terminalId`, never by a pane key. The pane keys
+  `workspace-coding-terminal` and `pane:builtin:coding:terminal` become
+  presentation aliases that resolve to the binding's terminal group; nothing
+  infers a process from equal pane keys.
 - Default shortcuts: toggle drawer, new terminal, split, split vertical,
   close, find. Registered in the shortcut registry so they appear in the
   shortcut list.
+
+### Plugins
+
+A plugin opens a terminal through the pane workspace's open, reveal, and
+close capability. The pane relationships contract (#3875) specifies it; it is
+not yet implemented. The terminal is a closed built-in target rather than a
+plugin-supplied key:
+
+- The target shape is plain data declared in the pane host contract,
+  `{ kind: 'terminal'; binding; terminalId?; new?: { profile? } }`, where
+  `binding` is a session's `bindingKey`. The terminal contracts module
+  re-exports it. It carries no working directory: the server decides the cwd
+  from the binding.
+- The pane host stamps the opener, the exact Station, and the occurrence's
+  captured context. The binding, and the session of any `terminalId`, must
+  fall inside that captured Project on that Station. Otherwise the open is
+  reported as the contract's context mismatch, so a plugin cannot name a
+  thread in another project even where it holds a grant.
+- Station's terminal host binding then checks the caller's own grants for
+  that project. Creating a terminal (`new`) needs `terminal:operate`. Opening
+  an existing `terminalId` needs `terminal:observe` and is read-only unless
+  the caller also holds `terminal:operate`. Holding a pane or plugin grant
+  never implies terminal access.
+- The pane host reports the outcome (opened, focused, replaced, unavailable,
+  or context mismatch) in the same form it uses for its other targets.
 
 ### Agent integration
 
@@ -300,12 +350,13 @@ regression. The emulator phase does not ship until this exists:
 | Current surface | Outcome |
 | --- | --- |
 | `port + 1` WebSocket, `GET /api/system/terminal-port`, SDK `fetchTerminalPort` | Removed after the new socket ships |
-| `DELETE /api/projects/:slug/terminals/:terminalId` | Kept, backed by the new session store |
+| `DELETE /api/projects/:slug/terminals/:terminalId` | Kept, backed by the new session store; the server rejects an id whose session is not in `:slug` |
+| Project-scoped terminal ids | Mapped once to new instance-unique ids when their history and stored tabs are imported |
 | `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept |
 | `POST /api/coding/exec` fallback | Kept for hosts without node-pty |
 | `PAIRING_SCOPE_TERMINAL_OPERATE` | Kept; `terminal:observe` added |
 | `terminalShell` setting, `TerminalCapability`, system-status `terminal` | Kept |
-| `coding-terminal-*` sessionStorage keys | Migrated once into server layout state, then ignored |
+| `coding-terminal-*` sessionStorage keys | Content (tabs, active terminal) migrated once into the server record; presentation (open, height) imported once by Coding's panel writer; then ignored |
 | `terminal-history/<id>.txt` | Imported as a first journal segment on first attach |
 | `pane:builtin:coding:terminal` | Kept as an alias of the new terminal pane |
 | `station.terminal.operations` metric, `station doctor` PTY probe | Kept; doctor also reports shell hosts |
@@ -326,7 +377,11 @@ verification.
 3. **Emulator:** Station's Ghostty adapter, theming, find, links, context menu, and the
    accessibility requirements above.
 4. **Layout:** terminal pane, standalone route, Coding drawer with groups and
-   splits, server-side layout state, shortcuts.
+   splits on the pane workspace's presentation seams, server-side content
+   state, shortcuts, the SDK view export with its boundary test, the terminal
+   pane target, and the sample plugin. The pane target and the sample plugin
+   depend on the pane workspace capability specified in #3875, which is not
+   yet implemented.
 5. **Agent integration:** add to chat, script runner, agent tools.
 6. **Removal:** old listener, endpoints, client components, and the dead
    `.coding-terminal-fallback` end-to-end check; documentation and the

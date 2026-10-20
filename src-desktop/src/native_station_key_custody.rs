@@ -8,8 +8,6 @@
 //! CAS; guarded native commands use these primitives, while active connection
 //! traffic remains a separate integration step.
 
-#![allow(dead_code)] // Guarded trust and grant lifecycle IPC is integrated; signaling remains separate.
-
 use crate::native_relay_proof_key::P256PublicJwk;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
@@ -339,12 +337,14 @@ impl VerifiedStationKeyCandidate {
     pub(crate) fn profile_binding(&self) -> &TrustProfileBinding {
         &self.profile_binding
     }
+    #[cfg(test)]
     pub(crate) fn profile_revision(&self) -> u64 {
         self.profile_revision
     }
     pub(crate) fn expected_trust_revision(&self) -> u64 {
         self.expected_trust_revision
     }
+    #[cfg(test)]
     pub(crate) fn challenge(&self) -> &str {
         &self.challenge
     }
@@ -723,6 +723,11 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         })
     }
 
+    // `current_revision`, `approve`, `approve_until` and `revoke` are test
+    // conveniences. Production approval and revocation go through the
+    // `*_with_precommit` forms, which run the caller's dependent-state commit
+    // under both locks.
+    #[cfg(test)]
     pub(crate) fn current_revision<P: LockedTrustProfileProvider>(
         &mut self,
         provider: &P,
@@ -741,6 +746,7 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn approve<P: LockedTrustProfileProvider>(
         &mut self,
         provider: &P,
@@ -761,6 +767,7 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn approve_until<P: LockedTrustProfileProvider>(
         &mut self,
         provider: &P,
@@ -853,6 +860,7 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn revoke<P: LockedTrustProfileProvider>(
         &mut self,
         provider: &P,

@@ -95,6 +95,12 @@ replies, continue chats, and review work. Start on your computer:
 3. On your phone, open Station, choose **Pair with a code**, and use the
    invitation from the computer. Keep the computer running.
 
+Station's phone apps are not in public app stores yet. Android builds reach
+testers in a Google Play internal testing group and iOS builds reach invited
+TestFlight testers. Without one of those, open the Station's reachable address
+(see below) in your phone's browser instead; the browser offers the same
+**Pair with a code** step and **Request access**.
+
 A browser opened with the host's one-time sign-in link can create invitations
 and manage paired devices. Choose Read-only, Standard or Full device access
 before creating the invitation;
@@ -489,8 +495,11 @@ Both save the same selected answers before opening their next step.
 
 On a phone, use the compose button at the right of the chat bar, or tap the
 current chat title to open **Chats and tasks** and choose **New chat** at the
-lower right. The three-dot menu holds chat actions; connection health remains
-in the app header. In fullscreen chat, where that header is hidden, Station
+lower right. The three-dot menu holds chat actions, including **This chat**:
+the chat's workspace, branch and changed files, status, background tasks and
+linked pull requests, each opening its own view. On a computer, a wide dock
+shows the same panel beside the transcript, and a narrower one puts it behind
+a chip in the dock header. Connection health remains in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
@@ -945,6 +954,8 @@ directory for manual review.
 
 - Read [Station concepts](concepts.md).
 - Customize [keyboard shortcuts](../guides/keyboard-shortcuts.md).
+- Find [settings you may not have found](settings.md), such as feature
+  previews and developer tools, and learn how to [share an answer](sharing-answers.md).
 - Review the [Station privacy policy](https://kontourai.io/privacy/station/).
 
 ## Inspect a learning source

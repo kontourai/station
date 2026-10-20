@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../components/Button';
 import { WarningGlyph } from '../components/icons/Glyph';
+import { copyToClipboard } from '../lib/clipboard';
 import './WorkspacePaneFailure.css';
 
 /**
@@ -169,12 +170,9 @@ export function WorkspacePaneFailure({
             size="sm"
             variant="ghost"
             onClick={() => {
-              void Promise.resolve()
-                .then(() => navigator.clipboard.writeText(text))
-                .then(
-                  () => setCopied('copied'),
-                  () => setCopied('failed'),
-                );
+              void copyToClipboard(text).then((ok) =>
+                setCopied(ok ? 'copied' : 'failed'),
+              );
             }}
           >
             {copied === 'copied'

@@ -2218,7 +2218,7 @@ describe('System Routes', () => {
     expect(body.port).toBe(4321);
   });
 
-  // Review round 1, fix 3 (MEDIUM): exercise globalThis.__STATION_SERVER_BUILD__
+  // Exercise globalThis.__STATION_SERVER_BUILD__
   // through the actual /instance ROUTE (not just the readBuildProvenance unit
   // call above), so a future truthy-check regression on `dirty` (e.g.
   // `build?.dirty ? ... : {}`, which drops a real `false`) ships red instead

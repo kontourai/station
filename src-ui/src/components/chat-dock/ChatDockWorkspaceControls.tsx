@@ -64,7 +64,7 @@ export function ChatDockSessionInventoryHost({
       pending={null}
       componentProps={{
         launch: occurrence,
-        isMobile: false,
+        isMobile: inventory.isMobile ?? false,
         dockMode: inventory.dockMode,
         fullscreen: inventory.fullscreen,
         onClose: () => closeSessionInventoryOccurrence(hostId),
@@ -75,7 +75,7 @@ export function ChatDockSessionInventoryHost({
 }
 
 /**
- * The bar's ONE labelled action (design round 2026-10, B1/B2): New. "Open"
+ * The bar's ONE labelled action (#3239): New. "Open"
  * sat beside it as a second labelled button for the same noun; it is a row
  * of the ⋯ menu now ("Open chat…", with its chord), where the rest of the
  * dock's commands already live.

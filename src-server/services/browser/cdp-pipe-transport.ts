@@ -15,6 +15,8 @@
  *   stream cannot be resynchronized safely without reading the rest of the
  *   frame, and an unbounded buffer is a memory hazard.
  */
+
+import { isRecord } from '../../utils/is-record.js';
 import type { CdpTransport } from './browser-host.js';
 
 /** Default incoming frame bound. Screencast JPEG frames are well under this. */
@@ -71,10 +73,6 @@ interface PendingRequest {
 }
 
 type Listener = (params: unknown, sessionId?: string) => void;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 export class CdpPipeTransport implements CdpTransport {
   readonly closed: Promise<void>;

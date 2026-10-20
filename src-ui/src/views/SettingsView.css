@@ -400,7 +400,7 @@
    presentational separator element between groups instead — see
    `.section-nav__divider` in `page-layout.css` — with no group label and no
    wrapper div. The scroll/scrollbar affordance below moved to the shared
-   `.section-nav` rule in `page-layout.css` (review MED-4: this per-host copy
+   `.section-nav` rule in `page-layout.css` (this per-host copy
    could be silently outranked by a higher-specificity hide rule); only the
    host-specific margin above stays here. */
 

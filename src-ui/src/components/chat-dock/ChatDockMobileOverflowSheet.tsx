@@ -19,14 +19,12 @@ export function ChatDockMobileOverflowSheet({
   projectScope,
   showConnection,
   onNewChat,
-  branchLabel,
   returnFocusTarget,
   onClose,
 }: {
   overflow: ChatDockMobileOverflowActions;
   showConnection?: boolean;
   onNewChat?: () => void;
-  branchLabel?: string | null;
   /** Folded out of the bar at #3309 review SF-2 — see ChatDockMobileHeader. */
   projectScope?: { name: string; onClear: () => void };
   returnFocusTarget?: HTMLElement | null;
@@ -67,7 +65,23 @@ export function ChatDockMobileOverflowSheet({
             New chat
           </button>
         )}
-        {branchLabel && <p>{branchLabel}</p>}
+        {overflow.onOpenSessionContext && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            aria-haspopup="dialog"
+            onClick={() =>
+              run(() =>
+                overflow.onOpenSessionContext?.(returnFocusTarget ?? null),
+              )
+            }
+          >
+            {overflow.sessionContextStatus
+              ? `This chat — ${overflow.sessionContextStatus}`
+              : 'This chat'}
+          </button>
+        )}
         {showConnection && <ChatDockMobileConnection showLabel />}
         {/* Desktop More-menu parity first, like the desktop menu's own order:
             identities are occasionally needed for paste, never read

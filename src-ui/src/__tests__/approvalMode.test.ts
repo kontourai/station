@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import {
   APPROVAL_MODE_OPTIONS,
+  acpApprovalFor,
   adapterDefaultApprovalMode,
   approvalModeChipLabel,
   approvalModeDescription,
   approvalModeKnobSupported,
+  foldApprovalPosture,
   resolveEffectiveApprovalMode,
+  sessionApprovalOverride,
 } from '../utils/approvalMode';
 
 describe('approvalModeKnobSupported', () => {
@@ -14,6 +17,10 @@ describe('approvalModeKnobSupported', () => {
     expect(approvalModeKnobSupported('claude')).toBe(true);
     // #2452: `muse serve` applies the mode (muse-serve-session.ts).
     expect(approvalModeKnobSupported('muse')).toBe(true);
+  });
+
+  test('#3290: opencode, the ACP engine Station sets approval rules for, has the knob', () => {
+    expect(approvalModeKnobSupported('opencode')).toBe(true);
   });
 
   test('acp, bedrock, ollama, station-agent, and an absent runtime have no knob', () => {
@@ -49,6 +56,51 @@ describe('APPROVAL_MODE_OPTIONS copy', () => {
       expect(option.label.toLowerCase()).not.toContain('safe');
       expect(option.description.toLowerCase()).not.toContain('safe');
     }
+  });
+});
+
+describe('full-access copy does not overstate what a start without a grant gets', () => {
+  // Full access turns off approval prompts where the engine allows it. A
+  // start that carries no full-access grant (a webhook start;
+  // `approval-posture.ts` applicableMode) gets a narrower setting, and which
+  // one depends on the engine and on what happens at start: Codex keeps
+  // `never` inside its sandbox, Claude Code may fall back to Auto with no
+  // confinement (`fallbackConfinementRecord`), and an ACP engine such as
+  // OpenCode is lowered to Auto, where reads and other non-edit requests
+  // follow the engine's own rules. So the copy promises none of those
+  // details: not "no sandbox" (#3918 pinned the same for the Default
+  // approval mode setting), not "still runs inside" confinement, and not
+  // "only file edits" run on their own. Detail lives in
+  // docs/guides/acp.md#which-side-decides-which-calls-ask.
+  const FORBIDDEN = [/no sandbox/i, /still runs inside/i, /only file edits/i];
+
+  test('the generic never option says a start without a grant gets a narrower setting', () => {
+    const never = APPROVAL_MODE_OPTIONS.find(
+      (option) => option.value === 'never',
+    );
+    expect(never?.description).toBe(
+      'Turns off approval prompts where the engine allows it. Without a full-access grant, Station applies a narrower setting, so some actions may still ask.',
+    );
+  });
+
+  test('no never description, generic or per engine, makes a forbidden promise', () => {
+    const descriptions = [
+      ...APPROVAL_MODE_OPTIONS.filter((o) => o.value === 'never').map(
+        (o) => o.description,
+      ),
+      ...['codex', 'claude', 'opencode', 'acp', undefined].map((engine) =>
+        approvalModeDescription('never', engine),
+      ),
+    ];
+    for (const description of descriptions) {
+      for (const pattern of FORBIDDEN) expect(description).not.toMatch(pattern);
+    }
+  });
+
+  test('the OpenCode never copy is conditional on the grant', () => {
+    expect(approvalModeDescription('never', 'opencode')).toBe(
+      'With full access granted, permitted actions run without approval prompts. Questions, plan exits and network-host requests may still ask. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
+    );
   });
 });
 
@@ -314,6 +366,74 @@ describe('resolveEffectiveApprovalMode', () => {
       mode: 'connection-default',
       label: 'Connection default',
       source: 'adapter default',
+    });
+  });
+});
+
+describe('acpApprovalFor (#3290)', () => {
+  test('an ACP connection that launches OpenCode is Station-governed, wherever the binary lives', () => {
+    for (const command of [
+      'opencode',
+      '/opt/homebrew/bin/opencode',
+      'C:\\Tools\\OpenCode.exe',
+    ]) {
+      expect(acpApprovalFor({ command, name: 'OpenCode' })).toEqual({
+        control: 'station',
+        engineId: 'opencode',
+        engineName: 'OpenCode',
+      });
+    }
+  });
+
+  test('any other ACP command decides for itself, whatever the connection is called', () => {
+    expect(acpApprovalFor({ command: 'kiro-cli' })).toEqual({
+      control: 'engine',
+      engineId: null,
+    });
+    expect(acpApprovalFor({ command: 'npx', name: 'opencode' })).toEqual({
+      control: 'engine',
+      engineId: null,
+      engineName: 'opencode',
+    });
+  });
+
+  test('no ACP connection is no ACP answer', () => {
+    expect(acpApprovalFor(undefined)).toBeUndefined();
+    expect(acpApprovalFor(null)).toBeUndefined();
+  });
+});
+
+describe('a new decision clears a stale takeover failure (#3290, finding 7)', () => {
+  test('a newly recorded decision (a re-pick of the same mode included) is not marked not-applied', () => {
+    const failed = {
+      approvalPosture: 'ask' as const,
+      approvalPostureSequence: 4,
+      approvalTakeoverFailed: true,
+    };
+    const folded = { ...failed, ...foldApprovalPosture(failed, 'auto', 5) };
+    expect(sessionApprovalOverride(folded)).toEqual({
+      mode: 'auto',
+      state: 'requested',
+    });
+    // A re-pick of the same mode is a new decision too.
+    const repicked = { ...failed, ...foldApprovalPosture(failed, 'ask', 6) };
+    expect(sessionApprovalOverride(repicked)?.state).toBe('requested');
+    // The same decision folded again keeps the failure it already had.
+    expect(foldApprovalPosture(failed, 'ask', 4)).toEqual({});
+  });
+});
+
+describe('sessionApprovalOverride: a pick the engine could not take (#3290)', () => {
+  test('is not-applied, not requested', () => {
+    expect(
+      sessionApprovalOverride({
+        approvalPosture: 'ask',
+        approvalTakeoverFailed: true,
+      }),
+    ).toEqual({ mode: 'ask', state: 'not-applied' });
+    expect(sessionApprovalOverride({ approvalPosture: 'ask' })).toEqual({
+      mode: 'ask',
+      state: 'requested',
     });
   });
 });

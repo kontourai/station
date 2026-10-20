@@ -145,8 +145,7 @@ person a structured question" source maps into. Types come from
   SDK normalization, for legacy push requests and modern input-required results.
 - `inputRequestFromRequestEvent` reads a `request.opened` event's
   `payload.inputRequest`, or a pre-#3390 stored `payload.questionnaire` or
-  `payload.mcpElicitation`, adapted to a validated form. The public legacy
-  `mcp-elicitation-form` reader delegates to this same admission owner.
+  `payload.mcpElicitation`, adapted to a validated form.
 - `validateInputRequestContent` validates accepted content against the form
   that was opened and throws the first problem, worded for the person. It
   returns a detached, null-prototype snapshot of exactly what it checked
@@ -317,6 +316,7 @@ interface AgentSpec {
   delegation?: AgentDelegationPolicy;
   maxSteps?: number;
   guardrails?: AgentGuardrails;
+  /** @deprecated Ignored; accepted so existing agent files load (#3879). */
   streaming?: {
     useNewPipeline?: boolean;
     enableThinking?: boolean;

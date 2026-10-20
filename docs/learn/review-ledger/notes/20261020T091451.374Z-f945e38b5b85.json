@@ -1,0 +1,7 @@
+{
+  "revision": "2179dc907a08d15f3b9de73828bdfc6856c0db19",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Checked the claims citing AgentEditorApprovalDefault.tsx: only the user-facing full-access descriptions changed, and they now claim less (a start without a full-access grant gets a narrower setting, so some actions may still ask; the OpenCode copy is conditional on the grant). This document does not describe that copy; no documented claim changes.","inputs":["docs/guides/agents.md","src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx"]}
+  ]
+}

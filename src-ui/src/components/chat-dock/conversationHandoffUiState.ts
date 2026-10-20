@@ -114,6 +114,7 @@ export function acceptConversationHandoffUiState(
     // queued pick still rides the next send (#2436).
     lastAppliedApprovalMode: undefined,
     approvalEscalationRejected: undefined,
+    approvalTakeoverFailed: undefined,
     isProcessingStep: false,
     error: null,
     orchestrationTurnOpen: false,

@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"ChatDock change adds no endpoint or request; the card reads the existing conversation pull-request-links route through the shared hook. No reference claim changed.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

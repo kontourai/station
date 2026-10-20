@@ -5,6 +5,7 @@ import {
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
+  ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
@@ -30,17 +31,16 @@ import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/sessi
  * mid-conversation connection failure, or a model-override failure.
  *
  * Deliberately pattern-matched, not exact-string-matched: the real AWS
- * Bedrock "model not enabled" exception text could not be captured live in
- * planning (no repo precedent, no live AWS call performed — see the plan's
- * Stop-short risks). (archive#196) is where the live text gets confirmed against
- * these patterns; until then these are documented as fixture-based.
+ * Bedrock "model not enabled" exception text has not been captured live (no
+ * repo precedent, no live AWS call performed). archive#196 is where the live
+ * text gets confirmed against these patterns; until then these are
+ * documented as fixture-based.
  *
  * Consumed by both the pre-stream fetch-error path
  * (`useActiveChatSessionMessaging.ts`, via the SDK's `ChatHttpError`) and the
- * mid-stream SSE error path (`useStreamingMessage.ts`, via `writeSSEError`'s
- * `{ errorText, statusCode }` shape) — this module is the single source of
- * classification for both, replacing `useStreamingMessage.ts`'s previous
- * undocumented, partial `isModelError` regex classifier.
+ * mid-stream runtime-error path (`hooks/orchestration/turnHandlers.ts`, for a
+ * `runtime.error` event that carries an engine-binding or turn-failure code)
+ * — this module is the single source of classification for both.
  */
 
 export interface ChatErrorTranslation {
@@ -76,8 +76,7 @@ interface ChatErrorInput {
   status?: number;
   /**
    * The raw underlying message. Callers should pass whichever of
-   * `errorText` / `error` / `message` the wire shape actually populated —
-   * see the mid-stream blind-spot note in `useStreamingMessage.ts`.
+   * `errorText` / `error` / `message` the wire shape actually populated.
    */
   message: string;
   /**
@@ -382,6 +381,25 @@ export function translateChatError(
       title: "This engine can't take these attachments",
       body: `${text || 'This engine cannot take the attached files.'} Nothing was sent.`,
       hint: 'Remove the attachments to send your text, or switch to an engine or model that accepts them.',
+      retryable: false,
+    };
+  }
+
+  // #3290: Station could not apply its approval mode to OpenCode (the
+  // user's or an organisation's configuration overrides it, or the chat runs
+  // an agent Station does not govern). The server's sentence names the
+  // setting; sending again is refused again until it changes, so this
+  // carries no "temporary" hint and callers withhold Retry.
+  if (code === ACP_APPROVAL_GOVERNANCE_REFUSED_CODE) {
+    return {
+      title: "Station's approval mode wasn't applied",
+      body: /not (sent|started)/.test(text)
+        ? text
+        : `${text || "Station couldn't apply its approval mode to this engine."} Nothing was sent.`,
+      // What Default would do depends on the chat (a configured default,
+      // or Station's earlier takeover, makes Default apply a mode too), so
+      // the server's sentence says it; this hint claims nothing about it.
+      hint: 'Change the OpenCode setting or mode named above.',
       retryable: false,
     };
   }

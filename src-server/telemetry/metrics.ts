@@ -502,9 +502,6 @@ export const surveyFlowReviewUnavailableProjects = meter.createCounter(
       'Projects excluded from the Survey flow-review aggregate, by reason',
   },
 );
-export const promptOps = meter.createCounter('station.prompt.operations', {
-  description: 'Prompt CRUD operations',
-});
 
 // ── Providers ──
 export const providerOps = meter.createCounter('station.provider.operations', {

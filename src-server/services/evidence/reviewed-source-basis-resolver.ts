@@ -206,7 +206,12 @@ export class ReviewedSourceBasisResolver {
         if (!input.current() || !factsCurrent(input.current, facts))
           return undefined;
         if (!authorized()) return owner('restricted');
-        return available([contribution]);
+        return available([
+          descriptor.status === 'available' &&
+          descriptor.review.state === 'reviewed'
+            ? contribution
+            : withoutOwnerAcceptance(contribution),
+        ]);
       } catch {
         return owner('corrupt');
       }
@@ -299,6 +304,48 @@ function matchesCurrentness(
     value.evidenceId === facts.association.sourceEvidenceId &&
     value.reviewRevision === descriptor.review.revision
   );
+}
+
+const REVIEW_NOT_ACCEPTED = 'reviewed-source-review-not-accepted';
+
+/**
+ * Surface derives `review` from the Station-retained decision alone, so it
+ * cannot see that Fieldwork refused grounding for that decision (#2949).
+ * Only the owner's `reviewed` state may count; `grounding-refused`, and any
+ * state a later contract adds, becomes Surface's closed not-accepted gap so
+ * the source stays visible as needing review instead of as support.
+ */
+function withoutOwnerAcceptance(
+  contribution: BasisContributionV2<FieldworkReviewedSourceRef>,
+): BasisContributionV2<FieldworkReviewedSourceRef> {
+  const context = contribution.context;
+  if (context.kind !== 'reviewed-source') throw new Error('not a source');
+  const gaps = contribution.gaps ?? [];
+  return {
+    ...contribution,
+    context:
+      context.review === 'accepted'
+        ? {
+            ...context,
+            review: 'not-accepted',
+            reviewedAt: null,
+            ...(context.choice
+              ? { choice: { ...context.choice, chosenOverCandidateIds: [] } }
+              : {}),
+          }
+        : context,
+    gaps: gaps.some((item) => item.code === REVIEW_NOT_ACCEPTED)
+      ? gaps
+      : [
+          {
+            code: REVIEW_NOT_ACCEPTED,
+            // Surface's parser admits only its own fixed gap message.
+            message:
+              'Reviewed source context is incomplete or requires attention.',
+          },
+          ...gaps,
+        ],
+  };
 }
 
 function available(

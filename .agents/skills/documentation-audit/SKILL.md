@@ -21,7 +21,7 @@ Account for unmapped changes and preserve the coverage baseline until they are
 resolved. The report is advisory and cannot establish semantic correctness.
 The documentation checks block only stale records that your change touched;
 re-review those in the same PR. See
-[keep reviews fresh](../../../docs/guides/documentation.md#keep-reviews-fresh).
+[keep reviews fresh](../../../docs/guides/documentation-review-ledger.md#keep-reviews-fresh).
 
 Trace the changed behavior from its user entry point through contract,
 authorization, implementation, persistence, event projection, and visible
@@ -67,7 +67,7 @@ Keep document classification separate from source review. A changed document
 or supporting source needs an explicit note about the inspected claims.
 
 The ledger keeps human decisions in records and reviews in append-only notes;
-see [ledger layout and merges](../../../docs/guides/documentation.md#ledger-layout-and-merges).
+see [ledger layout and merges](../../../docs/guides/documentation-review-ledger.md#ledger-layout-and-merges).
 Two branches reviewing different edits of one source add separate notes and
 leave the shared record untouched. An old branch carrying digest bindings can
 use `node scripts/migrate-review-ledger.mjs --path-only` during its merge of main

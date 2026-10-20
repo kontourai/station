@@ -10,7 +10,7 @@
 > browser, accessibility, or native-device test result.
 
 > Status: **composer hierarchy, the provider/model picker, prerequisite
-> guidance, shortcuts, and final Settings polish shipped through #1354.**
+> guidance, shortcuts, and final Settings polish shipped through archive#1354.**
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
@@ -32,6 +32,20 @@ an explicit Details action.
 
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
+A settled answer's **Basis** chip is not hover-revealed: it sits beside that row,
+visible at rest, and opens the Chat inventory scoped to that answer
+([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).
+It reads plain **Basis** for an unassessed answer, which is nearly every answer
+today, and states that standing only in its accessible name. A notable standing
+(policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
+**Basis · Policy met**
+([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
+The chip reads an answer's standing only while it is on screen, cancels a read
+that scrolls off screen unanswered, does not re-read a standing it holds while it
+stays mounted, and refreshes on an assessment or narrative update. A long
+transcript unmounts far-off answers; one that returns is read again, because the
+Basis read re-checks access for each new chip. Pending or failed, it stays
+**Basis** and still opens.
 During an authorized active-turn continuation wait, the composer accepts and
 preserves a draft. Sending and queueing stay blocked until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
@@ -323,6 +337,56 @@ These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/Cha
 [ChatDockHeader](../../src-ui/src/components/chat-dock/ChatDockHeader.tsx), and
 [NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx).
 
+### Turn navigation
+
+A live transcript with six or more user turns gets turn navigation (#342;
+[TranscriptTurnRail](../../src-ui/src/components/chat/TranscriptTurnRail.tsx)).
+Its user turns are derived from the whole transcript row model
+([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts)),
+so a virtualized transcript's unmounted turns are included; only the loaded
+window is mapped, and earlier history joins the map as it loads. Every user
+message row starts a turn.
+
+- **Turn rail.** A 16px gutter over the transcript's right edge, inside its
+  scrollbar, with one tick per user turn placed by the turn's position among
+  the rows. The rows on screen are drawn as a band, and their turns' ticks are
+  highlighted; both are written from the scroll handler, once per frame. Hover
+  or keyboard focus previews a turn: its prompt and the start of its first
+  reply. Escape dismisses the preview without moving focus or the pointer:
+  while it shows, the preview carries `data-escape-owner`, so the app's
+  shortcuts (such as "Go up one level") leave that Escape to it. Pointing at
+  or focusing another turn shows previews again. A press or drag jumps to the nearest turn without taking focus from
+  the composer. The ticks are one tab stop: arrow keys move between turns
+  (jumping as they go), Home and End reach the ends. The rail is hidden when
+  the transcript column is narrower than 560px or shorter than 200px
+  (measured on the column, not the viewport).
+- **Markers.** A tick carries at most one marker, from facts the rows already
+  hold: a reply carrying the projected runtime error (`runtimeError`) marks
+  the turn as ended with an error; otherwise a standalone sub-agent row marks
+  it as having started a sub-agent. Sub-agents shown inside a reply's tool
+  call, and interrupted turns, are not marked.
+- **Previous turn / Next turn.** Two steps sit beside Scroll to bottom
+  whenever that control shows, at every width; on a phone they are the turn
+  navigation. Previous goes to the start of the turn in view when its prompt
+  is above the screen, otherwise to the turn before. The steps stay focusable
+  at either end, and announce the turn they reached (its position and prompt)
+  in a polite status region. Only a step announces; the region empties before
+  each announcement, so a repeat step is said again, and it is cleared on a
+  chat switch or when the loaded history changes.
+- **Positions.** A turn is named "Turn N of M". While older history is not
+  loaded, the map covers only the loaded window, so it is named "Loaded turn
+  N of M" instead, and the numbers change as earlier history loads.
+- **Jumping.** A jump reveals the turn's prompt row, centred, through the same
+  path a message link uses (`revealRowId`, then the virtualizer's
+  `scrollToIndex`); a short transcript, with every row mounted, is scrolled
+  directly. A jump marks the reader as away from the latest message, so text
+  still streaming does not pull the transcript back to the end, and it
+  clears a followed `#station-message=` link, which would otherwise hold the
+  transcript on its message. Scroll to bottom returns to
+  the latest; if focus was on it or the steps, focus moves to the transcript.
+
+History replay has its own timeline and shows no rail.
+
 ## 1. The principle: if an agent can't drive it, it's broken
 
 Station's thesis is agents doing real work with receipts. That obligates Station's own UI
@@ -377,7 +441,7 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 4. **Agent-type badges — superseded.** This item is superseded by
    `agent-engine-unification.md` §8.1: every resolved agent gets one **engine chip**
    naming its engine ("Station", "Claude Code", "OpenCode · GLM-4.7") instead of an
-   External/ACP badge pair; "External" and "ACP" never render. Shipped in #894. The
+   External/ACP badge pair; "External" and "ACP" never render. Shipped in archive#894. The
    navigability principle (§1) and the §4 API-parity table remain binding as written.
 5. **Context meter and session chrome** move to the session header/tab area, out of the
    input row.
@@ -413,7 +477,25 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
-  naturally and truncate when needed; Model does not stretch into unused space.
+  naturally and truncate with an ellipsis before the chevron, never under it;
+  Model does not stretch into unused space. On a phone, Agent and Model keep a
+  readable minimum (88px and 112px) and the rail scrolls instead, its
+  trailing edge faded until scrolled to the end.
+- On an ACP engine the approval control says who decides which actions ask
+  (#3290). OpenCode, whose rules Station sets at launch, offers Station's
+  approval modes, with OpenCode-specific descriptions. Its Default says
+  OpenCode's own settings decide until a mode is picked (the chip's name reads
+  "Engine default — OpenCode's own settings"), and "Ask — Ask first" after
+  Station has taken over. A pick the engine could not be switched to is never
+  shown as applied: the chip shows what still runs, marked pending, with text
+  that differs from Default ("Own settings", or "Ask · kept"), and its name
+  says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
+  shows **Approval: Set by engine**, which opens a read-only explanation and
+  offers no mode. An engine's advertised Mode (OpenCode's build or plan agent)
+  is a separate picker beside it, never a replacement for it. While Station
+  governs OpenCode it offers only build and plan; on OpenCode's own settings
+  it lists every agent. A refusal because Station's approval mode cannot
+  apply names the OpenCode setting and the next step, and offers no Retry.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
 - Drafts and Clear message are icon actions in the secondary row, leaving the
@@ -471,8 +553,21 @@ protected wire command before invoking an engine. The pending marker must save
 successfully before any native mutation; failed storage keeps the message held. The server journal
 retains digests rather than message bodies, and Session deletion removes it.
 
-The pending-message section starts collapsed, showing only its count and a
-Needs review indicator for failures or unconfirmed delivery. Its disclosure
+The open conversation also shows **Messages held by Station**, a separate
+[server inbox view](../../src-ui/src/components/chat/ConversationInboxMessages.tsx).
+It reads the existing [inbox API](../reference/session-api.md#let-station-hold-a-follow-up)
+for that conversation and verified Station identity, including messages submitted
+by another client. Waiting and sending rows contribute to its pending count;
+unknown or refused delivery remains visible separately. A failed read shows
+unavailable rather than zero. Foreground polling, event-driven invalidation,
+focus/reconnect and **Refresh** request fresh observations. **Remove** or
+**Dismiss** uses the original message key and the server's authorization and placement checks;
+rows without a permitted key are read-only. They offer no local edit, reorder,
+send-now or steer action. This view does not transfer ordinary busy-composer
+submissions from browser-local storage into the server inbox.
+
+The browser-local pending-message section starts collapsed, showing only its
+count and a Needs review indicator for failures or unconfirmed delivery. Its disclosure
 reveals message content, mode, status and actions; it does not auto-expand during
 a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
 stop override: Station waits for a settled interruption receipt before sending

@@ -31,6 +31,7 @@ import {
   publishJsonFileWithOwnedLock,
   readJsonFile,
 } from '../../domain/file-storage-helpers.js';
+import { isRecord } from '../../utils/is-record.js';
 
 /**
  * The durable plugin command effect ledger (kontourai/station#1418, #1419).
@@ -183,10 +184,6 @@ export interface PluginCommandEffectStore {
       current: PluginCommandEffectLedger,
     ) => PluginCommandEffectTransaction<T>,
   ): Promise<T>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function hasExactFields(

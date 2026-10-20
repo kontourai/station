@@ -49,11 +49,6 @@ function ensureWindowsProfileDirectories(home: string): void {
   ]);
 }
 
-/** User client configuration home, independent of any selected Station server. */
-export function resolveStationHome(): string {
-  return resolveStationRoot();
-}
-
 export const MAX_PROFILE_NAME_LENGTH = 64;
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const PROFILE_STORE_LOCK_STALE_MS = 5 * 60 * 1_000;
@@ -158,17 +153,8 @@ function hasValidLockCommonFields(
   );
 }
 
-export interface ProfileStoreRepository {
-  read(): StationProfileStore;
-  write(
-    store: StationProfileStore,
-    expectedRevision?: number,
-  ): StationProfileStore;
-  path: string;
-}
-
 /** Shared native/CLI metadata location. It deliberately contains no secret. */
-export function profilesPath(home: string = resolveStationHome()): string {
+export function profilesPath(home: string = resolveStationRoot()): string {
   return join(home, 'config', 'profiles.json');
 }
 
@@ -347,7 +333,7 @@ function withProfileStoreGenesisLock<T>(home: string, callback: () => T): T {
  * runtime files cannot be mistaken for a cutover residue on first publish.
  */
 export function ensureProfileStoreGenesis(
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): void {
   // Establish the same no-reparse/current-user directory boundary before the
   // first marker or empty store exists. `writeProfileStore` already does this
@@ -412,18 +398,6 @@ function assertTrustedProfileStoreParent(path: string): void {
   }
 }
 
-export function createFileProfileStore(
-  home: string = resolveStationHome(),
-): ProfileStoreRepository {
-  const path = profilesPath(home);
-  return {
-    path,
-    read: () => readProfileStore(home),
-    write: (store, expectedRevision) =>
-      writeProfileStore(store, home, expectedRevision),
-  };
-}
-
 /** Read an already-persisted document; absence is never silently interpreted here. */
 function readPersistedProfileStore(
   home: string,
@@ -468,7 +442,7 @@ function readPersistedProfileStore(
 
 /** A bad or unknown profile file fails closed instead of being silently replaced. */
 export function readProfileStore(
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): StationProfileStore {
   const path = profilesPath(home);
   if (!existsSync(path)) return emptyStationProfileStore();
@@ -787,7 +761,7 @@ function acquireProfileStoreLock(
  */
 export function withProfileStoreLock<T>(
   callback: () => T,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
   /**
    * Waiting is opt-in. Without it a live holder refuses at once, which is what
    * the Desktop's runtime preparation needs: it already holds the registry
@@ -819,7 +793,7 @@ export function withProfileStoreLock<T>(
  */
 export function writeProfileStore(
   store: StationProfileStore,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
   expectedRevision: number = store.revision,
   /** Test-only interleaving seam; production callers omit it. */
   hooks: { afterGenesisAdmission?: () => void } = {},
@@ -927,7 +901,7 @@ export function assertValidProfileName(name: string): string {
 
 export function findProfile(
   name: string,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): StationProfile | undefined {
   const wanted = name.toLowerCase();
   return readProfileStore(home).profiles.find(
@@ -936,7 +910,7 @@ export function findProfile(
 }
 
 export function resolveDefaultProfile(
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): StationProfile | undefined {
   const store = readProfileStore(home);
   if (!store.defaultProfile) return undefined;
@@ -964,14 +938,14 @@ export function canonicalProjectDirectory(
 
 export function readProjectProfileSelection(
   cwd: string = process.env.STATION_INVOKED_CWD || process.cwd(),
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): string | undefined {
   return readProfileStore(home).projectProfiles[canonicalProjectDirectory(cwd)];
 }
 
 export function resolveProjectProfile(
   cwd: string = process.env.STATION_INVOKED_CWD || process.cwd(),
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): StationProfile | undefined {
   const selected = readProjectProfileSelection(cwd, home);
   if (!selected) return undefined;
@@ -987,7 +961,7 @@ export function resolveProjectProfile(
 export function setProjectProfile(
   name: string,
   cwd: string = process.env.STATION_INVOKED_CWD || process.cwd(),
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): StationProfile {
   const store = readProfileStore(home);
   const profile = store.profiles.find(
@@ -1005,7 +979,7 @@ export function setProjectProfile(
 
 export function clearProjectProfile(
   cwd: string = process.env.STATION_INVOKED_CWD || process.cwd(),
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): void {
   const store = readProfileStore(home);
   const identity = canonicalProjectDirectory(cwd);
@@ -1015,7 +989,7 @@ export function clearProjectProfile(
 }
 
 export function describeKnownProfiles(
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): string {
   const { profiles } = readProfileStore(home);
   if (profiles.length === 0)
@@ -1137,7 +1111,7 @@ function applyProfileUpsert(
 
 export function upsertProfile(
   input: UpsertProfileInput,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): UpsertProfileResult {
   const name = assertValidProfileName(input.name);
   const endpoint = normalizeProfileEndpoint(input.endpoint);
@@ -1150,7 +1124,7 @@ export function upsertProfile(
 
 export function setDefaultProfile(
   name: string,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): StationProfile {
   const store = readProfileStore(home);
   const profile = store.profiles.find(
@@ -1173,7 +1147,7 @@ export function setDefaultProfile(
 export function selectPairedProfileAsDefault(
   expectedProfile: StationProfile,
   expectedDefaultProfile: string | null,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): StationProfile {
   const store = readProfileStore(home);
   const current = store.profiles.find(
@@ -1201,7 +1175,7 @@ export function selectPairedProfileAsDefault(
 /** Pairing deliberately clears an existing default until its new binding verifies. */
 export function clearDefaultProfile(
   name: string,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): boolean {
   const store = readProfileStore(home);
   if (store.defaultProfile?.toLowerCase() !== name.toLowerCase()) return false;
@@ -1212,7 +1186,7 @@ export function clearDefaultProfile(
 
 export function removeProfile(
   name: string,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): { profile: StationProfile; wasDefault: boolean } {
   const store = readProfileStore(home);
   const index = store.profiles.findIndex(
@@ -1235,28 +1209,9 @@ export function removeProfile(
   return { profile, wasDefault };
 }
 
-export function updateProfileEnvironment(
-  name: string,
-  environmentId: string,
-  home: string = resolveStationHome(),
-): StationProfile {
-  const store = readProfileStore(home);
-  const profile = store.profiles.find(
-    (candidate) => candidate.name.toLowerCase() === name.toLowerCase(),
-  );
-  if (!profile)
-    throw new Error(
-      `No Station named "${name}". ${describeKnownProfiles(home)}`,
-    );
-  profile.environmentId = environmentId;
-  profile.updatedAt = Date.now();
-  writeProfileStore(store, home);
-  return profile;
-}
-
 export function suggestProfileName(
   endpoint: string,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): string {
   const hostname = new URL(endpoint).hostname
     .replace(/^\[/, '')
@@ -1291,7 +1246,7 @@ export function suggestProfileName(
 export function findProfileByEndpoint(
   endpoint: string,
   environmentId?: string,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): StationProfile | undefined {
   const normalized = normalizeProfileEndpoint(endpoint);
   const candidates = readProfileStore(home).profiles.filter(
@@ -1307,7 +1262,7 @@ export function findProfileByEndpoint(
 /** True only while a saved Station still owns this immutable keyring ref. */
 export function isCredentialRefReferenced(
   ref: StationProfileCredentialRef,
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): boolean {
   return readProfileStore(home).profiles.some(
     (profile) =>
@@ -1335,7 +1290,7 @@ export function registerPairedProfile(
     clientInstanceId?: string;
     now?: number;
   },
-  home: string = resolveStationHome(),
+  home: string = resolveStationRoot(),
 ): UpsertProfileResult {
   const normalizedEndpoint = normalizeProfileEndpoint(endpoint);
   assertCredentialTransportAllowed(normalizedEndpoint);

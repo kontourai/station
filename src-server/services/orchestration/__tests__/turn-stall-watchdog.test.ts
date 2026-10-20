@@ -10,7 +10,7 @@ describe('TurnStallWatchdog', () => {
     vi.useRealTimers();
   });
 
-  // Delta-review F1 (archive#4054 round 2): the suspension path honors the same
+  // archive#4054: the suspension path honors the same
   // stale-turn identity gate as the terminal paths. A delayed request.opened
   // naming a SUPERSEDED turn must neither suspend nor clear the observation
   // of the turn actually running.
@@ -384,7 +384,7 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).toHaveBeenCalledWith('t1', 'turn-1');
   });
 
-  // archive#3451 finding H2: the SECOND documented non-terminal runtime.error
+  // archive#3451: the SECOND documented non-terminal runtime.error
   // publisher — orchestration-service's adapter-stream-restart error — is
   // provider-agnostic (any adapter) and carries NO turnId (session-scoped).
   // Before this fix, isDeferredRetriableTurnError's codex-only scoping meant
@@ -535,7 +535,7 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).not.toHaveBeenCalled();
   });
 
-  // Review MEDIUM 1: the discriminating case for the STRUCTURAL exclusion,
+  // The discriminating case for the STRUCTURAL exclusion,
   // not the "no known publisher sets turnId" fact alone. No current
   // publisher sets a turnId on session.exited, so the test above (turnId:
   // undefined) cannot tell a structural exclusion apart from the ordinary
@@ -603,14 +603,14 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).toHaveBeenCalledWith('t1', 'turn-2');
   });
 
-  // Review HIGH 1 (archive#3594): the issue's own scenario, reachable through
+  // archive#3594: the issue's own scenario, reachable through
   // the SUSPENDED state specifically. A turn awaiting a human moves its entry
   // out of `watched` into `suspended` (see `:264-271`), so an
   // `isStaleForAnotherTurn` that consulted only `watched` found nothing to
   // protect and let a stale terminal for an earlier, superseded turn clear
   // the suspension outright — after which the eventual `request.resolved`
   // found nothing to resume, and the genuinely running (merely paused) turn
-  // was never watched again. Executed repro from the independent review:
+  // was never watched again. The executed reproduction:
   //   turn.started(t1) -> turn.started(t2) -> request.opened(t2)
   //     -> turn.completed(t1) [stale] -> request.resolved(t2) -> advance
   //   pre-fix: onStall never fires, watch is gone.
@@ -725,7 +725,7 @@ describe('TurnStallWatchdog', () => {
       expect(onStall).not.toHaveBeenCalled();
     });
 
-    // Review MEDIUM 1's structural exclusion applies in the suspended state
+    // The session.exited structural exclusion applies in the suspended state
     // too: session.exited (no turnId) always clears, even mid-suspension.
     test('session.exited (no turnId) still clears a SUSPENDED watch', () => {
       const watchdog = new TurnStallWatchdog();
@@ -756,7 +756,7 @@ describe('TurnStallWatchdog', () => {
     });
   });
 
-  // Review HIGH 1 (archive#2959): a turn awaiting a human (approval prompt, input
+  // archive#2959: a turn awaiting a human (approval prompt, input
   // request) is alive but deliberately silent for as long as the human takes.
   // The watch suspends on request.opened — no expiry however long the human
   // is away — and re-arms only on request.resolved.

@@ -484,7 +484,6 @@ import {
   stationDocsRuntimeIdentity,
   stationKnowledgeRuntimeIdentity,
 } from './station-control-runtime-env.js';
-import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js';
 import { startStoreIntegrityVerification } from './store-integrity-verification.js';
 
 interface PersistedAgentActivationTransaction {
@@ -4427,10 +4426,6 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
-      // archive#980 fix (HIGH): read the live env var, never
-      // `this.appConfig` — see `station-features.ts`'s docblock for why.
-      getManagedChatOrchestrationEnabled: () =>
-        isManagedChatOrchestrationFeatureEnabled(),
       rebindBuiltinAgents: () => this.rebindBuiltinAgents(),
     });
     this.schedulerService = schedulerService;

@@ -1,0 +1,17 @@
+{
+  "revision": "517d01c21848c3fa44b665f2ff277424846fe704",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked against the repo-map change in this PR: two matchedArtifacts/initiative citations in .veritas/repo-map.json move from the nonexistent docs/strategy/roadmap.md to docs/strategy/README.md, and a new policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":[".veritas/README.md",".veritas/repo-map.json"]},
+
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Checked against the repo-map change in this PR: two matchedArtifacts/initiative citations in .veritas/repo-map.json move from the nonexistent docs/strategy/roadmap.md to docs/strategy/README.md, and a new policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked against the repo-map change in this PR: two matchedArtifacts/initiative citations in .veritas/repo-map.json move from the nonexistent docs/strategy/roadmap.md to docs/strategy/README.md, and a new policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":["docs/guides/code-quality.md",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/development.md","note":"Checked against the repo-map change in this PR: two matchedArtifacts/initiative citations in .veritas/repo-map.json move from the nonexistent docs/strategy/roadmap.md to docs/strategy/README.md, and a new policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":["docs/guides/development.md",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/documentation.md","note":"Checked against the repo-map change in this PR: two matchedArtifacts/initiative citations in .veritas/repo-map.json move from the nonexistent docs/strategy/roadmap.md to docs/strategy/README.md, and a new policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked against the repo-map change in this PR: two matchedArtifacts/initiative citations in .veritas/repo-map.json move from the nonexistent docs/strategy/roadmap.md to docs/strategy/README.md, and a new policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":["docs/guides/testing.md",".veritas/repo-map.json"]}
+  ]
+}

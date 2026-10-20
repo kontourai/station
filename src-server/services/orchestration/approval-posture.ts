@@ -1,9 +1,11 @@
 import type { ClientOriginActor } from '@kontourai/station-contracts/client-origin';
+import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ExecutionConfinementRecord } from '@kontourai/station-contracts/execution-confinement';
 import {
   type ApprovalMode,
   type EngineId,
   isApprovalMode,
+  PROVIDER_ACP,
   PROVIDER_CLAUDE,
   PROVIDER_CODEX,
   PROVIDER_MODEL_OPTION_SUPPORT,
@@ -23,8 +25,19 @@ import { isFullAccessGrant } from '../../security/coding-authority.js';
  * it applies only while nothing is recorded, and is never recorded itself.
  */
 
-/** Whether this engine's adapter maps `approvalMode` to a native knob. */
-export function approvalKnobSupported(provider: EngineId): boolean {
+/**
+ * Whether this engine's adapter maps `approvalMode` to a native knob.
+ *
+ * #3290: ACP is one provider for many engines, so its answer is the
+ * connection's (`acpApprovalControl`): only a connection whose approval rules
+ * Station sets at launch has the knob. Without that answer an ACP thread has
+ * none, so a posture is never sent to an engine that decides for itself.
+ */
+export function approvalKnobSupported(
+  provider: EngineId,
+  acpControl?: AcpApprovalControl,
+): boolean {
+  if (provider === PROVIDER_ACP) return acpControl === 'station';
   return (
     PROVIDER_MODEL_OPTION_SUPPORT[provider]?.includes('approvalMode') === true
   );
@@ -94,6 +107,8 @@ export interface ApprovalPostureStore {
   conversationSessions(
     conversationId: string,
   ): readonly { sessionId: string }[];
+  /** #3290: an engine on these threads reported a Station-applied mode. */
+  engineReportedApprovalMode?(threadIds: readonly string[]): boolean;
 }
 
 export interface ApprovalPostureDecision {
@@ -390,15 +405,23 @@ export class ApprovalPosture {
     modelOptions?: Record<string, unknown>;
     /** `startConfinement` or `standingConfinement`; required so every caller states it. */
     confinement: StationConfinement;
+    /** #3290: an ACP thread's connection answer (`acpApprovalControl`). */
+    acpControl?: AcpApprovalControl;
   }): Promise<Record<string, unknown> | undefined> {
-    if (!approvalKnobSupported(input.provider)) return input.modelOptions;
+    if (!approvalKnobSupported(input.provider, input.acpControl))
+      return input.modelOptions;
     const decision = this.decision(input.threadId);
     const { approvalMode: carried, ...rest } = input.modelOptions ?? {};
     let mode: ApprovalMode | undefined;
     if (decision) {
       mode =
         decision.approvalMode === 'connection-default'
-          ? await this.resolveDefaultPick(input)
+          ? await this.resolveDefaultPick({
+              ...input,
+              durableTakeover:
+                input.provider === PROVIDER_ACP &&
+                input.acpControl === 'station',
+            })
           : decision.approvalMode;
     } else {
       mode =
@@ -492,10 +515,24 @@ export class ApprovalPosture {
     threadId: string;
     agentSlug?: string;
     capturedAgent?: { approvalMode?: ApprovalMode };
+    /**
+     * #3290: whether Station's takeover must outlive this process's memory.
+     * A Station-governed ACP engine (OpenCode) relaunches on its own
+     * settings when nothing is sent, so after a respawn a Default pick would
+     * silently hand it back while the chip still reads Ask. The engine's own
+     * durable report that it ran a Station mode decides instead.
+     */
+    durableTakeover?: boolean;
   }): Promise<ApprovalMode | undefined> {
     const configured = await this.defaultPosture(input);
     if (configured) return configured;
-    return this.stationApplied.has(input.threadId) ? 'ask' : undefined;
+    if (this.stationApplied.has(input.threadId)) return 'ask';
+    return input.durableTakeover &&
+      this.deps.store?.engineReportedApprovalMode?.(
+        this.conversationThreads(input.threadId),
+      )
+      ? 'ask'
+      : undefined;
   }
 
   /**
@@ -519,6 +556,46 @@ export class ApprovalPosture {
     const applied = this.stationApplied.get(threadId);
     return applied?.startConfinement && applied.startConfinement !== confinement
       ? applied.mode
+      : undefined;
+  }
+
+  /**
+   * #3290: what Station last applied on `threadId`, and putting it back.
+   * `resolve` records a mode before the engine takes it; an engine that
+   * refuses the mode (an OpenCode whose own rules would override it) still
+   * runs what it ran before, and a Default pick must resolve against that,
+   * not against the mode that never applied.
+   */
+  appliedOf(
+    threadId: string,
+  ): { mode: ApprovalMode; startConfinement?: StationConfinement } | undefined {
+    return this.stationApplied.get(threadId);
+  }
+
+  restoreApplied(
+    threadId: string,
+    prior:
+      | { mode: ApprovalMode; startConfinement?: StationConfinement }
+      | undefined,
+  ): void {
+    if (prior) this.stationApplied.set(threadId, prior);
+    else this.stationApplied.delete(threadId);
+  }
+
+  /**
+   * #3290: why a Default pick on a Station-governed ACP thread would still
+   * request a mode, or `undefined` when it requests nothing (the engine's
+   * own settings). Read by the governance refusal, so its advice about
+   * Default is true for this chat.
+   */
+  async defaultPickRequest(input: {
+    threadId: string;
+    agentSlug?: string;
+    capturedAgent?: { approvalMode?: ApprovalMode };
+  }): Promise<'configured' | 'takeover' | undefined> {
+    if (await this.defaultPosture(input)) return 'configured';
+    return (await this.resolveDefaultPick({ ...input, durableTakeover: true }))
+      ? 'takeover'
       : undefined;
   }
 

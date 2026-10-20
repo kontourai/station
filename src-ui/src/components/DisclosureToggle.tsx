@@ -3,8 +3,8 @@ import { ArrowDownGlyph } from './icons/Glyph';
 import './DisclosureToggle.css';
 
 /**
- * THE one disclosure affordance for a folded section of a list (design
- * round 2026-10, C13): a caret on the left of the label that rotates, on a
+ * THE one disclosure affordance for a folded section of a list (#3239):
+ * a caret on the left of the label that rotates, on a
  * quiet button carrying `aria-expanded`. The dock's "+ Snoozed · 3", Home's
  * native `<details>` triangle for Drafts and its custom "+ Snoozed" button,
  * and the sidebar's "+"/"−" text glyphs were four spellings of one control.

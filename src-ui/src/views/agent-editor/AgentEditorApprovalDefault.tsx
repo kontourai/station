@@ -1,7 +1,9 @@
 import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 import { InfoTip } from '../../components/InfoTip';
+import { useACPConnections } from '../../hooks/useACPConnections';
 import {
   APPROVAL_MODE_OPTIONS,
+  acpApprovalFor,
   approvalModeKnobSupported,
 } from '../../utils/approvalMode';
 import type { AgentEditorFormProps } from './types';
@@ -23,7 +25,18 @@ export function AgentEditorApprovalDefault({
   setForm,
   locked,
 }: Pick<AgentEditorFormProps, 'form' | 'setForm' | 'locked'>) {
-  if (!approvalModeKnobSupported(form.execution.agentConnectionId)) {
+  const { data: acpConnections = [] } = useACPConnections();
+  const connectionId = form.execution.agentConnectionId;
+  // #3290: an ACP connection has the knob only when Station sets its
+  // engine's approval rules, read from its command, never its id.
+  const acpApproval = acpApprovalFor(
+    acpConnections.find((connection) => connection.id === connectionId),
+  );
+  if (
+    !approvalModeKnobSupported(
+      acpApproval ? acpApproval.engineId : connectionId,
+    )
+  ) {
     return null;
   }
   const value = form.execution.approvalMode ?? '';
@@ -69,8 +82,10 @@ export function AgentEditorApprovalDefault({
       </select>
       {value === 'never' && (
         <span className="editor-hint" id="ae-approval-default-hint">
-          Every chat with this agent starts at full access: no sandbox and no
-          approval prompts, as you. Anyone using it can still tighten a chat.
+          Every chat with this agent starts at full access: approval prompts are
+          off where the engine allows it. A start without a full-access grant,
+          such as a webhook, gets a narrower setting, so some actions may still
+          ask. Anyone using it can still tighten a chat.
         </span>
       )}
     </div>

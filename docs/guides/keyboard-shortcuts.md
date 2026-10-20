@@ -23,6 +23,28 @@ shortcuts are included in Settings export/import; they do not automatically
 synchronize across Devices. The editor is read-only in the mobile layout,
 including narrow desktop windows.
 
+## Command palette
+
+Press **⌘K** on macOS or **Ctrl+K** on Windows and Linux to open the command
+palette from anywhere in Station, including while you are typing in a field. It
+does not open while another dialog is open, and you can rebind it under
+**Settings → Keyboard shortcuts**. There is no on-screen button for it, so a
+phone or tablet without a keyboard cannot open it.
+
+Type to search. Results are grouped into commands, actions (such as opening the
+chat dock, a new Board, the tour or **Report a problem**), places to go,
+plugins, Settings rows, open chats, Projects, workspace panes, Agents and
+skills. After two characters it also searches indexed conversation messages.
+Among close matches, items you use often rank higher; **Reset command history**
+clears that. Choose
+**Workspace search (this Station)** at the top to switch to workspace search.
+
+Use the arrow keys to move, Return to run the highlighted item, and Escape or a
+click outside to close. Running an item usually closes the palette and returns
+focus to where you were. Some items keep it open, such as
+**Reset command history**, which shows whether the reset worked, and a message
+found on another Station, which explains that it cannot be opened here.
+
 ## Return in chat
 
 Choose **Chat settings → Return in chat** on each device. Automatic uses Return

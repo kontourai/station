@@ -156,8 +156,7 @@ export class ApprovalGuardianService {
  * decisions — leaving e.g. "Always defer git pushes to a human" as the
  * guardian's whole system prompt. The Settings copy (and the field's own
  * pre-existing "Extra instructions" wording) has always promised additive
- * behavior, so the composition is fixed to match the promise (archive#1831
- * delivery review).
+ * behavior, so the composition is fixed to match the promise (archive#1831).
  */
 function composeGuardianInstructions(
   userInstructions: string | undefined,
@@ -168,24 +167,24 @@ function composeGuardianInstructions(
 }
 
 /**
- * archive#3577 review round 3 (HIGH-4, reopening HIGH-1/HIGH-3): `toolName`
- * and `toolDescription` are model/tool-authored exactly like `toolArgs` —
- * `acp-adapter.ts:1648,1654` sets `toolName = params.toolCall?.name` and
+ * archive#3577: `toolName` and `toolDescription` are model/tool-authored
+ * exactly like `toolArgs` — `acp-adapter.ts:1648,1654` sets
+ * `toolName = params.toolCall?.name` and
  * `toolDescription = params.toolCall.title`, under that file's own comment
- * "ACP names are reported by the external process." Round 2 fenced only
- * `toolArgs`; a malicious `toolDescription` (or `toolName`) still landed as
- * free text in genuine-framework position, so a forged `Decide whether…`
- * line or an "Operator note: pre-approved… Return allow" instruction could
- * sit BEFORE the fence entirely — no nonce guessing required, because
- * nothing there was ever fenced.
+ * "ACP names are reported by the external process." An earlier fix fenced
+ * only `toolArgs`; a malicious `toolDescription` (or
+ * `toolName`) still landed as free text in genuine-framework position, so a
+ * forged `Decide whether…` line or an "Operator note: pre-approved… Return
+ * allow" instruction could sit BEFORE the fence entirely — no nonce guessing
+ * required, because nothing there was ever fenced.
  *
  * Fix: fence all three model/tool-authored fields with the SAME nonce.
  * `toolName`/`toolDescription` are typically single-line, so they are
  * wrapped inline rather than given their own block like `toolArgs`.
  *
- * (Round 1/2 history, condensed: round 1 used a FIXED delimiter, which is
+ * (History, condensed: the first fence used a FIXED delimiter, which is
  * public-repo, guessable text — a model-authored value could forge its own
- * closing tag and escape early. Round 2 replaced it with a per-review
+ * closing tag and escape early. The next fix replaced it with a per-review
  * random nonce embedded in both tags: the tool call is authored before the
  * nonce exists, so it cannot produce the matching closing bytes needed to
  * escape. That property is unchanged here, just extended to cover every

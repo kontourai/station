@@ -76,7 +76,7 @@ export function renderSettingRow({
   const Custom = CUSTOM_ROW_RENDERERS[key];
   // #2144 slice 3: the composite rows (approval guardian, distribution
   // profile, built-in engine) get no scope badge, inheritance popover or
-  // reset affordance in this slice. Each owns its own internal layout rather
+  // reset affordance. Each owns its own internal layout rather
   // than a `PageRow` status slot, so giving them the same status strip is a
   // separate change — the epic records it as a fast-follow.
   if (Custom) {

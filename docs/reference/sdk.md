@@ -2646,6 +2646,29 @@ the URL hash for the active tab. It is not a reliable way to erase that active
 tab's saved string; a later restoration can read it again. Tracked in
 [#2806](https://github.com/kontourai/station/issues/2806).
 
+To hand state to another tab of the same Layout, write it for that tab and then
+select the tab. The state is a URL search-params string. `setTabState` stores
+it in sessionStorage for this Layout and updates the URL hash immediately only
+when the target is the active tab; selecting a tab restores its stored hash.
+The receiving tab reads its state in an effect keyed on the active tab.
+
+```ts
+import { useNavigation, useLayoutNavigation } from '@kontourai/station-sdk';
+
+const nav = useNavigation();
+const { setTabState, getTabState } = useLayoutNavigation();
+
+// Sender, inside the `my-layout` navigation provider:
+setTabState('crm', new URLSearchParams({ selectedAccount: accountId }).toString());
+nav.setLayoutTab('my-layout', 'crm');
+
+// Receiver, in useEffect(..., [activeTab]):
+const selectedAccountId = new URLSearchParams(getTabState('crm')).get('selectedAccount');
+```
+
+Workspace Pane placement uses its own
+[host contract](../guides/workspace-pane-authoring.md), not tab state.
+
 ---
 
 ## Agent Resolver
@@ -3141,7 +3164,20 @@ are also exported from `@kontourai/station-sdk/client`.
   projection when that scope is selected. Consumers render its standing from
   that projection and must not issue a second `useAnswerBasisQuery`. An
   `answer.assessment.updated` event tombstones only the matching scoped
-  current-answer inventory cache before active observers refetch.
+  current-answer inventory cache before active observers refetch. Every
+  mount, every key a mounted hook switches to, and every time a disabled
+  hook becomes enabled, makes its own read
+  (`refetchOnMount` is always `'always'` here, whatever the caller passes),
+  and no cached projection is shown until a read made during that mount
+  succeeds; after that, a
+  background refetch keeps the loaded projection in `data`. Only lost
+  authority (401, 403 or the route's non-disclosing 404) tombstones the
+  scope's cached projection and pages. A 503, a network failure or a
+  projection the contract refuses is a query `error` beside whatever was
+  already loaded, and is not retried automatically. This narrower rule
+  differs on purpose from `useAnswerBasisQuery`, which still revokes on any
+  refusal: the inventory route reserves 503 for a read it could not
+  perform, so a 503 is not evidence of lost authority.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
@@ -3471,7 +3507,7 @@ family subclasses stay and gain the refusal's fields:
 | `DelegationApiError` | `Error` | `status`, `retryAfterMs` (it already carried `code`, `retryable`, `details`) |
 | `AnswerSupportRequestError` | `Error` | `code`, `details`, `retryAfterMs` |
 | `ActionOperationProtocolError`, `LiveActivityProtocolError` | `Error` | `status`, `code`, `details`, `retryAfterMs`; absent on a malformed response |
-| `AnswerBasisRequestError`, `AnswerNarrativeBindingRequestError`, `FlowGateEvaluationRequestError` | `Error` | `code`, `retryAfterMs`; the message stays fixed |
+| `AnswerBasisRequestError`, `FlowGateEvaluationRequestError` | `Error` | `code`, `retryAfterMs`; the message stays fixed |
 
 Each keeps its earlier constructor; the new form takes the helper's
 `StationHttpError`. A delegation response whose body is not JSON throws a

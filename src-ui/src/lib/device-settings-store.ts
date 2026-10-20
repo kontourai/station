@@ -47,6 +47,7 @@ import {
   parseRegionArrangementRecord,
   toRegionArrangementRecord,
 } from '../regions/region-arrangement-record';
+import { isRecord } from '../utils/isRecord';
 import { applyAccountPreferencePatch } from './account-preference-values';
 import { parseCodingSessionPanelsRecord } from './coding-panels-record';
 
@@ -161,10 +162,6 @@ function removeRaw(key: string): void {
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 /**
  * Parses a raw prior shared-root string (archive#settings-revamp slice 3
  * archive#1359 convergence) into a plain object, or `null` when the raw value is
@@ -177,7 +174,7 @@ function parsePriorSettingsRoot(
   if (raw === null) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    return isPlainObject(parsed) ? parsed : null;
+    return isRecord(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -211,7 +208,7 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
     case 'composite': {
       try {
         const parsed: unknown = JSON.parse(raw);
-        if (isPlainObject(parsed)) {
+        if (isRecord(parsed)) {
           return {
             ...(defaultValue as object),
             ...parsed,
@@ -285,7 +282,7 @@ function validateFeatureSettings(
 
   const sounds = candidate.notificationSounds;
   if (sounds !== undefined) {
-    if (!isPlainObject(sounds)) return { valid: false };
+    if (!isRecord(sounds)) return { valid: false };
     for (const category of NOTIFICATION_SOUND_CATEGORIES) {
       if (
         Object.hasOwn(sounds, category) &&
@@ -448,7 +445,7 @@ function validateImportedValue<K extends keyof DeviceSettings>(
       return { valid: true, value: candidate as DeviceSettings[K] };
     }
     case 'composite': {
-      if (!isPlainObject(candidate)) return { valid: false };
+      if (!isRecord(candidate)) return { valid: false };
 
       if (definition.key === 'featureSettings') {
         const outcome = validateFeatureSettings(candidate);
@@ -543,7 +540,7 @@ function sanitizeImportedValues(values: unknown): {
 } {
   const result: Partial<DeviceSettings> = {};
   const droppedKeys: (keyof DeviceSettings)[] = [];
-  if (!isPlainObject(values)) return { values: result, droppedKeys };
+  if (!isRecord(values)) return { values: result, droppedKeys };
 
   for (const definition of DEVICE_SETTINGS_REGISTRY) {
     if (!Object.hasOwn(values, definition.key)) continue;
@@ -560,9 +557,9 @@ function sanitizeImportedValues(values: unknown): {
 
 function isPlainEnvelopeShape(value: unknown): value is DeviceSettingsEnvelope {
   return (
-    isPlainObject(value) &&
+    isRecord(value) &&
     typeof value.version === 'number' &&
-    isPlainObject(value.values)
+    isRecord(value.values)
   );
 }
 
@@ -971,7 +968,7 @@ class DeviceSettingsStore {
    * so the caller can report them.
    */
   importEnvelope = (input: unknown): DeviceSettingsImportResult => {
-    const candidateVersion = isPlainObject(input) ? input.version : undefined;
+    const candidateVersion = isRecord(input) ? input.version : undefined;
     if (
       typeof candidateVersion === 'number' &&
       candidateVersion > CURRENT_ENVELOPE_VERSION

@@ -50,7 +50,7 @@ import type {
 export { readBuildProvenance } from './build-provenance.js';
 
 export const STATUS_PREREQUISITES_CACHE_TTL_MS = 60_000;
-export const STATUS_PREREQUISITES_REFRESH_BUDGET_MS = 2_000;
+const STATUS_PREREQUISITES_REFRESH_BUDGET_MS = 2_000;
 const E2E_BUILD_PROVENANCE: SystemBuildProvenance = {
   fullSha: '0123456789abcdef0123456789abcdef01234567',
   shortSha: '0123456',
