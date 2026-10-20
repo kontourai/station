@@ -429,7 +429,13 @@ report is removed. That diagnostic is count-bounded, byte-bounded, redacted,
 and digest-bound by the changed-verification receipt. A failing run explicitly
 marks incomplete identities instead of presenting aggregate counts as a
 diagnosable bundle, and `incompleteReasons` names every shortfall in words
-rather than leaving a bare `complete: false`.
+rather than leaving a bare `complete: false`. `complete` is derived from the
+recorded deferral: a run that defers `ci-fast` or `test-full`, or selects
+targets and executes no test, is incomplete. Hosted `fast-checks` still passes
+such a plan, since `Merge-queue regression` runs full regression before merge,
+but it reports the pass as provisional with a warning that names the deferred
+lanes. An E2E, desktop or pre-push deferral is owned outside the selection and
+leaves the run complete.
 
 A companion Vitest reporter keeps failed-test error names, primary messages,
 nested causes, stacks and durations separate. Excerpts prefer the observed

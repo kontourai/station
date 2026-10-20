@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
+import { incompleteDiagnosticReasons } from '../lib/changed-verification-diagnostics.mjs';
 import { loadProductLawManifest } from '../lib/product-laws.mjs';
 import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
 import { runProductLawGate } from '../product-law-gate.mjs';
@@ -2528,6 +2529,83 @@ setInterval(() => {}, 1000);`,
       'Vitest JSON report contains 1 test(s) that never finished',
     );
   });
+  test('a diff that escalates to ci-fast writes an incomplete diagnostic (#1706)', async () => {
+    const run = reportedRun({ report: passingReport });
+    const writeReceipt = vi.fn();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        // README.md has no impact edge, so it escalates to ci-fast.
+        paths: [scenarios.sourceEdges.server, 'README.md'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt,
+    });
+    expect(result.exitCode).toBe(3);
+    expect(result.selection).toMatchObject({ escalated: true });
+    const diagnostics = JSON.parse(
+      writeReceipt.mock.calls.find(
+        ([path]) => path === '.kontourai/test-impact/changed-diagnostics.json',
+      )?.[1],
+    );
+    expect(diagnostics.selection).toMatchObject({
+      relatedPathCount: 1,
+      deferredLanes: ['ci-fast'],
+      escalated: true,
+    });
+    expect(diagnostics.executions).toEqual([]);
+    expect(diagnostics.complete).toBe(false);
+    expect(diagnostics.incompleteReasons).toEqual([
+      'ci-fast deferred: its suite did not run here; Merge-queue regression runs it before merge',
+      '1 selected target(s), and no test executed',
+    ]);
+  });
+  test('a deferral owned outside the selection leaves a run that executed complete (#1706)', () => {
+    // The shape of a healthy hosted receipt: E2E defers on every pull
+    // request by design, and the selected suites ran.
+    expect(
+      incompleteDiagnosticReasons({
+        selection: {
+          relatedPathCount: 4,
+          exactTestCount: 7,
+          deferredLanes: ['verify-e2e-full'],
+          escalated: false,
+        },
+        executions: [
+          {
+            kind: 'explicit',
+            exitCode: 0,
+            infrastructureError: false,
+            counts: { executed: 88, passed: 88, failed: 0 },
+            failureIdentitiesComplete: true,
+          },
+        ],
+      }),
+    ).toEqual([]);
+    expect(
+      incompleteDiagnosticReasons({
+        selection: {
+          relatedPathCount: 5,
+          exactTestCount: 3,
+          deferredLanes: ['ci-fast'],
+          escalated: true,
+        },
+        executions: [
+          {
+            kind: 'explicit',
+            exitCode: 0,
+            infrastructureError: false,
+            counts: { executed: 75, passed: 75, failed: 0 },
+            failureIdentitiesComplete: true,
+          },
+        ],
+      }),
+    ).toEqual([
+      'ci-fast deferred: its suite did not run here; Merge-queue regression runs it before merge',
+    ]);
+  });
   test('escalates a selection in which every test declined to run', async () => {
     const writeReceipt = vi.fn();
     const result = await runChangedVerification(['--base=origin/main'], {
@@ -2567,6 +2645,7 @@ setInterval(() => {}, 1000);`,
     expect(diagnostics.complete).toBe(false);
     expect(diagnostics.incompleteReasons).toEqual([
       'related: Vitest executed zero of 3 selected test(s) (3 skipped, 0 todo)',
+      'test-full deferred: its suite did not run here; Merge-queue regression runs it before merge',
     ]);
   });
   test('names the identity shortfall when failures outrun the identity bound', async () => {
