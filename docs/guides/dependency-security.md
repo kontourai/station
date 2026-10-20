@@ -148,18 +148,25 @@ finding for the reviewed local patch; it does not claim upstream remediation
 or absence of attacker-controlled Station format strings.
 
 The [policy evaluator](../../scripts/dependency-advisory-policy.mjs) directly
-calls the [patch-binding verifier](../../scripts/lib/dependency-patch-binding.mjs)
-before accepting this residual. Its optional structured `patchBinding`
-preserves the twelve required legacy string fields. For this exact formatter
-identity, deleting the binding fails; there is no identity-only fallback.
-The verifier checks Node 24, parsed workspace and lock references, the patch
+called the [patch-binding verifier](../../scripts/lib/dependency-patch-binding.mjs)
+before accepting this residual, through an optional structured `patchBinding`
+beside the twelve required legacy string fields. For that exact formatter
+identity, deleting the binding failed; there was no identity-only fallback.
+The verifier checked Node 24, parsed workspace and lock references, the patch
 SHA-256, production graph presence, and the source and minified bytes of every
 accounted installed formatter instance. Missing evidence, drift, unaccounted
-copies, or caller-directory/file/symlink/case-equivalent module shadows fail
+copies, or caller-directory/file/symlink/case-equivalent module shadows failed
 closed. The guard is a check of the current installed tree, not continuous
 protection against a same-user writer changing files after verification.
 
-The guard's 109 real-file, CLI, and legacy controls passed, including named
+The formatter identity has since been removed from the verifier (#2722). The
+residual that used it is gone, so the verifier admits only the node-forge
+remediation above. A residual that carries a `patchBinding` is now refused as an
+unknown field, and the installed-tree controls (drift, unaccounted copies and
+caller-directory, file, symlink and case-equivalent shadows) run against the
+node-forge fixture in `scripts/__tests__/dependency-patch-binding.test.ts`.
+
+At that review the guard's 109 real-file, CLI, and legacy controls passed, including named
 bad cases and exact restoration. Disabling only the production verification
 call caused 17 failures; restoration returned all 109 tests to PASS.
 Independent review passed at `e319df1a89`. These guard controls complement the
