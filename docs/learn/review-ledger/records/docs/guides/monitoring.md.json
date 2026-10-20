@@ -160,7 +160,11 @@
 
     "src-server/domain/migrations/016-session-parent-mentions.ts",
 
-    "packages/telemetry-broker/src/client-address.ts"
+    "packages/telemetry-broker/src/client-address.ts",
+
+    "deployment/telemetry/dashboards/station.json",
+
+    "deployment/telemetry/compose.dev.yaml"
   ],
 
   "checks": [

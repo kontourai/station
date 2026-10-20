@@ -101,7 +101,8 @@ const DESKTOP = { width: 1456, height: 900 };
 /** Flipped per shape before each render; every mock below reads it. */
 const harness = vi.hoisted(() => ({ isMobile: false, bottomOnly: false }));
 
-vi.mock('../hooks/useIsMobile', () => ({
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => harness.isMobile,
   useDockSlotDevice: () => ({
     viewportWidth: harness.bottomOnly ? PHONE.width : DESKTOP.width,

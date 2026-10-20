@@ -18,7 +18,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   resolveOrchestrationRequest: transport.resolve,
   inspectAttentionRequest: transport.inspect,
 }));
-vi.mock('../../../hooks/useIsMobile', () => ({ useIsMobile: () => true }));
+vi.mock('../../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../hooks/useIsMobile')>()),
+  useIsMobile: () => true,
+}));
 afterEach(cleanup);
 
 function request(id: string): PendingApprovalRequest {

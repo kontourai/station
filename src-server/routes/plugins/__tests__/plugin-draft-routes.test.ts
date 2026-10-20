@@ -295,7 +295,7 @@ describe('plugin draft routes', () => {
     TEST_TIMEOUT_MS,
   );
 
-  // S3 review MEDIUM-1: the generation counter restarts with each server
+  // The generation counter restarts with each server
   // lifetime, so a revision is named by a per-lifetime key and its digest.
   // A viewer who chose "revision 1" in one lifetime can neither be served a
   // later lifetime's revision 1 nor mistake it for the one they chose.
@@ -339,7 +339,7 @@ describe('plugin draft routes', () => {
     TEST_TIMEOUT_MS,
   );
 
-  // S3 review round 2 MEDIUM: a build that never settles (a FIFO input, a
+  // A build that never settles (a FIFO input, a
   // wedged esbuild) used to hold a global build slot forever and block
   // release. The service races every build against a deadline.
   test(
@@ -454,7 +454,7 @@ describe('plugin draft routes', () => {
     TEST_TIMEOUT_MS,
   );
 
-  // Round 3 LOW: a forced rebuild is bounded. It is ignored while a build is
+  // A forced rebuild is bounded. It is ignored while a build is
   // running or queued, and allowed at most once per 5s.
   test('forced rebuilds are ignored while one is in flight and rate limited', async () => {
     let now = 1_000_000;

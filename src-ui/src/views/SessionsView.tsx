@@ -491,7 +491,7 @@ export function SessionsView({
         pendingRouteSelectionRef.current = null;
         setSelection(sessionId);
         if (focusHint === 'evidence') armEvidenceReveal(sessionId);
-        else setEvidenceReveal(null); // Review H1: routed, but not an arm
+        else setEvidenceReveal(null); // Routed, but not an arm
       } else {
         pendingRouteSelectionRef.current = {
           sessionId,

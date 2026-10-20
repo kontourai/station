@@ -132,7 +132,8 @@ vi.mock('../../../contexts/NavigationContext', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/useIsMobile', () => ({
+vi.mock('../../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../hooks/useIsMobile')>()),
   useIsMobile: () => harness.isMobile,
   useDockSlotDevice: () => ({
     viewportWidth: harness.bottomOnly ? 390 : 1024,

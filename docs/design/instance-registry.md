@@ -19,7 +19,7 @@
 
 ## Why this file exists
 
-The Command Station epic (#1672) needs a durable, host-wide record of every
+The Command Station epic (archive#1672) needs a durable, host-wide record of every
 Station instance running on a machine — not just the one a given CLI invocation
 happens to be talking to. `<STATION_HOME>/instances.json` is that record: one
 file per Station home, keyed by an arbitrary instance id, describing each
@@ -87,17 +87,17 @@ The cross-concept topology and authority boundary is defined in
   publish.
 - `upsertInstance(id, partial, home?)` — locked create-or-merge-update.
   Merge semantics make it wrong for producers publishing a complete entry
-  over a possibly-foreign one (station#3047): every field the partial omits
+  over a possibly-foreign one (archive#3047): every field the partial omits
   survives from the existing entry.
 - `claimInstanceEntry(id, entry, { home?, protectedTypes?, adoptTypes? })` — locked,
-  ownership-checked **replacement** (station#3047): refuses a
+  ownership-checked **replacement** (archive#3047): refuses a
   `protectedTypes` entry (dead or alive) or an entry owned by a live process
   (birth-aware, fail-open; `entry.pid` may refresh its own), else writes
   exactly `entry`. A caller may explicitly adopt an owned type through
   `adoptTypes`; service reconfiguration uses this for `service` entries while
   its backend protocol owns replacement. `protectedTypes` still wins over
   adoption. The guard runs inside the mutation lock — this is the
-  owned-upsert primitive #2904's review asked for.
+  owned-upsert primitive archive#2904's review asked for.
 - `replaceInstance(id, entry, home?)` — locked unconditional exact write; for
   compensation paths restoring a captured prior entry.
 - `claimHostOwner(id, { home?, type, ownerPids?, publish })` — the one
@@ -139,13 +139,13 @@ metadata alone does not authenticate a process or grant lifecycle authority.
 
 The sibling HTTP route this slice also adds
 (`src-server/routes/system/system-status-routes.ts`, `GET /api/system/instance`,
-station#1985/#1983) self-reports `component: 'command-station'` alongside
+archive#1985/archive#1983) self-reports `component: 'command-station'` alongside
 whatever build/port fields it can determine — it does not read this registry
 file (see [Producers, consumers, and remaining non-goals](#producers-consumers-and-remaining-non-goals)).
 It is documented here because both concepts share this design doc's context.
 
 - **Value space today: exactly `'command-station'`.** That is the server
-  runtime's name per the #1983 naming decision — the frontend bundle stays
+  runtime's name per the archive#1983 naming decision — the frontend bundle stays
   named "Station" (the product name a user sees); `'command-station'` is the
   server-side runtime process a prober is actually talking to.
 - **Why it exists.** A future Station bundle (a plugin host, a worker
@@ -172,7 +172,7 @@ CLI's lifecycle journal uses, and it already lives in `packages/shared`.
 Every mutating call (`writeInstanceRegistry`, `upsertInstance`, `updateStatus`,
 `removeInstance`) acquires `<path>.mutation` exactly once for its whole
 read-modify-write, closing the TOCTOU/CAS gap named in this repo's
-"serialized-updater" learning (station#1588/#1600/#1606: a JSON-file store
+"serialized-updater" learning (archive#1588/archive#1600/archive#1606: a JSON-file store
 without a lock around its read-modify-write has a race). The payload publish
 itself is temp-write + `fsyncSync` + `renameSync` + a directory `fsync` (via
 `fsyncDirectorySync` from `packages/shared/src/fs-windows-compat.ts`, already
@@ -222,9 +222,9 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
 ## Producers, consumers, and remaining non-goals
 
 - **Durable-service producer: `station service install`.** As of
-  station#1983/#1672, `station service install` writes the registry as the
+  archive#1983/archive#1672, `station service install` writes the registry as the
   durable authority for a user service's operator environment, including
-  `env.ALLOWED_ORIGINS`. As of station#3047 that write is a
+  `env.ALLOWED_ORIGINS`. As of archive#3047 that write is a
   replacing claim (never a merge): installing over a foreign
   (CLI) entry previously inherited its pid/birth into a `type: 'service'`
   chimera that could flip Desktop's home-ownership decision off a live CLI
@@ -296,7 +296,7 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   `removeOwnedInstance` (`releaseSidecar`). Rust never writes
   `instances.json` directly, so owner checks, atomic publishing, and the
   cross-process mutation lock remain shared-module responsibilities.
-- **Producers (updated, station#2904 slice 2).** `station start` now publishes
+- **Producers (updated, archive#2904 slice 2).** `station start` now publishes
   into this registry (`'worktree'` when the checkout's `.git` is a file,
   `'inline'` otherwise; pid + birth fingerprint; best-effort with a stderr
   note on failure) and `station stop` removes the entry — identity-checked on
@@ -310,7 +310,7 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   **The one-owner invariant** this registry serves: every server process has
   exactly one owner that assigned its identity, port, and data dir, enforced
   at the layer native to each surface — the OS-level single-instance lock for
-  the Desktop app (#3045), the CLI's shared-home start check, and the home-scoped
+  the Desktop app (archive#3045), the CLI's shared-home start check, and the home-scoped
   host-owner claim shared by Desktop sidecars and durable services (#2961). The CLI now refuses a new start when its registry observations
   find another live instance on that home. Existing co-located restarts and
   explicit `--allow-shared-home` bypass that check; failed registry reads can
@@ -352,7 +352,7 @@ not a naming collision to "fix":
 |---|---|---|
 | Scope | Per-checkout for source; home-derived channel state root for prebuilt archives | Per-home |
 | Cardinality | One file per instance | One file, many instances inside it |
-| Owner | `station start`/`station stop` (CLI lifecycle) | `station service install` (durable service), Desktop's shared-registry bridge (desktop-owned sidecar), and — since station#2904 slice 2 — `station start`/`stop` themselves (types `'inline'`/`'worktree'`) |
+| Owner | `station start`/`station stop` (CLI lifecycle) | `station service install` (durable service), Desktop's shared-registry bridge (desktop-owned sidecar), and — since archive#2904 slice 2 — `station start`/`stop` themselves (types `'inline'`/`'worktree'`) |
 | Purpose | "Which processes did this lifecycle target start, so I can stop them?" | "What instances exist under *this home*, across checkouts?" |
 
 Both mechanisms now have real producers and consumers. Deriving one from the

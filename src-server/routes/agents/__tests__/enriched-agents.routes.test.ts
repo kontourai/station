@@ -483,7 +483,7 @@ describe('registry-backed enriched Agent routes', () => {
   test('a listed slug whose spec load fails transiently keeps its retries', async () => {
     // Attempt 1: unstable AND the authored agent's file is mid-write
     // (loadAgent throws). Attempt 2: stable and readable. The early-exit
-    // for unknown slugs must not swallow this retry (archive#1574 delta review).
+    // for unknown slugs must not swallow this retry (archive#1574).
     const getAgentConfigurationRevision = vi
       .fn()
       .mockReturnValueOnce(7)
@@ -1403,7 +1403,7 @@ describe('registry-backed enriched Agent routes', () => {
       expect(reason).not.toContain("'codex'");
     }
   });
-  // archive#2845 review round: the readiness derivation asks for the adapter
+  // archive#2845: the readiness derivation asks for the adapter
   // `provider`, and the agreement test supplies it by hand. That leaves the
   // one thing production actually depends on untested — the projection from a
   // live runtime connection to the summary this route consumes. The first fix
@@ -1450,7 +1450,7 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
    * The route's `loadAgent`/`listAgents` deps are `AgentService.getAgent` /
    * `AgentService.listAgents`, exactly as `runtime-routes.ts` wires them.
    *
-   * That composition IS the fix for the delta's H3: round 1 applied the
+   * That composition IS the fix: an earlier version applied the
    * Station-identity overlay inside this route, so these tests passed while
    * two other readers of the same records (`/:slug/binding` and the
    * save-response validation) saw the raw file. Injecting a hand-projected
@@ -1617,7 +1617,7 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
 
   test('GET /:slug/binding answers from the same projection (delta M2)', async () => {
     // The endpoint `station chat` reads to choose its managed-vs-external
-    // session read model. Round 1 left it rebuilding from the raw record, so
+    // session read model. An earlier version rebuilt it from the raw record, so
     // it answered "unbound" — Station's own engine — on the very home the
     // catalog was correctly reporting as Codex, and the CLI picked the wrong
     // read model for every session on that home.

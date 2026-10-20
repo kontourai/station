@@ -26,7 +26,8 @@ const { isMobile, navigation, setDockState } = vi.hoisted(() => ({
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ ...navigation, setDockState }),
 }));
-vi.mock('../../hooks/useIsMobile', () => ({
+vi.mock('../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useIsMobile')>()),
   useIsMobile: () => isMobile(),
 }));
 vi.mock('../../contexts/ApiBaseContext', () => ({

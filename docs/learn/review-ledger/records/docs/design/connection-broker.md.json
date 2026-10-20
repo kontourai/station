@@ -38,8 +38,6 @@
 
     "src-desktop/src/native_secure_entry.rs",
 
-    "src-desktop/src/relay_grant_vault.rs",
-
     "src-server/routes/system/native-device-proof-binding-routes.ts",
 
     "src-server/routes/system/native-device-proof-self-receipt-routes.ts",

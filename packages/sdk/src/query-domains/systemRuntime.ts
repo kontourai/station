@@ -390,8 +390,8 @@ export type CoreUpdateRestartStatus =
 const SYSTEM_STATUS_PENDING_POLL_MS = 1_500;
 
 /**
- * station#3444: same terminal/transient split as `resolveMonitoringStatsRefetchInterval`
- * below — a credential failure (401/403) rejects every retry identically, so
+ * archive#3444: the terminal/transient split of `pollUnlessTerminal` below.
+ * A credential failure (401/403) rejects every retry identically, so
  * polling it every 5s is a request the server will refuse forever. Anything
  * else (network failure, a transient 5xx) keeps the flat 5s cadence.
  */
@@ -399,15 +399,7 @@ export function resolveSystemStatusRefetchInterval(
   query: { state: { status: string; data?: SystemStatus; error?: unknown } },
   pollInterval?: number,
 ): number | false {
-  if (query.state.status === 'error') {
-    if (
-      query.state.error instanceof StationHttpError &&
-      isTerminalConnectionStatus(query.state.error.status)
-    ) {
-      return false;
-    }
-    return 5_000;
-  }
+  if (query.state.status === 'error') return pollUnlessTerminal(query, 5_000);
   if (query.state.data?.prerequisitesState === 'pending') {
     return SYSTEM_STATUS_PENDING_POLL_MS;
   }
@@ -415,7 +407,7 @@ export function resolveSystemStatusRefetchInterval(
 }
 
 /**
- * station#3444: the per-attempt sibling of the refetch-interval split above —
+ * archive#3444: the per-attempt sibling of the refetch-interval split above —
  * without it, a 401/403 still burned `retry: 2`'s two extra attempts (three
  * requests) before the interval resolver even got a say, on a status that
  * rejects every one of them identically. Same pattern as
@@ -595,24 +587,26 @@ const MONITORING_STATS_POLL_MS = 5_000;
 /**
  * Same terminal/transient vocabulary as `fetchSSE`'s `classifySseFailure`
  * (`client/http.ts`): a credential failure (401/403) cannot clear by polling
- * again, so it stops the poll instead of retrying it every
- * `MONITORING_STATS_POLL_MS` forever beside a stream that already stopped
- * (station#3436). Anything else — network failure, a transient 5xx — keeps
- * the same cadence rather than going silent. `resolveSystemStatusRefetchInterval`
- * above and `resolveFleetReceiptsRefetchInterval` below (station#3444)
- * replicate the same split for their own queries.
+ * again, so it stops the poll instead of retrying it forever beside a stream
+ * that already stopped (archive#3436). Anything else (network failure, a
+ * transient 5xx) keeps the query's cadence rather than going silent. Every
+ * REST poll beside a stream shares this one split (archive#3444).
  */
+function pollUnlessTerminal(
+  query: { state: { status: string; error?: unknown } },
+  cadenceMs: number,
+): number | false {
+  return query.state.status === 'error' &&
+    query.state.error instanceof StationHttpError &&
+    isTerminalConnectionStatus(query.state.error.status)
+    ? false
+    : cadenceMs;
+}
+
 export function resolveMonitoringStatsRefetchInterval(query: {
   state: { status: string; error?: unknown };
 }): number | false {
-  if (
-    query.state.status === 'error' &&
-    query.state.error instanceof StationHttpError &&
-    isTerminalConnectionStatus(query.state.error.status)
-  ) {
-    return false;
-  }
-  return MONITORING_STATS_POLL_MS;
+  return pollUnlessTerminal(query, MONITORING_STATS_POLL_MS);
 }
 
 export function useMonitoringStatsQuery(
@@ -649,31 +643,21 @@ export function useMonitoringMetricsQuery(
 const FLEET_RECEIPTS_POLL_MS = 30_000;
 
 /**
- * station#3444: shared by both fleet receipt queries below — same
- * terminal/transient split as `resolveMonitoringStatsRefetchInterval`. Both
- * fetchers now preserve the response status as a `StationHttpError`
- * (`fetchFleetRoutingReceiptsForStation`/`fetchFleetServeReceiptsForStation`,
- * `systemRuntimeRequests.ts`) specifically so this has something real to
- * classify — without that, a 401/403 body still parses as a generic `Error`
- * and this could never tell it apart from any other failure.
+ * Shared by both fleet receipt queries below. Both fetchers preserve the
+ * response status as a `StationHttpError` (`fetchFleetReceipts`,
+ * `systemRuntimeRequests.ts`) so a 401/403 can be told apart from any other
+ * failure.
  */
 export function resolveFleetReceiptsRefetchInterval(query: {
   state: { status: string; error?: unknown };
 }): number | false {
-  if (
-    query.state.status === 'error' &&
-    query.state.error instanceof StationHttpError &&
-    isTerminalConnectionStatus(query.state.error.status)
-  ) {
-    return false;
-  }
-  return FLEET_RECEIPTS_POLL_MS;
+  return pollUnlessTerminal(query, FLEET_RECEIPTS_POLL_MS);
 }
 
 /**
- * station#1398 slice 4 — the web half of the receipt surface. Same fetcher
- * contract as `station operate`'s pane: a failed read surfaces as an error,
- * never as an empty list.
+ * #98: the web half of the receipt surface. Same fetcher contract as
+ * `station operate`'s pane: a failed read surfaces as an error, never as an
+ * empty list.
  */
 export function useFleetRoutingReceiptsQuery(
   limit?: number,
@@ -690,7 +674,7 @@ export function useFleetRoutingReceiptsQuery(
   });
 }
 
-/** The serving half of the receipt surface (security review, M-2). */
+/** The serving half of the receipt surface; same failure contract. */
 export function useFleetServeReceiptsQuery(
   limit?: number,
   config?: QueryConfig<FleetServeReceiptPage>,

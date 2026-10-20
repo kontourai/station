@@ -24,10 +24,10 @@
  * filesystem. The measurement cannot tell "no filesystem state produces this
  * combination" from "nobody has written a fixture for it", and the sentence
  * below about what a fixture can produce must not be read as the former. Two
- * rounds on this branch shipped a wrong reachability claim about exactly this
+ * earlier versions shipped a wrong reachability claim about exactly this
  * space, both times by asserting an impossibility that was only an absence.
  *
- * One of the ten is where an inverted ordering survived a review round: an
+ * One of the ten is where an inverted ordering once went uncaught: an
  * unsafe name co-occurring with a containment failure, published as the
  * containment refusal, advising an install that the resolver refuses on the
  * name before it ever looks at a root. No fixture reaches that cell.
@@ -41,8 +41,8 @@
  * claims, and they are not additional test POWER. A review enumerated all 24
  * permutations of the precedence list and all 65 ordered subsets and found no
  * mutation caught by a new row that an older row does not already catch. The
- * value is that the sentence above is now true, which is the property round 8
- * and round 9 were both about.
+ * value is that the sentence above is now true: the docblock's completeness
+ * claim holds.
  */
 import { describe, expect, test } from 'vitest';
 import type { SkillPackageDirectoryCondition } from '../../../domain/skill-paths.js';
@@ -61,7 +61,7 @@ import {
  * refuses `__proto__`, `constructor`, `prototype`, whitespace-only and
  * over-long names, every one of which is a legal directory basename. So the two
  * come apart, and the four cells that premise excused were unpinned beneath a
- * docblock promising completeness (review round 9).
+ * docblock promising completeness.
  */
 const CASES: Array<{
   held: SkillPackageDirectoryCondition[];
