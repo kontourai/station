@@ -1050,6 +1050,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // that starts a grandchild in its group, then sweeps and terminates it.
   // Same process-tree shape as owned-process-reaping.test.ts.
   'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
+  // #3800: starts the real `codex app-server` (when this host has one) with a
+  // fresh CODEX_HOME to read the sandbox it reports over a planted workspace
+  // config; skips loudly where no codex binary resolves.
+  'src-server/providers/__tests__/codex-project-config.process.test.ts',
   // #561: runs a real Flow shell command (a stub script that leaves a
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.
