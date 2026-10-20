@@ -101,15 +101,22 @@ function invocationFor(line: string, outDir: string): Invocation {
   return { action, args, advertisedFlags };
 }
 
+/** One line per action; a shared line such as `a|b <taskId>` covers each. */
 function tasksUsageLines(): string[] {
   const text = commandHelpText('tasks') ?? '';
   return (
     text
       .split('\n')
       .map((line) => line.trim())
-      .filter((line) => /^station tasks [a-z-]+ /.test(line))
       // The generic CRUD line advertises shared `[options]`, not a fixed form.
       .filter((line) => !line.startsWith('station tasks list|get|create'))
+      .flatMap((line) => {
+        const match = /^station tasks ([a-z|-]+)( .*)$/.exec(line);
+        if (!match) return [];
+        return match[1]
+          .split('|')
+          .map((action) => `station tasks ${action}${match[2]}`);
+      })
   );
 }
 
