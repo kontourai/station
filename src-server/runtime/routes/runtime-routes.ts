@@ -2,8 +2,8 @@ import { hostname } from 'node:os';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
-import packageJson from '../../../package.json' with { type: 'json' };
 import { zodSchema } from 'ai';
+import packageJson from '../../../package.json' with { type: 'json' };
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
@@ -126,7 +126,6 @@ import { guardProjectResponse } from '../../services/projects/project-response-g
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
-import { errorMessage } from '../../utils/error-message.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import {
@@ -134,6 +133,7 @@ import {
   isGuideExcerptLimitError,
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
