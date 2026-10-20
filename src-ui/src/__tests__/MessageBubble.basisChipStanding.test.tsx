@@ -12,6 +12,7 @@ import { refreshAnswerAssessmentQueries } from '@kontourai/station-sdk/answer-as
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type AnswerBasisStandingFixture,
@@ -336,5 +337,100 @@ describe('answer Basis chip standing', () => {
       expect(chip(12).textContent).toBe('Basis · Policy met'),
     );
     expect(reads.filter((n) => n === 12)).toHaveLength(1);
+  });
+});
+
+/**
+ * The chip's 150ms dwell timer belongs to one IntersectionObserver
+ * subscription; its effect cleanup must cancel it. These render one answer
+ * and wait well past the dwell on real timers.
+ */
+describe('answer Basis chip dwell cleanup', () => {
+  function oneAnswer(strict: boolean) {
+    const bubble = (
+      <QueryClientProvider client={new QueryClient()}>
+        <div data-answer-index={0}>
+          <MessageBubble
+            msg={
+              {
+                role: 'assistant',
+                content: 'Answer 0.',
+                sessionId: SESSION,
+                turnId: turnOf(0),
+                answerEligible: true,
+                provenance: envelope(turnOf(0)),
+              } as ChatMessage
+            }
+            idx={0}
+            activeSession={{ id: SESSION, agentSlug: 'agent', messageCount: 1 }}
+            agents={[]}
+            chatFontSize={14}
+            showReasoning={false}
+            showToolDetails={false}
+            onCopy={() => {}}
+          />
+        </div>
+      </QueryClientProvider>
+    );
+    return render(strict ? <StrictMode>{bubble}</StrictMode> : bubble);
+  }
+  async function pastTheDwell() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+  }
+
+  it('a chip unmounted before its dwell ends starts no read and no stray update', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { unmount } = oneAnswer(false);
+      await waitFor(() => expect(chip(0)).toBeTruthy());
+      await scrollTo(0);
+      unmount();
+      await pastTheDwell();
+      expect(reads).toEqual([]);
+      expect(
+        errors.mock.calls.filter((call) =>
+          /act\(|unmounted/.test(String(call[0])),
+        ),
+      ).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it('a subscription torn down before its dwell ends cannot mark the chip on screen later', async () => {
+    // StrictMode subscribes, cleans up and subscribes again. The first
+    // subscription sees the chip on screen and starts its dwell; by the
+    // second the chip has left the viewport. Only a cleanup that cancels the
+    // first dwell keeps that stale timer from enabling an off-screen read.
+    let subscriptions = 0;
+    class LeavingObserver {
+      readonly onScreen = subscriptions++ === 0;
+      constructor(readonly callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        this.callback(
+          [
+            { target, isIntersecting: this.onScreen },
+          ] as unknown as IntersectionObserverEntry[],
+          this as unknown as IntersectionObserver,
+        );
+      }
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    vi.stubGlobal('IntersectionObserver', LeavingObserver);
+    oneAnswer(true);
+    await waitFor(() => expect(chip(0)).toBeTruthy());
+    await pastTheDwell();
+    // The double subscription really happened, so the case was reached.
+    expect(subscriptions).toBeGreaterThanOrEqual(2);
+    expect(reads).toEqual([]);
+    expect(chip(0).getAttribute('aria-label')).toBe(
+      'Basis for the answer “Answer 0.”',
+    );
   });
 });
