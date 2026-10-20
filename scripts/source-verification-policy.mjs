@@ -3,6 +3,8 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SOURCE_VERIFICATION_CONTEXT = 'Source verification policy';
 const CI_PATH = '.github/workflows/ci.yml';
+const METADATA_RUN_NAME =
+  "run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}";
 const SHA = /^[a-f0-9]{40}$/;
 const pending = (description) => ({ state: 'pending', description });
 const failure = (description) => ({ state: 'failure', description });
@@ -79,11 +81,14 @@ const METADATA_AGGREGATE_NAMES = [
   "github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks'",
 ];
 
-function isCompletedMetadata(jobs, run) {
+function isCompletedMetadata(jobs, run, trustedCancelledMetadata) {
   if (new Set(jobs.map((job) => job.name)).size !== jobs.length) return false;
   if (
     run.status !== 'completed' ||
-    !['success', 'failure'].includes(run.conclusion)
+    !(
+      ['success', 'failure'].includes(run.conclusion) ||
+      (trustedCancelledMetadata && run.conclusion === 'cancelled')
+    )
   )
     return false;
   const aggregate = jobs.filter((job) =>
@@ -97,20 +102,24 @@ function isCompletedMetadata(jobs, run) {
     jobState(aggregate[0]) !== 'skipped' ||
     title.length !== 1 ||
     title[0].status !== 'completed' ||
-    !['success', 'failure'].includes(title[0].conclusion)
+    (run.conclusion === 'cancelled' && title[0].conclusion !== 'cancelled') ||
+    !(
+      ['success', 'failure'].includes(title[0].conclusion) ||
+      (trustedCancelledMetadata && title[0].conclusion === 'cancelled')
+    )
   )
     return false;
   return jobs.every((job) => job === title[0] || jobState(job) === 'skipped');
 }
 
-function sourceVerdict(jobs, fork, run) {
+function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
   const plan = jobState(proofJob(jobs, 'fast-checks plan'));
   const statics = jobState(proofJob(jobs, 'fast-checks statics'));
   const forkSmoke = jobState(proofJob(jobs, 'Fork pull-request smoke'));
   // Skipped check names may be literal GitHub expressions. Discriminate by
   // the actual producer jobs, never the aggregate's display-name expression.
   if (plan === 'skipped' && statics === 'skipped' && forkSmoke === 'skipped') {
-    if (isCompletedMetadata(jobs, run)) return null;
+    if (isCompletedMetadata(jobs, run, trustedCancelledMetadata)) return null;
     const aggregate = jobState(
       proofJob(jobs, ['fast-checks', 'Fast checks execution']),
     );
@@ -145,6 +154,8 @@ function sourceVerdict(jobs, fork, run) {
       state: 'success',
       description: 'Newest exact-owner source proof succeeded',
     };
+  if (run.status === 'completed' && run.conclusion === 'cancelled')
+    return failure('Newest source proof failed or was cancelled');
   return pending('Newest source proof is incomplete or unavailable');
 }
 
@@ -263,6 +274,43 @@ export async function reconcileSourceVerification({
     } else if (eventName !== 'workflow_dispatch')
       throw new Error('Unsupported reconciliation event');
 
+    const metadataWorkflows = new Map();
+    const trustedCancelledMetadata = async (run, sourceBase) => {
+      if (
+        run.status !== 'completed' ||
+        run.conclusion !== 'cancelled' ||
+        run.event !== 'pull_request_target' ||
+        run.name !== 'PR metadata' ||
+        run.display_title !== 'PR metadata'
+      )
+        return false;
+      const refs = (run.referenced_workflows ?? []).filter(
+        (ref) =>
+          ref.path ===
+            `${repository}/.github/workflows/source-verification-policy.yml@${sourceBase}` &&
+          ref.sha === sourceBase &&
+          ref.ref === 'refs/heads/main',
+      );
+      if (refs.length !== 1) return false;
+      if (!metadataWorkflows.has(sourceBase)) {
+        const file = await request(`contents/${CI_PATH}?ref=${sourceBase}`);
+        if (
+          file.path !== CI_PATH ||
+          file.encoding !== 'base64' ||
+          typeof file.content !== 'string'
+        )
+          throw new Error('Unavailable immutable metadata workflow');
+        const header = Buffer.from(file.content, 'base64')
+          .toString('utf8')
+          .split(/\r?\n/);
+        metadataWorkflows.set(
+          sourceBase,
+          header[0] === 'name: "PR: CI"' && header[1] === METADATA_RUN_NAME,
+        );
+      }
+      return metadataWorkflows.get(sourceBase);
+    };
+
     const snapshot = async () => {
       const associated = await pages(`commits/${sha}/pulls`);
       const owners = associated.filter(
@@ -349,10 +397,15 @@ export async function reconcileSourceVerification({
             `actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
             'jobs',
           );
+          const verifiedMetadata = await trustedCancelledMetadata(
+            run,
+            sourceBase,
+          );
           const classified = sourceVerdict(
             jobs,
             owner.head.repo.id !== repo.id,
             run,
+            verifiedMetadata,
           );
           const proof = classified;
           examined.push([
@@ -364,6 +417,7 @@ export async function reconcileSourceVerification({
             compatibleBase,
             classified === null ? run.status : null,
             proofRows(jobs),
+            verifiedMetadata ? sourceBase : null,
           ]);
           if (proof) {
             selectedTime = started;
