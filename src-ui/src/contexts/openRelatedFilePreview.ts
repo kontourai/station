@@ -30,7 +30,6 @@ import {
 } from './useOpenInRegion';
 
 export type {
-  RelatedOpenDisposition,
   RelatedOpenOutcome,
   RelatedOpenRefusal,
 } from './openRelatedOccurrence';

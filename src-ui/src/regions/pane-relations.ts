@@ -234,7 +234,7 @@ function parseTarget(value: unknown): PaneRelationTarget | null {
 }
 
 /** Closed: only the defined keys, each bounded text. */
-export function parseTargetScope(value: unknown): RelatedTargetScope | null {
+function parseTargetScope(value: unknown): RelatedTargetScope | null {
   if (!isRecordObject(value)) return null;
   const scope: Partial<
     Record<(typeof RELATED_TARGET_SCOPE_KEYS)[number], string>

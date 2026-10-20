@@ -225,7 +225,7 @@ interface RendererSupport {
  * for an occurrence bound to `contribution` now. Only plugin-component
  * renderers open as related panes; any other renderer kind is not offered.
  */
-export function relatedPluginRendererAdmitted(
+function relatedPluginRendererAdmitted(
   entry: ResolvedWorkspacePaneCatalogEntry,
   instance: WorkspacePaneInstance,
   support: RendererSupport,
@@ -288,7 +288,7 @@ function suppliableContexts(
  * that plugin's own descriptor, in a mode the caller's own scope satisfies,
  * whose renderer the live registry admits now.
  */
-export function admitRelatedPluginTarget(
+function admitRelatedPluginTarget(
   caller: RelatedPaneCaller,
   target: Pick<RelatedPaneTarget, 'descriptorId' | 'modeId'>,
   live: LiveRelatedPanes,
@@ -347,7 +347,7 @@ const LIMITS = { descriptorId: 256, modeId: 128, key: 256, title: 160 };
 const REQUEST_KEYS = ['descriptorId', 'modeId', 'key', 'title'];
 
 /** Closed decode with the contract's bounds: refused past them, never cut. */
-export function decodeRelatedPaneOpenRequest(
+function decodeRelatedPaneOpenRequest(
   value: unknown,
 ): RelatedPaneOpenRequest | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
@@ -423,7 +423,7 @@ export interface RelatedPanesCustody {
 }
 
 /** What the host does for one caller, given the live shell facts. */
-export function createRelatedPanesHost(
+function createRelatedPanesHost(
   caller: RelatedPaneCaller,
   live: () => LiveRelatedPanes,
   now: () => number,
