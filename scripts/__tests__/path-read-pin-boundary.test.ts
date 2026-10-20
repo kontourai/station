@@ -149,6 +149,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'scripts/__tests__/verification-reporter.test.ts',
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
   'src-server/providers/__tests__/claude-adapter.test.ts',
+  // Reads only the launch log written by its fake ACP child in a tracked temp
+  // directory. The module-anchored fixture is not repository source; direct
+  // AcpAdapter and approval-verifier imports provide its source-selection edges.
+  'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
   // The adapter inventory reads adapter sources through a helper whose
   // argument is a walked or listed name, never a literal; the suite is in
   // REPO_SCAN_SUITES, so the repo-scans job runs it on every PR anyway.
