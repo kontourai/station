@@ -423,6 +423,10 @@ const SURFACE_ROOTS = [
   // The transcript's approval marker sits beside the status pill (#3312).
   'components/chat/ToolCallDisplay.tsx',
   'components/chat/ToolCallBatch.tsx',
+  // The Chat inventory an answer's Basis chip and the dock's More menu open.
+  'workspace-panes/ConnectedSessionInventory.tsx',
+  'workspace-panes/BasisWorkspacePane.tsx',
+  'workspace-panes/SessionInventoryTaskPicker.tsx',
 ];
 
 /**

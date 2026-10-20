@@ -1,0 +1,25 @@
+{
+  "revision": "74713d1b598461402a5010c787e279970931582c",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"H2 bounded review: checked hidden-document polling and retry suppression in ConnectionHealthCoordinator, existing visible/focus/pageshow recovery in useConnectionStatus, and non-DOM cadence. Mounted hook and coordinator tests pass; browser/physical WebView behavior remains unverified.","inputs":["docs/reference/connect.md","packages/connect/src/core/ConnectionHealthCoordinator.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"H2 bounded review: traced coding files query validation, asynchronous containment-preserving traversal, 2 MiB preview rejection and 8 KiB binary sniff through real route tests. Reviewed default SDK context slots, bound Project/layout identity, toast spellings and launch callback against adapter tests. Mounted consumer count is 13 before and 3 after; no registry/release or external plugin runtime claim.","inputs":["docs/reference/sdk.md","src-server/routes/projects/coding.ts","src-server/services/projects/file-tree-service.ts","src-ui/src/core/SDKAdapter.tsx","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]},
+
+    {"path":"docs/glossary.md","note":"H2 bounded review of changed Connect reference: hidden polling and foreground recovery alter scheduling only. Station/Device/Client, connection and Session vocabulary and authority distinctions remain accurate; no prose change needed.","inputs":["docs/glossary.md","docs/reference/connect.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"H2 bounded review: inspected the Pane SDK hook list and launch/navigation examples against SDKAdapter and useLaunchChat. Action-only navigation subscription and retained provider values preserve public launch arguments, dock actions and optional send behavior. Task shaping and SDK adapter focused tests pass; other Station Docs claims are outside this review.","inputs":["docs/reference/station-docs.md","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"H2 bounded review: first chat and Start Your First Chat still select the same Agent/Project/execution context and perform the same start/dock actions. useLaunchChat now reads stable actions without changing launch or send behavior; TaskShapingComposer tests pass. No installation, provider, physical-device or general journey requalification is claimed.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]},
+
+    {"path":"examples/coding-starter/README.md","note":"H2 bounded review: read the complete README and CodingWorkspace SDK navigation caller. Sample file/terminal/diff data remains labelled; setDockState still opens the existing dock without a send. SDKAdapter preserves its published navigation and bound Project contract. No example behavior or prose change needed; no independent registry/install execution claimed.","inputs":["examples/coding-starter/README.md","src-ui/src/core/SDKAdapter.tsx"]},
+
+    {"path":"examples/minimal-layout/README.md","note":"H2 bounded review: read the complete README and MinimalWorkspace caller. Agents, setDockState and object-form showToast remain supplied by SDKAdapter; example installation/placement and publication limitations remain accurate. SDK adapter navigation/toast tests pass; independent example installation is unverified.","inputs":["examples/minimal-layout/README.md","src-ui/src/core/SDKAdapter.tsx"]},
+
+    {"path":"packages/sdk/README.md","note":"H2 bounded review: checked host-provider hooks and chat/navigation/toast examples against SDKAdapter, SDKProvider and useLaunchChat. Stable context values and selector reads preserve the documented callback arguments and local dock semantics, while real data and dock updates still reach mounted consumers. No public export, installation or release claim changed; no prose change needed.","inputs":["packages/sdk/README.md","src-ui/src/core/SDKAdapter.tsx","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"H2 bounded review: the integration routing table still directs public consumers to SDK/API/contracts and asks for versioned authenticated success/refusal evidence. The new coding preview/tree limits refine the referenced SDK contract without changing deployment, tenant, plugin, or authentication claims. No prose change needed. Hosted/cloud qualification remains outside this review.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"H2 bounded review: the complete SDK instructions still route public behavior changes to docs/reference/sdk.md, forbid app-internal plugin imports, and require both cache and waiting-caller race assertions. The new file preview/tree documentation and H2 transcript race tests follow these rules; no instruction change needed.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

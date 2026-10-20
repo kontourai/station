@@ -135,3 +135,29 @@
   color-scheme: light;
   background: var(--mcp-ui-embed-ground);
 }
+
+/* A transcript occurrence owns its content height, not its parent row's height. */
+.mcp-tool-ui-frame--transcript {
+  height: auto;
+  min-height: 0;
+}
+
+.mcp-tool-ui-frame__availability {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: var(--k-space-2);
+  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
+  line-height: 1.5;
+}
+
+.mcp-tool-ui-frame--transcript > .mcp-tool-ui-frame__iframe {
+  flex: 0 0 auto;
+}
+
+.mcp-tool-ui-frame__pending {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}

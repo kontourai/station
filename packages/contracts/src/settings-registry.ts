@@ -362,6 +362,33 @@ export const APP_SETTINGS_REGISTRY = [
       'Skip Station’s built-in skill catalogs after the next Station restart so only registries you add yourself appear.',
   }),
   defineSetting({
+    key: 'reviewGuidesEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Review guides',
+    help: 'Allow AI-written tours of pull requests on this server.',
+    description:
+      'Enable shared, head-bound pull request guides. Generation sends the change to the configured model.',
+    defaultValue: false,
+  }),
+  defineSetting({
+    key: 'reviewGuideModel',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 255 },
+    label: 'Review guide model',
+    help: 'Choose the model that writes pull request guides.',
+    description: 'Uses the structure model when empty.',
+  }),
+  defineSetting({
+    key: 'reviewGuideInstructions',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 4000 },
+    label: 'Review guide instructions',
+    help: 'Change the emphasis and reading order of generated guides.',
+    description:
+      'Preferences cannot change file coverage, excerpt validation, or the guide format.',
+  }),
+  defineSetting({
     key: 'approvalGuardian',
     scope: 'station',
     descriptor: { kind: 'composite' },

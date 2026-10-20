@@ -57,6 +57,8 @@ const DECISION_1_BOUND_OPERATOR = [
   'list_delegation_targets',
   'reindex_knowledge',
   'migrate_knowledge',
+  // Guides are shared server state; the first slice keeps bound operator authority.
+  'write_pull_request_guides',
 ];
 // Decision 2 (slice B): operator-wide reads — Station-wide data no single
 // person's view contains — need a bound caller acting for the operator.
@@ -69,6 +71,7 @@ const DECISION_2_OPERATOR_READS = [
   'get_usage',
   'check_plugin_updates',
   'list_delegation_environments',
+  'read_pull_request_guide',
 ];
 // Decision 2 (slice B): reads scoped to the principal the caller's session
 // acts for. Transcribed from the slice B brief, independently of the table.
@@ -800,12 +803,12 @@ describe('station-control authority table: declare_pull_request and Task close-o
       personOnly: 'never',
     });
     // It writes a durable session record, so it keeps the mutating approval:
-    // only `notify_user` is auto-approved as a bounded write.
+    // visual reply tools and notify_user have their own bounded-write policies.
     expect(
       TABLE.filter(([, entry]) => entry.toolClass === 'bounded-write').map(
         ([name]) => name,
       ),
-    ).toEqual(['notify_user']);
+    ).toEqual(['html_render', 'html_preview', 'notify_user']);
   });
 
   test('declare_pull_request owns exactly its own leaf, and no other tool reaches it', () => {

@@ -1099,7 +1099,7 @@ export async function resolveOrchestrationRequest(input: {
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
   /** With `acceptForSession`: grant the whole Station browser server. */
   sessionGrantScope?: 'server';
-  /** @deprecated since 0.9.0; removed in 0.10.0. Use `content`. */
+  /** @deprecated since 0.9.0; retained for compatibility. Use `content`. */
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */
   content?: InputRequestContent;

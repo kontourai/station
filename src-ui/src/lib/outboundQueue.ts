@@ -15,9 +15,10 @@
  * second terminal mutation.
  */
 
-import type {
-  TurnDeliveryInspection,
-  TurnDeliveryOutcome,
+import {
+  FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+  type TurnDeliveryInspection,
+  type TurnDeliveryOutcome,
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { createStore, get, promisifyRequest, set, update } from 'idb-keyval';
@@ -589,7 +590,7 @@ export function readForeground(error: unknown):
     detail?: { session?: { threadId?: unknown } };
   };
   if (
-    candidate.code !== 'foreground_message_indeterminate' ||
+    candidate.code !== FOREGROUND_MESSAGE_INDETERMINATE_CODE ||
     candidate.outcome !== 'indeterminate'
   ) {
     return undefined;

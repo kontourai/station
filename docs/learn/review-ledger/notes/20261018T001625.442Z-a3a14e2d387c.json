@@ -1,0 +1,7 @@
+{
+  "revision": "e6a1e603b91537dcc8da63369ce61c76e8150977",
+
+  "notes": [
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed round-three reuse proof, fixed disabled and saved-guide failure copy, focusable named code regions and visible scroll hint, and run-keyed status polling. Focused service, HTTP and mounted UI seams cover these behaviors; five targeted mutations failed as intended and were restored. Removed private-Git-dir worktree-list assertions; the smudge-marker control remains. H1 shared VoltAgent adapter mismatch remains held pending owner scope; no live generation claim. Test-file deltas only strengthen these documented seams.","inputs":["docs/user/pull-request-guides.md","src-server/routes/pull-requests/pull-request-routes.ts","src-server/services/pull-requests/pull-request-review-guide-errors.ts","src-server/services/pull-requests/pull-request-review-guide.ts","src-ui/src/components/coding-layout/PullRequestGuide.css","src-ui/src/components/coding-layout/PullRequestGuide.tsx"]}
+  ]
+}

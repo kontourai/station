@@ -1,0 +1,7 @@
+{
+  "revision": "2b86d7d7becfde7cf670a01add3e08ff0e5e57d3",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed the regenerated settings registry against the catalog row relocation: all three guide IDs, labels, Station scope and Agent runs routes are unchanged; only their order now matches the rendered page. Stable deep links, registry authority and reveal behavior remain accurate. Generator equality and mounted catalog/reset order tests passed; no prose change is needed.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]}
+  ]
+}

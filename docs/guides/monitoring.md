@@ -6,9 +6,9 @@ Station has three separate measurement paths:
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
 | OTel metrics and traces | OpenTelemetry SDK → configured collector | Saved collector address or `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
-| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, operator tier resolves to Full, DO_NOT_TRACK permits sending, and the current disclosure receipt is acknowledged |
+| Full product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, operator tier resolves to Full, DO_NOT_TRACK permits sending, and the current disclosure receipt is acknowledged |
 
-Product observations use the disclosed v1 envelope: stable retry IDs, producer
+Full product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every
 event. Full product telemetry is pseudonymous: its installation hash rotates
 monthly and is never linked to an account by Station. Lite is identifier-free
@@ -19,6 +19,63 @@ observations with unknown delivery coverage; these observations are separate fro
 canonical personal receipts. Acknowledgements
 must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
+
+The companion receiver additionally accepts identifier-free `station_daily`
+Lite pings through public publisher/channel source IDs. Its owner view is exact:
+operator `sto_` endpoints return daily marginals and weekly sums, including daily
+distinct-network counts (weekly contributor-days; not cross-day unique people).
+The same Lite URL accepts strict fixed-enum feedback bound to the source's
+publisher. Operator responses include exact publisher/action/reason counts by
+UTC arrival day or week, covering retained days including the current partial
+period. Migration 7 stores feedback separately; it deduplicates per daily key,
+publisher and action, erases hashes after day closure and expires rows at the
+configured UTC-day cutoff (default 90 days including today). Feedback hash
+erasure still runs if ping-hash erasure fails. Committed Lite responses always
+return `{ "accepted": true }`, without exposing dedupe state. Public and
+third-party publisher views exclude feedback.
+IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits.
+Forwarded headers are ignored by default. A Cloudflare Tunnel needs explicit
+trusted connector CIDRs so clients do not share the connector key; only a trusted
+peer's single-IP `CF-Connecting-IP` is used transiently. Invalid values fall back
+to the peer and increment a content-free private counter. Startup refuses
+non-canonical ranges, whitespace, IPv4 prefixes wider than /24 and IPv6 prefixes
+wider than /64. Trusted-proxy peers can reach only the public GET routes and
+Lite POST route; private routes return 404 even with valid credentials. See the
+[single-host tunnel recipe](../../deployment/telemetry/README.md#single-host-cloudflare-tunnel)
+for public route limits and the separate infrastructure logging review.
+
+Public dashboards and scoped publisher keys receive only **weekly noisy
+estimates** over ten profile/adoption fields. The fixed public domain includes
+all enum values and operator-configured public versions/registry IDs, even true
+zero; no true-count k pre-filter remains. Sources default to catalog-only
+version admission. Optional `versionPolicy: "semver"` admits valid sender
+versions plus `custom`; operator exact views show all of them. Its public version
+support still comes only from `releaseVersions`, with no version dimension
+contributed by an empty SemVer catalog. Unlisted versions never expand public
+support. Migration 8 preserves catalog policy for existing sources. Published counts sum distinct daily
+contributor keys per value (network-days), so NAT undercounts installations.
+Sensitivity 40 per added ping and per-count ε=1/280 give ε≤1/7 per ping. If a
+network contributes at most 40 coordinates per day, its week sensitivity is 280
+and ε≤1; arbitrary traffic has the conservative domain-based bound D/40,
+computed from stored publication cells. The
+ideal geometric mechanism is pure ε-DP; persistent-key HMAC and finite-precision
+sampling qualify this implementation. Expected absolute noise is about 280
+weekly network-days. Multiple weeks/publishers compose. Counters and friction stay in
+the exact operator view. Set histograms overlap and cannot be summed or joined.
+
+Schema 6 freezes each publisher/week and its estimates once. Bounded 200-cell
+cursor pages replace the published row cap; repeated/restarted reads return the
+same stored values. A blocked dimension retains its publisher/day's associations
+while others erase theirs. Independent retention expires raw pings after 90
+days. Reads serve stored publications and finalized days without running
+finalization. Failed daily/weekly jobs appear in operator diagnostics and do not
+block other publishers/days. The captured cutoff and arrival fence prevent
+publication of a week that closes during the pass. Publisher-scoped HMAC cursors
+are verified before caching; public pages cache for at most 60 seconds and reset
+at UTC midnight. Failed credential refresh beyond 60 seconds returns
+503. This receiver implementation does not establish an installed Station sender
+or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
+before interpreting received pings as activity estimates.
 
 The repository includes an optional Docker example for Collector → Prometheus
 → Grafana metrics and Collector → Jaeger traces. Starting that example is not

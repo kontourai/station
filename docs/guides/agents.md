@@ -376,22 +376,43 @@ Example:
 `unattendedAutoApprove` uses the same pattern syntax and name forms as
 attended `autoApprove`. It is honoured only after the other pre-tool checks: a
 delegated child's allow and block lists and config protection still apply, and
-the approval guardian is consulted before the opt-in. The guardian has two
-modes, `review` and `enforce`:
+the approval guardian is consulted before the opt-in. The guardian is **off by
+default**. When enabled, its default mode is `review`; `enforce` is optional:
 
+- In `review` mode, an `allow` authorizes execution and skips the attended
+  approval prompt unless an explicit `askBeforeUse` rule requires it. A `deny`
+  or `defer` leaves the ordinary approval and unattended opt-in rules to decide.
+  Review mode is not advisory-only: an `allow` has authority.
 - In `enforce` mode, a call that isn't already auto-approved (by `autoApprove`
   or an intrinsic grant, which allow before the guardian runs) runs unattended
   only on a guardian allow. A deny blocks it, and so does a defer — including
   the guardian's own fallback when its review fails or returns no usable
   verdict — because nobody is present to decide. This applies to
-  `unattendedAutoApprove` and to a per-job grant alike.
-- In `review` mode, the guardian never blocks the opt-in.
+  `unattendedAutoApprove` and to a per-job grant alike. An explicit
+  `askBeforeUse` rule still requires a person.
 
-Attended chat ignores `unattendedAutoApprove` and asks as before; there a
-guardian defer still means asking the person. External engines (Claude Code,
-ACP) do not deliver Station's unattended checks
-([delivery boundary](../conformance/tool-policy-delivery.md)), so the opt-in
-has no effect on them.
+An `allow` in either mode overrides the ordinary unattended refusal and the
+delegated child's `denyApprovals` denial. Scheduled, CLI and `/invoke` runs can
+therefore execute tools that are not in `unattendedAutoApprove`. There is no
+built-in destructive or sensitive tool-class ceiling on guardian allows.
+Explicit `askBeforeUse` rules, Project policy and the preceding allow/block and
+config-protection checks still bound execution.
+
+Structured generation now reaches the configured model on both VoltAgent and
+Strands. Previously, their schema adapter errors made guardian reviews fall back
+to `defer`; configured guardians can now issue real `allow` and `deny` decisions.
+Their modes and policy are unchanged; malformed or missing decisions still defer.
+**If your installation already has `approvalGuardian.enabled: true`, review its
+guardian mode and instructions before relying on these restored decisions.**
+
+Tool names, descriptions and arguments remain untrusted model input. Fencing
+keeps them separate from the guardian's instructions, but a prompt-injected tool
+argument can still persuade the model to return `allow`.
+
+Attended chat ignores `unattendedAutoApprove`; when the guardian defers, it asks
+the person as before. External engines (Claude Code, ACP) do not deliver Station's
+unattended checks ([delivery boundary](../conformance/tool-policy-delivery.md)),
+so the opt-in has no effect on them.
 
 ### Tool purpose display support
 

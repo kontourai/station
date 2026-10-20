@@ -876,6 +876,7 @@ export function projectRuntimeEventsToMessages(
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           existing.state = derivedState;
           existing.output = ev.output;
+          if (ev.htmlReply) existing.htmlReply = ev.htmlReply;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = ev.error;
           existing.sourceEventId = ev.eventId;
@@ -957,6 +958,7 @@ export function projectRuntimeEventsToMessages(
             purpose: ev.purpose,
             state: derivedState,
             output: ev.output,
+            ...(ev.htmlReply ? { htmlReply: ev.htmlReply } : {}),
             ...(ev.outputReceipt?.truncated
               ? { outputTruncated: true as const }
               : {}),

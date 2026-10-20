@@ -159,7 +159,7 @@ export type OrchestrationCommand =
        */
       content?: InputRequestContent;
       /**
-       * @deprecated since 0.9.0; removed in 0.10.0. A pre-#3390 harness
+       * @deprecated since 0.9.0; retained for compatibility. A pre-#3390 harness
        * answer, translated to `content` and validated the same way. Send
        * `content` instead; never both.
        */

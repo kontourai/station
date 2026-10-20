@@ -1,0 +1,7 @@
+{
+  "revision": "88f29c595a3ff4b1e627155c39ffb6ffb7c9ff8e",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the added cleanup transport regression and upstream-owned wrapper gap at 88f29c595a3. MCP selection and unverified skill/native-policy claims are unchanged. Current cleanup is NOT_VERIFIED and its deterministic regression is expected red until #3828 forwards method arguments; this review does not convert a failed test into passing delivery evidence.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

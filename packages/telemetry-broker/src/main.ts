@@ -4,8 +4,13 @@ import { createServer } from 'node:http';
 import { getRequestListener } from '@hono/node-server';
 import { Pool } from 'pg';
 import { createProductBroker } from './app.js';
+import { clientAddressPolicy } from './client-address.js';
 import { PgProductRepository } from './store.js';
 
+const addresses = clientAddressPolicy(
+  process.env.STATION_TELEMETRY_BROKER_TRUSTED_PROXY,
+  process.env.STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER,
+);
 let databaseUrl = process.env.STATION_TELEMETRY_BROKER_DATABASE_URL;
 const databaseUrlFile = process.env.STATION_TELEMETRY_BROKER_DATABASE_URL_FILE;
 const operatorKeyFile = process.env.STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE;
@@ -77,27 +82,48 @@ pool.on('error', () =>
 );
 const store = new PgProductRepository(pool);
 await store.migrate();
-await store.retain();
-const app = createProductBroker(store, operatorKey);
+const app = createProductBroker(store, operatorKey, addresses);
 const server = createServer(getRequestListener(app.fetch));
 server.listen(port, process.env.STATION_TELEMETRY_BROKER_HOST ?? '127.0.0.1');
 server.maxConnections = 64;
 server.setTimeout(5000);
 server.requestTimeout = 5000;
 server.headersTimeout = 5000;
-const retention = setInterval(() => {
+const credentialRefresh = setInterval(() => {
+  void store
+    .refreshCredentials()
+    .catch(() =>
+      process.stderr.write('Telemetry credential refresh did not complete\n'),
+    );
+}, 30_000);
+credentialRefresh.unref();
+const finalizeClosedDays = () => {
+  void store.lite
+    .finalize()
+    .catch(() =>
+      process.stderr.write('Telemetry finalization did not complete\n'),
+    );
+};
+const finalization = setInterval(finalizeClosedDays, 3600000);
+finalization.unref();
+finalizeClosedDays();
+const retainExpiredRows = () => {
   void store
     .retain()
     .catch(() =>
       process.stderr.write('Telemetry retention did not complete\n'),
     );
-}, 3600000);
+};
+const retention = setInterval(retainExpiredRows, 3600000);
 retention.unref();
+retainExpiredRows();
 let stopping = false;
 const stop = () => {
   if (stopping) return;
   stopping = true;
   clearInterval(retention);
+  clearInterval(finalization);
+  clearInterval(credentialRefresh);
   const deadline = setTimeout(() => {
     server.closeAllConnections();
     process.exitCode = 1;

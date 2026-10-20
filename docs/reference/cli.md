@@ -1101,7 +1101,7 @@ delegation uses, over `station-control-delegation.ts`'s service functions
 the already-wired `POST /delegations` and `POST /delegations/options`).
 
 ```
-station delegate --agent=<slug> [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
+station delegate --agent=<slug> [--attach=<path>]... [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
 station delegate --session=<conversation-id> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <message>
 station delegate status <task-id> [--on=<environment>] [--json]
 station delegate events <task-id> [--after=<cursor>] [--on=<environment>] [--json]
@@ -1125,8 +1125,68 @@ resolved current Session/task and their output identifies both the durable
 `conversationId` and `currentSessionId`. A Conversation selector does not create
 a Task or grant task-supervision authority.
 
-Creation accepts the authored prompt, target, optional parent Task, and an
-optional caller-owned attempt id for prepared portable execution.
+Long exact values (commit SHAs, ids and hashes) belong in a file the Agent
+reads or in a structured field. Do not ask a delegate to retype them from
+prompt prose. When a value must appear in a prompt or response, copy it from
+that file or command output such as `git rev-parse HEAD`, then echo it back so
+the caller can compare it.
+
+`--file=<path>` supplies **prompt text**. Repeat `--attach=<path>` to transfer
+files as bytes for a new delegation on the current Station:
+
+```bash
+git rev-parse HEAD > revision.txt
+station delegate --agent=codex --cwd="$PWD" --attach=revision.txt \
+  "Read revision.txt from the attached file path and review that revision. Echo the exact value."
+```
+
+Station writes each file under its own basename in a fresh private
+`.station-delegate-*` directory inside the resolved workspace, and appends the
+absolute file paths to the delegate's prompt. Existing project files are never
+overwritten. The uploaded content does not become prompt text. Files remain in
+that workspace after an accepted dispatch. A confirmed refusal before an engine
+start or turn invocation removes the directory and releases its staged binding.
+If a start or turn may have run, Station retains the files for inspection;
+an uncertain answer never authorizes an automatic resend. Cleanup failures
+carry `delegation_files_cleanup_failed`; inspect the workspace before retrying.
+Remove retained directories when they are no longer needed.
+
+Limits are 5 files, 5 MiB per file and 15 MiB combined, using the existing chat
+attachment types (unrecognized filename extensions use `text/plain`). Empty
+files, unsafe or nonportable basenames, and duplicate names (case-insensitive,
+with Unicode canonical normalization) in one batch are refused. Over-limit batches are refused in full, never truncated. The host must
+advertise `delegationFiles` through attachment staging; older or unknown hosts
+are refused rather than silently dropping files. A resolved workspace is
+required; Projects configured for worktree isolation are refused because this
+background delegation path does not provision worktrees. `--on`, conversation
+continuation, all portable workspace modes, prepared attempts and Task room
+requests do not support attached delegation files in this slice. To upload to a
+different Station, select it directly with the existing authenticated
+`--station` or `--api-base` mechanism; staging references never cross a server's
+forwarding boundary. An uncertain delegation response is not permission to resend.
+
+The CLI follows a symlink to a regular file, uploads the target's bytes, and
+keeps the **link's basename**. Non-regular files, including FIFOs and symlinks to
+FIFOs, are refused without waiting for a writer (`delegation_files_invalid_data`).
+It pre-checks basename collisions before uploading.
+If staging or delegation fails, it cancels its prepared stages without replacing
+the original failure. Cancellation only discards upload objects; it never removes
+workspace files that an uncertain invocation may be using.
+
+File refusals include a stable `code`: `delegation_files_unsupported`,
+`delegation_files_count`, `delegation_files_size`, `delegation_files_duplicate_name`,
+`delegation_files_invalid_name`, `delegation_files_invalid_data`,
+`delegation_files_ref_invalid` or `delegation_files_unavailable`. Definite session
+and turn refusals use `delegation_files_start_refused` and
+`delegation_files_turn_refused`; uncertain effects use
+`delegation_files_outcome_unknown` (HTTP 409). Staging's existing `stage_*` codes
+are preserved. No file-system exception path is part of these public errors.
+Continuation and delegation control routes refuse attachment fields explicitly;
+they never accept a request while silently stripping those fields.
+
+Creation accepts the authored prompt, target, optional staged file references,
+optional parent Task, and an optional caller-owned attempt id for prepared
+portable execution.
 The serving Station produces the resulting Conversation and Session identities;
 they are response handles, never caller-selected create fields.
 

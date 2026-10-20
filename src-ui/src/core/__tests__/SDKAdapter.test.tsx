@@ -39,7 +39,11 @@ vi.mock('../../contexts/ConversationsContext', () => ({
   useConversations: () => [],
 }));
 vi.mock('../../contexts/NavigationContext', () => ({
-  useNavigation: () => ambientNavigation,
+  useNavigation: (selector?: (state: typeof ambientNavigation) => unknown) =>
+    selector ? selector(ambientNavigation) : ambientNavigation,
+  useNavigationActions: () => ({
+    setDockState: ambientNavigation.setDockState,
+  }),
 }));
 vi.mock('../../contexts/ToastContext', async (importOriginal) => {
   const actual =

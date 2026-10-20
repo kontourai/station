@@ -17,6 +17,7 @@ export class TurnSubmissionUnsupportedError extends SendTurnRefusedError {
   constructor() {
     super(
       'This keyed turn contains input that cannot be represented by the submission digest contract.',
+      'input_unsupported',
     );
     this.name = 'TurnSubmissionUnsupportedError';
   }

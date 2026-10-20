@@ -31,6 +31,8 @@ export function conversationPartToContentParts(
     args: part.args,
     result: part.result,
     output: part.output,
+    ...(part.htmlReply ? { htmlReply: part.htmlReply } : {}),
+    ...(part.outputTruncated ? { outputTruncated: true } : {}),
     error: part.error,
     cancelled: part.cancelled,
     state: part.state,

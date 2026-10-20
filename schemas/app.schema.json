@@ -6,6 +6,9 @@
   "type": "object",
   "required": ["defaultModel", "invokeModel", "structureModel"],
   "properties": {
+    "reviewGuidesEnabled": { "type": "boolean", "default": false },
+    "reviewGuideModel": { "type": "string", "maxLength": 255 },
+    "reviewGuideInstructions": { "type": "string", "maxLength": 4000 },
     "region": {
       "type": "string",
       "description": "AWS region for Bedrock (e.g., us-east-1)",

@@ -49,8 +49,10 @@ const loadConnectedAttachUserInputToTaskButton = () =>
     default: module.ConnectedAttachUserInputToTaskButton,
   }));
 
+// The Basis chip mounts on every eligible settled answer, so it loads its
+// own small chunk rather than the Task picker's.
 const loadConnectedAnswerBasisAffordance = () =>
-  import('./AttachAnswerToTaskButton').then((module) => ({
+  import('./ConnectedAnswerBasisAffordance').then((module) => ({
     default: module.ConnectedAnswerBasisAffordance,
   }));
 
@@ -123,6 +125,28 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 // name for its initials source); the attribution strip below never uses
 // this placeholder — see the `agent={agent ?? null}` call further down.
 const FALLBACK_AGENT: { name: string } = { name: 'AI' };
+
+/**
+ * Accessible names for an answer's Basis controls: each starts with its
+ * visible text (so voice control can say what it sees), then says which
+ * answer, by its opening words or, wordless, its settle time.
+ */
+export function answerBasisLabels(
+  text: string,
+  settledAt: number,
+): { chip: string; retry: string } {
+  const words = text.replace(/\s+/g, ' ').trim();
+  const at = absoluteTime(settledAt);
+  const answer = words
+    ? `the answer “${words.length > 48 ? `${words.slice(0, 47).trimEnd()}…` : words}”`
+    : at
+      ? `the answer at ${at}`
+      : 'this answer';
+  return {
+    chip: `Basis for ${answer}`,
+    retry: `Basis didn’t load · Retry for ${answer}`,
+  };
+}
 
 /** A fixed, ordered list of optional slots (never reordered), so its index
  * is a stable key. */
@@ -639,6 +663,46 @@ function MessageBubbleComponent({
         )}
     </>
   );
+  // #1536 B3: the same precondition the Basis route applies. A turn whose
+  // envelope records an aborted outcome can only ever be answered 404, so it
+  // gets no Basis entry; nor does the still-streaming last answer.
+  // Every answer's chip reads "Basis"; its accessible name says WHICH answer,
+  // by the answer's opening words (or, wordless, its settle time), so a
+  // screen reader's list of buttons is not a column of identical "Basis".
+  const basisLabels = answerBasisLabels(textContent, settledAt);
+  const basisChip =
+    isAssistant &&
+    msg.turnId &&
+    answerSessionId &&
+    msg.answerEligible === true &&
+    turnCompletedNormally(msg) &&
+    (!isLastMessage || !activeSession.isThinking) ? (
+      <LazyBoundary
+        load={loadConnectedAnswerBasisAffordance}
+        componentProps={{
+          projectSlug: activeSession.projectSlug,
+          chatStoreId: activeSession.id,
+          sessionId: answerSessionId,
+          turnId: msg.turnId,
+          label: basisLabels.chip,
+        }}
+        pending={null}
+        shareAcrossMounts
+        // A chunk that failed to load leaves a visible, retryable chip
+        // rather than an answer that silently lost its Basis entry.
+        unavailable={(retry) => (
+          <button
+            type="button"
+            className="answer-basis-chip answer-basis-chip--unavailable"
+            // Visible text first, then which answer (as the chip itself).
+            aria-label={basisLabels.retry}
+            onClick={retry}
+          >
+            Basis didn’t load · Retry
+          </button>
+        )}
+      />
+    ) : null;
   // A settled answer's per-turn actions: the desktop footer row, or the phone
   // sheet's action group.
   const footerActions = (
@@ -697,29 +761,6 @@ function MessageBubbleComponent({
                         pending={null}
                       />
                     ),
-                    basisContent:
-                      msg.turnId &&
-                      answerSessionId &&
-                      msg.answerEligible === true &&
-                      // #1536 B3: the same precondition the Basis route
-                      // applies. A turn whose envelope records an aborted
-                      // outcome can only ever be answered 404, and the
-                      // affordance rendered that refusal as
-                      // "Basis · Unavailable" on a healthy instance.
-                      turnCompletedNormally(msg) &&
-                      (!isLastMessage || !activeSession.isThinking) ? (
-                        <LazyBoundary
-                          load={loadConnectedAnswerBasisAffordance}
-                          componentProps={{
-                            projectSlug: activeSession.projectSlug,
-                            chatStoreId: activeSession.id,
-                            sessionId: answerSessionId,
-                            turnId: msg.turnId,
-                          }}
-                          pending={null}
-                          unavailable={() => null}
-                        />
-                      ) : null,
                   }
                 : undefined,
             reasoning:
@@ -814,7 +855,12 @@ function MessageBubbleComponent({
             from the overflow as dialogs (#2211). */}
       {hasTurnFooter && !isMobile && (
         <div className="turn-footer">
-          <div className="turn-footer__actions">{footerActions}</div>
+          {/* #926 amendment (owner, 2026-10): Basis stays visible at rest,
+              beside the hover-revealed row rather than inside it. */}
+          <div className="turn-footer__bar">
+            {basisChip}
+            <div className="turn-footer__actions">{footerActions}</div>
+          </div>
         </div>
       )}
     </>
@@ -885,6 +931,7 @@ function MessageBubbleComponent({
           {time}
         </time>
       )}
+      {basisChip}
       {inlineCopy}
       {details}
     </div>

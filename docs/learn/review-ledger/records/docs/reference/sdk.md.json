@@ -656,9 +656,29 @@
 
     "packages/sdk/src/__tests__/client-execution.test.ts",
 
+    "packages/contracts/src/provider-failure.ts",
+
+    "scripts/__tests__/provider-failure-inventory.test.ts",
+
+    "src-server/routes/orchestration/__tests__/provider-failure-projection.routes.test.ts",
+
+    "src-server/providers/model-provider-failure.ts",
+
+    "src-server/runtime/conversation/stream-orchestrator.ts",
+
+    "src-ui/src/lib/attachment-staging-queue.ts",
+
     "packages/sdk/src/query-domains/sessionStructuralSharing.ts",
 
-    "packages/sdk/src/__tests__/session-structural-sharing.test.tsx"
+    "packages/sdk/src/__tests__/session-structural-sharing.test.tsx",
+
+    "packages/sdk/src/client/delegations.ts",
+
+    "packages/contracts/src/attachment-staging.ts",
+
+    "src-server/routes/orchestration/attachment-staging.ts",
+
+    "packages/shared/src/delegation-files.ts"
   ],
 
   "checks": [

@@ -15,6 +15,8 @@ row that matches the job you are doing.
 | Maintainers and agents | [../AGENTS.md](../AGENTS.md), [strategy/README.md](strategy/README.md), [glossary.md](glossary.md) | Repository only |
 | API and CLI consumers | [reference/api.md](reference/api.md), [reference/cli.md](reference/cli.md), [reference/contracts.md](reference/contracts.md) | Repository only |
 
+Read [Pull request guides](user/pull-request-guides.md) for shared AI-written review tours.
+
 ## Choose a path
 
 ### Learn the whole application
@@ -34,6 +36,9 @@ and [Station concepts](user/concepts.md) to understand the product, its
 local-first data boundary, and its work vocabulary. These pages describe
 outcomes and user-visible behavior without depending on a particular external
 engine.
+
+The [visual replies guide](user/html-replies.md) explains publishing, preview,
+page retention and the sandbox boundary.
 
 ### Developer and operator
 

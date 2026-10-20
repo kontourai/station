@@ -1,4 +1,7 @@
-import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
+import {
+  CONTINUATION_WORKSPACE_REFUSAL_CODES,
+  EXECUTION_ENGINE_CHANGED_CODE,
+} from '@kontourai/station-contracts/execution-target';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
@@ -9,6 +12,10 @@ import {
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
 } from '@kontourai/station-contracts/provider';
+import {
+  RESOURCE_ENGINE_START_CAPACITY_CODE,
+  SESSION_START_INDETERMINATE_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 
 /**
@@ -248,15 +255,9 @@ export function describeInternalStreamFailure(text: string): string | null {
  */
 const TERMINAL_SESSION_PATTERN = /no conversation found with session id/i;
 
-const CONTINUATION_WORKSPACE_CODES = new Set([
-  'continuation_workspace_project_context_missing',
-  'continuation_workspace_corrupt_worktree_binding',
-  'continuation_workspace_worktree_gone',
-  'continuation_workspace_different_project',
-  'continuation_workspace_worktree_moved',
-  'continuation_workspace_direct_mismatch',
-  'continuation_workspace_unbound',
-]);
+const CONTINUATION_WORKSPACE_CODES: ReadonlySet<string> = new Set(
+  CONTINUATION_WORKSPACE_REFUSAL_CODES,
+);
 
 /**
  * Translates a raw chat/provider error into targeted, non-raw copy.
@@ -313,7 +314,8 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  *      assertion — a stale credential does not improve on retry).
  */
 /** `SessionStartIndeterminateError`'s code (src-server session-turn-boundary). */
-export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
+export { SESSION_START_INDETERMINATE_CODE };
+
 const SESSION_START_INDETERMINATE_SUFFIX =
   /\s*Provider session creation may have completed\. Inspect the session before retrying\.\s*$/;
 
@@ -587,7 +589,7 @@ export function translateChatError(
       };
   }
 
-  if (code === 'resource_engine_start_capacity') {
+  if (code === RESOURCE_ENGINE_START_CAPACITY_CODE) {
     return {
       title: 'Another engine is starting',
       body: text || 'Another engine start still owns the start slot.',

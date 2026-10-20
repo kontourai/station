@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Reviewed against the responsive-action-surfaces wording update: touch-target and inventory requirements still hold for the at-rest chip; no prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

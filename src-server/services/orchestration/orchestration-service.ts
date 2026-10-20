@@ -96,6 +96,13 @@ import {
   unsupportedModelOptionKeys,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
+import {
+  PROVIDER_FAILURE_KINDS,
+  PROVIDER_FAILURE_RETRYABLE,
+  type ProviderFailure,
+  type ProviderFailureKind,
+  SESSION_START_IN_FLIGHT_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
@@ -161,6 +168,7 @@ import {
 } from '../../providers/adapter-shape.js';
 import { codexSandboxConfinementProvider } from '../../providers/adapters/codex-confinement.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
+import { ProviderRefusalError } from '../../providers/provider-failure.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import {
   nativeSessionIdentityMatchesSource,
@@ -601,6 +609,8 @@ export class OrchestrationCommandDispatchError extends Error {
   readonly code?: string;
   readonly outcome?: 'indeterminate';
   readonly retryable?: boolean;
+  readonly kind?: ProviderFailureKind;
+  readonly failurePhase?: 'refused' | 'failed' | 'indeterminate';
 
   constructor(
     message: string,
@@ -610,68 +620,75 @@ export class OrchestrationCommandDispatchError extends Error {
     readonly receiptStatus: 'persisted' | 'unavailable' = 'persisted',
     indeterminateTurnStart = false,
     code?: string,
+    refusal?: ProviderFailure,
   ) {
     super(message);
     this.name = 'OrchestrationCommandDispatchError';
     if (indeterminateTurnStart) {
       this.code = FOREGROUND_MESSAGE_INDETERMINATE_CODE;
       this.outcome = 'indeterminate';
+      this.kind = 'indeterminate';
+      this.retryable = false;
+      this.failurePhase = 'indeterminate';
     } else if (code) {
       this.code = code;
-      // A refusal-to-act (not a failed action) is retryable. Any code whose
-      // error message tells the user to retry belongs in this set —
-      // archive#3493 delta review caught 'session_start_in_flight' saying
-      // "retry" while this line still classified it non-retryable.
+      this.kind = Object.hasOwn(PROVIDER_FAILURE_KINDS, code)
+        ? (
+            PROVIDER_FAILURE_KINDS as Readonly<
+              Record<string, ProviderFailureKind>
+            >
+          )[code]
+        : undefined;
       this.retryable =
-        code === 'session_start_in_flight' ||
-        code === 'resource_engine_start_capacity' ||
-        RETRYABLE_ADAPTER_REFUSAL_CODES.has(code);
+        this.kind === undefined ? false : PROVIDER_FAILURE_RETRYABLE[this.kind];
+      if (this.kind === 'indeterminate') this.failurePhase = 'indeterminate';
+    }
+    if (refusal && !indeterminateTurnStart) {
+      this.kind = refusal.kind;
+      this.retryable = refusal.retryable;
+      this.failurePhase = refusal.failurePhase;
+    }
+    if (
+      indeterminateTurnStart ||
+      indeterminateSession ||
+      this.kind === 'indeterminate'
+    ) {
+      this.kind = 'indeterminate';
+      this.retryable = false;
+      this.failurePhase = 'indeterminate';
+      this.outcome = 'indeterminate';
     }
   }
 }
 
-/**
- * Adapter refusals a caller should retry rather than drop: the same send
- * succeeds once the condition passes.
- * - #2300: a Muse send that arrived while the previous turn's `muse exec` was
- *   still exiting.
- * - #2324: a send that arrived while the engine was running a turn it opened
- *   on its own; it succeeds once that turn closes.
- * - A send that outwaited its session's engine start (an ACP reattach); it
- *   succeeds once the session is ready.
- * - A send whose session's start failed while it waited: nothing was sent,
- *   and a later send can restart the session, so the message is kept.
- * - A send whose idempotency key another attempt still held or released
- *   unsent: the same key may be sent again.
- */
-const RETRYABLE_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
-  MUSE_TURN_SLOT_RELEASING_CODE,
-  PROVIDER_TURN_IN_PROGRESS_CODE,
-  PROVIDER_SESSION_STARTING_CODE,
-  PROVIDER_SESSION_START_FAILED_CODE,
+const LEGACY_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
   CLIENT_TURN_IN_FLIGHT_CODE,
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
 ]);
 
-/**
- * The code of a retryable adapter refusal (see
- * {@link RETRYABLE_ADAPTER_REFUSAL_CODES}), or `undefined`. Matched on the
- * contract code (not the adapter's class) so this service does not import an
- * adapter module.
- */
+/** Only the legacy pre-effect codes can establish refusal without typed metadata. */
 function retryableAdapterRefusalCode(error: unknown): string | undefined {
-  if (!(error instanceof Error)) return undefined;
-  const code = (error as { code?: unknown }).code;
-  return typeof code === 'string' && RETRYABLE_ADAPTER_REFUSAL_CODES.has(code)
-    ? code
-    : undefined;
+  if (
+    !(error instanceof Error) ||
+    !('code' in error) ||
+    typeof error.code !== 'string'
+  )
+    return undefined;
+  return LEGACY_ADAPTER_REFUSAL_CODES.has(error.code) ? error.code : undefined;
 }
 
 /** A repeated start may attach only when it cannot change session behavior. */
-export class SessionReattachConflictError extends Error {
+export class SessionReattachConflictError extends ProviderRefusalError {
   readonly code = SESSION_REATTACH_CONFLICT_CODE;
 
   constructor(readonly reason: SessionReattachConflictReason) {
-    super(`${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`);
+    super(
+      `${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`,
+      PROVIDER_FAILURE_KINDS[SESSION_REATTACH_CONFLICT_CODE],
+    );
   }
 }
 
@@ -683,12 +700,13 @@ export class SessionReattachConflictError extends Error {
  * typed error rather than falling through to the dormant write, which would
  * report success around a live start (the original archive#3493 lie).
  */
-class SessionStopWhileStartingError extends Error {
-  readonly code = 'session_start_in_flight';
+class SessionStopWhileStartingError extends ProviderRefusalError {
+  readonly code = SESSION_START_IN_FLIGHT_CODE;
 
   constructor(threadId: string, timeoutMs: number) {
     super(
       `Session is still starting; stop did not settle within ${timeoutMs}ms — retry: ${threadId}`,
+      PROVIDER_FAILURE_KINDS[SESSION_START_IN_FLIGHT_CODE],
     );
     this.name = 'SessionStopWhileStartingError';
   }
@@ -3883,6 +3901,7 @@ export class OrchestrationService {
       id: string;
       name: string;
       originalId: string;
+      resolvedModel?: string;
     }>
   > {
     const adapter = this.options.adapterRegistry.get(provider);
@@ -6958,6 +6977,7 @@ export class OrchestrationService {
         outcome.receiptStatus,
         false,
         code,
+        'failure' in outcome ? outcome.failure : undefined,
       );
     }
     this.initialize();
@@ -8843,6 +8863,7 @@ export class OrchestrationService {
           if (!approvalKnobSupported(provider)) {
             throw new SendTurnRefusedError(
               'This engine has no approval control.',
+              'input_unsupported',
             );
           }
           const result = this.recordApprovalModeDecision({
@@ -8894,9 +8915,6 @@ export class OrchestrationService {
           error instanceof DraftDiscardNotAuthorizedError ||
           error instanceof DraftDiscardedError ||
           error instanceof DraftDiscardBusyError ||
-          // #2300/#2324: a send refused until a condition passes (a Muse
-          // process still exiting, an engine's own turn still running) — a
-          // refusal to act, retryable.
           retryableAdapterRefusalCode(error) !== undefined ||
           error instanceof RequestEventGuardError ||
           // #484 continuation: a portable refusal is a refusal to act, not
@@ -8956,7 +8974,15 @@ export class OrchestrationService {
           // contract (`CONFINEMENT_REFUSAL_CODES`), not retryable as sent.
           error instanceof ConfinementRefusedError
           ? error.code
-          : retryableAdapterRefusalCode(error),
+          : error instanceof SendTurnRefusedError &&
+              'code' in error &&
+              typeof error.code === 'string'
+            ? error.code
+            : retryableAdapterRefusalCode(error),
+        error instanceof SendTurnRefusedError ||
+          error instanceof ProviderRefusalError
+          ? error
+          : undefined,
       );
     } finally {
       if (dispatchedTurnThread !== undefined) {
