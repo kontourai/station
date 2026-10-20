@@ -274,7 +274,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
 | [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
-| [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic: Merge integration** | manual full-corpus diagnosis; automatic integration belongs to `PR: CI`. |
+| [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
 | [`nightly-gallery.yml`](../../.github/workflows/nightly-gallery.yml) | Nightly gallery | **Nightly: Gallery** | UTC schedule: `30 7 * * *`; manual dispatch. |
@@ -557,7 +557,8 @@ PR source computation has repository-wide FIFO ceilings: at most two statics
 jobs and two affected-test shard jobs run across all PRs. Both families split
 work into two buckets; one-shard PRs can use both shard buckets, and larger
 plans retain every shard. Waiting jobs consume no runner. Different-head
-supersession still cancels obsolete source runs; same-head duplicates wait
+supersession still cancels obsolete source runs, including native FIFO
+`pending` waiters, after rechecking the live PR head and run attempt; same-head duplicates wait
 rather than cancelling another run's proof. Merge-group, push and manual
 diagnostic jobs use separate source-specific groups. These four PR computation
 slots exclude planners, security checks, platform builds and status publishers;
@@ -1871,6 +1872,12 @@ arguments and an optional `--grep=pattern` after `--`. The runner rejects specs
 outside the selected manifest bucket, keeps manifest order, uses the same
 temporary-instance startup and cleanup, and pins every child command to the
 Node executable that validated the parent runner.
+
+The [E2E coverage matrix](e2e-coverage-matrix.md) maps the primary app
+surfaces to the specs that cover them, and the
+[PR browser smoke contract](../testing/browser-smoke.md) explains which specs
+`npm run test:e2e:pr-smoke` runs for source pull requests and merge-queue
+candidates.
 
 Playwright spec ownership is tracked in `tests/e2e-manifest.mjs`. Add every new
 `tests/**/*.spec.ts` file to exactly one bucket when it is introduced. The

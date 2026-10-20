@@ -147,7 +147,7 @@ import {
 
 const logger = createLogger({ name: 'project-manifest-store' });
 
-export const PROJECT_MANIFEST_FILENAME = 'manifest.json';
+const PROJECT_MANIFEST_FILENAME = 'manifest.json';
 
 /**
  * The on-disk sidecar. Deliberately a strict subset of {@link ProjectManifest}

@@ -57,7 +57,10 @@ const mocks = vi.hoisted(() => ({
   refetch: vi.fn(),
 }));
 
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => isMobile }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => isMobile,
+}));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
 }));

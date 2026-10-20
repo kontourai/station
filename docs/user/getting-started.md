@@ -95,6 +95,12 @@ replies, continue chats, and review work. Start on your computer:
 3. On your phone, open Station, choose **Pair with a code**, and use the
    invitation from the computer. Keep the computer running.
 
+Station's phone apps are not in public app stores yet. Android builds reach
+testers in a Google Play internal testing group and iOS builds reach invited
+TestFlight testers. Without one of those, open the Station's reachable address
+(see below) in your phone's browser instead; the browser offers the same
+**Pair with a code** step and **Request access**.
+
 A browser opened with the host's one-time sign-in link can create invitations
 and manage paired devices. Choose Read-only, Standard or Full device access
 before creating the invitation;
@@ -948,6 +954,8 @@ directory for manual review.
 
 - Read [Station concepts](concepts.md).
 - Customize [keyboard shortcuts](../guides/keyboard-shortcuts.md).
+- Find [settings you may not have found](settings.md), such as feature
+  previews and developer tools, and learn how to [share an answer](sharing-answers.md).
 - Review the [Station privacy policy](https://kontourai.io/privacy/station/).
 
 ## Inspect a learning source

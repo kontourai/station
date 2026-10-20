@@ -22,25 +22,15 @@
 
     "scripts/record-documentation-review.mjs",
 
-    "scripts/docs-freshness-sweep.mjs",
-
-    ".github/workflows/docs-freshness-sweep.yml",
-
     "scripts/run-repo-scan-suites.mjs",
 
     "scripts/lib/review-ledger-store.mjs",
 
-    "scripts/lib/review-binding.mjs",
-
-    "scripts/migrate-review-ledger.mjs",
-
-    "scripts/lib/review-history.mjs",
-
-    "scripts/lib/review-git.mjs",
-
     ".github/workflows/docs-kit.yml",
 
-    "corpus.json"
+    "corpus.json",
+
+    "docs/guides/documentation-review-ledger.md"
   ],
 
   "checks": [

@@ -18,7 +18,7 @@ Git history and append-only notes identify changes still needing review. If a
 landing commit touches a document or listed source without a covering note,
 the reader shows **Review out of date**. The PR checks require new notes for
 that PR's touched inputs; another PR landing does not invalidate its notes.
-See [keeping reviews fresh](../guides/documentation.md#keep-reviews-fresh).
+See [keeping reviews fresh](../guides/documentation-review-ledger.md#keep-reviews-fresh).
 Use `npm run docs:review:record` only after inspecting the changed claims and
 evidence. A note is a reviewer's decision, not proof of semantic accuracy.
 
@@ -138,7 +138,7 @@ Use `npm run docs:impact -- <changed-paths...>` before an edit and
 The report links changed sources to their documented owners, distinguishes a
 page's last edit from the coverage baseline and covering review notes,
 and exposes unmapped changes.
-See [incremental maintenance](../guides/documentation.md#find-affected-documentation-and-catch-up)
+See [incremental maintenance](../guides/documentation-review-ledger.md#find-affected-documentation-and-catch-up)
 for the comparison baseline and limits.
 
 

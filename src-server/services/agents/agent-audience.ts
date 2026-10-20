@@ -28,6 +28,7 @@ import {
   type ProjectMemberAction,
   type ProjectMemberRole,
 } from '@kontourai/station-contracts/project-membership';
+import { isRecord } from '../../utils/is-record.js';
 
 const OPERATOR_AUDIENCE: AgentAudience = Object.freeze({
   version: AGENT_AUDIENCE_VERSION,
@@ -35,10 +36,6 @@ const OPERATOR_AUDIENCE: AgentAudience = Object.freeze({
 });
 
 const MEMBER_ROLES = Object.keys(PROJECT_MEMBER_ROLES) as ProjectMemberRole[];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 /**
  * Why `audience` is not acceptable on an Agent owned by `project`, or

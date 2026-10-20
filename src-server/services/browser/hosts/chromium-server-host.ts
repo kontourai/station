@@ -70,7 +70,7 @@ const CHROME_ERROR_PAGE = 'chrome-error://chromewebdata/';
 
 /**
  * The ONLY methods the public {@link BrowserHost.cdp} channel forwards, and
- * only on a page session this host opened (review B2/M1). Everything else —
+ * only on a page session this host opened. Everything else —
  * every `Browser.*` and `Target.*` method, `Fetch.*`, storage and download
  * controls, and `DOM.setFileInputFiles` — stays host-owned, because
  * `Target.attachToTarget{flatten:false}` + `Target.sendMessageToTarget` or
@@ -154,7 +154,7 @@ export const PAGE_SESSION_CDP_ALLOWLIST: readonly string[] = Object.freeze([
 const PAGE_SESSION_CDP_ALLOWED = new Set(PAGE_SESSION_CDP_ALLOWLIST);
 
 /**
- * Parameters an allowed method may not carry (review round 2):
+ * Parameters an allowed method may not carry:
  * - `includeCommandLineAPI` exposes DevTools console helpers such as
  *   `copy()`, which writes the clipboard;
  * - `Input.dispatchKeyEvent.commands` runs editor commands (copy, paste,
@@ -347,7 +347,7 @@ function isAllowedCommittedUrl(url: string): boolean {
 }
 
 /**
- * A subframe URL that may stay committed (review S3): the main-frame scope
+ * A subframe URL that may stay committed: the main-frame scope
  * plus `about:srcdoc` (an inline iframe). A subframe on `data:`, `blob:`,
  * `filesystem:` or any other scheme is replaced with about:blank AFTER it
  * commits — it is not blocked before load, so its document can run briefly.
@@ -959,7 +959,7 @@ export class ChromiumServerHost implements BrowserHost {
   /**
    * A page target this host did not create and that is not a popup of one of
    * its targets (the launch tab, an extension page, a view-source: tab) is
-   * closed: no unobserved page may live in the browser (review B2).
+   * closed: no unobserved page may live in the browser.
    */
   private checkUntracked(
     running: Running,

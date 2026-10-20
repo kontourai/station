@@ -11,12 +11,15 @@ import {
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   buildConversationStatsView,
   buildEmptyConversationStatsView,
   type ConversationStats,
   resolveConversationUserMessageTokens,
 } from './conversation-stats-view.js';
+
+const logger = createLogger({ name: 'conversation-manager' });
 
 // Type extensions for conversation manager
 interface ConversationMetadata {
@@ -174,7 +177,7 @@ export async function getConversationStats(
   try {
     spec = await configLoader.loadAgent(slug);
   } catch (e) {
-    console.debug('Failed to load agent spec, using defaults:', e);
+    logger.debug('Failed to load agent spec, using defaults', { error: e });
     // Default/temp agents don't have agent.json on disk — use minimal defaults
     spec = { prompt: '', model: appConfig.defaultModel };
   }

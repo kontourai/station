@@ -257,7 +257,7 @@ when that Station stops; PowerShell itself returns as soon as the install
 does. A console, `irm | iex` and `station upgrade` are unaffected, and
 `STATION_INSTALL_NO_START=1` avoids it.
 
-A Station service of the install (#2675 slice W3) is a Task Scheduler task
+A Station service of the install (#2675) is a Task Scheduler task
 that runs the fixed service launcher, which owns the switch. When it is
 running, `install.ps1` stages the new version and queues it as an update
 request (`runtime\update-request.json`); the launcher trials it and keeps or

@@ -19,6 +19,7 @@ import {
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   type ProviderInterruptTurnResult,
@@ -331,10 +332,6 @@ function approvalSubjectSignature(
     subject.workspaceRoot ?? null,
     stages,
   ]);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function readString(value: unknown): string | undefined {

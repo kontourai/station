@@ -36,7 +36,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(async () => ({ ok: false })),
 }));
 
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));

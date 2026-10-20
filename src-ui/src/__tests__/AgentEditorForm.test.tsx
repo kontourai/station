@@ -45,6 +45,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   useUpdateWorkflowMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useCreateWorkflowMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteWorkflowMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  // The approval-default field reads ACP connections on every editor render;
+  // none are registered here, exercised in AgentEditorApprovalDefault.test.tsx.
+  useACPConnectionsQuery: () => ({ data: [] }),
 }));
 
 vi.mock('../components/icons/AgentIcon', () => ({

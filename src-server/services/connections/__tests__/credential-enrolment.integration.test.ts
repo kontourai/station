@@ -18,7 +18,7 @@ const execFileAsync = promisify(execFile);
  * `claude auth status` and `codex login status` exit **1** when signed out,
  * and `promisify(execFile)` rejects on a non-zero exit.
  *
- * That gap survived four independent review rounds and was only found by
+ * That gap went unnoticed through repeated code review and was only found by
  * running the feature against a live Station: a signed-out profile reported
  * `unknown` ("we could not ask") instead of `unauthenticated` ("this account
  * is signed out") — the exact conflation the module says it does not make,

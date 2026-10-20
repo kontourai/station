@@ -9,10 +9,7 @@ import type {
   CredentialRecoveryGroup,
   CredentialRecoveryGroupProjection,
 } from '@kontourai/station-contracts/connection-recovery';
-import {
-  DEFAULT_CREDENTIAL_RECOVERY_POLICY,
-  isAutomaticCredentialRecoveryEnabled,
-} from '@kontourai/station-contracts/connection-recovery';
+import { isAutomaticCredentialRecoveryEnabled } from '@kontourai/station-contracts/connection-recovery';
 import {
   sanitizeCredentialProfileEnv,
   sanitizeCredentialProfileEnvInvalidNames,
@@ -582,6 +579,3 @@ export async function ensureCredentialProfileAppHome(
     options,
   );
 }
-
-export const DEFAULT_NORMALIZED_CREDENTIAL_RECOVERY_POLICY =
-  DEFAULT_CREDENTIAL_RECOVERY_POLICY;

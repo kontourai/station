@@ -62,6 +62,19 @@ independent of OTLP configuration or connection checks.
 Saved addresses and SecretBinding references are described in
 [Usage telemetry](usage-telemetry.md#delivery-status-and-connection-checks).
 
+## Kontour Console bridge
+
+Station can copy each conversation's events to Kontour Console as Console event
+records. Both destinations are off by default; with neither variable set the
+bridge does nothing. Delivery failures never affect a session: they are counted
+on `station.console.emissions` and logged once per outage.
+
+| Variable | Default | Description | Source |
+|----------|---------|-------------|--------|
+| `STATION_CONSOLE_HUB_URL` | _(unset — hub delivery off)_ | Base URL of a Console hub, for example `http://127.0.0.1:3737`. Station sends records with `POST <url>/records`; a trailing slash is removed. | `src-server/services/evidence/console-bridge-service.ts` |
+| `STATION_CONSOLE_FILE_SINK` | _(unset — file export off)_ | `1`, `true`, `yes` or `on` (any case) writes records as JSONL under `.kontourai/console/events/station-bridge/` in each session's project workspace, plus an export manifest under `.kontourai/console/resources/station/`. Other values leave it off. | `src-server/services/evidence/console-bridge-service.ts` |
+| `STATION_CONSOLE_SCOPE` | `station-local` | Project scope ID stamped on every record and used in the file-export path. Set it to keep several Stations' records apart in one hub. | `src-server/services/evidence/console-bridge-service.ts`, `src-server/services/evidence/console-bridge.ts` |
+
 ## Frontend
 
 | Variable | Default | Description | Source |

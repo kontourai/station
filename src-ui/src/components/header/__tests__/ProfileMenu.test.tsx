@@ -24,7 +24,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
  */
 const harness = vi.hoisted(() => ({ isMobile: false }));
 
-vi.mock('../../../hooks/useIsMobile', () => ({
+vi.mock('../../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../hooks/useIsMobile')>()),
   useIsMobile: () => harness.isMobile,
 }));
 
