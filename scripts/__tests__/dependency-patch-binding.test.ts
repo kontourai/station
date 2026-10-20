@@ -26,6 +26,17 @@ const source = 'reviewed source';
 const minified = 'reviewed minified bundle';
 const patch = 'reviewed package patch\n';
 
+interface LockedReference {
+  specifier: string;
+  version: string;
+}
+interface AuditFinding {
+  name: string;
+  severity: string;
+  nodes: string[];
+  via: { name: string; severity: string; url: string }[];
+}
+
 function fixture() {
   const name = 'node-forge';
   const version = '1.4.0';
@@ -44,7 +55,19 @@ function fixture() {
   };
   const patchHash = hash(patch);
   const pkg = `${name}@${version}(patch_hash=${patchHash})`;
-  const lock = {
+  const lock: {
+    lockfileVersion: string;
+    patchedDependencies: Record<string, string>;
+    importers: Record<
+      string,
+      {
+        dependencies: Record<string, LockedReference>;
+        devDependencies?: Record<string, LockedReference>;
+      }
+    >;
+    packages: Record<string, object>;
+    snapshots: Record<string, { dependencies?: Record<string, string> }>;
+  } = {
     lockfileVersion: '9.0',
     patchedDependencies: { [`${name}@${version}`]: patchHash },
     importers: {
@@ -117,26 +140,27 @@ function fixture() {
     remediations: [remediation],
   };
   write('scripts/dependency-advisory-exceptions.json', JSON.stringify(config));
+  const vulnerabilities: Record<string, AuditFinding> = {
+    [name]: {
+      name,
+      severity,
+      nodes: [pkg],
+      via: [
+        {
+          name,
+          severity,
+          url: `https://github.com/advisories/${advisory}`,
+        },
+      ],
+    },
+  };
   const audit = {
     scope: 'root',
     reachability: 'production',
     resolvedVersions: { [pkg]: version },
     audit: {
       auditReportVersion: 2,
-      vulnerabilities: {
-        [name]: {
-          name,
-          severity,
-          nodes: [pkg],
-          via: [
-            {
-              name,
-              severity,
-              url: `https://github.com/advisories/${advisory}`,
-            },
-          ],
-        },
-      },
+      vulnerabilities,
       metadata: {
         vulnerabilities: {
           info: 0,
@@ -392,8 +416,9 @@ describe('installed-tree verification, exercised through the node-forge remediat
       'snapshot edge to an absent variant',
       /Unresolved dependency/,
       (f: ReturnType<typeof fixture>) => {
-        f.lock.snapshots['argparse@1.0.10'].dependencies['node-forge'] =
-          '1.4.0';
+        f.lock.snapshots['argparse@1.0.10'].dependencies = {
+          'node-forge': '1.4.0',
+        };
         f.write('pnpm-lock.yaml', JSON.stringify(f.lock));
       },
     ],
@@ -401,8 +426,9 @@ describe('installed-tree verification, exercised through the node-forge remediat
       'snapshot edge to an unpatched variant',
       /unpatched or absent locked package/,
       (f: ReturnType<typeof fixture>) => {
-        f.lock.snapshots['argparse@1.0.10'].dependencies['node-forge'] =
-          '1.4.0';
+        f.lock.snapshots['argparse@1.0.10'].dependencies = {
+          'node-forge': '1.4.0',
+        };
         f.lock.snapshots['node-forge@1.4.0'] = {};
         f.write('pnpm-lock.yaml', JSON.stringify(f.lock));
       },
