@@ -52,7 +52,7 @@ prove.
 | Example | Focus |
 | --- | --- |
 | [MCP UI Demo](mcp-ui-demo/README.md) | Sandboxed MCP App resource |
-| [Station Sessions MCP](station-sessions-mcp/README.md) | Read-only session panel over MCP UI |
+| [Station Sessions MCP](station-sessions-mcp/README.md) | Read-only session panel over MCP UI; its reader is broken ([#2785](https://github.com/kontourai/station/issues/2785)), and an empty panel is not evidence |
 | [Self-Configuring Agent](self-configuring-agent/README.md) | Agent-authored configuration pattern |
 | [Example Registry](registry/README.md) | Reproducible local registry manifest |
 
@@ -77,8 +77,9 @@ npm run typecheck:examples
 `examples:conformance` validates every manifest path and documented npm script,
 then builds every example that declares a build. Example unit tests run in the
 normal test corpus. Credential-gated live-provider examples are reported as
-`NOT PROVEN AT RUNTIME`; a successful static build does not prove an external
-service or credential path.
+`NOT PROVEN AT RUNTIME`, and examples that cannot work as shipped (Nova Sonic,
+ElevenLabs, Station Sessions MCP) as `KNOWN BROKEN`. A successful static build
+does not prove an external service or credential path.
 
 `typecheck:examples` compiles every example that ships TypeScript, including
 its tests. `examples:conformance` fails when an example's TypeScript is outside
@@ -100,7 +101,3 @@ The next useful examples are not more layout variations:
   client's consumption or a published package.
 - Credentialed voice and transcription smoke remain environment-owned evidence,
   not repository-only examples.
-
-## Parked experiments
-
-- [Monument / Flow Agents continuation probe](experimental-monument-flow-probe/README.md): public-command fit/gap evidence for #3574; recommends Tier 1 and ships no Flow Agents integration.

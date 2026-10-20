@@ -509,7 +509,7 @@ describe('CI health metrics', () => {
     expect(
       measure([
         integration(6, 'PR: CI', 50, { event: 'workflow_dispatch' }),
-        integration(7, 'Diagnostic: Merge integration', 55, {
+        integration(7, 'Diagnostic (manual): Merge integration', 55, {
           event: 'workflow_dispatch',
         }),
         ...historical,

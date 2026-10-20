@@ -92,6 +92,44 @@ async function sdkAttributes(homeDir: string) {
   );
 }
 
+describe('a supervised generation', () => {
+  test('registers OTel at once but holds its home writes until promoted', async () => {
+    const { initializeTelemetry } = await telemetry();
+    const root = await createStationTempDir('otel-parked');
+    homes.push(root);
+    const homeDir = join(root, 'home');
+    let promote!: () => void;
+    const homeWritesAllowed = new Promise<void>((resolve) => {
+      promote = resolve;
+    });
+    const start = vi.fn();
+    let identity: Promise<string> | string | undefined;
+    const initialized = initializeTelemetry({
+      env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://collector.test' },
+      homeDir,
+      appConfig: {},
+      createSdk: (resourceAttributes) => {
+        identity = Object.values(resourceAttributes).find(
+          (value) => typeof value !== 'string',
+        );
+        return { start, shutdown: async () => {} };
+      },
+      log: () => {},
+      homeWritesAllowed,
+    });
+    expect(start).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await expect(stat(homeDir)).rejects.toMatchObject({ code: 'ENOENT' });
+
+    promote();
+    await initialized;
+    await expect(identity).resolves.toMatch(/^[0-9a-f]{64}$/);
+    await expect(
+      stat(join(homeDir, '.station-home-schema.json')),
+    ).resolves.toBeTruthy();
+  });
+});
+
 describe('OTel installation identity', () => {
   test.each([
     'authorized',

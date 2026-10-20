@@ -22,6 +22,7 @@ import {
   readAccountEntryContinuation,
 } from './account-entry-continuation';
 import './account-entry.css';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 
 // Read once so React StrictMode cannot consume the URL proof twice.
 const browserFlow = readAccountEntryContinuation();
@@ -265,6 +266,9 @@ export function AccountEntryView({
     setError(undefined);
     try {
       await mutation.mutateAsync({ path, body: {} });
+      // Signed out: a definite "no person", so this device's own appearance
+      // replaces the account's cached one (lib/appearance-cache.ts).
+      deviceSettingsStore.releaseBootAppearance();
       await client.resetQueries({ queryKey: ['account', apiBase, 'session'] });
       setJoined(false);
     } catch (cause) {

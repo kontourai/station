@@ -4,6 +4,7 @@
  * outright, the next supervisor reaps it, verifying a start-time fingerprint
  * so a recycled pid is never killed.
  */
+
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
@@ -11,10 +12,12 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import { processFingerprint } from '../generation-registry.ts';
+import { supervisorRunDir } from '../protocol.ts';
 import {
   freePort,
   getBoot,
   startSupervisor,
+  trackHome,
   writeCoreVariant,
 } from './harness.ts';
 
@@ -170,9 +173,9 @@ describe('stale generations (real processes)', () => {
     );
     const fingerprint = await processFingerprint(pid);
     expect(fingerprint.status).toBe('ok');
-    mkdirSync(join(home, 'run'), { mode: 0o700 });
+    mkdirSync(supervisorRunDir(trackHome(home)), { mode: 0o700 });
     writeFileSync(
-      join(home, 'run', 'supervisor-test.generations.json'),
+      join(supervisorRunDir(home), 'supervisor-test.generations.json'),
       JSON.stringify([
         {
           pid,

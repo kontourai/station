@@ -58,13 +58,21 @@ shared value upstream when it belongs to the public design system.
 [startup-theme.js](../../src-ui/public/startup-theme.js) selects the saved
 light/dark preference before the entry HTML paints, reading the device-settings
 envelope before the legacy theme key and falling back to dark if storage is
-unavailable. [main.tsx](../../src-ui/src/main.tsx) applies the canonical theme,
-accent and cached branding before React renders. The initial HTML and
+unavailable. A signed-in person's last rendered appearance, cached in
+`station-appearance-v1`, wins over both until the account answers. The script
+also stamps the named color theme, requests its stylesheet and sets
+`theme-color` (see [Named color themes](#named-color-themes)).
+[main.tsx](../../src-ui/src/main.tsx) applies the canonical theme, accent and
+cached branding before React renders, binds the color theme to the settings
+store, and waits for a still-loading color-theme stylesheet before its first
+render. The initial HTML and
 [StartupScreen](../../src-ui/src/components/StartupScreen.tsx) share the same
 startup artwork through platform and authority resolution. One launch presentation
 survives React bootstrap handoffs outside the application root. The lightweight
 [boot entry](../../src-ui/src/boot.ts) starts painting before it imports the full
-app. A failed app import releases animation and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
+app. A failed app import, or a first render deferred behind a color-theme
+stylesheet whose React root cannot be created or rendered, releases animation
+and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
 bundle budget still counts the immediately loaded app's static JS/CSS closure
 through its Vite manifest, in addition to the visible boot assets. The mark begins centered,
 then moves left while Fraunces reveals `tation`, using the river as the S. The
@@ -121,6 +129,31 @@ preference must clear its companion overrides too. It refuses a value that is
 not `#rgb`/`#rrggbb` and clears the override instead. Do not infer legibility
 for every tinted background from a foreground-on-solid-accent calculation.
 
+## Named color themes
+
+A person can choose a named palette (Catppuccin, Rosé Pine, Gruvbox, Nord,
+Tokyo Night) on top of light and dark; the default `station` sets nothing,
+loads no theme stylesheet and renders as above. The
+[decision record](../decisions/user-color-themes.md) owns the settings,
+compatibility, pre-paint and precedence rules. The
+[catalog](../../src-ui/src/lib/color-theme-catalog.ts) is the single source of
+every value. After changing it, run `npm run gen:color-themes`: it regenerates
+one stylesheet per family under `src-ui/public/color-themes/`, the splash
+subset, the runtime index and the index in
+[startup-theme.js](../../src-ui/public/startup-theme.js), and
+[color-theme-artifacts.test.ts](../../src-ui/src/__tests__/color-theme-artifacts.test.ts)
+fails until you do; it also fails if the startup path starts bundling the full
+catalog. [color-theme-contrast.test.ts](../../src-ui/src/__tests__/color-theme-contrast.test.ts)
+rates every family, flavor and accent;
+[color-theme-cascade.test.ts](../../src-ui/src/__tests__/color-theme-cascade.test.ts)
+measures, in Chromium, the startup path (including the appearance cache and a
+slow family sheet), the live applier, every family and flavor through
+`index.css`, Station's unchanged default, and the precedence against channels,
+white-label branding, a custom accent and islands. A picker lists
+`COLOR_THEME_OPTIONS` from [color-themes.ts](../../src-ui/src/lib/color-themes.ts)
+(load it lazily: it carries the full catalog) and writes the `colorTheme`,
+`colorThemeFlavor` and `colorThemeAccent` device settings.
+
 ## White-label branding theme
 
 A branding provider's `getTheme()` answer is applied by
@@ -131,7 +164,12 @@ all or nothing: an unknown key, a non-hex value or a failed contrast check in
 either mode keeps the defaults. The check is `validateBrandOverride` from
 `@kontourai/ui/contrast`, which rates the brand as text at 4.5:1 on the page,
 the panel and the raised panel; Station adds the flat-key input shape and one
-stricter text-contrast rule for the action fill. The raised-panel check came
+stricter text-contrast rule for the action fill. Under a named color theme an
+accepted override is rated again on that theme's page, panel and raised panel;
+a slot group that fails there (brand and its text, action and its text, or
+focus) is not written, so the theme's value shows, and the rejection is logged
+with the same prefix. The rating reruns on a mode, theme or channel change.
+The raised-panel check came
 with `@kontourai/ui` 1.18, so an upgrade can reject a theme that was applied
 before: a stored theme whose dark brand is under 4.5:1 on the dark raised panel
 `#16202d` (relative luminance from about 0.2155 up to 0.2377, such as

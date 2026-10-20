@@ -49,6 +49,29 @@ function workflow(name: string) {
 }
 
 /**
+ * Evaluates a GitHub Actions `if:` expression made only of `github.*`
+ * properties, string literals, ==, !=, && and ||. Anything else is refused,
+ * so a richer expression fails loudly instead of evaluating wrongly. Mirrors
+ * the evaluator in merge-queue-dequeue.test.ts.
+ */
+function evaluateGithubIf(expression: string, github: Record<string, unknown>) {
+  const body = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
+  const stripped = body
+    .replace(/'[^']*'/g, '')
+    .replace(/github(?:\.[A-Za-z_]+)+/g, '')
+    .replace(/==|!=|&&|\|\||[()\s]/g, '');
+  if (stripped) throw new Error(`unsupported expression syntax: ${stripped}`);
+  const js = body
+    .replace(
+      /github((?:\.[A-Za-z_]+)+)/g,
+      (_m, path: string) => `github${path.replaceAll('.', '?.')}`,
+    )
+    .replace(/==/g, '===')
+    .replace(/!===/g, '!==');
+  return new Function('github', `return (${js});`)(github) as boolean;
+}
+
+/**
  * #2709: the job that used to be `fast-checks` is `fast-checks-statics`; the
  * `fast-checks` id is the required aggregator that follows it. Refuses a
  * missing or reordered job rather than slicing to an empty string, which
@@ -2329,6 +2352,53 @@ describe('CI verification workflow contracts', () => {
     expect(android).toContain('test-results/');
   });
 
+  // #3402: workflow_run fires for every completed Android build, including
+  // ones cancelled by their own cancel-in-progress concurrency and ones
+  // dispatched on a feature branch. Those have nothing to test and used to
+  // fail the resolver, reporting main red. The cases below are the shapes of
+  // the real triggering builds behind runs 39374482583 (cancelled push on
+  // main) and 39388732637 (dispatch on a feature branch).
+  it('skips the Android tests only for builds that have nothing to test', () => {
+    const jobs = (
+      load(workflow('android-test.yml')) as {
+        jobs: Record<string, { if?: string; needs?: string | string[] }>;
+      }
+    ).jobs;
+    const gate = jobs['resolve-build']?.if;
+    if (typeof gate !== 'string') throw new Error('resolve-build has no if:');
+    const runs = (
+      event_name: string,
+      workflow_run?: { head_branch: string; conclusion: string },
+    ) => evaluateGithubIf(gate, { event_name, event: { workflow_run } });
+
+    expect(
+      runs('workflow_run', { head_branch: 'main', conclusion: 'success' }),
+    ).toBe(true);
+    // A real build failure must still reach the resolver and fail red.
+    expect(
+      runs('workflow_run', { head_branch: 'main', conclusion: 'failure' }),
+    ).toBe(true);
+    expect(
+      runs('workflow_run', { head_branch: 'main', conclusion: 'cancelled' }),
+    ).toBe(false);
+    expect(
+      runs('workflow_run', {
+        head_branch: 'feat/some-branch',
+        conclusion: 'success',
+      }),
+    ).toBe(false);
+    // Manual dispatch keeps the resolver's strict validation of its run_id.
+    expect(runs('workflow_dispatch')).toBe(true);
+    expect(runs('pull_request')).toBe(false);
+
+    // Every test job must hang off the gated resolver so a skip cascades.
+    for (const [id, job] of Object.entries(jobs)) {
+      if (id === 'resolve-build') continue;
+      expect([job.needs].flat(), id).toContain('resolve-build');
+      expect(job.if ?? '', id).not.toMatch(/always\(\)|cancelled\(\)/);
+    }
+  });
+
   it('keeps Linux CI on GitHub-hosted runners and desktop-win for hardware reference', () => {
     const linuxWorkflows = [
       'ci.yml',
@@ -2968,12 +3038,13 @@ describe('artifact storage does not accumulate or gate verdicts', () => {
 });
 
 /**
- * The Tauri CLI DISCOVERS a config when none is given, by walking the tree —
- * and `experiments/browser-host/*\/tauri.conf.json` sorts before
- * `src-desktop/`. Those spike configs declare `"version": "0.0.0"`, which the
+ * The Tauri CLI DISCOVERS a config when none is given, by walking the tree.
+ * A since-removed spike's `experiments/browser-host/*\/tauri.conf.json`
+ * sorted before `src-desktop/` and declared `"version": "0.0.0"`, which the
  * Android packager rejects outright, so build-android produced no APK for four
  * days after the spike landed (station#2306). Nothing in the repo's own config
- * changed; a file added elsewhere silently captured every unpinned invocation.
+ * changed; any `tauri.conf.json` added elsewhere silently captures every
+ * unpinned invocation.
  */
 describe('every Tauri invocation is rooted at the app directory', () => {
   const DISCOVERY_EXPOSED = [
@@ -3022,22 +3093,6 @@ describe('every Tauri invocation is rooted at the app directory', () => {
         'run: npx tauri build --config "$RUNNER_TEMP/tauri.json"',
       ),
     ).toContain('unrooted Tauri invocation');
-  });
-
-  it('keeps the spike configs recognisable as the hazard they are', () => {
-    // These are legitimate cargo spikes whose build.rs needs a config, so they
-    // stay. That is exactly why the real lanes must never resolve by discovery.
-    const spike = JSON.parse(
-      readFileSync(
-        resolve(
-          root,
-          'experiments/browser-host/tauri-child-webview/tauri.conf.json',
-        ),
-        'utf8',
-      ),
-    );
-    expect(spike.version).toBe('0.0.0');
-    expect(spike.build.frontendDist).toBe('../fixture');
   });
 });
 

@@ -1,0 +1,7 @@
+{
+  "revision": "8f920b6270bb91c2777017a906dd8d29b3ec341b",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the claims citing approvalMode.ts: only the user-facing full-access descriptions changed. They now say an ungranted start gets a narrower setting (confinement where the engine supports it, otherwise Auto) and qualify the OpenCode copy by grant. This document does not describe that copy; no documented claim changes.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/utils/approvalMode.ts"]}
+  ]
+}

@@ -65,6 +65,16 @@ describe('supervisor generation handoff (real processes)', () => {
     }
   }, 120_000);
 
+  it('does not pass an inherited STATION_SUPERVISOR_BIRTH to its generations', async () => {
+    const home = makeTempDir('sup-birth-');
+    // As Desktop or `service run` would leave it on a process they started.
+    const supervisor = await startSupervisor({
+      home,
+      env: { STATION_SUPERVISOR_BIRTH: 'birth-of-another-process' },
+    });
+    expect((await getBoot(supervisor.port)).inheritedBirth).toBeNull();
+  }, 60_000);
+
   it('runs a handoff the active core asks for over IPC', async () => {
     const home = makeTempDir('sup-core-request-');
     const supervisor = await startSupervisor({

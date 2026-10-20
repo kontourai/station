@@ -130,7 +130,7 @@ describe('SkillService', () => {
     };
   }
 
-  // Delta review. An interrupted package has no `SKILL.md` — that is what makes
+  // An interrupted package has no `SKILL.md` — that is what makes
   // it interrupted — so discovery never registers it, and resolving this seam
   // through the registry hands back whatever OTHER package owns the name. The
   // repair then reads a directory it did not write and reports "identity or
@@ -555,7 +555,7 @@ describe('SkillService', () => {
   });
 
   test('the install record is durable before the body is written', async () => {
-    // Review H2. The two writes are not atomic together, so whichever lands
+    // The two writes are not atomic together, so whichever lands
     // first is what a crash between them leaves — and it has to be the one
     // carrying `legacyIds`, because that is the only thing that lets
     // `station doctor --migrate-playbooks` recognise its own prior work
@@ -634,7 +634,7 @@ describe('SkillService', () => {
   });
 
   test('a plugin prompt keeps its legacy id when a local skill holds its name', async () => {
-    // Review M2. Both exist under distinct names; nothing is dropped, and
+    // Both exist under distinct names; nothing is dropped, and
     // `<ns>:<id>` still resolves — which is the identity layouts and stored
     // references already hold.
     const localDir = join(testDir, 'skills', 'hello');
@@ -803,7 +803,7 @@ describe('SkillService', () => {
     // The record half, through the writer the service actually calls: asserted
     // on `saveSkill` this could never fail, because nothing calls it any more
     // (#1619 deleted it) — the only coverage of "without writing" for the
-    // record was inert (delta review).
+    // record was inert.
     expect(mockConfigLoader.saveSkillIn).not.toHaveBeenCalled();
   });
 
@@ -1009,7 +1009,7 @@ describe('SkillService', () => {
     expect(byName.get('machine-wide')).toBe('user');
   });
 
-  // Review M1. Every read is `recorded ?? derived`, and every `skill.json`
+  // Every read is `recorded ?? derived`, and every `skill.json`
   // written before `project` existed records `user` — including for a
   // project-scoped package, because `createLocalSkill` stamped it and
   // `updateLocalSkill` preserves it. Without the path correction these stay
@@ -1176,7 +1176,7 @@ describe('SkillService', () => {
     return dir;
   }
 
-  // Delta-review L3. The write path corrects the record too. Reaching it needs
+  // The write path corrects the record too. Reaching it needs
   // a scoped call on a package the scope actually owns — which #1602 is what
   // made possible: before it, `updateLocalSkill`'s opening `getSkill(name)`
   // threw for a project-only package and this heal could only be reached
@@ -1206,7 +1206,7 @@ describe('SkillService', () => {
     expect(existsSync(join(testDir, 'skills', 'scoped'))).toBe(false);
   });
 
-  // Delta review 3, L4. Discovery built the project root by hand instead of
+  // Discovery once built the project root by hand instead of
   // going through the builder, so the READ path took a slug every write path
   // refuses — and a traversal slug made it scan outside the home entirely.
   test('discovery refuses a slug no write path would accept', async () => {
@@ -1308,9 +1308,10 @@ describe('SkillService', () => {
 
   // #1619. The write now resolves the package DISCOVERY found, so an unscoped
   // PUT — the only kind a route makes — edits the workspace package in place.
-  // Round 1 refused this, because the write derived `<home>/skills/<name>` from
-  // a name and an absent slug and would have written a second package there;
-  // the fix is to stop deriving it, and the refusal it needed goes with it.
+  // An earlier version refused this, because the write derived
+  // `<home>/skills/<name>` from a name and an absent slug and would have
+  // written a second package there; the fix is to stop deriving it, and the
+  // refusal it needed goes with it.
   test('an unscoped update edits the workspace package where it lives', async () => {
     const projectDir = seedProjectSkill('workspace-owned');
     await service.discoverSkills(testDir, 'demo');
@@ -1343,7 +1344,7 @@ describe('SkillService', () => {
     expect(result.success).toBe(true);
   });
 
-  // #1619 finding (a), the create mirror: called WITH a slug, the body went to
+  // #1619, the create mirror: called WITH a slug, the body went to
   // the project directory and the record — through a name-addressed save with
   // no slug — to `<home>/skills/<name>`. One package in two roots, each half
   // describing the other's location.
@@ -1439,12 +1440,12 @@ describe('SkillService', () => {
     expect(existsSync(`${projectDir}.mutation`)).toBe(false);
   });
 
-  // Review M2, a regression against main. `<home>/plugins` is scanned AFTER
+  // A past regression. `<home>/plugins` is scanned AFTER
   // `<home>/skills`, so a plugin package sharing a name takes the registry key
   // from the user's own package. Refusing a remove on the registry entry alone
   // then meant the user could not delete their own skill, and the message
-  // blamed a plugin they may never have heard of. Main removed it, because its
-  // target was name-derived.
+  // blamed a plugin they may never have heard of. The older remove deleted it,
+  // because its target was name-derived.
   test('a package of ours is removable even when a plugin holds its name', async () => {
     const mine = join(testDir, 'skills', 'hello');
     mkdirSync(mine, { recursive: true });
@@ -1504,7 +1505,7 @@ describe('SkillService', () => {
     expect(result.message).toContain('is not a skills root Station writes');
   });
 
-  // Review H1, the worst defect this branch produced. `removeSkillIfRevision`
+  // The most serious past defect here. `removeSkillIfRevision` once
   // digested `resolveSkillDir(home, name, slug)` — name-derived — and then
   // called a remove that resolved through `packageDirectoryFor`, so it verified
   // one tree and deleted another. Setup-import's rollback then recorded a
@@ -1525,7 +1526,7 @@ describe('SkillService', () => {
     //
     // `packageDirectoryFor` therefore answers with the project directory and
     // `resolveSkillDir(home, name, undefined)` answers with the machine one.
-    // Verifying through one and deleting through the other is H1.
+    // Verifying through one and deleting through the other is the defect.
     const projectDir = seedProjectSkill('shared');
     const nameDerived = join(testDir, 'skills', 'shared');
     mkdirSync(nameDerived, { recursive: true });
@@ -1543,7 +1544,7 @@ describe('SkillService', () => {
     // registry's, and because base's `localSkillRevision` digests that SAME
     // name-derived directory the comparison is self-consistent — identical
     // filesystem outcome, identical return value, only the tree that was
-    // VERIFIED differs, and nothing observed it (delta review, replayed).
+    // VERIFIED differs, and nothing observed it.
     expect(
       revision,
       'the revision reported for this name is not the package it resolves',
@@ -1565,7 +1566,7 @@ describe('SkillService', () => {
     expect(result).toEqual({ removed: true, conflict: false });
   });
 
-  // The destructive half, in the shape the reviewer's probe took: the caller
+  // The destructive half, in the shape of the original reproduction: the caller
   // holds the revision of the package IT created — `<home>/skills/<name>`,
   // which setup-import's rollback made — while the name now resolves to a
   // workspace package. Verifying through the name-derived directory then
@@ -1706,7 +1707,7 @@ describe('SkillService', () => {
     );
   });
 
-  // Review L2. A package copied into a new directory keeps the record it was
+  // A package copied into a new directory keeps the record it was
   // copied with. That record's `legacyIds`/`provenance`/`installedAt` are the
   // ORIGINAL skill's, so answering the new name with them hands a caller
   // another skill's identity — and `resolveSkillName` would route that skill's
@@ -2152,7 +2153,7 @@ describe('SkillService', () => {
   });
 
   test('a mirrored command that clashes is disabled with a diagnostic, not served raw', async () => {
-    // Delta finding 3: with SKILL.md gone the detail returned the install
+    // With SKILL.md gone the detail once returned the install
     // record verbatim, so a mirrored `enabled: true` came back active even
     // though another skill owns the word and the listing had dropped this
     // skill entirely. The write path refuses a second claimant, so the only
@@ -2348,7 +2349,7 @@ describe('SkillService', () => {
     );
   });
 
-  // Review round 2, M2. The name a rename takes can belong to a package in a
+  // The name a rename takes can belong to a package in a
   // root this write never looks at: `existsSync(nextDir)` only sees
   // `<home>/skills`, and `<home>/skills` is scanned LAST, so the renamed local
   // package took the canonical package's name and the canonical one dropped out
@@ -2403,7 +2404,7 @@ describe('SkillService', () => {
     expect(result.message).toContain('pdf');
   });
 
-  // Review round 2, L3, at the seam it actually reaches: with no `SKILL.md`
+  // Tested at the seam it actually reaches: with no `SKILL.md`
   // nothing discovers this package, so the detail read falls to the loader's
   // name-derived path — the branch the registry cannot cover. `nextName` is
   // read back off that record, so a disowned one renamed `bar` to `foo` on a
@@ -2474,7 +2475,7 @@ describe('SkillService', () => {
   });
 
   test('a user mirror outranks a registry skill for the same command word', async () => {
-    // Delta-2 finding (d): a skill whose SKILL.md is unreadable is absent from
+    // A skill whose SKILL.md is unreadable is absent from
     // discovery, so the resolver saw it as `unknown` and let `registry` win —
     // while the same response reported `origin: user`. The tier must come from
     // the record being served.

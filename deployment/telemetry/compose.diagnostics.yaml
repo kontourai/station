@@ -1,0 +1,98 @@
+# Diagnostic half of the private telemetry profile. compose.yaml includes it;
+# compose.dev.yaml overrides it for local development. See README.md.
+
+x-service: &service
+  restart: unless-stopped
+  read_only: true
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  stop_grace_period: 15s
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  collector:
+    <<: *service
+    image: otel/opentelemetry-collector-contrib:0.162.0@sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6
+    user: "1000:1000"
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./collector.yaml:/etc/otelcol/config.yaml:ro
+      - type: bind
+        source: ${TELEMETRY_PRIVATE_DIR:?set an absolute private directory}/otel-key
+        target: /run/private/otel-key
+        read_only: true
+        bind: {create_host_path: false}
+    ports: ["127.0.0.1:${TELEMETRY_OTLP_PORT:-44482}:4318"]
+    networks: [diagnostics]
+    depends_on: [tempo]
+    cpus: 1.0
+    mem_limit: 512m
+
+  prometheus:
+    <<: *service
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=2GB
+      - --web.listen-address=0.0.0.0:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks: [diagnostics]
+    depends_on: [collector]
+    cpus: 0.5
+    mem_limit: 512m
+
+  tempo:
+    <<: *service
+    image: grafana/tempo:3.1.0@sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd
+    command: ["-target=all", "-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    networks: [diagnostics]
+    cpus: 1.0
+    mem_limit: 512m
+
+  grafana:
+    <<: *service
+    image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
+    environment:
+      GF_SECURITY_ADMIN_USER: telemetry-admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/private/grafana-password
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/telemetry.yaml:ro
+      - ./grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/telemetry.yaml:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - type: bind
+        source: ${TELEMETRY_PRIVATE_DIR:?set an absolute private directory}/grafana-password
+        target: /run/private/grafana-password
+        read_only: true
+        bind: {create_host_path: false}
+    ports: ["127.0.0.1:${TELEMETRY_GRAFANA_PORT:-44484}:3000"]
+    networks: [diagnostics]
+    depends_on: [prometheus, tempo]
+    tmpfs: [/tmp:size=16m]
+    cpus: 0.5
+    mem_limit: 256m
+
+networks:
+  diagnostics:
+    internal: true
+
+volumes:
+  prometheus-data:
+  tempo-data:
+  grafana-data:

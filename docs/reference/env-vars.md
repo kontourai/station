@@ -22,6 +22,7 @@ the process; a shell change does not reconfigure an already running service.
 | `STATION_API_BASE` | _(unset)_ | Before `station start`, supplies the CLI UI server's `window.__API_BASE__` override. Web fallback is the page's own origin, unless a build-time override or selected saved Station supplies another endpoint; native clients also have host-supplied connection selection. Used separately by CLI clients and `station-control`. See [remote access](cli.md#accessing-station-remotely-198) and [saved Stations](../guides/connections.md#saved-station-addresses). | `packages/cli/src/commands/lifecycle.ts`, `src-ui/src/contexts/ApiBaseContext.tsx`, `src-server/tools/station-control-shared.ts` |
 | `STATION_PORT` | `PORT`, then `3141`, only in the final control-client fallback | `station-control` resolves `STATION_API_BASE`, then a registered runtime base, then `http://127.0.0.1:<STATION_PORT or PORT or 3141>`. The runtime normally injects its actual bound base and port into its built-in child. This variable does not choose the server's listen port. | `src-server/tools/station-control-shared.ts`, `src-server/runtime/bootstrap/station-control-runtime-env.ts` |
 | `STATION_CONSENT_PORT` | `PORT + 3` | The distinct-origin consent listener's port (station#3677) — the fifth first-class instance port after server, terminal (`+1`), voice (`+2`), and UI. The CLI passes the resolved value (channel contract or `--consent-port`); the runtime derives `PORT + 3` when unset. If the listener cannot bind, approvals fail closed while Station stays usable | `packages/cli/src/commands/lifecycle.ts`, `src-server/runtime/bootstrap/station-runtime.ts` |
+| `STATION_SUPERVISOR_IPC` | _(unset)_ | Set to `1`, with `STATION_SUPERVISOR_GENERATION`, by the [process supervisor](../design/process-supervisor.md) on each core server generation it forks over an IPC channel. The server then parks until promoted and binds its listeners through that channel. `1` without an IPC channel refuses to start. Not an operator setting; terminal and engine child processes do not inherit either variable. | `src-server/runtime/bootstrap/supervisor-link.ts`, `src-server/utils/child-process-environment.ts`, `packages/supervisor/src/supervisor.ts` |
 | `STATION_FEATURES` | _(none)_ | Comma-separated feature flags. The only flag is `strands-runtime`, which overrides the `runtime` setting to `strands` for this process ([#3909](https://github.com/kontourai/station/issues/3909) decides when it ends). | `src-server/runtime/bootstrap/runtime-initialize.ts` |
 | `STATION_PROJECT_RESOURCE_SHADOW` | _(unset — shadow on)_ | `off` (case-insensitive) stops the session-cwd shadow comparison: the resolver's reads and its `git remote` spawn no longer run one tick after a session start. Each skipped comparison is still recorded as `disabled` in `<home>/project-resource-shadow.json`, so a switched-off home stays distinguishable from one where the observer never ran. Session starts are unaffected either way. See [the shadow decisions](../design/portable-project-identity.md#101-the-session-cwd-shadow). | `src-server/services/projects/project-resource-shadow.ts` |
 | `STATION_DEPLOYMENT_CAPABILITIES` | _(unset — every capability `unknown`)_ | JSON object declaring what this deployment can provide, reported as `deployment` by `GET /api/system/capabilities`. Known keys are `web-push` and `scheduler`; each value is `supported`, `unsupported` or `unknown`. Unknown keys and values read as `unknown`, and an empty or malformed declaration makes every capability `unknown`. The server cannot authenticate this declaration, so absence never counts as support. | `src-server/capabilities/deployment-capabilities.ts` |
@@ -61,6 +62,19 @@ Product and OTLP keys never cross destinations; product consent remains
 independent of OTLP configuration or connection checks.
 Saved addresses and SecretBinding references are described in
 [Usage telemetry](usage-telemetry.md#delivery-status-and-connection-checks).
+
+## Kontour Console bridge
+
+Station can copy each conversation's events to Kontour Console as Console event
+records. Both destinations are off by default; with neither variable set the
+bridge does nothing. Delivery failures never affect a session: they are counted
+on `station.console.emissions` and logged once per outage.
+
+| Variable | Default | Description | Source |
+|----------|---------|-------------|--------|
+| `STATION_CONSOLE_HUB_URL` | _(unset — hub delivery off)_ | Base URL of a Console hub, for example `http://127.0.0.1:3737`. Station sends records with `POST <url>/records`; a trailing slash is removed. | `src-server/services/evidence/console-bridge-service.ts` |
+| `STATION_CONSOLE_FILE_SINK` | _(unset — file export off)_ | `1`, `true`, `yes` or `on` (any case) writes records as JSONL under `.kontourai/console/events/station-bridge/` in each session's project workspace, plus an export manifest under `.kontourai/console/resources/station/`. Other values leave it off. | `src-server/services/evidence/console-bridge-service.ts` |
+| `STATION_CONSOLE_SCOPE` | `station-local` | Project scope ID stamped on every record and used in the file-export path. Set it to keep several Stations' records apart in one hub. | `src-server/services/evidence/console-bridge-service.ts`, `src-server/services/evidence/console-bridge.ts` |
 
 ## Frontend
 

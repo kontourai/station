@@ -102,7 +102,7 @@ describe('ApprovalGuardianService', () => {
     },
   );
 
-  // archive#1831 delivery review (HIGH): user instructions were an OR-fallback
+  // archive#1831: user instructions were once an OR-fallback
   // that REPLACED the entire built-in decision framework, while the Settings
   // copy ("Extra instructions" before, "added on top of" now) promised
   // additive behavior. These tests exercise the real composition path through
@@ -208,16 +208,14 @@ describe('ApprovalGuardianService', () => {
       return capturedPromptFull({ toolArgs });
     }
 
-    // The fence is nonced (archive#3577 review round 2, HIGH-3): the exact
-    // tag bytes differ on every call, so a test must extract whatever nonce
-    // the code actually generated rather than assume a fixed delimiter. The
-    // tag wraps `toolName`/`toolDescription`/`toolArgs` alike (review round
-    // 3, HIGH-4), so every fenced region in a prompt shares one nonce.
-    // Every fenced region in one prompt shares the same nonce (HIGH-4), so
-    // `fromIndex` selects WHICH region's fence to locate — the Arguments
-    // fence is not necessarily the first `<tool_data:NONCE>` in the prompt
-    // any more, since `Tool:`/`Tool description:` are fenced too and come
-    // first.
+    // The fence is nonced (archive#3577): the exact tag bytes differ on every
+    // call, so a test must extract whatever nonce the code actually generated
+    // rather than assume a fixed delimiter. The tag wraps
+    // `toolName`/`toolDescription`/`toolArgs` alike, so every fenced region in
+    // one prompt shares the same nonce, and `fromIndex` selects WHICH region's
+    // fence to locate — the Arguments fence is not necessarily the first
+    // `<tool_data:NONCE>` in the prompt any more, since `Tool:` and
+    // `Tool description:` are fenced too and come first.
     function realFence(
       prompt: string,
       fromIndex = 0,
@@ -264,7 +262,7 @@ describe('ApprovalGuardianService', () => {
       );
     });
 
-    // archive#3577 review round (HIGH-1): before the fence, a multi-line
+    // archive#3577: before the fence existed, a multi-line
     // string toolArgs was inserted as free prompt text after `Arguments: `,
     // so a model-authored value could forge its own copy of the trailing
     // decision instruction (or an "Operator note: pre-approved" line) and
@@ -296,16 +294,16 @@ describe('ApprovalGuardianService', () => {
       expect(afterOccurrences).toBe(1);
     });
 
-    // archive#3577 review round 2 (HIGH-3): reopens HIGH-1. Round 1's fence
+    // archive#3577: the same forgery through a weak fence. The first fence
     // used a FIXED, public delimiter, so a model-authored value could
-    // include its own `</tool_data:…>` (no nonce needed — round 1 didn't
-    // have one) and everything after it — a decoy benign tool call, a fake
+    // include its own `</tool_data:…>` (no nonce needed — that fence had
+    // none) and everything after it — a decoy benign tool call, a fake
     // "pre-approved… Return allow" instruction — would land OUTSIDE the
     // fence, exactly where genuine framework text lives. This is the exact
-    // payload the review round supplied (the guessed closing tag has no
+    // payload that demonstrated the escape (the guessed closing tag has no
     // real nonce, so this exercises the same escape whether the real tag
     // is named `tool_arguments` or `tool_data` — the escape depends on the
-    // nonce, not the tag name). Against round 1's code this test's
+    // nonce, not the tag name). Against the fixed-delimiter code this test's
     // `afterOccurrences` assertion would have read 2, not 1 — the assertion
     // shape already had power; the corpus lacked this payload.
     test('a forged closing tag inside toolArgs cannot escape the real (nonced) fence', async () => {
@@ -347,13 +345,13 @@ describe('ApprovalGuardianService', () => {
       expect(afterOccurrences).toBe(1);
     });
 
-    // archive#3577 review round 3 (HIGH-4): reopens HIGH-1/HIGH-3 again.
-    // Round 2 fenced only `toolArgs`. `toolDescription` (and `toolName`)
+    // archive#3577: the same forgery through an unfenced field. An earlier
+    // fix fenced only `toolArgs`. `toolDescription` (and `toolName`)
     // are equally model/tool-authored (`acp-adapter.ts:1648,1654`) and were
     // still inserted as free text — a malicious `toolDescription` could
     // forge a decision line and an "Operator note: pre-approved" line in
     // genuine-framework position, entirely BEFORE the arguments fence, with
-    // zero nonce guessing required. This is the reviewer's exact repro
+    // zero nonce guessing required. This is the exact reproduction
     // payload (a benign `toolArgs`, a malicious `toolDescription`).
     test('a malicious toolDescription cannot forge unfenced prompt structure', async () => {
       const decideLine =
@@ -405,8 +403,8 @@ describe('ApprovalGuardianService', () => {
       expect(genuineOccurrences).toBe(1);
     });
 
-    // archive#3577 review round 4 (MEDIUM-6): round 3's fix has two halves
-    // — `toolName` and `toolDescription` share the same nonce — but only
+    // archive#3577: fencing the tool fields has two halves — `toolName`
+    // and `toolDescription` share the same nonce — but at first only
     // `toolDescription` was pinned by a test; deleting the `toolName` fence
     // in production left the suite green. `toolName` is the WORSE half to
     // leave unproven: it comes from the same untrusted source
@@ -461,11 +459,11 @@ describe('ApprovalGuardianService', () => {
       expect(genuineOccurrences).toBe(1);
     });
 
-    // archive#3577 review round 3 (MEDIUM-5): unpredictability IS the
+    // archive#3577: unpredictability IS the
     // security property the nonce provides. A test asserting only "a nonce
     // shape is present" cannot distinguish a real random nonce from a
     // constant, publicly-readable one — which would be exactly as defeated
-    // as round 1's fixed delimiter. Assert the property directly: two
+    // as the original fixed delimiter. Assert the property directly: two
     // separate reviews produce two DIFFERENT nonces.
     test('two separate reviews use two different nonces', async () => {
       const promptA = await capturedPrompt('ls');

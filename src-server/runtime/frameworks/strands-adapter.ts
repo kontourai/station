@@ -82,6 +82,8 @@ import {
 } from './strands-tool-loader.js';
 import type { CreateAgentOptions } from './voltagent-adapter.js';
 
+const logger = createLogger({ name: 'strands-adapter' });
+
 // ── IAgent wrapper around Strands Agent ────────────────
 
 class StrandsAgentWrapper implements IAgent {
@@ -477,7 +479,7 @@ class StrandsAgentWrapper implements IAgent {
         .trim();
       object = JSON.parse(cleaned);
     } catch (e) {
-      console.debug('Failed to parse JSON from agent response:', e);
+      logger.debug('Failed to parse JSON from agent response', { error: e });
       object = { raw: text };
     }
     return {

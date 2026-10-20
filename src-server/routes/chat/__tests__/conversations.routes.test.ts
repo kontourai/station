@@ -35,7 +35,7 @@ vi.mock('../session-summary-generation.js', async (importOriginal) => ({
     partialMessageIncluded: false,
   }),
 }));
-// archive#4080 follow-up (review round 2, finding 1): spy-wrap the
+// archive#4080 follow-up: spy-wrap the
 // REAL implementation (not a fake) so every other test's behavior is
 // unchanged — this exists only to pin that the messages route actually
 // calls through the shared resolver rather than a re-derived copy.
@@ -2674,14 +2674,14 @@ describe('Conversation Routes', () => {
     ]);
   });
 
-  // archive#1399 fix round 2, B2 (independent review) — the FileMemory
+  // archive#1399 — the FileMemory
   // bypass reproduction: `memory-adapter-messages.ts` serializes and reads
   // back a message's `parts` VERBATIM, with no equivalent write-time seam
   // to `publishCanonicalEvent`'s. A well-shaped forged tuple (real
   // derivedFrom + fake digest + attestationState already 'attested', all
   // mutually consistent) stored there must not survive the `/messages`
-  // route serving it — this is the SERVE-boundary control the ruling
-  // requires, independent of any write-time fix.
+  // route serving it — this is a SERVE-boundary control, independent of
+  // any write-time fix.
   test('GET /:slug/conversations/:id/messages sanitizes a forged uiBlock read back from the FileMemory store', async () => {
     const adapter = createMockAdapter();
     adapter.getMessages.mockResolvedValue([

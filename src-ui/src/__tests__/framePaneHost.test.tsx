@@ -6,7 +6,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let isMobile = false;
-vi.mock('../hooks/useIsMobile', () => ({
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => isMobile,
 }));
 

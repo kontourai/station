@@ -5,9 +5,6 @@ import {
   acpApprovalControl,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
-import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { MonitoringEmitter } from '../../monitoring/emitter.js';
-import { ApprovalRegistry } from '../approvals/approval-registry.js';
 import {
   addACPManagerConnection,
   reconnectACPManagerConnection,
@@ -29,32 +26,14 @@ export class ACPManager {
   private configs = new Map<string, ACPConnectionConfig>();
   private probeTimer: ReturnType<typeof setInterval> | null = null;
 
-  // The chat-session substrate that consumed approvalRegistry/memoryAdapters/
-  // usageAggregatorRef/monitoringEvents/persistEvent/monitoringEmitter was
-  // retired (archive#149) — these positional params are kept only so the
-  // runtime-service-bootstrap.ts call site (unchanged in shape per archive#149's
-  // plan) doesn't need edits. Probing/connection-management uses only
-  // logger/managedWorkspaceHomeDir/eventBus.
+  // Chat sessions moved to the orchestration adapter (archive#149), so the
+  // manager needs only what probing and connection management use.
   constructor(
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private approvalRegistry: ApprovalRegistry,
     private logger: any,
     private managedWorkspaceHomeDir: string,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private memoryAdapters?: Map<string, FileMemoryAdapter>,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private createMemoryAdapter?: (slug: string) => FileMemoryAdapter,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private usageAggregatorRef?: { get: () => any },
     private eventBus?: {
       emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
     },
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private monitoringEvents?: import('node:events').EventEmitter,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private persistEvent?: (event: any) => Promise<void>,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private monitoringEmitter?: MonitoringEmitter,
   ) {}
 
   /**
