@@ -278,6 +278,50 @@ test.describe('related panes from a plugin in the sandboxed frame', () => {
           pluginFrame(page, 'log').getByRole('region', { name: 'Report log' }),
         ).toBeVisible({ timeout: 30_000 });
       });
+      for (const width of [1280, 390]) {
+        await test.step(`Up from a frame report returns to its exact Project pane at ${width}px`, async () => {
+          const returnPage = await context.newPage();
+          try {
+            await returnPage.setViewportSize({ width, height: 900 });
+            await returnPage.goto(`${remoteUi}${reportsRoute}`);
+            const source = pluginFrame(returnPage, 'reports').getByRole(
+              'region',
+              { name: 'Related reports' },
+            );
+            await expect(
+              source.getByRole('heading', { name: 'Reports' }),
+            ).toBeVisible({ timeout: 30_000 });
+            await source
+              .getByRole('button', { name: 'Open Weekly report', exact: true })
+              .click();
+            await expect(
+              pluginFrame(returnPage, 'report').getByRole('article', {
+                name: 'Weekly report',
+              }),
+            ).toContainText('Seven days of work, summarised.');
+            if (width === 390)
+              await expect(
+                returnPage.getByRole('button', {
+                  name: 'Back to Reports',
+                  exact: true,
+                }),
+              ).toBeVisible();
+            await returnPage
+              .getByRole('button', { name: 'Up to Reports', exact: true })
+              .click();
+            expect(new URL(returnPage.url()).pathname).toBe(reportsRoute);
+            await expect(
+              source.getByRole('heading', { name: 'Reports' }),
+            ).toBeVisible();
+            await returnPage.reload();
+            await expect(
+              source.getByRole('heading', { name: 'Reports' }),
+            ).toBeVisible({ timeout: 30_000 });
+          } finally {
+            await returnPage.close();
+          }
+        });
+      }
       passed = true;
     } finally {
       if (!passed) {

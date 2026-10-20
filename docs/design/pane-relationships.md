@@ -110,6 +110,23 @@ Session-owned tools have an independent lifecycle. Older hosts disclose the
 unsupported action without opening an empty pane. Inspector selection facts are
 proved with built-in Session properties before extending plugins.
 
+### Returning to a Project plugin pane
+
+A related open from a direct Project pane captures that pane's catalog-issued
+descriptor and instance IDs in its typed opener record. Up builds the return
+through `workspacePaneDirectRoute`; the Project overview is not a substitute.
+The metadata contains no raw URL and grants no context or permission. The route
+owner still resolves the pane and admits its current renderer.
+
+The record survives reload. A routed return uses canonical navigation precommit
+and rechecks the Station and captured relation after guards answer. A phone
+child already on its opener's route uses the existing layer's scoped guard once
+before returning; Cancel leaves history, placement, state and focus unchanged.
+A replacement layer or new guard supersedes that close. Back's caption uses the
+verified relation's captured opener label for plugins as well as conversations.
+Older records without the exact Project-pane reference retain their layout or
+Project fallback; their missing identity is never guessed from ambient context.
+
 ## Shell controls
 
 Keep the current header styling. Existing icon-only Tools and Related buttons

@@ -215,10 +215,12 @@ function caller(
     project = PROJECT,
     version = '1.0.0',
     lifecycle,
+    projectPane = false,
   }: {
     project?: typeof PROJECT;
     version?: string;
     lifecycle?: string | null;
+    projectPane?: boolean;
   } = {},
 ): RelatedPaneCaller {
   const instance = parseWorkspacePaneInstance({
@@ -237,6 +239,7 @@ function caller(
     instance,
     ...project,
     layoutSlug: 'reports',
+    projectPane,
     label: 'Reports',
     target,
   });
@@ -366,6 +369,16 @@ afterEach(() => {
 });
 
 describe('a plugin opens its own related panes', () => {
+  test('a direct Project pane captures its catalog-issued descriptor and instance for Up', async () => {
+    callers.first = caller('instance:list', {}, null, { projectPane: true });
+    await mount();
+    const outcome = await open({});
+    expect(outcome.status).toBe('opened');
+    if (outcome.status !== 'opened') throw new Error('Report was not opened');
+    expect(relationOf(outcome.handle)?.opener.source).toMatchObject({
+      projectPane: { descriptorId: LIST.id, instanceId: 'instance:list' },
+    });
+  });
   test('a new occurrence is fenced to this Station and records the caller’s scope and generation', async () => {
     callers.first = caller('instance:list', { taskId: 'task-7' });
     await mount();

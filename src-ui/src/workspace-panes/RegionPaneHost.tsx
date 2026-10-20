@@ -25,7 +25,6 @@ import { usePaneRelations } from '../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
-import { WORKSPACE_CHAT_OPENER } from '../regions/pane-opener';
 import { reportRegionClearance } from '../regions/region-clearance';
 import {
   type DockRegionId,
@@ -532,10 +531,7 @@ export function RegionPaneHost({
     ? relations.relationOf(model.phoneLayer.surfaceId)
     : undefined;
   const layerBackLabel =
-    layerRelation &&
-    layerRelation.stationId === relations.stationId &&
-    (layerRelation.opener.occurrenceId === 'chat' ||
-      layerRelation.opener.occurrenceId === WORKSPACE_CHAT_OPENER)
+    layerRelation && layerRelation.stationId === relations.stationId
       ? layerRelation.opener.label
       : 'Chat';
   const region = regionId && model ? model.regions[regionId] : undefined;

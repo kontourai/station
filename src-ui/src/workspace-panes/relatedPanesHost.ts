@@ -98,6 +98,10 @@ export interface RelatedPaneCaller {
   readonly projectSlug: string;
   /** The Project layout it is a tab of, if it is one. */
   readonly layoutSlug: string | null;
+  readonly projectPane?: Extract<
+    PaneOpener['source'],
+    { kind: 'plugin-occurrence' }
+  >['projectPane'];
   /** Its captured scope; a related pane gets at most this. */
   readonly scope: PluginPaneScope;
   /** What a related pane's Up names. */
@@ -158,13 +162,20 @@ export function relatedPaneCaller(input: {
   projectId: string;
   projectSlug: string;
   layoutSlug: string | null;
+  projectPane?: boolean;
   label: string;
   target?: RelatedPaneTarget | null;
 }): RelatedPaneCaller | null {
   const contribution = input.instance.boundContext?.contribution;
   const generation = pluginInstallGeneration(contribution);
   const pluginId = contribution?.provenance.pluginId;
-  if (!generation || !pluginId) return null;
+  if (
+    !generation ||
+    !pluginId ||
+    (input.projectPane &&
+      String(input.instance.instanceId) !== input.occurrenceId)
+  )
+    return null;
   return {
     occurrenceId: input.occurrenceId,
     pluginId,
@@ -172,6 +183,14 @@ export function relatedPaneCaller(input: {
     projectId: input.projectId,
     projectSlug: input.projectSlug,
     layoutSlug: input.layoutSlug,
+    ...(input.projectPane
+      ? {
+          projectPane: {
+            descriptorId: String(input.instance.descriptorId),
+            instanceId: String(input.instance.instanceId),
+          },
+        }
+      : {}),
     scope: scopeOf(input.instance.boundContext),
     label: input.label.slice(0, 160) || 'Plugin pane',
     target: input.target ?? null,
@@ -440,6 +459,7 @@ function createRelatedPanesHost(
       kind: 'plugin-occurrence',
       projectSlug: caller.projectSlug,
       layoutSlug: caller.layoutSlug,
+      ...(caller.projectPane ? { projectPane: caller.projectPane } : {}),
     },
   };
   const claim = () => pluginRelatedPaneBudget.claim(caller.pluginId, now());

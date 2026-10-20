@@ -96,6 +96,10 @@ export type PaneOpenerSource =
       readonly kind: 'plugin-occurrence';
       readonly projectSlug: string;
       readonly layoutSlug: string | null;
+      readonly projectPane?: {
+        readonly descriptorId: string;
+        readonly instanceId: string;
+      };
     };
 
 /** The UI occurrence that opened a pane, at the selection it had then. */
@@ -286,6 +290,22 @@ function parseSource(value: unknown): PaneOpenerSource | null {
     };
   }
   if (value.kind === 'plugin-occurrence') {
+    let projectPane: { descriptorId: string; instanceId: string } | undefined;
+    if (value.projectPane !== undefined) {
+      const candidate = value.projectPane;
+      if (
+        !isRecordObject(candidate) ||
+        !boundedText(candidate.descriptorId, 256) ||
+        !boundedText(candidate.instanceId, 512) ||
+        candidate.descriptorId !== candidate.descriptorId.trim() ||
+        candidate.instanceId !== candidate.instanceId.trim()
+      )
+        return null;
+      projectPane = {
+        descriptorId: candidate.descriptorId,
+        instanceId: candidate.instanceId,
+      };
+    }
     if (
       !boundedText(value.projectSlug, 256) ||
       !nullableText(value.layoutSlug, 256)
@@ -295,6 +315,7 @@ function parseSource(value: unknown): PaneOpenerSource | null {
       kind: 'plugin-occurrence',
       projectSlug: value.projectSlug,
       layoutSlug: value.layoutSlug,
+      ...(projectPane ? { projectPane } : {}),
     };
   }
   return null;
@@ -309,6 +330,12 @@ function parseOpener(value: unknown): PaneOpener | null {
     return null;
   const source = parseSource(value.source);
   if (!source) return null;
+  if (
+    source.kind === 'plugin-occurrence' &&
+    source.projectPane &&
+    source.projectPane.instanceId !== value.occurrenceId
+  )
+    return null;
   return { occurrenceId: value.occurrenceId, label: value.label, source };
 }
 
@@ -438,6 +465,14 @@ export function openerSelectionKey(opener: PaneOpener): string {
     case 'route':
       return `route:${source.pathname}${source.search}`;
     case 'plugin-occurrence':
+      if (source.projectPane)
+        return JSON.stringify([
+          'plugin-occurrence',
+          source.projectSlug,
+          source.layoutSlug,
+          source.projectPane.descriptorId,
+          source.projectPane.instanceId,
+        ]);
       return `plugin-occurrence:${source.projectSlug}/${source.layoutSlug ?? ''}`;
   }
 }

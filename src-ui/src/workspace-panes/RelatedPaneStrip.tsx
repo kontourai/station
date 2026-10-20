@@ -1,5 +1,9 @@
+import {
+  toWorkspacePaneDescriptorId,
+  toWorkspacePaneInstanceId,
+} from '@kontourai/station-contracts/workspace-pane';
 import { useProjectLayoutsQuery } from '@kontourai/station-sdk';
-import { type ReactNode, useCallback, useMemo, useRef } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useLayoutChatPlacement } from '../app-shell/chat-placement';
 import { Button } from '../components/Button';
 import { Empty } from '../components/state';
@@ -10,6 +14,7 @@ import { usePaneRelations } from '../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { paneFenceAdmission, readPaneFence } from '../regions/pane-fence';
 import type { PaneOpener, PaneRelation } from '../regions/pane-relations';
 import {
@@ -19,6 +24,7 @@ import {
   revealSurface,
 } from '../regions/region-model';
 import { useDockProject } from './useDockProject';
+import { workspacePaneDirectRoute } from './workspacePaneDirectRoute';
 import './RelatedPaneStrip.css';
 
 function GatePlaceholder({
@@ -223,15 +229,66 @@ function useRouteUp(source: Extract<PaneOpener['source'], { kind: 'route' }>) {
  */
 function usePluginOccurrenceUp(instanceId: string, opener: PaneOpener) {
   const model = useRegionModelOptional();
+  const relations = usePaneRelations();
+  const isMobile = useIsMobile();
+  const { navigate, setLayout, setProject } = useNavigationActions();
+  const operation = useRef<AbortController | null>(null);
+  useEffect(() => () => operation.current?.abort(), []);
+  const live = useRef(relations);
+  live.current = relations;
   const modelRef = useRef(model);
   modelRef.current = model;
   const leaveFor = useLeaveFor(instanceId);
-  const { setLayout, setProject } = useNavigationActions();
   const source = opener.source as Extract<
     PaneOpener['source'],
     { kind: 'plugin-occurrence' }
   >;
   return () => {
+    if (source.projectPane) {
+      operation.current?.abort();
+      const controller = new AbortController();
+      operation.current = controller;
+      const relation = relations.relationOf(instanceId);
+      if (!relation || relation.stationId !== relations.stationId) return;
+      const route = workspacePaneDirectRoute(
+        source.projectSlug,
+        {
+          id: toWorkspacePaneDescriptorId(source.projectPane.descriptorId),
+        },
+        {
+          instanceId: toWorkspacePaneInstanceId(source.projectPane.instanceId),
+        },
+        source.layoutSlug,
+      );
+      if (!route) return;
+      const current = () => {
+        const latest = live.current;
+        const held = latest.relationOf(instanceId);
+        return (
+          !controller.signal.aborted &&
+          latest.stationId === relation.stationId &&
+          held?.generation === relation.generation &&
+          held.opener.occurrenceId === opener.occurrenceId &&
+          JSON.stringify(held.opener.source) === JSON.stringify(source)
+        );
+      };
+      if (route !== window.location.pathname) {
+        void navigationStore.navigateWithPrecommit(
+          route,
+          {
+            current,
+            prepare: async () => true,
+            signal: controller.signal,
+          },
+          { maximize: null, ...(isMobile ? { dock: null } : {}) },
+        );
+      } else if (model?.readPhoneLayer()?.surfaceId === instanceId) {
+        model.closePhoneLayer(() => {
+          if (current()) navigate(route);
+        }, current);
+      } else if (current()) navigate(route);
+      return;
+    }
     const occurrence = opener.occurrenceId;
     const current = modelRef.current;
     if (current && occupiedRegion(current.regions, occurrence) !== undefined) {

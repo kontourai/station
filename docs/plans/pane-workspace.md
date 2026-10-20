@@ -57,6 +57,12 @@ not yet accepted.
   In #3875: Up to the exact conversation or Files Project through canonical
   navigation, and a phone-layer reload reopens its exact pane. Cold child links
   are not started.
+  Standalone SDK Up repair stacked on #3964: a direct Project plugin opener
+  records its descriptor and instance, uses the canonical pane route after
+  guarded Station/relation rechecks, and names the same opener in phone Back
+  chrome. The actual direct and sandboxed-frame browser callers click Up on
+  desktop and phone and return to the exact Reports root. Source/focused/browser
+  evidence is separate from pending independent, hosted and native acceptance.
 - [ ] Responsive folds preserve occurrence/controller/history identity.
   In #3875 for the phone layer only (Keep through replacement, Back, reopen).
 - [ ] Coding leases stable outlets without rewriting ambient arrangements.

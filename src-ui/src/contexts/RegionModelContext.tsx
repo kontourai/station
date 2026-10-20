@@ -373,7 +373,7 @@ export interface RegionModelValue {
    * guard once, through this, rather than changing anything first. With no
    * layer nothing is asked and `then` runs at once.
    */
-  closePhoneLayer(then?: () => void): void;
+  closePhoneLayer(then?: () => void, canClose?: () => boolean): void;
 }
 
 /**
@@ -1467,22 +1467,30 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   }, [registerLayerEntry, restorePhoneLayer]);
   leavePhoneLayerByBackRef.current = leavePhoneLayerByBack;
   const closePhoneLayer = useCallback(
-    (then?: () => void) => {
+    (then?: () => void, canClose: () => boolean = () => true) => {
       // No layer, nothing to leave — and no guard to ask. Chat-focus intents
       // call this on every device (`useDismissPhoneLayer`), so asking with no
       // layer would put a "Discard?" in front of an unrelated dirty form
       // whose answer changes nothing.
       if (!phoneLayerRef.current) {
-        then?.();
+        if (canClose()) then?.();
         return;
       }
+      const layer = phoneLayerRef.current;
+      let superseded = false;
+      const stop = navigationStore.subscribeNavigationGuardOwners((owner) => {
+        if (owner === layer.surfaceId) superseded = true;
+      });
       navigationStore.runNavigationGuards(
         () => {
+          stop();
+          if (phoneLayerRef.current !== layer || superseded || !canClose())
+            return;
           restorePhoneLayer();
           then?.();
         },
-        undefined,
-        { owner: phoneLayerRef.current.surfaceId },
+        stop,
+        { owner: layer.surfaceId },
       );
     },
     [restorePhoneLayer],

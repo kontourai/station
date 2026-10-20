@@ -38,7 +38,11 @@ vi.mock('../../contexts/ProjectsContext', () => ({
   }),
 }));
 
-import { AuthorityHarness } from '../../contexts/__tests__/paneRelationsHarness';
+import {
+  AuthorityHarness,
+  authoritySwitch,
+  settledStorageSnapshot,
+} from '../../contexts/__tests__/paneRelationsHarness';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
@@ -290,6 +294,122 @@ describe('Up to a plugin opener', () => {
       expect(model?.regions.right.occupant).toBe(OPENER_PANE),
     );
     expect(window.location.pathname).toBe('/');
+  });
+});
+
+describe('Up to an exact Project plugin pane', () => {
+  const projectOpener: PaneOpener = {
+    occurrenceId: 'instance:plugin:alpha-id:reports',
+    label: 'Reports',
+    source: {
+      kind: 'plugin-occurrence',
+      projectSlug: 'alpha',
+      layoutSlug: null,
+      projectPane: {
+        descriptorId: 'pane:plugin%3Areports:list',
+        instanceId: 'instance:plugin:alpha-id:reports',
+      },
+    },
+  };
+  const path =
+    '/projects/alpha/panes/pane%3Aplugin%253Areports%3Alist/instance%3Aplugin%3Aalpha-id%3Areports';
+
+  test.each(['cancel', 'station-change', 'new-guard', 'allow'])(
+    'a routed exact return rechecks %s and commits only through canonical navigation',
+    async (answer) => {
+      seedRelation(projectOpener);
+      mount();
+      let proceed: (() => void) | undefined;
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('exact Up'),
+        (accept, cancel) => {
+          if (answer === 'cancel') cancel?.();
+          else proceed = accept;
+        },
+        ID,
+      );
+      const before = await settledStorageSnapshot();
+      act(() => screen.getByRole('button', { name: 'Up to Reports' }).click());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      let unregisterNew = () => {};
+      if (answer === 'station-change')
+        await act(async () => {
+          authoritySwitch.set?.({ station: 'station-b' });
+        });
+      if (answer === 'new-guard')
+        unregisterNew = navigationStore.registerNavigationGuard(
+          Symbol('new work'),
+          (accept) => accept(),
+          ID,
+        );
+      await act(async () => {
+        proceed?.();
+      });
+      if (answer === 'allow')
+        await waitFor(() => expect(window.location.pathname).toBe(path));
+      else {
+        expect(window.location.pathname).toBe('/');
+        expect(await settledStorageSnapshot()).toEqual(before);
+      }
+      unregisterNew();
+      unregister();
+    },
+  );
+
+  test('same-path phone Up asks once and Cancel leaves the actual child layer intact', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY || query === '(pointer: coarse)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    window.history.replaceState({}, '', path);
+    navigationStore.navigate(path);
+    seedRelation(projectOpener);
+    writeFilePreviewPaneState(localStorage, ID, {
+      version: '1.0',
+      projectSlug: 'alpha',
+      path: 'a.ts',
+      wrap: true,
+    });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => {
+      model?.openSurfaceInRegion(ID);
+    });
+    await waitFor(() => expect(model?.phoneLayer?.surfaceId).toBe(ID));
+    let accept = false;
+    let asked = 0;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('phone exact Up'),
+      (proceed, cancel) => {
+        asked += 1;
+        if (accept) proceed();
+        else cancel?.();
+      },
+      ID,
+    );
+    const before = await settledStorageSnapshot();
+    const up = screen.getByRole('button', { name: 'Up to Reports' });
+    act(() => {
+      up.focus();
+      up.click();
+    });
+    expect(asked).toBe(1);
+    expect(model?.phoneLayer?.surfaceId).toBe(ID);
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(document.activeElement).toBe(up);
+    accept = true;
+    act(() => up.click());
+    await waitFor(() => expect(model?.phoneLayer).toBeNull());
+    expect(window.location.pathname).toBe(path);
+    expect(asked).toBe(2);
+    unregister();
   });
 });
 
