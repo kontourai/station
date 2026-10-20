@@ -1096,7 +1096,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     restorePhoneLayer();
   }, [phoneLayer, regions, restorePhoneLayer]);
 
-  // The layer is a bottom-only device's (review M3): when the fold opens (a
+  // The layer is a bottom-only device's (#2549): when the fold opens (a
   // narrow window widened, split view resized) the layer ENDS where it
   // stands (`endPhonePaneLayerInPlace`). A pane the layer moved out of
   // another region goes back there — shown and selected if the reader was

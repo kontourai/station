@@ -518,7 +518,7 @@ placement grab, the strip, maximize and visibility, and the click surface
 that collapses the bar — and carries two slots the selected pane's own
 toolbar renders into: `ChatDockHeader` is Chat's toolbar now (identity,
 context meter, project context, chat-list toggle, More menu) and portals into
-the bar, so a dock still has ONE chrome bar (#1064, #3309); `ActivityDockPane`
+the bar, so a dock still has ONE chrome bar (archive#1064, archive#3309); `ActivityDockPane`
 has no bar of its own. The pane host's `dock` presentation mounts the
 selected pane as the strip's `tabpanel` and nothing else — a pane behind a
 tab is not mounted, as the chromeless host never mounted it. The strip
@@ -546,7 +546,7 @@ The five decisions of the 2a plan, as taken (each reversible on its own):
   at the unchanged `--chat-dock-header-height` (38/53px); the strip hides
   with the body (it also shows during a drag from Collapsed, as Chat's
   pane controls do), and the selected pane's toolbar keeps its
-  collapsed-state affordance (#800): the icon-only New chat action, the one
+  collapsed-state affordance (archive#800): the icon-only New chat action, the one
   way into the start composer.
 - **D2 — folded menu (bottom-only devices): rows per region.** Each
   occupied dock region contributes its panes in tab order: the selected
@@ -1914,7 +1914,7 @@ server read beyond the pull request links Chat details already reads.
   card's own report that it has mounted, not the width answer alone: while
   its lazy chunk loads, or if it fails to load, the header keeps both. The
   header's "This chat: <project>" lead-in stays: it is the contrast with the
-  badge's bound project (#4525 MED-1), which the card's Workspace row does
+  badge's bound project (archive#4525 MED-1), which the card's Workspace row does
   not state beside the badge. The card's props are memoised on the
   facts they show, so the dock's resize frames and stream renders do not
   re-render it. While it is folded,

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { type RawData, type WebSocket, WebSocketServer } from 'ws';
+import type { RawData, WebSocket, WebSocketServer } from 'ws';
+import { startWebSocketListener } from '../../runtime/bootstrap/websocket-listener.js';
 import {
   type ExternalSurfaceCapabilityRule,
   requiredExternalSurfaceCapability,
@@ -268,19 +269,24 @@ export function attachVoiceWebSocket(
   if (boundVoiceWsPorts.has(port)) {
     return null;
   }
-  const wss = new WebSocketServer({
-    port,
-    maxPayload: Math.max(1, auth?.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES),
-    ...(host ? { host } : {}),
-    verifyClient: createCredentialFreeOriginVerifier({
-      allowedOrigins: auth?.allowedBrowserOrigins ?? [],
-      credentialRequired: auth !== undefined,
-      classifyPeer: auth?.classifyPeer,
-      onRejected: (peerClass) => {
-        if (auth) auditVoiceFailure(auth, peerClass, 'origin_forbidden');
-      },
-    }),
-  });
+  const wss = startWebSocketListener(
+    'voice',
+    { port, host },
+    {
+      maxPayload: Math.max(
+        1,
+        auth?.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
+      ),
+      verifyClient: createCredentialFreeOriginVerifier({
+        allowedOrigins: auth?.allowedBrowserOrigins ?? [],
+        credentialRequired: auth !== undefined,
+        classifyPeer: auth?.classifyPeer,
+        onRejected: (peerClass) => {
+          if (auth) auditVoiceFailure(auth, peerClass, 'origin_forbidden');
+        },
+      }),
+    },
+  );
   const unauthenticatedConnections = new UnauthenticatedVoiceConnections(
     Math.max(
       1,

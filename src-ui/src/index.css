@@ -2222,7 +2222,7 @@ button:hover {
   font-weight: 600;
 }
 
-/* Quiet chrome (design round 2026-10, B1/B2): the bar's buttons draw no
+/* Quiet chrome (#3239): the bar's buttons draw no
    border at rest. Hover and focus are a wash, not an outline; the one
    labelled action ("New") is the same family at the same weight. */
 .chat-dock__header-actions button {
@@ -3399,8 +3399,7 @@ button:hover {
    (SessionFailureAlert.css), but this notice has exactly one owner (the chat
    dock, both as a top-of-thread banner and as the message list's emptyState)
    so there is no shared base/inset class split to make.
-   `min-width: 0` matches `.session-failure`'s own rule. Review round 2,
-   LOW-2: measured with `min-width: auto` forced, every metric here (detail
+   `min-width: 0` matches `.session-failure`'s own rule. Measured with `min-width: auto` forced, every metric here (detail
    width, notice width, no doc overflow) was identical — `.chat-dock__body`
    is `flex-direction: column`, so the default min-size auto-floor this
    notice sits inside applies to min-height, not min-width, and `auto`
@@ -9141,8 +9140,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* Connection state on the chat surface (archive#3297). Subtle by default —
    a bare dot inside the same 44px target every other control here uses — and
-   it grows a word only for a state that needs a decision (station#4512
-   review H1: `needs-credential`, `needs-repair`, and `awaiting-approval`,
+   it grows a word only for a state that needs a decision (station#4512:
+   `needs-credential`, `needs-repair`, and `awaiting-approval`,
    not just the original one). The label is what survives a colour-blind
    reader; the triangle in ConnectionStatusDot is what survives a 7px dot;
    neither is the only channel. */
@@ -9229,8 +9228,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    the agent avatar do not return at the same width. They did at exactly 431px:
    both were gated on `max-width: 430px`, both cost the identity block, and
    together they took the agent name and chat title to 10.72px — the same
-   two-rules-relieve-and-reclaim-in-one-breath shape as HIGH-1, one breakpoint
-   up, and measured only because the fix for HIGH-1 was re-measured across the
+   two-rules-relieve-and-reclaim-in-one-breath shape as the label fix above,
+   one breakpoint up, and measured only because that fix was re-measured across the
    whole range instead of at the width that failed.
 
    The avatar wins the earlier slot: it IS the agent identity this issue is
@@ -9637,7 +9636,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   /* station#541: the `.page-frame__header` safe-area rule that used to live
-     here moved to `page-frame.css` (review round 2) — same selector, same
+     here moved to `page-frame.css` — same selector, same
      semantics, zero mobile-css-ratchet cost there (page-frame.css is a
      PRIMITIVE_ALLOWLIST entry: it renders every page header, so it already
      owns this header's one mobile treatment). See page-frame.css's own
@@ -10014,13 +10013,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    already proven immediately above at `.session-history-controls__more`). A
    bespoke rule here previously duplicated that styling AND lost to
    `button:hover` on specificity, so hover never took effect.
-   Review round 2, MEDIUM-1: this rule MUST sit after `.button {}` in source
+   This rule MUST sit after `.button {}` in source
    order. Its selector has the same (0,1,0) specificity as `.button`, so
    `.button`'s own 10px/16px sizing wins on source order whenever this block
    sits earlier in the file — the override silently stopped applying when
    this rule previously lived up near `.session-history-error`, ~1800 lines
    before `.button`. Verified on the built bundle: moving it here measured
-   padding 6px/12px, font-size 11px, height 29px (matching round 1 and the
+   padding 6px/12px, font-size 11px, height 29px (matching its earlier measurement and the
    `.session-history-controls__more` sibling it sits next to); left in its
    old position it measured padding 10px/16px, font-size 14px, height 42px —
    `.button`'s own primary sizing, unopposed. */

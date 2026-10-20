@@ -1,0 +1,21 @@
+{
+  "revision": "7da8ef24ab08794014e3e6b664eb1a3c54be2193",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"package.json#/scripts delta adds only fallow:ceiling (node scripts/fallow-ceiling.mjs); fallow:baseline keeps its command. No script this document names changed or was removed, so its claims stand.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"package.json#/scripts delta adds only fallow:ceiling (node scripts/fallow-ceiling.mjs); fallow:baseline keeps its command. No script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"package.json#/scripts delta adds only fallow:ceiling (node scripts/fallow-ceiling.mjs); fallow:baseline keeps its command. No script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"package.json#/scripts delta adds only fallow:ceiling (node scripts/fallow-ceiling.mjs); fallow:baseline keeps its command. No script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"package.json#/scripts delta adds only fallow:ceiling (node scripts/fallow-ceiling.mjs); fallow:baseline keeps its command. No script this document names changed or was removed, so its claims stand.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Added the 'Dead-code ceiling' subsection under Code-health prevention, checked against scripts/fallow-ceiling.mjs (per-category and total counts, no paths or lines, headroom max(3, ceil(5%)), unrecorded category held at zero, exit 1 growth / 2 NOT_VERIFIED, lowered-count reminder) and scripts/fallow-baseline.mjs (regenerates the three baselines, then the ceiling). Measured about 23 s for a whole-tree run. package.json#/scripts delta adds only fallow:ceiling (node scripts/fallow-ceiling.mjs); fallow:baseline keeps its command. No script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/code-quality.md","package.json#/scripts","scripts/fallow-ceiling.mjs","scripts/fallow-baseline.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"scripts/vitest-resource-manifest.mjs adds fallow-ceiling.test.ts (real fallow child against a disposable project) to the process-heavy group, consistent with the classification rule. package.json#/scripts delta adds only fallow:ceiling (node scripts/fallow-ceiling.mjs); fallow:baseline keeps its command. No script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"code-quality.md gained a dead-code ceiling subsection inside Code-health prevention; the code-health route this file names is unchanged. The manifest classifies the new child-process test fallow-ceiling.test.ts as process-heavy, as required.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "revision": "689f7979c2cf70e2b8c687db4d6b36c0b0a4b41c",
+
+  "notes": [
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Rewrote the Isolated experiments and Scope record sections in past tense: experiments/browser-host was deleted (#2722; archive#1376 closed, nothing ran the fixtures). Fixture descriptions are kept as history with a git-history pointer; the dated decision, scorecard and ADR 0019 status banner are unchanged.","inputs":["docs/design/browser-preview-host-spike.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Delta is scripts/examples-conformance.mjs: header no longer cites a stale example count, and Nova Sonic, ElevenLabs and Station Sessions MCP move from CREDENTIAL_GATED to a new KNOWN_BROKEN map printed as KNOWN BROKEN (#2722). The gate's checks are unchanged. This document cites the conformance script only as a source and makes no claim about its counts or credential list. No prose change.","inputs":["docs/guides/agents.md","scripts/examples-conformance.mjs"]},
+
+    {"path":"docs/guides/connections.md","note":"Delta is scripts/examples-conformance.mjs: header no longer cites a stale example count, and Nova Sonic, ElevenLabs and Station Sessions MCP move from CREDENTIAL_GATED to a new KNOWN_BROKEN map printed as KNOWN BROKEN (#2722). The gate's checks are unchanged. This document cites the conformance script only as a source and makes no claim about its counts or credential list. No prose change.","inputs":["docs/guides/connections.md","scripts/examples-conformance.mjs"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Delta is scripts/examples-conformance.mjs: header no longer cites a stale example count, and Nova Sonic, ElevenLabs and Station Sessions MCP move from CREDENTIAL_GATED to a new KNOWN_BROKEN map printed as KNOWN BROKEN (#2722). The gate's checks are unchanged. This document cites the conformance script only as a source and makes no claim about its counts or credential list. No prose change.","inputs":["docs/guides/self-configuring-agent.md","scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/docs-snippets/README.md","note":"Delta is scripts/examples-conformance.mjs: header no longer cites a stale example count, and Nova Sonic, ElevenLabs and Station Sessions MCP move from CREDENTIAL_GATED to a new KNOWN_BROKEN map printed as KNOWN BROKEN (#2722). The gate's checks are unchanged. This document cites the conformance script only as a source and makes no claim about its counts or credential list. No prose change.","inputs":["examples/docs-snippets/README.md","scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Delta is scripts/examples-conformance.mjs: header no longer cites a stale example count, and Nova Sonic, ElevenLabs and Station Sessions MCP move from CREDENTIAL_GATED to a new KNOWN_BROKEN map printed as KNOWN BROKEN (#2722). The gate's checks are unchanged. This document cites the conformance script only as a source and makes no claim about its counts or credential list. No prose change.","inputs":["examples/self-configuring-agent/README.md","scripts/examples-conformance.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Deleted the unregistered patches/sprintf-js-1.0.3.patch: pnpm-workspace patchedDependencies and pnpm-lock no longer reference sprintf-js, dependency-advisory-exceptions.json has no sprintf residual, and the patch-binding test uses its own synthetic fixture (#2722). Corrected the three sentences that said the file was retained or linked it, and stated that the residual and patch are both gone. The historical acceptance record below is unchanged.","inputs":["docs/guides/dependency-security.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Repointed the Pion 'pinned Go fixture' link from the deleted experiments/browser-transport-peer tombstone to src-server/services/connections/pion-peer/README.md, which owns the source (#2722). Lab commands unchanged.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Removed the experiments/ row: the directory no longer exists after #2722 deleted mobile-device, browser-host and the browser-transport-peer tombstone. Other rows unchanged.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Delta drops ci-workflow-contract.test.ts's case that read a browser-host spike tauri.conf.json (deleted, #2722); the rooted-Tauri-invocation guard and its rejection case remain. This guide does not describe that case. No prose change.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]},
+
+    {"path":"examples/README.md","note":"Removed the Parked experiments section (the Monument probe was deleted: #3574 closed and its pinned precondition no longer held), added the #2785 broken-reader caveat to Station Sessions MCP, and documented the new KNOWN BROKEN conformance output naming the three examples that cannot work as shipped (#2722). Dropped the deleted probe README source.","inputs":["examples/README.md","examples/experimental-monument-flow-probe/README.md","scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Delta aligns the example's @kontourai/ui range with the repository's ^1.19.0 (installed 1.20.1) and deletes its npm package-lock.json in this pnpm-only repo (#2722). The README cites no version or npm install step. No prose change.","inputs":["examples/knowledge-library/README.md","examples/knowledge-library/package.json"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"Delta aligns @kontourai/survey from ^0.7.2 to ^8.2.0, the version the root pins and typecheck:examples compiles against, and deletes its npm package-lock.json (#2722). The README's review-workbench and mountReviewWorkbench claims match the 8.x module it uses. No prose change.","inputs":["examples/survey-review-workbench/README.md","examples/survey-review-workbench/package.json"]}
+  ]
+}

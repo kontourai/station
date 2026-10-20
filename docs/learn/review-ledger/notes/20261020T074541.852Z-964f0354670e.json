@@ -1,0 +1,7 @@
+{
+  "revision": "0d872405b9a41ef63013ac1bab4dd1987c61663f",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the claims citing MonitoringWidgets.css: the only change since the last review is the wording of a comment on the FleetRoutingReceipts rules (it no longer points at deleted .metrics-panel rules). The document names no Monitoring selector or style; no documented claim changes.","inputs":["docs/guides/e2e-coverage-matrix.md","src-ui/src/views/MonitoringWidgets.css"]}
+  ]
+}

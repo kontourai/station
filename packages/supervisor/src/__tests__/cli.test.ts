@@ -21,6 +21,21 @@ describe('supervisor command line (child process)', () => {
     expect(result.stderr).toBe('');
   });
 
+  it('refuses a home at a filesystem root with one line, exit 2, no stack trace', () => {
+    const root = process.platform === 'win32' ? 'C:\\' : '/';
+    for (const args of [
+      ['--entry', FAKE_CORE, '--home', root, '--instance', 't'],
+      ['--break-lock', '--home', root, '--instance', 't'],
+    ]) {
+      const result = run(args);
+      expect(result.status, result.stderr).toBe(2);
+      expect(result.stderr).toContain(
+        'station-supervisor: a Station home cannot be a filesystem root',
+      );
+      expect(result.stderr).not.toMatch(/^\s+at /m);
+    }
+  });
+
   it('rejects an unknown option with one line and usage, exit 2, no stack trace', () => {
     const result = run(['--entry', 'x.js', '--bogus']);
     expect(result.status).toBe(2);

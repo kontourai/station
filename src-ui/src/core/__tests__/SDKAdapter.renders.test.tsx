@@ -55,7 +55,10 @@ vi.mock('../../hooks/useActiveChatSessions', async () => {
     useLaunchChat,
   };
 });
-vi.mock('../../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 
 import { useConversations, useNavigation } from '@kontourai/station-sdk';
 import {

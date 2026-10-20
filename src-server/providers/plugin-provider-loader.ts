@@ -152,7 +152,7 @@ export interface PluginProviderPreparationRequest {
   manifest: PluginManifest;
 }
 
-export class PluginProviderStagingError extends Error {
+class PluginProviderStagingError extends Error {
   readonly pluginName: string;
   readonly providerType?: string;
 

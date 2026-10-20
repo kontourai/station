@@ -161,7 +161,7 @@ function frontmatterKey(line: string): string | undefined {
  * deliberately a separate prerequisite: this scanner preserves formatting;
  * it is not a YAML validator.
  *
- * Accepted limitation (archive#2684 review round 2): unknown-key blocks keep
+ * Accepted limitation (archive#2684): unknown-key blocks keep
  * their bytes verbatim but are re-emitted after the modeled fields, so their
  * ordering relative to modeled keys — and a comment's attachment to an
  * adjacent modeled key — is not preserved. Nothing is lost; position churns.
@@ -335,7 +335,7 @@ interface PackageOwnershipRefusal {
  * 1. `unsafe-name` — renaming the skill is always possible and always
  *    necessary, and nothing else can succeed until it happens: the resolver
  *    refuses on the name before it looks at anything else, so advising an
- *    install here advises something guaranteed to fail (review M1). The
+ *    install here advises something guaranteed to fail. The
  *    assertion has always had this order; an earlier draft of THIS mapping
  *    inverted it.
  * 2. `unreadable` — the path cannot be followed, so no claim about which root
@@ -367,7 +367,7 @@ interface PackageOwnershipRefusal {
  * that guard, because the code IS recognised: `hasOwn` hits, and a remedy
  * written for a different condition renders with the same confidence as a
  * right one. The safety net is not merely absent here, it is the thing being
- * stepped around. Review rounds 8-9.
+ * stepped around.
  */
 const SKILL_CONDITION_PRECEDENCE = [
   'unsafe-name',
@@ -676,13 +676,13 @@ export class SkillService {
     const dirs = [
       // The machine root through the same builder as the project one below: it
       // takes no slug so building it by hand was harmless, and it contradicted
-      // the principle the comment there states (delta review 4, nit).
+      // the principle the comment there states.
       skillsRootDir(projectHomeDir),
       join(projectHomeDir, 'plugins'),
     ];
     if (projectSlug) {
-      // Through the BUILDER, which validates the slug (#1619, delta review 3
-      // L4). Building the same path by hand here meant the read path took a
+      // Through the BUILDER, which validates the slug (#1619). Building the
+      // same path by hand here meant the read path took a
       // slug every write path refuses, so a traversal slug made discovery scan
       // outside the home. A no-op for every valid slug.
       dirs.unshift(skillsRootDir(projectHomeDir, projectSlug));
@@ -707,7 +707,7 @@ export class SkillService {
     // that happened to share a plugin skill's slug OVERWROTE the plugin entry
     // — taking its `legacyIds` with it, so `<ns>:<id>` stopped resolving for
     // layouts even though the plugin was still
-    // installed (review M2). Nothing has to lose now: the plugin skill takes a
+    // installed. Nothing has to lose now: the plugin skill takes a
     // suffix and both exist. Which of them answers to the shared `/command`
     // word is still decided by `resolveSkillCommands`, where a user's own
     // skill already outranks a plugin's.
@@ -1107,7 +1107,7 @@ export class SkillService {
    * `skill.json` written before `project` existed records `user` for a
    * project-scoped package, and `updateLocalSkill` faithfully preserves it, so
    * without this correction every skill already on disk in a workspace would
-   * read as "This machine" forever (#1582 D6, review M1).
+   * read as "This machine" forever (#1582 D6).
    *
    * Every other recorded origin stands. `registry`/`plugin`/`package`/
    * `migrated-playbook` record where a skill CAME FROM, which is a fact about
@@ -1246,7 +1246,7 @@ export class SkillService {
     // The floor's OWN verdict, threaded out rather than re-derived. It
     // distinguishes four conditions and an earlier draft collapsed three of
     // them into "not a skills root Station writes", which published a false
-    // explanation twice over (review H1): a dangling link INSIDE a writable
+    // explanation twice over: a dangling link INSIDE a writable
     // root was told it sat outside one and to install itself, and a name that
     // can never be a directory name was told the same. Reading the conditions
     // is the only way the projection can say which refusal this is without
@@ -1255,7 +1255,7 @@ export class SkillService {
     // PRECEDENCE IS THIS CALLER'S, and deliberately not the assert's. Where the
     // package sits outranks what its directory is called, because "rename the
     // directory" is unfollowable advice for a package in a root Station will
-    // never write — the rename would change nothing (review M2). So
+    // never write — the rename would change nothing. So
     // `directory-name-mismatch` is published only once containment has
     // succeeded, which is exactly what its docblock claims about it.
     const report = skillPackageDirectoryReport(projectHomeDir, name, directory);
@@ -1537,8 +1537,7 @@ export class SkillService {
     if (!existsSync(skillPath)) {
       // The mirror is the ONLY thing left to read, so say so. A silent
       // fallback is what let a `command` deleted from SKILL.md keep answering
-      // from a stale install record while the listing said it was gone
-      // (review finding 5).
+      // from a stale install record while the listing said it was gone.
       return this.fromInstallRecordOnly(
         config as SkillConfig,
         `SKILL.md is missing at ${skillPath}; command and variables are shown from the install record and may be stale`,
@@ -1629,13 +1628,12 @@ export class SkillService {
     // The mirror goes through the SAME resolution frontmatter does. Returning
     // it raw let a mirrored `enabled: true` that is invalid or clashes come
     // back as an active command with no diagnostic, while the listing — which
-    // never saw the malformed skill at all — said otherwise (review delta
-    // finding 3). A stale record is still a declaration, not an outcome.
+    // never saw the malformed skill at all — said otherwise. A stale record
+    // is still a declaration, not an outcome.
     // The record's OWN origin, passed explicitly: a skill whose `SKILL.md`
     // cannot be read is absent from discovery, so the resolver would otherwise
     // insert it as `unknown` and let a registry skill outrank a user one —
-    // while this very response reports `origin: user` (review delta-2 finding
-    // (d)).
+    // while this very response reports `origin: user`.
     const origin =
       readSkillOrigin(config.origin) ??
       this.deriveOrigin(undefined, config.source);
@@ -1734,7 +1732,7 @@ export class SkillService {
   private async createLocalSkillOwned(
     input: EditableSkillInput,
     projectHomeDir: string,
-    /** Resolved and LOCKED by the caller — never re-derived here (review M1). */
+    /** Resolved and LOCKED by the caller — never re-derived here. */
     skillDir: string,
     projectSlug?: string,
   ): Promise<{ success: boolean; message: string }> {
@@ -1744,7 +1742,7 @@ export class SkillService {
     // simply moves to `name-2` once this package exists — so refusing would
     // make the outcome depend on write TIMING: creating `deploy` succeeded if
     // a local `deploy` predated discovery and failed if the plugin currently
-    // held it, for the same two files (review delta MEDIUM). Read-time
+    // held it, for the same two files. Read-time
     // arbitration already says the same thing — `COMMAND_CLAIM_PRECEDENCE`
     // puts `user` and `migrated-playbook` above `plugin` — so this is the
     // write side agreeing with the read side rather than a second rule.
@@ -1771,7 +1769,7 @@ export class SkillService {
     // the migration helper recognises its own prior work by those ids: with
     // `SKILL.md` first, a crash left a command-enabled body that no id claimed,
     // discovery reserved its name, and the retry wrote the same record again
-    // as `name-2` — an orphan command plus a duplicate (review H2). With the
+    // as `name-2` — an orphan command plus a duplicate. With the
     // record first, the worst partial state is a skill.json nothing has
     // rendered yet, which the migration finds by id and REPAIRS.
     //
@@ -1783,7 +1781,7 @@ export class SkillService {
     // that sentence has to be true: a future caller handing in a rename
     // destination or a discovered directory would write the body to one place
     // while the record's `path` and `origin` describe another, which is the
-    // split-package shape #1619 exists to close (delta review F1).
+    // split-package shape #1619 exists to close.
     const publication = this.projectLocalSkillPublicationAt(
       input,
       projectHomeDir,
@@ -1848,7 +1846,7 @@ export class SkillService {
    * The same projection for a caller that has already RESOLVED the package
    * directory — the interrupted-package repair, which is handed the directory
    * its lock was taken on and must describe that one rather than re-derive a
-   * second (review M1).
+   * second.
    *
    * `origin` follows the directory: it is the root that makes a package a
    * workspace one, and stamping `user` while writing into
@@ -1861,7 +1859,7 @@ export class SkillService {
      * The home `skillDir` belongs to. Passed rather than read off the loader:
      * every caller agrees with the ambient home today, and a projection that
      * depends on ambient state instead of its own argument is the defect one
-     * refactor away (delta review).
+     * refactor away.
      */
     projectHomeDir: string,
     skillDir: string,
@@ -1943,7 +1941,7 @@ export class SkillService {
     // through the registry hands back whatever OTHER package owns the name:
     // the repair then reads a directory it did not write, reports "identity or
     // contents are unavailable", and the half-written package is permanently
-    // unrepairable (delta review, reproduced). The package was created at a
+    // unrepairable (a reproduced defect). The package was created at a
     // name-derived path, so the repair resolves the same way it was written.
     const directory = this.resolveSkillDir(
       projectHomeDir,
@@ -1965,7 +1963,7 @@ export class SkillService {
     input: EditableSkillInput,
     expectedIdentity: InterruptedLocalSkillPackageIdentity,
     projectHomeDir: string,
-    /** Resolved and LOCKED by the caller — never re-derived here (review M1). */
+    /** Resolved and LOCKED by the caller — never re-derived here. */
     skillDir: string,
     options: InterruptedLocalSkillPackageRepairOptions = {},
   ): Promise<InterruptedLocalSkillPackageCompletion> {
@@ -2225,7 +2223,7 @@ export class SkillService {
     name: string,
     updates: Partial<EditableSkillInput>,
     projectHomeDir: string,
-    /** Resolved and LOCKED by the caller — never re-derived here (review M1). */
+    /** Resolved and LOCKED by the caller — never re-derived here. */
     skillDir: string,
     projectSlug?: string,
   ): Promise<{ success: boolean; message: string }> {
@@ -2302,7 +2300,7 @@ export class SkillService {
       // folds `recorded ?? derived`), so a record with no origin of its own has
       // long been written one on update — pre-existing, unchanged, and not
       // something this line can be read as preventing. All it adds is
-      // `user` -> `project` (delta-review L2).
+      // `user` -> `project`.
       //
       // Against the DESTINATION, not the path the read came from: `user` and
       // `project` differ only in which root the package sits in, so the only
@@ -2319,9 +2317,9 @@ export class SkillService {
     };
     // The EFFECTIVE command after this write, not the submitted fragment: a
     // rename changes the derived command word even when the request carries no
-    // `command` at all, and the route could not see that (review delta-2
-    // finding (b) — renaming `alpha` to `beta` silently took a package's
-    // `/beta`). Asserted here so every caller of the service is covered.
+    // `command` at all, and the route could not see that (renaming `alpha` to
+    // `beta` once silently took a package's `/beta`). Asserted here so every
+    // caller of the service is covered.
     assertSkillCommandAllowed(
       next.name,
       next.command,
@@ -2343,8 +2341,7 @@ export class SkillService {
       // is scanned last the local package then took the name and the one it
       // shadowed vanished from the listing. `createLocalSkill` has refused
       // exactly this since it was written (`hasSkill(input.name)`); a rename is
-      // a create under a new name, so it refuses the same way (review round 2,
-      // M2).
+      // a create under a new name, so it refuses the same way.
       if (this.hasSkill(next.name)) {
         return {
           success: false,
@@ -2513,7 +2510,7 @@ export class SkillService {
   private async removeSkillOwned(
     name: string,
     projectHomeDir: string,
-    /** Resolved and LOCKED by the caller — never re-derived here (review H1). */
+    /** Resolved and LOCKED by the caller — never re-derived here. */
     directory: string,
     projectSlug?: string,
   ): Promise<SkillRemovalResult> {
@@ -2523,7 +2520,7 @@ export class SkillService {
     // never answers with a foreign root — so what is left for this refusal is
     // to SAY so, and only when there is nothing of ours to remove instead.
     //
-    // That last clause is a regression fixed (review M2). A plugin package
+    // That last clause fixes a past regression. A plugin package
     // sharing a name overwrites the registry entry for the user's own
     // `<home>/skills/<name>`, and refusing on the registry entry alone meant a
     // user could not delete their own skill, with a message blaming a plugin
@@ -2546,8 +2543,7 @@ export class SkillService {
         success: false,
         // STRUCTURED, not a message a caller has to parse: the route maps this
         // to 409, and deriving that from the prose meant any rewording
-        // silently reverted every ownership refusal to a false 404 (delta
-        // review).
+        // silently reverted every ownership refusal to a false 404.
         reason: 'not-owned',
         message: `Cannot remove '${name}': ${refusal.messageFragment}.`,
       };
@@ -2587,10 +2583,10 @@ export class SkillService {
    * directory (discovery keys on the frontmatter name) plus a discovered
    * package genuinely of that name elsewhere is enough. Setup-import's rollback
    * then recorded a successful compensation for a tree it never verified, and a
-   * package it never created was gone (review H1).
+   * package it never created was gone.
    *
    * Resolving once also makes the lock and the write the SAME read of a
-   * registry `discoverSkills` mutates without holding it (review M1): two
+   * registry `discoverSkills` mutates without holding it: two
    * independent reads could name two directories, and the one that got locked
    * was not necessarily the one that got deleted.
    */

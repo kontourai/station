@@ -40,8 +40,7 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * second one in a dock region would fight the main region's for the one
  * hash. A layout component that calls `useLayoutNavigation` therefore
  * throws here (`LazyBoundary` reports it); no built-in tab component does,
- * and a plugin tab that does is a known gap of this slice, not a supported
- * placement.
+ * and a plugin tab that does is a known gap, not a supported placement.
  *
  * ## The id is the identity, so the id resolves everything
  *
@@ -134,8 +133,8 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  *   so a docked copy would have nowhere to live.
  * - `tasks`, `session-board` and `review` are route-shaped pages
  *   (`layoutTypeRegistry`) that take a project and layout SLUG and own
- *   their own chrome; docking them is a separate decision and this slice
- *   does not make it.
+ *   their own chrome; docking them is a separate decision this pane does
+ *   not make.
  */
 export function LayoutWorkspacePane({
   instance,

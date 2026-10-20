@@ -1,5 +1,4 @@
 import { EventEmitter } from 'node:events';
-import type { VoiceSessionLifecycleState } from '@kontourai/station-sdk/voice';
 
 export type S2SAudioFormat = {
   mediaType: string;
@@ -118,20 +117,3 @@ export interface IS2SProvider extends EventEmitter {
   off<K extends keyof S2SEventMap>(event: K, listener: S2SEventMap[K]): this;
   once<K extends keyof S2SEventMap>(event: K, listener: S2SEventMap[K]): this;
 }
-
-export type VoiceWsMessage =
-  | { type: 'audio_in'; data: string }
-  | { type: 'audio_out'; data: string }
-  | {
-      type: 'transcript';
-      text: string;
-      role: 'user' | 'assistant';
-      stage: 'speculative' | 'final';
-    }
-  | { type: 'state'; state: VoiceSessionLifecycleState }
-  | { type: 'error'; message: string }
-  | {
-      type: 'session_ready';
-      inputAudioFormat: S2SAudioFormat;
-      outputAudioFormat: S2SAudioFormat;
-    };

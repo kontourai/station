@@ -187,8 +187,8 @@ vi.mock('@voltagent/core', async (importOriginal) => {
   };
 });
 
-vi.mock('@voltagent/server-hono', () => ({
-  honoServer: vi.fn((config: any) => () => {
+vi.mock('../frameworks/voltagent-hono-runtime.js', () => ({
+  stationHonoServer: vi.fn((config: any) => () => {
     return {
       start: vi.fn(async () => {
         if (routeMocks.deferServerFactory) {
@@ -361,7 +361,9 @@ const { OllamaLLMProvider } = await import(
 const { checkBedrockCredentials } = await import(
   '../../providers/llm/bedrock.js'
 );
-const { honoServer } = await import('@voltagent/server-hono');
+const { stationHonoServer } = await import(
+  '../frameworks/voltagent-hono-runtime.js'
+);
 const { attachVoiceWebSocket } = await import(
   '../../routes/operations/voice.js'
 );
@@ -1037,7 +1039,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         }
       ).bedrockClient.config.region(),
     ).resolves.toBe('eu-west-1');
-    expect(honoServer).toHaveBeenCalledWith(
+    expect(stationHonoServer).toHaveBeenCalledWith(
       expect.objectContaining({
         hostname: '127.0.0.1',
         port,

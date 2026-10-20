@@ -1,0 +1,9 @@
+{
+  "revision": "7ffdcdc2aed790632a24ab094917ecb6839c981c",
+
+  "notes": [
+    {"path":"docs/guides/inbound-webhooks.md","note":"Delta review: Claude Code Full access needs confinement that is set up (confinedClaudeDecision can refuse: config-root-pinned, workspace-too-broad, confined-credential-unavailable; resume-bound-elsewhere) and observed (claude-adapter sets bypassPermissions only after observeSeatbeltStart); a fallback turns never into auto and drops the plan (withConfinementFallback). Responses now describe three stages from inbound-webhooks.ts: headers (authorizeHeaders), body read/parse, then signature, grant and replay (authorizeBody), and policy_unavailable for a replay-store failure.","inputs":["docs/guides/inbound-webhooks.md"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Delta review: running an item usually closes the palette; Reset command history and remote message results (closeOnRun: !remote in CommandPalette.tsx) keep it open.","inputs":["docs/guides/keyboard-shortcuts.md"]}
+  ]
+}

@@ -612,7 +612,7 @@ function HomeSettledTail({
   // One flat list, newest first (the lane's own order), as on Activity and
   // in the dock: each row's time ("3h", "2d", "Sep 12") already says when, so
   // dated sub-headings ("Today", "Yesterday", ...) would be a second set of
-  // names for one lane (design round 2026-10, C2).
+  // names for one lane (#3239).
   return (
     <section
       className="home-view__settled-tail"

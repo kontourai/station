@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   },
   accountScope: null as {
     state: 'ready';
-    authorityKey: string;
+    authorityKey: string | null;
     scopeKey: string;
     version: number;
   } | null,
@@ -60,6 +60,7 @@ vi.mock('../components/GuidedConnect', () => ({
 }));
 
 import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 function publishAccount(authorityKey: string, version: number) {
   act(() => {
@@ -128,4 +129,97 @@ it('quarantines old Project UI immediately when account authority changes', asyn
   });
   await waitFor(() => expect(mocks.probe).toHaveBeenCalledTimes(2));
   expect(screen.queryByText('Protected Project work')).toBeNull();
+});
+
+it('keeps the cached account appearance while the relay account is still being checked', async () => {
+  // The signed-in relay boot: the gate shows the connect screen until the
+  // account scope and the Station identity check answer. That is "not
+  // checked yet"; releasing here repainted every relay user in the device's
+  // appearance and recorded it for the next launch.
+  const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
+  let finish: ((value: { ok: true; bootId: string }) => void) | undefined;
+  mocks.probe.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(
+    <LocalUiSessionGate apiBase="https://client.example.test">
+      <div>Protected Project work</div>
+    </LocalUiSessionGate>,
+  );
+  expect(await screen.findByText('Connect to a Station')).toBeTruthy();
+  publishAccount('account-A', 1);
+  await waitFor(() => expect(finish).toBeDefined());
+  expect(release).not.toHaveBeenCalled();
+  await act(async () => finish!({ ok: true, bootId: 'verified-boot' }));
+  expect(await screen.findByText('Protected Project work')).toBeTruthy();
+  expect(release).not.toHaveBeenCalled();
+  release.mockRestore();
+});
+
+it.each([
+  'unreachable',
+  'timeout',
+  'identity-mismatch',
+  'unsupported-capability-version',
+  'unexpected-response',
+])(
+  'keeps it when the relay identity check fails without a refusal (%s)',
+  async (reason) => {
+    const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
+    mocks.probe.mockResolvedValue({ ok: false, reason });
+    render(
+      <LocalUiSessionGate apiBase="https://client.example.test">
+        <div>Protected Project work</div>
+      </LocalUiSessionGate>,
+    );
+    publishAccount('account-A', 1);
+    await waitFor(() => expect(mocks.probe).toHaveBeenCalled());
+    // Let the probe's answer land and the gate re-render.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(release).not.toHaveBeenCalled();
+    release.mockRestore();
+  },
+);
+
+it('releases it when the relay account scope settles with no account (signed out)', async () => {
+  const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
+  render(
+    <LocalUiSessionGate apiBase="https://client.example.test">
+      <div>Protected Project work</div>
+    </LocalUiSessionGate>,
+  );
+  expect(release).not.toHaveBeenCalled();
+  act(() => {
+    mocks.accountScope = {
+      state: 'ready',
+      authorityKey: null,
+      scopeKey: 'no-account:page:2',
+      version: 2,
+    };
+    for (const listener of mocks.listeners) listener();
+  });
+  await waitFor(() => expect(release).toHaveBeenCalled());
+  release.mockRestore();
+});
+
+it('releases it once the relay identity check refuses the current account', async () => {
+  const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
+  mocks.probe.mockResolvedValue({
+    ok: false,
+    reason: 'authentication-failed',
+  });
+  render(
+    <LocalUiSessionGate apiBase="https://client.example.test">
+      <div>Protected Project work</div>
+    </LocalUiSessionGate>,
+  );
+  publishAccount('account-A', 1);
+  await waitFor(() => expect(release).toHaveBeenCalled());
+  expect(screen.queryByText('Protected Project work')).toBeNull();
+  release.mockRestore();
 });

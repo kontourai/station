@@ -1,0 +1,7 @@
+{
+  "revision": "19dff7aa50b009e481d8f5fd07233290dfdcff25",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Re-checked after the package.json scripts change (added fallow:ceiling): every npm script the guide names still exists in package.json; the new script is not described by this guide.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]}
+  ]
+}

@@ -20,9 +20,7 @@
 
     "package.json#/scripts/typecheck:examples",
 
-    "scripts/examples-conformance.mjs",
-
-    "examples/experimental-monument-flow-probe/README.md"
+    "scripts/examples-conformance.mjs"
   ],
 
   "checks": [

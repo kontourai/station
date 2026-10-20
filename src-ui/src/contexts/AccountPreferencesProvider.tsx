@@ -180,6 +180,18 @@ export function AccountPreferencesProvider({
     return { ...query.data, values };
   }, [query.data, pending, pendingVersion]);
   useLayoutEffect(() => {
+    // No person here: this device's own appearance applies, not the account
+    // appearance the startup path painted from its cache. Only definite
+    // answers count: a refused credential (401), or a verified authority whose
+    // principal is not a person. 'unavailable' without a refusal also covers
+    // states still resolving (no connection yet, a native relay account not
+    // ready), and 'unverified' (offline, an older server) may still be the
+    // same person; the cached appearance stays for those.
+    const definite =
+      authority.refused === true || authority.status === 'verified';
+    if (!eligible && definite) deviceSettingsStore.releaseBootAppearance();
+  }, [eligible, authority.refused, authority.status]);
+  useLayoutEffect(() => {
     if (!eligible || !scope?.isCurrent()) return;
     return deviceSettingsStore.bindAccountPreferences(
       query.isFetchedAfterMount ? projected?.values : undefined,
@@ -196,8 +208,18 @@ export function AccountPreferencesProvider({
             );
           },
       available,
+      // Keys any appearance held after this binding ends to this account.
+      authority.namespace ?? undefined,
     );
-  }, [eligible, available, projected, query.isFetchedAfterMount, save, scope]);
+  }, [
+    eligible,
+    available,
+    projected,
+    query.isFetchedAfterMount,
+    save,
+    scope,
+    authority.namespace,
+  ]);
   useLayoutEffect(() => {
     if (authority.status !== 'verified' || !authority.namespace) return;
     for (const [sessionId, chat] of Object.entries(
