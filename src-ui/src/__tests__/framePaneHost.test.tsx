@@ -24,6 +24,7 @@ import {
   pluginToastBudget,
 } from '../components/plugins/plugin-frame-budget';
 import { toastStore } from '../contexts/ToastContext';
+import { registerRelatedPanesScope } from '../workspace-panes/relatedPanesScope';
 
 /**
  * The frame (tier 3) adapter for the pane-host contract (archive#4201 step 3).
@@ -698,6 +699,52 @@ describe('related-pane requests reach the same host object a direct pane calls',
     });
     expect(results()).toEqual([]);
   });
+
+  // The host re-admits a narrowed capability inside its lock; what the
+  // transport owes it is a scope that ends with the document that asked.
+  test.each([
+    ['stays', 1, true],
+    ['is replaced', 2, false],
+  ] as const)(
+    'a request whose frame document %s is admitted to commit only while that document is current',
+    async (_name, nextGeneration, admitted) => {
+      let settle: (() => void) | undefined;
+      const commits: boolean[] = [];
+      const host = relatedHost();
+      registerRelatedPanesScope(host, (alive) => ({
+        ...host,
+        open: async () => {
+          await new Promise<void>((resolve) => {
+            settle = resolve;
+          });
+          commits.push(alive());
+          return { status: 'unavailable' as const, reason: 'refused' as const };
+        },
+      }));
+      const mounted = render(<Harness relatedPanes={host} generation={1} />);
+      act(() =>
+        adapter().receive({
+          method: 'pane-host/related-open',
+          params: {
+            id: 'document-request',
+            request: {
+              descriptorId: 'pane:plugin%3Areports:detail',
+              modeId: 'project',
+              key: 'weekly',
+            },
+          },
+        }),
+      );
+      mounted.rerender(
+        <Harness relatedPanes={host} generation={nextGeneration} />,
+      );
+      await act(async () => {
+        settle?.();
+      });
+      expect(commits).toEqual([admitted]);
+      expect(host.open).not.toHaveBeenCalled();
+    },
+  );
 
   test('a frame holds at most sixteen requests open at once', async () => {
     const host = relatedHost({

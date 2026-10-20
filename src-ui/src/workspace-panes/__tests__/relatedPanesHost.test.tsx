@@ -57,6 +57,7 @@ import {
   relatedPaneCaller,
   useRelatedPanesHost,
 } from '../relatedPanesHost';
+import { scopeRelatedPanes } from '../relatedPanesScope';
 import type { ResolvedWorkspacePaneCatalogEntry } from '../resolvedWorkspacePaneCatalog';
 
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
@@ -861,6 +862,45 @@ describe('a capability acts only for the occurrence and Station it was given to'
       guard.unregister();
     }
   });
+
+  test.each([
+    ['stays current', true],
+    ['ends', false],
+  ] as const)(
+    'a narrowed capability whose scope %s while a guard is up commits only while it is current',
+    async (_name, current) => {
+      await mount();
+      act(() => probe.model?.placeSurface('activity', 'right'));
+      const guard = deferredGuard('activity');
+      try {
+        const before = await settledStorageSnapshot();
+        let live = true;
+        const narrowed = scopeRelatedPanes(host(), () => live);
+        let opening!: Promise<{ status: string }>;
+        act(() => {
+          opening = narrowed.open({
+            descriptorId: DETAIL.id,
+            modeId: 'project',
+            key: 'weekly',
+          }) as Promise<{ status: string }>;
+        });
+        await waitFor(() => expect(guard.asked).toHaveBeenCalledTimes(1));
+        live = current;
+        guard.answer('proceed');
+        const outcome = await run(() => opening);
+        if (current) expect(outcome.status).toBe('opened');
+        else {
+          expect(outcome).toEqual({
+            status: 'unavailable',
+            reason: 'context-mismatch',
+          });
+          expect(await settledStorageSnapshot()).toEqual(before);
+        }
+      } finally {
+        guard.unregister();
+      }
+    },
+  );
 
   test.each([
     [
