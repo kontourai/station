@@ -378,6 +378,24 @@ describe('hygiene YAML block scalar extent', () => {
       '  # TODO(#200): a shell comment in a quoted run key',
       '',
     ].join('\n'),
+    // A keyless sequence scalar takes its indentation from the dash column,
+    // so two-space content under `- |`, `- |2` and `- >-` is scalar text. A
+    // nested `- key: |` counts from the key column instead.
+    'ci/keyless-sequence.yml': [
+      '- |',
+      '  # TODO(#200): prose in a keyless literal scalar',
+      '- |2',
+      '  # TODO(#200): prose in a keyless explicit-indent scalar',
+      '- >-',
+      '  # TODO(#200): prose in a keyless folded scalar',
+      '- key: |',
+      '    # TODO(#200): prose in a nested key scalar',
+      '  next: x # TODO(#200): real, a sibling of the scalar key',
+      'list:',
+      '  - |',
+      '    # TODO(#200): prose in an indented keyless scalar',
+      '',
+    ].join('\n'),
   });
 
   it('ends a scalar by its content indentation and reads quoted keys', () => {
@@ -385,6 +403,7 @@ describe('hygiene YAML block scalar extent', () => {
     expect(status).toBe(0);
     expect(located(result.findings)).toEqual([
       'closed-issue:ci/dedented-comment.yml:4',
+      'closed-issue:ci/keyless-sequence.yml:9',
       'closed-issue:ci/quoted-key.yml:4',
       'closed-issue:ci/sequence-entry.yml:3',
     ]);

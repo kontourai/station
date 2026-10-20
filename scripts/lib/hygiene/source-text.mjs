@@ -268,10 +268,12 @@ const SCRIPT_KEYS = new Set(['run', 'script']);
 
 function blockScalarFor(header) {
   const [, indent, entry = '', key = '', indicator] = header;
-  // The node that owns the scalar starts after a `- ` entry prefix, so an
-  // explicit indicator and the "indented past the parent" rule both count
-  // from the key's column, not from the physical start of the line.
-  const parentIndent = indent.length + entry.length;
+  // The parent indentation n is the column of the node that owns the scalar
+  // (YAML 1.2 8.1.1: content sits at n plus the indicator, or past n when
+  // auto-detected). With a key that is the key's column, after any `- `
+  // prefix. A keyless `- |` is a sequence entry, whose n is the dash's own
+  // column, so the prefix is not added.
+  const parentIndent = indent.length + (key ? entry.length : 0);
   return {
     parentIndent,
     // An explicit indicator fixes the content indentation; otherwise the
