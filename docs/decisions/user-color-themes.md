@@ -59,6 +59,12 @@ write and leaves them out of what it serves, so later additions need no
 sibling. Its patch schema stays strict: a key it cannot validate is refused,
 not silently dropped.
 
+The two documents are written separately, each under its own lock, so a
+patch naming keys in both is not atomic across them: if the second write
+fails, the first stays. The fields are independent preferences, so a partial
+write leaves no inconsistent pair; the client reports the failure as for any
+failed save.
+
 An older server still refuses a patch that contains these keys, so the client
 shows its existing save-failure notice and keeps the server's value. "Import
 previous preferences" sends one patch, so against such a server it fails whole
@@ -107,9 +113,15 @@ sets `data-color-theme`, `data-color-theme-flavor` and
 does not block rendering, so `main.tsx` waits for it (at most three seconds)
 before the first render: the splash is themed from the subset, and the app
 never appears in Station's colours after it. With no theme it renders
-synchronously as before. On a live switch the applier changes the attributes
-only once the new family's sheet has settled. `color-scheme` is already set per
-mode by the tokens.
+synchronously as before. The first render is part of what `boot.ts` waits for,
+so a render that throws after that wait shows the same "could not finish
+loading" recovery as a failed module load. On a live switch the applier
+changes the attributes only once the new family's sheet has loaded. A sheet
+that fails is not claimed: on a live switch the previous selection stays in
+force, a failed startup request un-claims the theme, and the next apply
+requests the sheet again; failure never re-applies by itself, so a sheet that
+keeps failing cannot loop. `color-scheme` is already set per mode by the
+tokens.
 
 ### Signed-in people
 
@@ -130,6 +142,11 @@ settings store's boot snapshot:
 So a signed-in person's last appearance is in force before first paint on a
 device that has rendered it once. A first visit, or a change made on another
 device since, still shows the previous appearance until the account answers.
+
+The cache is per origin, not per person or Station: a device shared by two
+people, or one origin used for several Stations, paints whichever account's
+appearance was rendered last until the account boundary resolves. It holds
+only a mode and palette ids, never account data.
 
 ## Precedence
 
