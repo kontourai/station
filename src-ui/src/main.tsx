@@ -71,7 +71,7 @@ import {
 } from './lib/branding-theme';
 import {
   bindColorThemeToSettings,
-  whenColorThemeStylesheetSettled,
+  renderWhenColorThemeSettled,
 } from './lib/color-theme-apply';
 import {
   deviceSettingsStore,
@@ -377,10 +377,10 @@ function renderApp(): void {
 // A themed person's family sheet was requested by startup-theme.js; the first
 // render waits for it (at most a few seconds) so the app never appears in
 // Station's colours after a themed splash. Without a theme this renders
-// synchronously, as before. boot.ts awaits `rendered`, so a render that throws
-// after the wait reaches the same "could not finish loading" recovery as a
-// failed module load, instead of an unhandled rejection under the splash.
-const colorThemeSheet = whenColorThemeStylesheetSettled(document);
-export const rendered: Promise<void> = colorThemeSheet
-  ? colorThemeSheet.then(renderApp)
-  : Promise.resolve(renderApp());
+// synchronously, as before. boot.ts awaits `rendered`, so a deferred render
+// that throws reaches the same "could not finish loading" recovery as a
+// failed module load (see renderWhenColorThemeSettled for what counts).
+export const rendered: Promise<void> = renderWhenColorThemeSettled(
+  document,
+  renderApp,
+);

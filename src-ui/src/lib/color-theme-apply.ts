@@ -239,6 +239,28 @@ export function whenColorThemeStylesheetSettled(
   });
 }
 
+/**
+ * Run the app's first render once the selected family's sheet has settled
+ * (see `whenColorThemeStylesheetSettled`), or at once, synchronously, when
+ * nothing is loading. The returned promise rejects when a deferred `render`
+ * throws, so boot.ts can show its recovery; a synchronous throw (no sheet to
+ * wait for) propagates to the caller, as a module-evaluation failure. Only a
+ * throw from `render` itself counts (for main.tsx: `createRoot().render()`
+ * or a missing `#root`); errors inside React components surface through
+ * React, not here.
+ */
+export function renderWhenColorThemeSettled(
+  doc: Document,
+  render: () => void,
+): Promise<void> {
+  const settled = whenColorThemeStylesheetSettled(doc);
+  if (!settled) {
+    render();
+    return Promise.resolve();
+  }
+  return settled.then(render);
+}
+
 interface SettingsSource {
   getSnapshot(): AppliedSettings;
   subscribe(listener: () => void): () => void;

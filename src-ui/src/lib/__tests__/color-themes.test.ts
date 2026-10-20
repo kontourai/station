@@ -8,6 +8,7 @@ import {
   applyColorTheme,
   COLOR_THEME_FAILED_ATTRIBUTE,
   COLOR_THEME_STYLESHEET_ID,
+  renderWhenColorThemeSettled,
   retryColorTheme,
   whenColorThemeStylesheetSettled,
 } from '../color-theme-apply';
@@ -372,6 +373,37 @@ describe('family stylesheets load on demand', () => {
     expect(root.hasAttribute('data-color-theme')).toBe(false);
     settleSheets('load');
     expect(root.getAttribute('data-color-theme')).toBe('nord');
+  });
+
+  test('a render deferred behind a loading sheet rejects when it throws; an immediate one throws synchronously', async () => {
+    // Nothing loading: synchronous, and a throw escapes to the caller.
+    const order: string[] = [];
+    const done = renderWhenColorThemeSettled(document, () => {
+      order.push('render');
+    });
+    order.push('after');
+    await done;
+    expect(order).toEqual(['render', 'after']);
+    expect(() =>
+      renderWhenColorThemeSettled(document, () => {
+        throw new Error('no #root');
+      }),
+    ).toThrow('no #root');
+    // A sheet still loading: deferred, and a throw becomes the rejection
+    // boot.ts turns into its recovery screen.
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.id = COLOR_THEME_STYLESHEET_ID;
+    document.head.append(link);
+    let ran = false;
+    const deferred = renderWhenColorThemeSettled(document, () => {
+      ran = true;
+      throw new Error('render threw');
+    });
+    expect(ran).toBe(false);
+    link.dispatchEvent(new Event('load'));
+    await expect(deferred).rejects.toThrow('render threw');
+    expect(ran).toBe(true);
   });
 
   test('the first render waits only for a sheet that is still loading', async () => {
