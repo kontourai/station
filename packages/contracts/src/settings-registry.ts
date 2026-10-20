@@ -568,7 +568,7 @@ export const APP_SETTINGS_REGISTRY = [
     // a settings row is not the place to teach it (round 4 N2: this
     // description had grown to 833 characters against a median of 110).
     description:
-      'Applied when any session starts, including unattended ones (webhooks, Discord, scheduled jobs, delegations): Full access here runs those with no sandbox and no approval prompts. Never applied to a session already running. Chats on Station’s own engine, and engines without an approval knob, ignore it.',
+      'Applied when any session starts, including unattended ones (webhooks, Discord, scheduled jobs, delegations), never to a session already running. Full access turns off approval prompts where the engine allows it; a start without a full-access grant, such as a webhook, still runs inside Station’s workspace confinement. Chats on Station’s own engine, and engines without an approval knob, ignore it.',
     // `'connection-default'` IS the honest fallback, not a placeholder for
     // one: `adapterDefaultApprovalMode` returns undefined for every engine
     // (station#1950 — Station no longer guesses Ask/Never), so "defer to the

@@ -65,6 +65,13 @@ export interface ACPProcessOptions {
     terminal?: boolean;
   };
   logger: any;
+  /**
+   * #3290: the child's environment, derived from the one Station would
+   * otherwise launch it with (the login-shell-augmented environment). The
+   * adapter uses it to carry an engine's launch configuration; a throw fails
+   * the start before anything is spawned.
+   */
+  spawnEnv?: (base: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
   terminateProcess?: (proc: ChildProcess) => Promise<void>;
   resolveCommand?: (command: string) => Promise<string | null>;
   /**
@@ -362,7 +369,8 @@ export class ACPProcess extends EventEmitter {
     // otherwise a service-launched Station can resolve the binary but the
     // engine subprocess itself still cannot find nix/mise/homebrew-managed
     // tools it shells out to internally.
-    const env = await augmentedSpawnEnv();
+    const baseEnv = await augmentedSpawnEnv();
+    const env = this.opts.spawnEnv ? this.opts.spawnEnv(baseEnv) : baseEnv;
     // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide
     // registry. `detached: true` is preserved deliberately — a group kill reaps

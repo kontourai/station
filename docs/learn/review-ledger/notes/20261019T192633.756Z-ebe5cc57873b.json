@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed against the sdk.md note on why inventory revokes on fewer refusals than answer Basis: this guide does not describe either hook; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

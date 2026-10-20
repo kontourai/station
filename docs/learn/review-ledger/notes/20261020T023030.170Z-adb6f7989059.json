@@ -1,0 +1,13 @@
+{
+  "revision": "9568fe7afc1b072a0ac6b312e57e2dc3a6b7df54",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Banner now names #3439 (Epic: Station Automations, open, gh issue view) as the tracking issue. No other change.","inputs":["docs/design/automations.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Banner now names #2993 (Epic: Station as a shell, open) as the tracking issue; the record's own slices are filed as [#2993 x] issues. No other change.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/plans/1364-owner-source-observation--grounding.md","note":"Banner reworded to the 'Reading status: implemented' form; owners unchanged.","inputs":["docs/plans/1364-owner-source-observation--grounding.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Added a reading-status line: completed removal record for archive#1417 (closed in the archive). Confirmed scripts/agent-identity-supported-surface-inventory.mjs parses only the fenced inventory block, so a banner does not affect it.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md"]}
+  ]
+}

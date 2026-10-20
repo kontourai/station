@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
+import { copyToClipboard } from '../../lib/clipboard';
 
 /**
  * Shown when the plugin was scaffolded but no chat pane took the request to
@@ -19,12 +20,7 @@ export function AuthoringChatFallback({
     'idle',
   );
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(message);
-      setCopyState('copied');
-    } catch {
-      setCopyState('failed');
-    }
+    setCopyState((await copyToClipboard(message)) ? 'copied' : 'failed');
   };
   return (
     <div className="plugins__modal-body plugins__modal-body--visible plugins__new-plugin">

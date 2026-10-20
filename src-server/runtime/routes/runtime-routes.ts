@@ -501,6 +501,7 @@ import { FileReviewReceiptStore } from '../../services/evidence/review-receipt-s
 import { ReviewedSourceBasisResolver } from '../../services/evidence/reviewed-source-basis-resolver.js';
 import {
   CanonicalProjectTrustReportReader,
+  canonicalOwnedAnchor,
   PERSONAL_PROJECT_TRUST_CAPABILITY,
   TaskAnswerSupportModule,
   TaskAnswerSupportStore,
@@ -1102,6 +1103,9 @@ export function createPersonalTaskAnswerSupportModule(
     | 'getLiveAppConfig'
   >,
 ): TaskAnswerSupportModule {
+  // Canonicalize the Station home once, here; everything derived from it below
+  // stays lexical so a symlink inside the home is still refused.
+  const home = canonicalOwnedAnchor(context.configLoader.getProjectHomeDir());
   return new TaskAnswerSupportModule({
     anchors: {
       authorize: async (taskId, referenceId, authority) => {
@@ -1149,12 +1153,7 @@ export function createPersonalTaskAnswerSupportModule(
         : undefined;
       return {
         workspacePath,
-        pluginDataDir: join(
-          context.configLoader.getProjectHomeDir(),
-          'projects',
-          slug,
-          'plugin-data',
-        ),
+        pluginDataDir: join(home, 'projects', slug, 'plugin-data'),
         veritasEvidenceDir:
           workspacePath &&
           context.getLiveAppConfig().surfaceTrustFromVeritasEvidence !== false
@@ -1165,7 +1164,7 @@ export function createPersonalTaskAnswerSupportModule(
             : undefined,
       };
     }, PERSONAL_PROJECT_TRUST_CAPABILITY),
-    store: new TaskAnswerSupportStore(context.configLoader.getProjectHomeDir()),
+    store: new TaskAnswerSupportStore(home),
   });
 }
 

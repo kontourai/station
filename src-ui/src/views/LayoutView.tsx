@@ -1,3 +1,4 @@
+import type { AgentQuickPrompt } from '@kontourai/station-contracts/agent';
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import {
   FullScreenError,
@@ -203,7 +204,7 @@ export function LayoutView({
   const agent = agents.find((a) => a.slug === layout?.defaultAgent);
 
   const handleLaunchPrompt = useCallback(
-    async (prompt: any) => {
+    async (prompt: AgentQuickPrompt) => {
       // Even a stale renderer callback cannot select an unqualified Agent
       // after uninstall, withdrawal, or a catalog/SSE race.
       if (typeof packageId === 'string') {
@@ -389,7 +390,7 @@ export function LayoutView({
           activeTab={activeTabObject}
           activeTabId={activeTabId}
           onTabChange={setActiveTabId}
-          agent={agent as any}
+          agent={agent}
           componentId={activeTabObject?.component}
           onLaunchPrompt={handleLaunchPrompt}
           onShowChat={() => setDockState(true)}

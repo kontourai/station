@@ -10,7 +10,8 @@
 > not prove that every setting's consumer, save failure, or migration was
 > rechecked in this review.
 
-Status: incremental implementation (2026-07-30). Research base: comparative review of four reference
+Status when written: incremental implementation (2026-07-30); the numbered
+slices below record what each one shipped. Research base: comparative review of four reference
 agent-tooling products' settings systems, plus a full audit of Station's current
 settings surface at `73381430`. The separate attributed research record is not
 required to understand or implement this design. Companion backlog: #572 (navigation grouping),

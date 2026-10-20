@@ -1,5 +1,5 @@
 /**
- * Canonical agent-CRUD + list fetchers (#167 Wave 1). One HTTP-call
+ * Canonical agent-CRUD + list fetchers (archive#167). One HTTP-call
  * implementation per operation, shared by the SDK's `agentAdmin.ts` hooks
  * (thin wrappers around these), `packages/cli`'s `agents` verbs, and
  * `station-control-agent-tools.ts`.
@@ -57,9 +57,9 @@ async function readAgentBody(response: Response): Promise<unknown> {
  * metadata). Used by the SDK's `useAgentsQuery` hook and by the CLI's
  * `agents list` verb (`packages/cli/src/commands/core.ts`,
  * `resourceSpecs.agents.collectionPath`). Distinct from `fetchAgentsBare`
- * below by design — see the #167 plan's "Plan" section: the audit found two
- * genuinely different "list agents" shapes server-side and #167 is a
- * client-refactor, not a route-reconciliation PR, so both fetchers stay.
+ * below by design: the server has two genuinely different "list agents"
+ * shapes, and this client layer (archive#167) reconciles callers, not
+ * routes, so both fetchers stay.
  */
 export interface AgentCatalogProjection {
   agents: EnrichedAgentProjection[];
@@ -149,8 +149,8 @@ export async function fetchAgentsEnriched(
  * (no success/throw check) as the MCP tool result. This fetcher preserves
  * that exact raw-passthrough contract rather than introducing a new
  * throw-on-failure behavior for station-control's only consumer of this
- * route; a Wave 2B/3 caller that instead wants unwrap-or-throw semantics
- * should not assume this fetcher provides them.
+ * route; a caller that instead wants unwrap-or-throw semantics should not
+ * assume this fetcher provides them.
  */
 export async function fetchAgentsBare(
   apiBase: string,
@@ -166,9 +166,8 @@ export async function fetchAgentsBare(
  * dispatches through `requestJson` (unwrap success/data, else throw
  * `error || message || 'Request failed with HTTP <status>'`). No SDK hook
  * or station-control tool calls this exact route today (station-control's
- * `get_agent` hits the bare `/agents/:slug` CRUD route instead — flagged as
- * a plan-drift note for Wave 2B, not folded in here since the plan's task
- * text for this wave does not name a bare single-agent-get fetcher).
+ * `get_agent` hits the bare `/agents/:slug` route instead, which has no
+ * handler; see that tool's comment).
  */
 export async function getAgent(
   apiBase: string,
@@ -195,13 +194,12 @@ export async function getAgent(
 }
 
 /**
- * `POST /agents` — create an agent. Consumed (post-#167) by the SDK's
- * `createAgent` (thin wrapper, exact original default error preserved),
- * the CLI's `agents create` verb, and station-control's `create_agent` tool
- * (which forwards the raw envelope today via `api()` — Wave 2B must adapt
- * that call site to catch this function's thrown errors, since this
- * fetcher preserves the SDK's original unwrap-or-throw contract rather than
- * station-control's raw-passthrough one).
+ * `POST /agents` — create an agent. Consumed by the SDK's `createAgent`
+ * (thin wrapper, exact original default error preserved), the CLI's
+ * `agents create` verb, and station-control's `create_agent` tool, which
+ * converts this fetcher's thrown errors back into an envelope
+ * (`toAgentEnvelope`): the fetcher keeps the SDK's unwrap-or-throw contract
+ * rather than station-control's raw-passthrough one.
  */
 export interface AgentCreateResult {
   /** The created spec (`{ slug, ...spec }`), as `createAgentRaw` returns. */

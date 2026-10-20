@@ -108,7 +108,6 @@ import {
   matchVerifiedRemoteProjectPath,
   resolveExecutionTarget,
 } from '../services/execution-target/execution-target-resolver.js';
-import { approvalKnobSupported } from '../services/orchestration/approval-posture.js';
 import {
   DelegationAttemptCapacityError,
   DelegationAttemptClaimStore,
@@ -6951,8 +6950,15 @@ export async function executeExecutionTargetMessage(
     // #2436: a carried approval pick is recorded here, on this Station,
     // before the send's session start and turn. An engine with no approval
     // knob records nothing (the pick would be a request nothing honours).
-    recordApprovalMode: (_access: EnvironmentAccess, pick) =>
-      approvalKnobSupported(pick.provider)
+    recordApprovalMode: (
+      _access: EnvironmentAccess,
+      { connectionId, ...pick },
+    ) =>
+      orchestrationService.approvalKnobForThread(
+        pick.threadId,
+        pick.provider,
+        connectionId,
+      )
         ? orchestrationService.recordApprovalModeDecision(pick)
         : undefined,
     approvalPickReachesFullAccess: (_access: EnvironmentAccess, input) =>

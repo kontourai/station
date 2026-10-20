@@ -32,6 +32,9 @@ an explicit Details action.
 
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
+A settled answer's **Basis** chip is not hover-revealed: it sits beside that row,
+visible at rest, and opens the Chat inventory scoped to that answer
+([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).
 During an authorized active-turn continuation wait, the composer accepts and
 preserves a draft. Sending and queueing stay blocked until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
@@ -463,7 +466,25 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
-  naturally and truncate when needed; Model does not stretch into unused space.
+  naturally and truncate with an ellipsis before the chevron, never under it;
+  Model does not stretch into unused space. On a phone, Agent and Model keep a
+  readable minimum (88px and 112px) and the rail scrolls instead, its
+  trailing edge faded until scrolled to the end.
+- On an ACP engine the approval control says who decides which actions ask
+  (#3290). OpenCode, whose rules Station sets at launch, offers Station's
+  approval modes, with OpenCode-specific descriptions. Its Default says
+  OpenCode's own settings decide until a mode is picked (the chip's name reads
+  "Engine default — OpenCode's own settings"), and "Ask — Ask first" after
+  Station has taken over. A pick the engine could not be switched to is never
+  shown as applied: the chip shows what still runs, marked pending, with text
+  that differs from Default ("Own settings", or "Ask · kept"), and its name
+  says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
+  shows **Approval: Set by engine**, which opens a read-only explanation and
+  offers no mode. An engine's advertised Mode (OpenCode's build or plan agent)
+  is a separate picker beside it, never a replacement for it. While Station
+  governs OpenCode it offers only build and plan; on OpenCode's own settings
+  it lists every agent. A refusal because Station's approval mode cannot
+  apply names the OpenCode setting and the next step, and offers no Retry.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
 - Drafts and Clear message are icon actions in the secondary row, leaving the
@@ -521,8 +542,21 @@ protected wire command before invoking an engine. The pending marker must save
 successfully before any native mutation; failed storage keeps the message held. The server journal
 retains digests rather than message bodies, and Session deletion removes it.
 
-The pending-message section starts collapsed, showing only its count and a
-Needs review indicator for failures or unconfirmed delivery. Its disclosure
+The open conversation also shows **Messages held by Station**, a separate
+[server inbox view](../../src-ui/src/components/chat/ConversationInboxMessages.tsx).
+It reads the existing [inbox API](../reference/session-api.md#let-station-hold-a-follow-up)
+for that conversation and verified Station identity, including messages submitted
+by another client. Waiting and sending rows contribute to its pending count;
+unknown or refused delivery remains visible separately. A failed read shows
+unavailable rather than zero. Foreground polling, event-driven invalidation,
+focus/reconnect and **Refresh** request fresh observations. **Remove** or
+**Dismiss** uses the original message key and the server's authorization and placement checks;
+rows without a permitted key are read-only. They offer no local edit, reorder,
+send-now or steer action. This view does not transfer ordinary busy-composer
+submissions from browser-local storage into the server inbox.
+
+The browser-local pending-message section starts collapsed, showing only its
+count and a Needs review indicator for failures or unconfirmed delivery. Its disclosure
 reveals message content, mode, status and actions; it does not auto-expand during
 a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
 stop override: Station waits for a settled interruption receipt before sending
