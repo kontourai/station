@@ -597,12 +597,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "scripts/proof-repo-guardrails.mjs",
-      "rule": "as-any",
-      "fingerprint": "380e78d75069e4bb23667ab3ba4102b5f68ebadfe478fe71c45a63ab967e1869",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/analytics/usage-rollup-service.ts",
       "rule": "as-any",
       "fingerprint": "3f7083107757d7596f5cb8025f0274ece4d2cb7f6bfd6dff3206fb61855819d7",
@@ -1242,12 +1236,6 @@
       "file": "src-server/runtime/conversation/dispatch-model-policy.ts",
       "rule": "as-unknown",
       "fingerprint": "f3ec4e263485ca69ac771ecc0fbed81e3109ca8feda034aee7e3ca89a8da173b",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/runtime/conversation/fleet-routing-receipt-log.ts",
-      "rule": "as-unknown",
-      "fingerprint": "c0ca896fb3bbfd3adc376ec6c1a7afcb08b76caeb1420a1ca06ad3c290121161",
       "reason": "legacy-cast"
     },
     {

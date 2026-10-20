@@ -159,7 +159,7 @@ describe('listConnectedRemoteSessions', () => {
     expect(fetchSessions).not.toHaveBeenCalled();
   });
 
-  // LOW (archive#1097 review round 2): a large saved-profile list must not
+  // archive#1097: a large saved-profile list must not
   // open an unbounded number of simultaneous outbound connections from one
   // Home-view read.
   test('never runs more than MAX_CONCURRENT_REMOTE_ENVIRONMENTS fetches at once, and still resolves every environment', async () => {
@@ -725,7 +725,7 @@ describe('federated message search', () => {
 });
 
 /**
- * archive#1778 delta review, finding 3 — THE WIRE BOUNDARY THE COMPILER
+ * archive#1778 — THE WIRE BOUNDARY THE COMPILER
  * CANNOT SEE.
  *
  * `answerability` is a REQUIRED member of `OrchestrationSessionSummary`, and

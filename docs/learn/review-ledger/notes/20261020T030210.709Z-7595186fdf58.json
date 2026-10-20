@@ -1,0 +1,21 @@
+{
+  "revision": "abc933ae524a37df6a562bff68a28695deec322e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"station-control-policy.ts changed only the get_agent entry: its route moved from the unhandled GET /agents/:slug to the GET /agents listing it now reads (same READ policy as list_agents; no shared dispatch leaf). Checked this document: it names no get_agent route or policy for it, and its route and tool claims are unchanged.","inputs":["docs/architecture/module-map.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"station-control-policy.ts changed only the get_agent entry: its route moved from the unhandled GET /agents/:slug to the GET /agents listing it now reads (same READ policy as list_agents; no shared dispatch leaf). Checked this document: it names no get_agent route or policy for it, and its route and tool claims are unchanged.","inputs":["docs/guides/agents.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"station-control-policy.ts changed only the get_agent entry: its route moved from the unhandled GET /agents/:slug to the GET /agents listing it now reads (same READ policy as list_agents; no shared dispatch leaf). Checked this document: it names no get_agent route or policy for it, and its route and tool claims are unchanged.","inputs":["docs/guides/connections.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"station-control-policy.ts changed only the get_agent entry: its route moved from the unhandled GET /agents/:slug to the GET /agents listing it now reads (same READ policy as list_agents; no shared dispatch leaf). Checked this document: it names no get_agent route or policy for it, and its route and tool claims are unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"station-control-policy.ts changed only the get_agent entry: its route moved from the unhandled GET /agents/:slug to the GET /agents listing it now reads (same READ policy as list_agents; no shared dispatch leaf). Checked this document: it names no get_agent route or policy for it, and its route and tool claims are unchanged.","inputs":["docs/reference/cli.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"station-control-policy.ts changed only the get_agent entry: its route moved from the unhandled GET /agents/:slug to the GET /agents listing it now reads (same READ policy as list_agents; no shared dispatch leaf). Checked this document: it names no get_agent route or policy for it, and its route and tool claims are unchanged.","inputs":["docs/reference/session-api.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"station-control-policy.ts changed only the get_agent entry: its route moved from the unhandled GET /agents/:slug to the GET /agents listing it now reads (same READ policy as list_agents; no shared dispatch leaf). Checked this document: it names no get_agent route or policy for it, and its route and tool claims are unchanged.","inputs":["docs/user/personal-boards.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"station-control-policy.ts changed only the get_agent entry: its route moved from the unhandled GET /agents/:slug to the GET /agents listing it now reads (same READ policy as list_agents; no shared dispatch leaf). Checked this document: it names no get_agent route or policy for it, and its route and tool claims are unchanged.","inputs":["examples/self-configuring-agent/README.md","src-server/tools/station-control-policy.ts"]}
+  ]
+}

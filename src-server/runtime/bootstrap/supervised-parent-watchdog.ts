@@ -1,4 +1,5 @@
 import { lookupProcessBirthFingerprintAsync } from '@kontourai/station-shared/process-identity';
+import { SUPERVISOR_ENV } from '@kontourai/station-supervisor/protocol';
 import type { Logger } from '../../utils/logger.js';
 
 export const SUPERVISED_PARENT_WATCHDOG_INTERVAL_MS = 15_000;
@@ -78,13 +79,17 @@ interface SupervisedParentWatchdogDependencies {
 export function armSupervisedParentWatchdog(
   dependencies: SupervisedParentWatchdogDependencies,
 ): void {
-  const supervisorPid = (dependencies.env ?? process.env)
-    .STATION_SUPERVISOR_PID;
+  const env = dependencies.env ?? process.env;
+  // A generation of the process supervisor learns it is gone when its IPC
+  // channel closes (supervisor-link.ts), on every OS. This watchdog's ppid and
+  // birth checks were written for other supervisors; an inherited
+  // STATION_SUPERVISOR_BIRTH would make it stop a healthy generation.
+  if (env[SUPERVISOR_ENV.ipc] === '1') return;
+  const supervisorPid = env.STATION_SUPERVISOR_PID;
   if (!supervisorPid) return;
 
   const getParentPid = dependencies.getParentPid ?? (() => process.ppid);
-  const supervisorBirth = (dependencies.env ?? process.env)
-    .STATION_SUPERVISOR_BIRTH;
+  const supervisorBirth = env.STATION_SUPERVISOR_BIRTH;
   const lookupSupervisorBirth =
     dependencies.lookupSupervisorBirth ?? lookupProcessBirthFingerprintAsync;
   const exit = dependencies.exit ?? ((code) => process.exit(code));

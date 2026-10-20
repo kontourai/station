@@ -176,14 +176,15 @@ The optional [private telemetry companion](../../deployment/telemetry/README.md)
 now has an explicit receiver image target and a separate pinned Compose profile.
 It requires private credential files and loopback exposure; consumer validation,
 actual delivery, backup/restore and release qualification are still pending.
-Its source is distinct from the development template below and existing dogfood
-receipts.
+Its source is distinct from existing dogfood receipts.
 
-The standalone stack in `monitoring/` is independently managed from the
-production Station container. It maps OTLP HTTP to 4318, Prometheus to 9090,
-Grafana to 3333 and Jaeger to 16686. The checked-in template uses mutable image
-tags, host port bindings and a development Grafana password/anonymous viewing;
-it is not a hardened public monitoring deployment.
+The same directory provides the only checked-in monitoring stack. Its
+[developer profile](../../deployment/telemetry/README.md#developer-profile) runs
+the digest-pinned Collector, Prometheus, Tempo and Grafana without the product
+receiver, independently of the production Station container. It publishes OTLP
+HTTP on 44482, Prometheus on 44483 and Grafana on 44484, all on loopback, and
+refuses to start without private credential files. It is not a hardened public
+monitoring deployment.
 
 Read [the monitoring guide](monitoring.md) before enabling the stack or setting
 `OTEL_EXPORTER_OTLP_ENDPOINT`. `localhost` in a container names that container,
@@ -473,9 +474,13 @@ subscription, and unsubscription routes and delivery are unavailable for the
 same reason: paired-device subscriptions have no durable tenant binding. These
 surfaces return only when their backing storage carries and enforces that
 binding; personal mode retains the existing terminal and Web Push behavior.
-Answer shares are different: their list, mint, view, and revoke operations use
-the existing session authority and remain available only for authorized
-sessions. Personal mode retains its existing scheduler, task, and merged
+Answer shares are partly available. Listing and revoking use the caller's
+session authority within its tenant; without a tenant context, the list is
+empty and a revoke answers as not found. Minting a new share returns 409
+("Answer sharing is not available on a hosted Station yet") because the public
+share view does not yet read as the recorded sharer within that tenant; see
+[the share routes](../../src-server/routes/share/answer-share-routes.ts).
+Personal mode retains its existing scheduler, task, and merged
 file/session conversation behavior.
 
 ## Environment Configuration

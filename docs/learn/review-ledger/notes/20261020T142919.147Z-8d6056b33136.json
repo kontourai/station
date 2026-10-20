@@ -1,0 +1,11 @@
+{
+  "revision": "e917673c97293e98d0a864d7335f1249cc1b54fa",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Checked the exclude list against corpus.json at this revision: the docs-root, directory and guide/reference globs are unchanged, and the new bullet names the three exact-path review READMEs corpus.json excludes (personal-boards, workspace-map, and mobile-pickers, which this PR adds). Admission still changes public-docs.json and corpus.json together.","inputs":["docs/pages/README.md","corpus.json"]},
+
+    {"path":"docs/guides/documentation.md","note":"Checked the corpus.json claims (it tracks public-docs.json: same sources, sections and order; bundle-only manual; mirrored MCP topics) against this PR's corpus.json change: it adds one exact-path exclude for a review README and changes no document, section or topic, so the claims still hold.","inputs":["docs/guides/documentation.md","corpus.json"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked against this PR's path-read-pin-boundary.test.ts change: it adds one suite to UNREPORTED_PATH_READING_SUITES with its reason. No pinning rule, lane or selection behaviour this guide describes changes.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

@@ -14,11 +14,11 @@ const source = (path: string) => readFileSync(join(repoRoot, path), 'utf-8');
 /**
  * One Rust function's body, bounded at its closing brace.
  *
- * Slicing to end-of-file instead — which this helper did until the #1815
- * round-4 review — makes "the first millisecond literal after the name" match
- * whatever comes next once the real one moves. The reviewer executed the
- * likeliest refactor, hoisting the poll interval to a named constant above
- * the function, and the extractor silently read a 3 s literal from an
+ * Slicing to end-of-file instead — which this helper did until a later
+ * #1815 fix — makes "the first millisecond literal after the name" match
+ * whatever comes next once the real one moves. Executing the likeliest
+ * refactor, hoisting the poll interval to a named constant above the
+ * function, made the extractor silently read a 3 s literal from an
  * unrelated function ninety-five lines further down while the test stayed
  * green: a self-checking mechanism certifying a number its own docblock
  * contradicts.
@@ -42,7 +42,7 @@ function rustFunctionBody(text: string, name: string): string {
 
 /**
  * Every shutdown grace Station actually runs under, READ from its own source
- * rather than transcribed (station#1815 review round 2).
+ * rather than transcribed (station#1815).
  *
  * The budget's docblock used to derive itself from "the time this process
  * has", citing the 5 s Unix stop — a quantity that does not exist, and whose
@@ -247,7 +247,7 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     });
 
     await letShutdownRunToQuiescence();
-    // The half the reviewer's I7 probe defeats: with the wait at the front of
+    // The half that catches a wait-first teardown: with the wait at the front of
     // teardown this array is still EMPTY here, and a stop that SIGKILLs at 5 s
     // would have taken the event-store close, the service shutdown and the
     // plugin subscription close down with it.

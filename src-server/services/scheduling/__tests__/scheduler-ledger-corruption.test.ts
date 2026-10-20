@@ -144,7 +144,7 @@ describe('SchedulerLedger tells damaged bytes apart from a busy store', () => {
   );
 
   test('a store already proved corrupt stops answering "created"', () => {
-    // The review reproduction. Before the latch this sequence returned
+    // The original reproduction. Before the latch this sequence returned
     // `{kind:'created'}` — a 200 and "Job 'x' created" — from a process that
     // had ALREADY written the corruption marker four lines earlier, for a job
     // the next boot's `quick_check` refuses to even open. SQLite can satisfy
@@ -165,7 +165,7 @@ describe('SchedulerLedger tells damaged bytes apart from a busy store', () => {
   });
 
   test('a receipt claimed before the damage cannot open its invocation fence', () => {
-    // The delta-review reproduction. A run claimed while the store was healthy
+    // A run claimed while the store was healthy
     // walks in the side door: `claimDue`/`claimManual` guard the front one, but
     // this receipt is already in memory. `beginInvocation` is what authorizes
     // the adapter call, and SQLite served that write from cached pages — so
@@ -338,7 +338,7 @@ describe('BuiltinScheduler acts on the difference', () => {
         // `src-ui/src/views/ScheduleView.tsx` renders a hardcoded "Scheduler
         // Unavailable / Check that the server is running" whenever both its
         // queries error, discarding status and body. Deliberately out of scope
-        // here; filed as follow-up (archive#3220 review, HIGH-2).
+        // here; left as a follow-up (archive#3220).
         await expect(call(scheduler)).rejects.toThrow(
           /restore a validated backup/,
         );
@@ -481,8 +481,9 @@ describe('BuiltinScheduler acts on the difference', () => {
   });
 
   test('a run whose store goes bad after claiming never reaches the adapter', async () => {
-    // The end of the HIGH-3 tail, driven through the real execution path: the
-    // point of refusing the fence is that no unattended agent runs behind it.
+    // The claimed-receipt case above, driven end to end through the real
+    // execution path: the point of refusing the fence is that no unattended
+    // agent runs behind it.
     // The ledger wrapper damages the store in the one window the production
     // sequence leaves — after `claimManual` returns a receipt, before
     // `executeSchedulerJobAttempt` opens the fence.

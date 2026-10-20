@@ -1,0 +1,37 @@
+{
+  "revision": "32cedb4ce74217815c4cd4bf75d1e3730fec8f72",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Changed the ColorThemes interface paragraph: a failed sheet is requested again only when the selection changes or on retryColorTheme(), checked against color-theme-apply.ts and the unrelated-setting test in color-themes.test.ts.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/color-theme-apply.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-read the Named color themes section. color-theme-apply.ts now re-requests a failed sheet only on a selection change or retryColorTheme(); the guide routes those rules to the decision record, which states them. No prose change.","inputs":["docs/guides/theming.md","src-ui/src/lib/color-theme-apply.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-read the topic build description; station-docs-content.ts was regenerated for the updated ColorThemes topic. No prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-read the module-map references in this doc. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is re-requested only on a selection change or retryColorTheme); the sections this doc links to are unchanged. No prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

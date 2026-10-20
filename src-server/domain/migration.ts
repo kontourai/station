@@ -12,8 +12,11 @@ import type {
   LayoutDefinition,
 } from '@kontourai/station-contracts/layout';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import { createLogger } from '../utils/logger.js';
 import { FileStorageAdapter } from './file-storage-adapter.js';
 import { runOrchestrationEventMigration } from './migrations/003-orchestration-events.js';
+
+const logger = createLogger({ name: 'startup-migration' });
 
 /** Owner-scoped layout stores, never the pre-projects legacy format (#2060). */
 const RESERVED_LAYOUT_ROOTS = new Set(['personal', 'instance']);
@@ -64,6 +67,8 @@ export async function runStartupMigrations(
     });
   }
 
+  // SUNSET(#3878): the pre-projects layout migration below is removed after
+  // 2027-01-31. The connection seeding above stays.
   const projectsDir = join(projectHomeDir, 'projects');
 
   if (existsSync(projectsDir)) return;
@@ -86,11 +91,10 @@ export async function runStartupMigrations(
       try {
         parsed = JSON.parse(readFileSync(layoutFile, 'utf-8'));
       } catch (e) {
-        console.debug(
-          'Failed to parse layout file during migration:',
+        logger.debug('Failed to parse layout file during migration', {
           layoutFile,
-          e,
-        );
+          error: e,
+        });
         continue;
       }
       // Require the legacy shape rather than trusting the path: a

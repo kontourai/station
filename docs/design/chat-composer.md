@@ -10,7 +10,7 @@
 > browser, accessibility, or native-device test result.
 
 > Status: **composer hierarchy, the provider/model picker, prerequisite
-> guidance, shortcuts, and final Settings polish shipped through #1354.**
+> guidance, shortcuts, and final Settings polish shipped through archive#1354.**
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
@@ -35,6 +35,17 @@ reveal controls, but must not change bubble size or the position of later messag
 A settled answer's **Basis** chip is not hover-revealed: it sits beside that row,
 visible at rest, and opens the Chat inventory scoped to that answer
 ([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).
+It reads plain **Basis** for an unassessed answer, which is nearly every answer
+today, and states that standing only in its accessible name. A notable standing
+(policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
+**Basis · Policy met**
+([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
+The chip reads an answer's standing only while it is on screen, cancels a read
+that scrolls off screen unanswered, does not re-read a standing it holds while it
+stays mounted, and refreshes on an assessment or narrative update. A long
+transcript unmounts far-off answers; one that returns is read again, because the
+Basis read re-checks access for each new chip. Pending or failed, it stays
+**Basis** and still opens.
 During an authorized active-turn continuation wait, the composer accepts and
 preserves a draft. Sending and queueing stay blocked until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
@@ -430,7 +441,7 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 4. **Agent-type badges — superseded.** This item is superseded by
    `agent-engine-unification.md` §8.1: every resolved agent gets one **engine chip**
    naming its engine ("Station", "Claude Code", "OpenCode · GLM-4.7") instead of an
-   External/ACP badge pair; "External" and "ACP" never render. Shipped in #894. The
+   External/ACP badge pair; "External" and "ACP" never render. Shipped in archive#894. The
    navigability principle (§1) and the §4 API-parity table remain binding as written.
 5. **Context meter and session chrome** move to the session header/tab area, out of the
    input row.

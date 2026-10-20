@@ -54,7 +54,8 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../hooks/useIsMobile', () => ({
+vi.mock('../../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../hooks/useIsMobile')>()),
   useIsMobile: () => false,
   useDockSlotDevice: () => ({ viewportWidth: 1456, coarsePointer: false }),
   // Every dock placement, so nothing is filtered out by the DEVICE and the only

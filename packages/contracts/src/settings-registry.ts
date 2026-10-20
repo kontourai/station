@@ -756,12 +756,23 @@ export const NULLABLE_APP_CONFIG_KEYS: ReadonlySet<keyof AppConfig> = new Set(
 export const INTERNAL_APP_CONFIG_FIELDS = [
   'mcpUiFrameOrigin',
   'pluginFrameOrigin',
-  'managedChatOrchestration',
   // #1582 D9: runtime-derived on GET only — the shell this host would try
   // first when `terminalShell` is unset. It is the DEFAULT for a registered
   // setting, never a setting of its own, so it must not be writable.
   'defaultTerminalShell',
 ] as const satisfies readonly (keyof AppConfig)[];
+
+/**
+ * Keys an earlier release could leave in `config/app.json` that are no
+ * longer `AppConfig` fields. The loader deletes them on read, so a stale file
+ * still loads but neither echoes them from `GET /config/app` nor keeps them
+ * on disk. `PUT /config/app` ignores them as unknown keys.
+ *
+ * `managedChatOrchestration` was the runtime-derived
+ * `STATION_FEATURES=managed-chat-orchestration` flag (ADR 0010). ADR 0014
+ * recorded it as inert, and it was retired.
+ */
+export const RETIRED_APP_CONFIG_KEYS = ['managedChatOrchestration'] as const;
 
 type RegisteredKey = (typeof APP_SETTINGS_REGISTRY)[number]['key'];
 type InternalKey = (typeof INTERNAL_APP_CONFIG_FIELDS)[number];
@@ -823,7 +834,7 @@ export interface SanitizeAppConfigUpdateResult {
  * - Keys in `INTERNAL_APP_CONFIG_FIELDS` are runtime-derived and are always
  *   ignored (reason `'runtime-derived'`) — this is what stops a client that
  *   round-trips a `GET /config/app` response (which injects
- *   `mcpUiFrameOrigin`/`pluginFrameOrigin`/`managedChatOrchestration`) from persisting them.
+ *   `mcpUiFrameOrigin`/`pluginFrameOrigin`) from persisting them.
  * - Unknown keys are ignored (reason `'unknown'`), not rejected: earlier
  *   `app.json` files can carry stray keys that prior clients still
  *   round-trip, and rejecting the whole request over them would be a

@@ -1,0 +1,9 @@
+{
+  "revision": "ce4a065f15b1f183ef737bd1c365d4d27171ddf7",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Image-pinning sentence now matches compose.yaml, compose.diagnostics.yaml and compose.tunnel.yaml: Collector, Prometheus, Tempo, Grafana and PostgreSQL carry digests; receiver and cloudflared are required operator-supplied values without digest enforcement. Live-start sentence matches one executed run of compose.diagnostics.yaml plus compose.dev.yaml: dashboard provisioned (26 non-row panels), anonymous and admin/station Grafana requests 401, OTLP without or with a wrong key 401, keyed counter visible in Prometheus. Shadow-record comment path change does not alter any claim here.","inputs":["docs/guides/monitoring.md","src-server/services/projects/project-resource-shadow-record.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Monitoring guide edits (image pinning, live-start scope) leave the #2750/#2751/#2752/#2755 routing this review cites unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

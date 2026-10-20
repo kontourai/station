@@ -17,8 +17,8 @@ import { createConnection, createServer } from 'node:net';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ControlServer, type ControlServerOptions } from '../control-server.ts';
-import type { ControlEndpoint } from '../protocol.ts';
-import { makeShortHome } from './harness.ts';
+import { type ControlEndpoint, supervisorRunDir } from '../protocol.ts';
+import { makeShortHome, trackHome } from './harness.ts';
 
 const posixOnly = process.platform === 'win32' ? it.skip : it;
 
@@ -44,7 +44,7 @@ function answer(path: string): Promise<string> {
 }
 
 function endpointIn(home: string): ControlEndpoint {
-  const run = join(home, 'run');
+  const run = supervisorRunDir(trackHome(home));
   return {
     path: join(run, 's.sock'),
     tokenPath: join(run, 's.token'),
@@ -77,7 +77,7 @@ describe('control server private directories', () => {
     const home = makeShortHome();
     const control = server(endpointIn(home));
     await control.listen();
-    expect(statSync(join(home, 'run')).mode & 0o777).toBe(0o700);
+    expect(statSync(supervisorRunDir(home)).mode & 0o777).toBe(0o700);
     await control.close();
   });
 
@@ -85,7 +85,7 @@ describe('control server private directories', () => {
     const home = makeShortHome();
     const target = join(home, 'elsewhere');
     mkdirSync(target, { mode: 0o700 });
-    symlinkSync(target, join(home, 'run'));
+    symlinkSync(target, supervisorRunDir(home));
     await expect(server(endpointIn(home)).listen()).rejects.toThrow(
       /is a symlink/,
     );
@@ -93,7 +93,7 @@ describe('control server private directories', () => {
 
   posixOnly('refuses a run directory owned by another user', async () => {
     const home = makeShortHome();
-    mkdirSync(join(home, 'run'), { mode: 0o700 });
+    mkdirSync(supervisorRunDir(trackHome(home)), { mode: 0o700 });
     const otherUid = (process.getuid?.() ?? 0) + 1;
     await expect(
       server(endpointIn(home), { currentUid: () => otherUid }).listen(),
@@ -104,7 +104,7 @@ describe('control server private directories', () => {
     'refuses an existing run directory broader than 0700 and leaves its mode alone',
     async () => {
       const home = makeShortHome();
-      const run = join(home, 'run');
+      const run = supervisorRunDir(trackHome(home));
       mkdirSync(run);
       chmodSync(run, 0o755);
       await expect(server(endpointIn(home)).listen()).rejects.toThrow(
@@ -183,7 +183,7 @@ describe('control server private directories', () => {
         expect(existsSync(endpoint.path)).toBe(true);
         expect(await answer(endpoint.path)).toBe('other');
         expect(
-          readdirSync(join(home, 'run')).filter((name) =>
+          readdirSync(supervisorRunDir(home)).filter((name) =>
             name.startsWith('.d'),
           ),
         ).toEqual([]);

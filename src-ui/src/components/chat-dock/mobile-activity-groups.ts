@@ -28,7 +28,7 @@ export type MobileActivityGroupId =
 
 /**
  * THE snooze presets — one set for the dock, the phone picker and Home
- * (design round 2026-10, V49: the dock said "30 min / 3 hours / Until 9 AM"
+ * (#3239: the dock said "30 min / 3 hours / Until 9 AM"
  * while Home said "In 1 hour / This evening / Tomorrow 9am / Next week Mon
  * 9am"). Two durations and two mornings, in local time.
  */

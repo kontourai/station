@@ -167,12 +167,93 @@ values can legitimately use `style`; `ResponsiveDialogSurface` is an existing
 example. Do not ban its measured viewport/anchor values or replace them with
 hardcoded offsets to satisfy a blanket “no inline styles” slogan.
 
+Map a status value to a tone with the helpers in
+[station-tones.ts](../../src-ui/src/components/kontour/station-tones.ts) and
+render it with `StatusBadge` or `Badge` from `@kontourai/ui/react`; both take a
+`tone` and always show the label. Station restyles the positive, caution,
+negative and active `.tone-*` classes with AA-checked pairs. A custom status
+style uses `--k-positive`, `--k-caution`, `--k-negative`, `--k-active` or
+`--k-neutral`, with the matching `-soft` token as a tinted fill (there is no
+neutral soft fill), and always carries a text label: color only reinforces it.
+Check `node_modules/@kontourai/ui/tokens/tokens.css` before using a token that
+is not listed here. Existing components also use the older Station variables
+in `src-ui/src/index.css` (`--text-primary`, `--bg-secondary` and similar);
+never hard-code hex colors.
+
 Use Station's `Button` and `Dialog` for standard actions/chrome, and the public
 package primitives where that surface already adopts them. A custom
 `ResponsiveDialogSurface` needs its own visual styles. Follow the
 [responsive guide](../guides/responsive-ui.md) for layers, safe areas, focus,
 viewport geometry, touch targets and inventory requirements. Structural tests
 and tokens do not prove computed contrast or phone interaction across the app.
+
+## Shared components and engine identity
+
+Confirm a destructive or significant action with
+[`ConfirmModal`](../../src-ui/src/components/modals/ConfirmModal.tsx), never
+`window.confirm()` or `window.alert()`; a guardrail scans for the native
+dialogs.
+
+```tsx
+import { ConfirmModal } from '@/components/modals/ConfirmModal';
+
+<ConfirmModal
+  isOpen={showConfirm}
+  title="Delete Item"
+  message="This cannot be undone."
+  confirmLabel="Delete"
+  cancelLabel="Cancel"
+  variant="danger"
+  onConfirm={handleConfirm}
+  onCancel={() => setShowConfirm(false)}
+/>
+```
+
+Render an Agent's icon with
+[`AgentIcon`](../../src-ui/src/components/icons/AgentIcon.tsx)
+(`<AgentIcon agent={agent} size={20} />`) instead of checking icon URLs or
+rendering an `<img>` yourself.
+
+Never infer an engine from an Agent ID prefix. The Agent catalog exposes
+`engineId`, `engineDisplayName` and `engineConnectionType`; test
+`engineConnectionType === 'acp'` when the connection method matters. The saved
+connection ID is `execution.agentConnectionId`, not the Agent ID or a legacy
+`source` discriminator. Execution requests name the Agent and let the server
+resolve that binding, and user-facing copy names the engine.
+
+A bound Agent's `engineId` comes from its connection's static identity (the
+Adapter's engine, or `'acp'`), not from the live connection inspection, so a
+failing or slow inspection does not remove it; `engineDisplayName` and
+readiness still need the live read (#3355). When an Inbox row's Agent resolves,
+is bound to an engine connection and still reports no `engineId`,
+`inboxRowIconAgent` draws the engine that the row's own execution recorded
+(`HomeWorkItem.provider`). It does so only when that engine has a bundled mark,
+and never for an ACP-bound or unresolved Agent.
+
+## Messages and locale formatting
+
+[src-ui/src/i18n/](../../src-ui/src/i18n/) holds Station UI's message catalog
+and locale formatters. Today it covers only the route shell (loading, chunk,
+authority and generic route errors: 10 keys), and the UI always runs in
+`en-US`; `navigator.language` is not read. Settings rows use their own
+`SETTINGS_MESSAGES` table in `views/settings/settings-catalog.ts`.
+
+- Read a message with `const { message } = useLocale()` and call
+  `message('route.loading')`. Placeholders are written `{name}` and passed as
+  an object; TypeScript requires exactly the template's placeholder names. At
+  runtime a template with placeholders throws on a missing or extra value; a
+  template with none returns unchanged and ignores any values passed.
+- `useLocale()` also returns `formatDate`, `formatNumber` and `compare`, cached
+  `Intl` formatters for the current locale.
+- Add a key only to `catalog.en-US.ts`. The pseudo-locale catalog
+  `catalog.en-XA.ts` is derived from it, and a test keeps the two key sets
+  identical.
+- The `no dead catalog keys` test in `i18n/__tests__/LocaleContext.test.tsx`
+  requires the keys called from `RoutePendingSkeleton.tsx` and
+  `RouteViewBoundary.tsx` to equal the catalog. When another file starts using
+  `message(...)`, add it to that test's file list.
+- Check layout against longer text with the pseudo-locale: open a development
+  build with `?locale=en-XA`. Production builds do not include it.
 
 ## Package boundaries
 

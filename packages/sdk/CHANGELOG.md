@@ -1,5 +1,53 @@
 # @kontourai/station-sdk
 
+## 0.11.0
+
+### Minor Changes
+
+- b97b819: Support repeatable `station delegate --attach=<path>` for new current-host tasks. Stage files with owner and digest checks, preserve exact bytes in the resolved workspace, and refuse unsupported hosts or over-limit batches instead of dropping files.
+  
+  Use coded refusals, release staged bindings and remove workspace files after confirmed pre-effect failure, and retain files for uncertain invocations. Refuse unsupported attachment fields instead of stripping them; pre-check duplicate basenames and cancel CLI stages on failed dispatch.
+- 8d1d328: Expose the provider-failure contract subpath and optional runtime-error classification for legacy readers. Built-in server writers require engine-neutral kind, computed retryability and effect phase. Preserve existing diagnostic codes and add kind, retryable and failurePhase to SDK HTTP errors.
+  
+  Distinguish confirmed pre-effect refusal from uncertain invocation and preserve structured insufficient-quota classification across the model-provider SSE relay.
+- f94583e: Remove exports that had no consumer. Import the replacements where one exists.
+  
+  - Shared: remove the `./guidance-assets`, `./agent-validation` and
+    `./mcp-elicitation-form` subpaths and the root re-exports of
+    `skillToGuidanceAsset`, `requiresAgentPrompt` and
+    `requiresAgentPromptForRuntime`. Use
+    `@kontourai/station-contracts/guidance-assets` (its copy also keeps the
+    skill's `provenance`, which the shared copy dropped) and
+    `@kontourai/station-contracts/agent-validation`. Read MCP elicitations with
+    `inputRequestFromRequestEvent` from `@kontourai/station-shared/input-request`.
+  - Contracts: remove `McpElicitationForm`, which only the removed shared reader
+    returned. The field types stay.
+  - SDK: remove the unused `KeyboardCommand`, `WindowOptions` and
+    `IKnowledgeProvider` types; the `./answer-narrative-binding` subpath
+    (`getAnswerNarrativeTarget`, `publishAnswerNarrative`,
+    `removeAnswerNarrative`, `AnswerNarrativeBindingRequestError`);
+    `useSecretBindingQuery`; `useSessionOutputsQuery` and
+    `sessionOutputsQueries`; `useKeepDeclaredOutputMutation` and
+    `keepDeclaredOutput` (use `useKeepSessionOutputMutation` from
+    `./session-output-actions`); and `useInvalidateSessionInventory`.
+
+### Patch Changes
+
+- e880e9c: Stop `useSessionInventoryQuery` and `useSessionInventoryGroupPage` from refetching forever after a failed read. Only lost authority (401, 403, or the route's non-disclosing 404) revokes cached inventory. A 503, a network failure (status 0) or a projection the contract refuses (reported with the response's own status, usually 200) is now an ordinary query error. Once a read made during the current mount has succeeded, a background refetch keeps the loaded projection in `data` instead of reporting it as loading; a mount whose own read failed still shows nothing cached before it. Every mount, and every key a mounted hook switches to, now makes its own read: `refetchOnMount` is forced to `'always'` for these hooks, overriding a caller's `false`.
+  
+  `clearSessionInventoryCache` now tombstones matching projection and page entries: it leaves `null` in the cache instead of removing them, so a mounted observer no longer re-creates and refetches a revoked query. Callers that tested for `undefined` after clearing should test for `null`.
+- Updated dependencies [9b1c96b]
+- Updated dependencies [9e9d0ff]
+- Updated dependencies [b97b819]
+- Updated dependencies [2bd9640]
+- Updated dependencies [822331d]
+- Updated dependencies [8d1d328]
+- Updated dependencies [99c843d]
+- Updated dependencies [f94583e]
+- Updated dependencies [2bd9640]
+  - @kontourai/station-contracts@0.11.0
+  - @kontourai/station-shared@0.11.0
+
 ## 0.10.0
 
 ### Minor Changes

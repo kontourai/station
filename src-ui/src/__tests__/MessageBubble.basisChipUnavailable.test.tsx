@@ -29,8 +29,16 @@ vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => {
   }
   // Shaped like the real chip: visible "Basis", per-answer accessible name.
   return {
-    ConnectedAnswerBasisAffordance: ({ label }: { label: string }) => (
-      <button type="button" className="answer-basis-chip" aria-label={label}>
+    ConnectedAnswerBasisAffordance: ({
+      answerName,
+    }: {
+      answerName: string;
+    }) => (
+      <button
+        type="button"
+        className="answer-basis-chip"
+        aria-label={`Basis for ${answerName}`}
+      >
         Basis
       </button>
     ),
