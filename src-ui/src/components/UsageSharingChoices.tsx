@@ -173,9 +173,7 @@ export function UsageSharingChoices({
           ariaLabel="Do Not Track"
           tone="info"
         >
-          Do Not Track is on, so nothing is shared. Your saved choice applies
-          when it is turned off; detailed sharing will need your confirmation
-          then.
+          Do Not Track is on, so nothing is shared.
         </PageCallout>
       )}
       <fieldset
