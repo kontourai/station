@@ -88,6 +88,12 @@ not yet accepted.
 - #3875 review repairs: unit and integration suites for the fence, locked
   transactions, the bound, guards, Keep on a phone and exact Up each fail when
   the behaviour they name is reverted (fault injection, recorded in the pull
-  request). Known limits: without a verified Station opens stay unfenced and
-  path-matched; switching tabs within a region still unmounts the hidden pane,
-  as before; the open account menu's phone geometry is not measured.
+  request). Known limits: switching tabs within a region still unmounts the
+  hidden pane, as before; the open account menu's phone geometry is not
+  measured.
+- #3875 review round 2: related opens refuse without a verified Station; the
+  focus path, Up and a close answered after its pane moved each recheck what
+  their guard was asked about; a menu that mounts open no longer dismisses
+  itself under StrictMode (found in the running app); toolbar menus outrank the
+  notification column they open into (found by hosted pr-smoke). Each fix has
+  a test that fails when it is reverted.

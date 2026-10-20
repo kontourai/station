@@ -167,7 +167,8 @@ ask again), and refuses an oversized patch. A preview opened from a
 conversation, or from a docked Files pane, while the Station is verified is a
 related occurrence ([pane relationships](../../design/pane-relationships.md)):
 it also carries its own Station fence, and it renders, reading nothing before,
-only while the verified Station is exactly that one.
+only while the verified Station is exactly that one. Without a verified
+Station such an open is refused rather than minting an unfenced preview.
 _Avoid_: an editor, browser, native file handle, or renderer supplied by persistence
 
 **Worktree diff**:

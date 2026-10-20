@@ -29,7 +29,9 @@ stays reachable with its captured scope visible. Replacement, close and source
 changes run the relevant unsaved guard before committing. Cancel changes neither
 source, child nor focus. Region buttons only show or hide existing content.
 
-Back consumes real history. Up returns to the exact opener. A cold child link
+Back consumes real history. Up returns to the exact opener; when its own
+reveal would take the child off screen (a phone layer, or the child's region
+tab), the child's guard is asked once first. A cold child link
 does not fabricate a parent history entry. Reload restores the exact validated
 child. Resizing changes presentation without creating history or controllers.
 Loading, offline, missing, denied and wrong-Station outcomes remain distinct.
@@ -50,16 +52,18 @@ build cannot read stays closed. Losing, rolling back or outgrowing the side
 record therefore never unfences an occurrence.
 
 Writes to the side record are transactions under an exclusive cross-window
-lock, over a fresh read of the record. A contended or unavailable lock, a newer
-record, the bound, or a source or Station that changed while a guard was
-answering refuses the open, and a refusal removes whatever it had written. At
+lock, over a fresh read of the record. Focusing an existing target writes too
+(its arrangement and a new line range), so it commits the same way. A
+contended or unavailable lock, a newer record, the bound, or a Station, source,
+target or covered pane that changed while a guard was answering refuses the
+open, and a refusal removes whatever it had written. At
 the bound a new relation is refused; nothing live or kept is evicted, and only
 relations whose occurrence no longer exists in shared storage are pruned.
 
-Without a verified Station there is nothing to fence a new occurrence to, so
-opens keep their earlier behavior: an unfenced preview, matched by path. That
-is a migration limit, not a second mode: an occurrence that was ever fenced is
-never matched or read that way.
+Without a verified Station there is nothing to fence a new occurrence to, so a
+related open is refused, says so, and writes nothing. Previews made before
+relationships keep their unfenced reads; no new unfenced one is minted, and an
+occurrence that was ever fenced is never matched or read by path.
 
 Relations describe display and navigation only. They never authorize a read,
 grant plugin context, broaden a bound occurrence or establish domain ancestry.

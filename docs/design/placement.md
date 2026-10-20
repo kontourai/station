@@ -724,7 +724,9 @@ preview is the exception to the minted tab's removal (`retainLayerPane`): Keep,
 or beginning an edit, makes the layer's pane an ordinary tab of Chat's region,
 so Back, "‹ Chat" and a later replacement leave it placed, and the control
 names the conversation the preview came from
-([pane relationships](pane-relationships.md)). Anything else that takes the pane off screen — "Show
+([pane relationships](pane-relationships.md)). A related pane's Up to its
+conversation leaves the layer through the same guarded close, then selects the
+conversation, so its guard is asked once and Cancel changes nothing. Anything else that takes the pane off screen — "Show
 Chat" in the folded menu, closing the tab, hiding the region — dismisses the
 layer the same way and consumes its entry; "Hide <pane>" for the layer's own
 pane is the way back to Chat rather than a hide of Chat's region. A
