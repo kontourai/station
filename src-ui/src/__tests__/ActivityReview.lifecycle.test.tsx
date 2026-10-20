@@ -22,6 +22,7 @@ import {
   authoritySwitch,
 } from '../contexts/__tests__/paneRelationsHarness';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { ToastProvider } from '../contexts/ToastContext';
 import {
   attachedContinuationScope,
@@ -194,12 +195,14 @@ test.each([
       if (change === 'source') view.changeSource();
       if (change === 'api') view.changeApi();
     });
+    const draftsBefore = structuredClone(chatDraftsStore.getSnapshot());
     await act(async () => {
       adoption.resolve(child);
       await adoption.promise;
     });
     expect(boundary.open).not.toHaveBeenCalled();
     expect(boundary.send).not.toHaveBeenCalled();
+    expect(chatDraftsStore.getSnapshot()).toEqual(draftsBefore);
     expect(activeChatsStore.getSnapshot()['child-tab'].input ?? '').toBe('');
   },
 );
@@ -217,11 +220,13 @@ test.each(['unverified', 'unmount'])(
       if (change === 'unmount') view.unmount();
       else authoritySwitch.set?.('unverified');
     });
+    const draftsBefore = structuredClone(chatDraftsStore.getSnapshot());
     await act(async () => {
       opening.resolve(true);
       await opening.promise;
     });
     expect(boundary.send).not.toHaveBeenCalled();
+    expect(chatDraftsStore.getSnapshot()).toEqual(draftsBefore);
     expect(activeChatsStore.getSnapshot()['child-tab'].input ?? '').toBe('');
   },
 );
