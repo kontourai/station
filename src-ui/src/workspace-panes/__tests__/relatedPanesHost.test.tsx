@@ -22,12 +22,13 @@ import type {
   RelatedPaneOpenRequest,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { pluginRelatedPaneBudget } from '../../components/plugins/plugin-frame-budget';
 import {
   type Authority,
   AuthorityHarness,
+  authoritySwitch,
   installFakeLocks,
   removeLocks,
   settledStorageSnapshot,
@@ -101,15 +102,16 @@ const FOREIGN = descriptor('foreign', {}, 'other');
 function entryOf(
   paneDescriptor: WorkspacePaneDescriptor,
   version = '1.0.0',
+  project = PROJECT,
 ): ResolvedWorkspacePaneCatalogEntry {
   const pluginId = paneDescriptor.provenance.pluginId as string;
   const instance = parseWorkspacePaneInstance({
     version: '1.0',
     descriptorId: paneDescriptor.id,
-    instanceId: `instance:plugin:${PROJECT.projectId}:${paneDescriptor.id}`,
-    stateKey: `state:plugin:${PROJECT.projectId}:${paneDescriptor.id}`,
+    instanceId: `instance:plugin:${project.projectId}:${paneDescriptor.id}`,
+    stateKey: `state:plugin:${project.projectId}:${paneDescriptor.id}`,
     boundContext: {
-      projectId: PROJECT.projectId,
+      projectId: project.projectId,
       contribution:
         pluginId === 'reports'
           ? contribution(version)
@@ -192,12 +194,17 @@ const probe = {
   other: undefined as PaneRelatedPanesHost | undefined,
   model: null as ReturnType<typeof useRegionModel> | null,
   relations: null as PaneRelationsValue | null,
+  /** Render again, reading `callers` and `facts` as they are now. */
+  rerender: null as (() => void) | null,
+  /** Unmount the first caller's occurrence. */
+  detachFirst: null as (() => void) | null,
 };
 
 function caller(
   occurrenceId: string,
   scope: Record<string, string> = {},
   target: RelatedPaneCaller['target'] = null,
+  { project = PROJECT, version = '1.0.0' } = {},
 ): RelatedPaneCaller {
   const instance = parseWorkspacePaneInstance({
     version: '1.0',
@@ -205,15 +212,15 @@ function caller(
     instanceId: occurrenceId,
     stateKey: occurrenceId,
     boundContext: {
-      projectId: PROJECT.projectId,
+      projectId: project.projectId,
       ...scope,
-      contribution: contribution(),
+      contribution: contribution(version),
     },
   }) as WorkspacePaneInstance;
   const made = relatedPaneCaller({
     occurrenceId,
     instance,
-    ...PROJECT,
+    ...project,
     layoutSlug: 'reports',
     label: 'Reports',
     target,
@@ -227,18 +234,28 @@ const callers = {
   second: caller('instance:list-elsewhere'),
 };
 
-function Probe() {
+function FirstCaller() {
   const host = useRelatedPanesHost(callers.first);
+  useEffect(() => {
+    probe.host = host;
+  }, [host]);
+  return null;
+}
+
+function Probe() {
+  const [, setRenders] = useState(0);
+  const [firstMounted, setFirstMounted] = useState(true);
+  probe.rerender = () => setRenders((count) => count + 1);
+  probe.detachFirst = () => setFirstMounted(false);
   const other = useRelatedPanesHost(callers.second);
   const model = useRegionModel();
   const relations = usePaneRelations();
   useEffect(() => {
-    probe.host = host;
     probe.other = other;
     probe.model = model;
     probe.relations = relations;
-  }, [host, other, model, relations]);
-  return null;
+  }, [other, model, relations]);
+  return firstMounted ? <FirstCaller /> : null;
 }
 
 async function mount(initial: Authority = { station: 'station-a' }) {
@@ -298,6 +315,8 @@ beforeEach(() => {
   probe.other = undefined;
   probe.model = null;
   probe.relations = null;
+  probe.rerender = null;
+  probe.detachFirst = null;
   facts.catalog = {
     ...PROJECT,
     entries: [entryOf(LIST), entryOf(DETAIL), entryOf(TOOL), entryOf(FOREIGN)],
@@ -675,4 +694,349 @@ describe('a handle reveals and closes only what its caller opened', () => {
       key: 'weekly',
     });
   });
+});
+
+const PROJECT_B = { projectId: 'project-b-uuid', projectSlug: 'other' };
+
+/**
+ * An unsaved-changes guard for `owner` that answers LATER, as a person
+ * reading a prompt does: the test holds the answer and gives it.
+ */
+function deferredGuard(owner: string) {
+  const asked = vi.fn();
+  let pending: { proceed: () => void; cancel?: () => void } | null = null;
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol(`${owner} draft`),
+    (proceed, cancel) => {
+      asked();
+      pending = { proceed, cancel };
+    },
+    owner,
+  );
+  const answer = (choice: 'proceed' | 'cancel') =>
+    act(() => {
+      const current = pending;
+      pending = null;
+      if (choice === 'proceed') current?.proceed();
+      else current?.cancel?.();
+    });
+  return { asked, answer, unregister };
+}
+
+function pluginPaneKeys() {
+  return Object.keys({ ...localStorage })
+    .filter((key) => key.includes('plugin-pane:'))
+    .sort();
+}
+
+async function rerenderWith(change: () => void) {
+  const previous = probe.host;
+  change();
+  act(() => probe.rerender?.());
+  await waitFor(() => expect(probe.host).not.toBe(previous));
+}
+
+describe('a related target is the exact occurrence, never one bound elsewhere', () => {
+  test.each([
+    [
+      'another Project',
+      () => {
+        facts.catalog = {
+          ...PROJECT_B,
+          entries: [
+            entryOf(LIST, '1.0.0', PROJECT_B),
+            entryOf(DETAIL, '1.0.0', PROJECT_B),
+          ],
+        };
+        facts.dock = { ...PROJECT_B };
+        callers.first = caller(
+          'instance:list',
+          { sessionId: 'session-a', runId: 'run-a' },
+          null,
+          { project: PROJECT_B },
+        );
+      },
+    ],
+    [
+      'another Session',
+      () => {
+        callers.first = caller('instance:list', {
+          sessionId: 'session-b',
+          runId: 'run-a',
+        });
+      },
+    ],
+    [
+      'another run',
+      () => {
+        callers.first = caller('instance:list', {
+          sessionId: 'session-a',
+          runId: 'run-b',
+        });
+      },
+    ],
+    [
+      'a later installation of the plugin',
+      () => {
+        facts.catalog = {
+          ...PROJECT,
+          entries: [entryOf(LIST, '1.1.0'), entryOf(DETAIL, '1.1.0')],
+        };
+        facts.registryVersion = '1.1.0';
+        callers.first = caller(
+          'instance:list',
+          { sessionId: 'session-a', runId: 'run-a' },
+          null,
+          { version: '1.1.0' },
+        );
+      },
+    ],
+  ])(
+    'a kept report is not focused for a caller bound to %s',
+    async (_name, rebind) => {
+      callers.first = caller('instance:list', {
+        sessionId: 'session-a',
+        runId: 'run-a',
+      });
+      await mount();
+      const kept = (await open({})) as { handle: string };
+      await run(async () => {
+        await probe.relations?.keep(kept.handle);
+      });
+      const record = readPluginPaneState(localStorage, kept.handle);
+      await rerenderWith(rebind);
+      const outcome = (await open({})) as { status: string; handle: string };
+      expect(outcome.status).toBe('opened');
+      expect(outcome.handle).not.toBe(kept.handle);
+      expect(readPluginPaneState(localStorage, kept.handle)).toEqual(record);
+    },
+  );
+});
+
+describe('a capability acts only for the occurrence and Station it was given to', () => {
+  test('one taken on a Station opens nothing once another Station is verified', async () => {
+    await mount();
+    const stale = host();
+    act(() => authoritySwitch.set?.('unverified'));
+    act(() => authoritySwitch.set?.({ station: 'station-b' }));
+    await waitFor(() => expect(probe.relations?.stationId).toBe('station-b'));
+    const before = await settledStorageSnapshot();
+    const arrangement = structuredClone(regions());
+    expect(
+      await run(() =>
+        stale.open({ descriptorId: DETAIL.id, modeId: 'project', key: 'w' }),
+      ),
+    ).toEqual({ status: 'unavailable', reason: 'context-mismatch' });
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(regions()).toEqual(arrangement);
+    await waitFor(() => expect(probe.host).not.toBe(stale));
+    expect(await open({ key: 'w' })).toMatchObject({ status: 'opened' });
+  });
+
+  test('an open whose caller unmounts while a guard is up opens nothing', async () => {
+    await mount();
+    act(() => probe.model?.placeSurface('activity', 'right'));
+    const guard = deferredGuard('activity');
+    try {
+      const before = await settledStorageSnapshot();
+      const arrangement = structuredClone(regions());
+      let opening!: Promise<unknown>;
+      act(() => {
+        opening = host().open({
+          descriptorId: DETAIL.id,
+          modeId: 'project',
+          key: 'weekly',
+        });
+      });
+      await waitFor(() => expect(guard.asked).toHaveBeenCalledTimes(1));
+      act(() => probe.detachFirst?.());
+      guard.answer('proceed');
+      expect(await run(() => opening)).toEqual({
+        status: 'unavailable',
+        reason: 'context-mismatch',
+      });
+      expect(await settledStorageSnapshot()).toEqual(before);
+      expect(regions()).toEqual(arrangement);
+    } finally {
+      guard.unregister();
+    }
+  });
+
+  test.each([
+    [
+      'the Station changes',
+      () => authoritySwitch.set?.({ station: 'station-b' }),
+    ],
+    [
+      'the plugin is disabled',
+      () => {
+        facts.catalog = { ...PROJECT, entries: [] };
+        probe.rerender?.();
+      },
+    ],
+    [
+      'the plugin is updated',
+      () => {
+        facts.catalog = {
+          ...PROJECT,
+          entries: [entryOf(LIST, '1.1.0'), entryOf(DETAIL, '1.1.0')],
+        };
+        facts.registryVersion = '1.1.0';
+        probe.rerender?.();
+      },
+    ],
+    ['its caller unmounts', () => probe.detachFirst?.()],
+    [
+      'more unsaved work is registered for it',
+      () => {
+        navigationStore.registerNavigationGuard(
+          Symbol('more unsaved work'),
+          (proceed) => proceed(),
+          closingHandle ?? '',
+        );
+      },
+    ],
+  ])(
+    'a close whose guard answers after %s removes nothing',
+    async (_name, change) => {
+      await mount();
+      const { handle } = (await open({})) as { handle: string };
+      closingHandle = handle;
+      const guard = deferredGuard(handle);
+      try {
+        const before = await settledStorageSnapshot();
+        const arrangement = structuredClone(regions());
+        const closer = host();
+        let closing!: Promise<unknown>;
+        act(() => {
+          closing = closer.close(handle);
+        });
+        await waitFor(() => expect(guard.asked).toHaveBeenCalledTimes(1));
+        act(() => change());
+        guard.answer('proceed');
+        expect(await run(() => closing)).toMatchObject({
+          status: 'unavailable',
+        });
+        expect(await settledStorageSnapshot()).toEqual(before);
+        expect(regions()).toEqual(arrangement);
+      } finally {
+        guard.unregister();
+        closingHandle = null;
+      }
+    },
+  );
+});
+
+let closingHandle: string | null = null;
+
+describe('what a guard was asked about is what the open commits over', () => {
+  async function keptReportUnderActivity() {
+    await mount();
+    const { handle } = (await open({ key: 'weekly' })) as { handle: string };
+    await run(async () => {
+      await probe.relations?.keep(handle);
+    });
+    act(() => probe.model?.placeSurface('activity', 'right'));
+    expect(regions().right.occupant).toBe('activity');
+    return handle;
+  }
+
+  const requests: Array<
+    [string, (kept: string) => Promise<{ status: string; reason?: string }>]
+  > = [
+    [
+      'a new report',
+      () =>
+        host().open({
+          descriptorId: DETAIL.id,
+          modeId: 'project',
+          key: 'monthly',
+        }) as Promise<{ status: string; reason?: string }>,
+    ],
+    [
+      'the kept report again',
+      () =>
+        host().open({
+          descriptorId: DETAIL.id,
+          modeId: 'project',
+          key: 'weekly',
+        }) as Promise<{ status: string; reason?: string }>,
+    ],
+    [
+      'a reveal of the kept report',
+      (kept) =>
+        host().reveal(kept) as Promise<{ status: string; reason?: string }>,
+    ],
+  ];
+
+  test.each(requests)(
+    'opening %s over a guard that moves other unsaved work in before it answers opens nothing',
+    async (_name, request) => {
+      const kept = await keptReportUnderActivity();
+      const agentsDirty = vi.fn();
+      const unregisterAgents = navigationStore.registerNavigationGuard(
+        Symbol('agents draft'),
+        (_proceed, cancel) => {
+          agentsDirty();
+          cancel?.();
+        },
+        'workspace-agents',
+      );
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('activity draft'),
+        (proceed) => {
+          // Before answering, in the same event and before any render:
+          // another pane with unsaved work takes the region's front.
+          probe.model?.placeSurface('workspace-agents', 'right');
+          proceed();
+        },
+        'activity',
+      );
+      try {
+        const relations = localStorage.getItem(PANE_RELATIONS_STORAGE_KEY);
+        const plugin = pluginPaneKeys();
+        expect(await run(() => request(kept))).toMatchObject({
+          status: 'unavailable',
+        });
+        expect(agentsDirty).not.toHaveBeenCalled();
+        expect(regions().right.occupant).toBe('workspace-agents');
+        expect(localStorage.getItem(PANE_RELATIONS_STORAGE_KEY)).toBe(
+          relations,
+        );
+        expect(pluginPaneKeys()).toEqual(plugin);
+      } finally {
+        unregister();
+        unregisterAgents();
+      }
+    },
+  );
+
+  test.each(requests)(
+    'opening %s while more unsaved work is registered for the asked pane opens nothing',
+    async (_name, request) => {
+      const kept = await keptReportUnderActivity();
+      const first = deferredGuard('activity');
+      let second: ReturnType<typeof deferredGuard> | null = null;
+      try {
+        const before = await settledStorageSnapshot();
+        const arrangement = structuredClone(regions());
+        let pending!: Promise<{ status: string; reason?: string }>;
+        act(() => {
+          pending = request(kept);
+        });
+        await waitFor(() => expect(first.asked).toHaveBeenCalledTimes(1));
+        second = deferredGuard('activity');
+        first.answer('proceed');
+        expect(await run(() => pending)).toMatchObject({
+          status: 'unavailable',
+        });
+        expect(second.asked).not.toHaveBeenCalled();
+        expect(await settledStorageSnapshot()).toEqual(before);
+        expect(regions()).toEqual(arrangement);
+      } finally {
+        first.unregister();
+        second?.unregister();
+      }
+    },
+  );
 });

@@ -17,17 +17,19 @@ import type {
   RelatedPaneUnavailable,
   RelatedPaneUnavailableReason,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { isDistinctFrameOrigin } from '../components/mcp-ui/frameOrigin';
 import { pluginRelatedPaneBudget } from '../components/plugins/plugin-frame-budget';
 import { useConfig } from '../contexts/ConfigContext';
 import { navigationStore } from '../contexts/navigation-store';
 import {
+  guardsAllow,
   openRelatedOccurrence,
   type RelatedOpenModel,
   type RelatedOpenRefusal,
   relatedOccurrenceExists,
   revealRelatedOccurrence,
+  watchGuardRegistrations,
 } from '../contexts/openRelatedOccurrence';
 import {
   type PaneRelationsValue,
@@ -37,7 +39,15 @@ import {
   type RegionModelValue,
   useRegionModelOptional,
 } from '../contexts/RegionModelContext';
-import type { PaneOpener, PaneRelation } from '../regions/pane-relations';
+import {
+  type PaneOpener,
+  type PaneRelation,
+  type PaneRelationTarget,
+  paneRelationOf,
+  RELATED_TARGET_SCOPE_KEYS,
+  sameRelationTarget,
+  withoutPaneRelation,
+} from '../regions/pane-relations';
 import { occupiedRegion } from '../regions/region-model';
 import { forgetRegionPaneState } from '../regions/region-surface-panes';
 import {
@@ -47,7 +57,10 @@ import {
   PLUGIN_PANE_ID,
   type PluginPaneScope,
   type PluginPaneState,
+  pluginPaneTarget,
+  readPluginPaneState,
 } from './pluginPaneOccurrence';
+import { registerRelatedPanesScope } from './relatedPanesScope';
 import {
   type ResolvedWorkspacePaneCatalogEntry,
   useResolvedWorkspacePaneCatalog,
@@ -93,14 +106,6 @@ export interface RelatedPaneCaller {
   readonly target: RelatedPaneTarget | null;
 }
 
-const SCOPE_KEYS = [
-  'taskId',
-  'sessionId',
-  'runId',
-  'workspaceId',
-  'sourceId',
-] as const;
-
 /**
  * The installed plugin a contribution names, as the generation a related
  * occurrence records: its id, version and installation source. A disabled or
@@ -120,7 +125,7 @@ export function pluginInstallGeneration(
 
 function scopeOf(context: WorkspacePaneBoundContext | undefined) {
   const scope: PluginPaneScope = {};
-  for (const key of SCOPE_KEYS) {
+  for (const key of RELATED_TARGET_SCOPE_KEYS) {
     const value = context?.[key];
     if (isBoundedPaneText(value, 256)) scope[key] = value;
   }
@@ -386,19 +391,31 @@ function contractReason(
 }
 
 function presentationOf(
-  model: Pick<RegionModelValue, 'phoneLayer'>,
+  model: Pick<RelatedOpenModel, 'readPhoneLayer'>,
   surfaceId: string,
   role: WorkspacePaneRelationRole,
 ): RelatedPanePresentation {
-  if (model.phoneLayer?.surfaceId === surfaceId) return 'child';
+  if (model.readPhoneLayer()?.surfaceId === surfaceId) return 'child';
   return role === 'tool' ? 'tool' : 'beside';
+}
+
+/**
+ * Which capability this is: the Station it was given on, and whether the
+ * occurrence it was given to still has it. The hook revokes it when the
+ * occurrence unmounts or the verified Station changes; a frame narrows it
+ * further to the document that asked (`relatedPanesScope.ts`).
+ */
+export interface RelatedPanesCustody {
+  readonly station: string | null;
+  alive(): boolean;
 }
 
 /** What the host does for one caller, given the live shell facts. */
 export function createRelatedPanesHost(
   caller: RelatedPaneCaller,
   live: () => LiveRelatedPanes,
-  now: () => number = Date.now,
+  now: () => number,
+  custody: RelatedPanesCustody,
 ): PaneRelatedPanesHost {
   const opener: PaneOpener = {
     occurrenceId: caller.occurrenceId,
@@ -411,175 +428,273 @@ export function createRelatedPanesHost(
   };
   const claim = () => pluginRelatedPaneBudget.claim(caller.pluginId, now());
   const getModel = () => live().model as NonNullable<LiveRelatedPanes['model']>;
-  // A handle names a related occurrence THIS caller opened for its own
-  // plugin and generation, on the verified Station.
-  const ownedRelation = (
-    relation: PaneRelation | undefined,
-    stationId: string | null,
-  ) =>
-    relation !== undefined &&
-    relation.stationId === stationId &&
-    relation.opener.occurrenceId === caller.occurrenceId &&
-    relation.generation === caller.generation &&
-    relation.target.kind === 'plugin' &&
-    relation.target.pluginId === caller.pluginId;
   const roleOf = (entry: ResolvedWorkspacePaneCatalogEntry) =>
     entry.descriptor.relationRole ?? 'destination';
+  const targetFor = (
+    request: Pick<RelatedPaneTarget, 'descriptorId' | 'modeId' | 'key'>,
+  ): PluginRelationTarget => ({
+    kind: 'plugin',
+    projectId: caller.projectId,
+    scope: caller.scope,
+    pluginId: caller.pluginId,
+    generation: caller.generation,
+    descriptorId: request.descriptorId,
+    modeId: request.modeId,
+    key: request.key,
+  });
 
-  const open = async (
-    request: RelatedPaneOpenRequest,
-  ): Promise<RelatedPaneOpenOutcome> => {
-    const decoded = decodeRelatedPaneOpenRequest(request);
-    if (!decoded) return unavailable('invalid-request');
-    if (!claim()) return unavailable('rate-limited');
-    const first = admitRelatedPluginTarget(caller, decoded, live());
-    if (!first.ok) return unavailable(first.reason);
-    const role = roleOf(first.entry);
-    const state: PluginPaneState = {
-      version: 1,
-      projectId: caller.projectId,
-      projectSlug: caller.projectSlug,
-      pluginId: caller.pluginId,
-      generation: caller.generation,
-      descriptorId: decoded.descriptorId,
-      modeId: decoded.modeId,
-      key: decoded.key,
-      title: decoded.title ?? first.entry.descriptor.name.slice(0, 160),
-      ...(Object.keys(caller.scope).length > 0 ? { scope: caller.scope } : {}),
+  const build = (alive: () => boolean): PaneRelatedPanesHost => {
+    // Asked on arrival and again inside the lock: the capability is still
+    // held, on the Station it was given on, and that Station is still the
+    // verified one.
+    const custodyRefusal = ():
+      | AdmissionRefusal
+      | 'station-unverified'
+      | null => {
+      if (custody.station === null) return 'station-unverified';
+      if (!alive() || live().relations.stationId !== custody.station)
+        return 'context-mismatch';
+      return null;
     };
-    const outcome = await openRelatedOccurrence(
-      getModel,
-      live().relations,
-      opener,
-      {
-        target: {
-          kind: 'plugin',
-          pluginId: caller.pluginId,
-          descriptorId: decoded.descriptorId,
-          modeId: decoded.modeId,
-          key: decoded.key,
-        },
+    const admitNow = (
+      target: Pick<RelatedPaneTarget, 'descriptorId' | 'modeId'>,
+    ) => {
+      const refused = custodyRefusal();
+      if (refused !== null) return { ok: false as const, reason: refused };
+      return admitRelatedPluginTarget(caller, target, live());
+    };
+    // A handle names a related occurrence THIS caller opened, for its own
+    // Project, scope, plugin and generation, on its Station — and the
+    // occurrence's own stored state is that same target. The relation alone
+    // vouches for nothing.
+    const ownedRelation = (
+      relation: PaneRelation | undefined,
+    ): relation is PaneRelation & { target: PluginRelationTarget } => {
+      if (
+        relation === undefined ||
+        custody.station === null ||
+        relation.stationId !== custody.station ||
+        relation.opener.occurrenceId !== caller.occurrenceId ||
+        relation.generation !== caller.generation ||
+        relation.target.kind !== 'plugin'
+      )
+        return false;
+      const target = relation.target;
+      return (
+        sameRelationTarget(custody.station, target, targetFor(target)) &&
+        storedTargetIs(relation.instanceId, target, custody.station)
+      );
+    };
+
+    const open = async (
+      request: RelatedPaneOpenRequest,
+    ): Promise<RelatedPaneOpenOutcome> => {
+      const decoded = decodeRelatedPaneOpenRequest(request);
+      if (!decoded) return unavailable('invalid-request');
+      const refused = custodyRefusal();
+      if (refused !== null) return unavailable(refused);
+      if (!claim()) return unavailable('rate-limited');
+      const first = admitNow(decoded);
+      if (!first.ok) return unavailable(first.reason);
+      const role = roleOf(first.entry);
+      const target = targetFor(decoded);
+      const state: PluginPaneState = {
+        version: 1,
+        projectId: caller.projectId,
+        projectSlug: caller.projectSlug,
+        pluginId: caller.pluginId,
         generation: caller.generation,
-        landing: role === 'tool' ? 'bottom' : 'right',
-        admit: () => {
-          const admitted = admitRelatedPluginTarget(caller, decoded, live());
-          return admitted.ok ? null : admitted.reason;
+        descriptorId: decoded.descriptorId,
+        modeId: decoded.modeId,
+        key: decoded.key,
+        title: decoded.title ?? first.entry.descriptor.name.slice(0, 160),
+        ...(Object.keys(caller.scope).length > 0
+          ? { scope: caller.scope }
+          : {}),
+      };
+      const station = custody.station as string;
+      const outcome = await openRelatedOccurrence(
+        getModel,
+        live().relations,
+        opener,
+        {
+          target,
+          generation: caller.generation,
+          landing: role === 'tool' ? 'bottom' : 'right',
+          admit: () => {
+            const admitted = admitNow(decoded);
+            return admitted.ok ? null : admitted.reason;
+          },
+          confirms: (instanceId) => storedTargetIs(instanceId, target, station),
+          reveal: (model, instanceId, options) =>
+            model.openSurfaceInRegion(instanceId, {
+              ...options,
+              focusExisting: true,
+            }),
+          mint: () => {
+            const instanceId = mintPluginPaneId();
+            const preparation = createPluginPaneStatePreparation(
+              window.localStorage,
+              instanceId,
+              state,
+            );
+            return {
+              instanceId,
+              stateKey: instanceId,
+              prepare: () => preparation.prepare(),
+              rollback: () => preparation.rollback(),
+            };
+          },
         },
-        reveal: (model, instanceId, options) =>
-          model.openSurfaceInRegion(instanceId, {
-            ...options,
-            focusExisting: true,
-          }),
-        mint: () => {
-          const instanceId = mintPluginPaneId();
-          const preparation = createPluginPaneStatePreparation(
-            window.localStorage,
-            instanceId,
-            state,
-          );
-          return {
-            instanceId,
-            stateKey: instanceId,
-            prepare: () => preparation.prepare(),
-            rollback: () => preparation.rollback(),
-          };
+      );
+      if (!outcome.ok) return unavailable(contractReason(outcome.reason));
+      return {
+        status: outcome.disposition ?? 'opened',
+        handle: outcome.surfaceId,
+        presentation: presentationOf(getModel(), outcome.surfaceId, role),
+      };
+    };
+
+    const reveal: PaneRelatedPanesHost['reveal'] = async (handle) => {
+      if (typeof handle !== 'string' || !PLUGIN_PANE_ID.test(handle))
+        return unavailable('unknown-handle');
+      const refused = custodyRefusal();
+      if (refused !== null) return unavailable(refused);
+      if (!claim()) return unavailable('rate-limited');
+      const { relations } = live();
+      const relation = relations.relationOf(handle);
+      if (!ownedRelation(relation)) return unavailable('unknown-handle');
+      const target = relation.target;
+      const first = admitNow(target);
+      if (!first.ok) return unavailable(first.reason);
+      const role = roleOf(first.entry);
+      const outcome = await revealRelatedOccurrence(
+        getModel,
+        relations,
+        handle,
+        {
+          landing: role === 'tool' ? 'bottom' : 'right',
+          admitRelation: (current) => ownedRelation(current),
+          admit: () => {
+            const admitted = admitNow(target);
+            return admitted.ok ? null : admitted.reason;
+          },
+          reveal: (model, instanceId) =>
+            model.openSurfaceInRegion(instanceId, { focusExisting: true }),
         },
-      },
-    );
-    if (!outcome.ok) return unavailable(contractReason(outcome.reason));
-    return {
-      status: outcome.disposition ?? 'opened',
-      handle: outcome.surfaceId,
-      presentation: presentationOf(getModel(), outcome.surfaceId, role),
+      );
+      if (!outcome.ok) return unavailable(contractReason(outcome.reason));
+      return {
+        status: 'focused',
+        presentation: presentationOf(getModel(), handle, role),
+      };
     };
-  };
 
-  const reveal: PaneRelatedPanesHost['reveal'] = async (handle) => {
-    if (typeof handle !== 'string' || !PLUGIN_PANE_ID.test(handle))
-      return unavailable('unknown-handle');
-    if (!claim()) return unavailable('rate-limited');
-    const { relations } = live();
-    const relation = relations.relationOf(handle);
-    if (!ownedRelation(relation, relations.stationId) || !relation)
-      return unavailable('unknown-handle');
-    const target = relation.target as Extract<
-      PaneRelation['target'],
-      { kind: 'plugin' }
-    >;
-    const first = admitRelatedPluginTarget(caller, target, live());
-    if (!first.ok) return unavailable(first.reason);
-    const role = roleOf(first.entry);
-    const outcome = await revealRelatedOccurrence(getModel, relations, handle, {
-      landing: role === 'tool' ? 'bottom' : 'right',
-      admitRelation: (current) => ownedRelation(current, relations.stationId),
-      admit: () => {
-        const admitted = admitRelatedPluginTarget(caller, target, live());
-        return admitted.ok ? null : admitted.reason;
-      },
-      reveal: (model, instanceId) =>
-        model.openSurfaceInRegion(instanceId, { focusExisting: true }),
-    });
-    if (!outcome.ok) return unavailable(contractReason(outcome.reason));
-    return {
-      status: 'focused',
-      presentation: presentationOf(getModel(), handle, role),
+    const close: PaneRelatedPanesHost['close'] = async (handle) => {
+      if (typeof handle !== 'string' || !PLUGIN_PANE_ID.test(handle))
+        return unavailable('unknown-handle');
+      const refused = custodyRefusal();
+      if (refused !== null) return unavailable(refused);
+      const { model, relations } = live();
+      if (!model) return unavailable('unsupported');
+      const relation = relations.relationOf(handle);
+      if (
+        !ownedRelation(relation) ||
+        !relatedOccurrenceExists(handle) ||
+        occupiedRegion(model.readRegions(), handle) === undefined
+      )
+        return unavailable('unknown-handle');
+      const target = relation.target;
+      // A close that asks the pane's guard puts a question in front of the
+      // user, which a loop must not repeat, so it spends from the budget. One
+      // that asks nothing only takes away a pane this caller's budgeted open
+      // put there, and a refusal would keep a pane the user asked to close.
+      if (navigationStore.hasNavigationGuard(handle) && !claim())
+        return unavailable('rate-limited');
+      const watch = watchGuardRegistrations();
+      try {
+        // The related pane's own unsaved-changes guard decides; Cancel leaves
+        // the pane, its relation and its state exactly as they were.
+        if (!(await guardsAllow([handle])))
+          return unavailable('guard-cancelled');
+        // The answer can arrive after anything changed. Inside the lock,
+        // over a fresh read, everything is admitted again before anything is
+        // removed, and any refusal leaves all of it as it was.
+        let stepRefusal: RelatedPaneUnavailableReason | undefined;
+        const refuse = (reason: RelatedPaneUnavailableReason) => {
+          stepRefusal = reason;
+          return { ok: false as const, reason: 'refused' as const };
+        };
+        const result = await relations.transact<void>(
+          (tx) => {
+            const admitted = admitNow(target);
+            if (!admitted.ok) return refuse(admitted.reason);
+            if (!ownedRelation(paneRelationOf(tx.record, handle)))
+              return refuse('unknown-handle');
+            if (watch.registered.has(handle)) return refuse('superseded');
+            const current = live().model;
+            const region = current
+              ? occupiedRegion(current.readRegions(), handle)
+              : undefined;
+            if (!current || region === undefined) return refuse('superseded');
+            if (!tx.write(withoutPaneRelation(tx.record, handle)))
+              return { ok: false, reason: 'storage' };
+            // The relation write rolls back if the pane is not removed.
+            if (!current.removePane(region, handle))
+              return refuse('superseded');
+            forgetRegionPaneState(handle);
+            return { ok: true, value: undefined };
+          },
+          { station: custody.station as string },
+        );
+        if (!result.ok)
+          return unavailable(stepRefusal ?? contractReason(result.reason));
+        return { status: 'closed' };
+      } finally {
+        watch.stop();
+      }
     };
+
+    const host: PaneRelatedPanesHost = {
+      version: 1,
+      open,
+      reveal,
+      close,
+      target: () =>
+        Promise.resolve(custodyRefusal() === null ? caller.target : null),
+    };
+    registerRelatedPanesScope(host, (more) => build(() => alive() && more()));
+    return host;
   };
 
-  const close: PaneRelatedPanesHost['close'] = async (handle) => {
-    if (typeof handle !== 'string' || !PLUGIN_PANE_ID.test(handle))
-      return unavailable('unknown-handle');
-    const { model, relations } = live();
-    if (!model) return unavailable('unsupported');
-    if (
-      !ownedRelation(relations.relationOf(handle), relations.stationId) ||
-      !relatedOccurrenceExists(handle) ||
-      occupiedRegion(model.regions, handle) === undefined
-    )
-      return unavailable('unknown-handle');
-    // A close that asks the pane's guard puts a question in front of the
-    // user, which a loop must not repeat, so it spends from the budget. One
-    // that asks nothing only takes away a pane this caller's budgeted open
-    // put there, and a refusal would keep a pane the user asked to close.
-    if (navigationStore.hasNavigationGuard(handle) && !claim())
-      return unavailable('rate-limited');
-    // The related pane's own unsaved-changes guard decides; Cancel leaves the
-    // pane, its relation and its state exactly as they were. The answer can
-    // arrive after the pane moved: only a pane its region still held is
-    // removed, and only a removed pane's state and relation are forgotten.
-    const proceed = await new Promise<boolean>((resolve) =>
-      navigationStore.runNavigationGuards(
-        () => resolve(true),
-        () => resolve(false),
-        { owner: handle },
-      ),
-    );
-    if (!proceed) return unavailable('guard-cancelled');
-    const current = live().model;
-    const region = current
-      ? occupiedRegion(current.regions, handle)
-      : undefined;
-    if (!current || region === undefined || !current.removePane(region, handle))
-      return unavailable('superseded');
-    forgetRegionPaneState(handle);
-    void live().relations.forget(handle);
-    return { status: 'closed' };
-  };
+  return build(custody.alive);
+}
 
-  return {
-    version: 1,
-    open,
-    reveal,
-    close,
-    target: () => Promise.resolve(caller.target),
-  };
+type PluginRelationTarget = Extract<PaneRelationTarget, { kind: 'plugin' }>;
+
+/** The occurrence's own stored record is exactly `target`, on `station`. */
+function storedTargetIs(
+  instanceId: string,
+  target: PluginRelationTarget,
+  station: string,
+): boolean {
+  const stored = readPluginPaneState(window.localStorage, instanceId);
+  return (
+    stored !== null &&
+    sameRelationTarget(station, pluginPaneTarget(stored), target)
+  );
 }
 
 /**
  * The capability for one mounted plugin occurrence, or undefined where this
  * host cannot place related panes (no region model) or the occurrence names
- * no installed plugin. Stable per caller; its members read the shell facts
- * the latest committed render saw.
+ * no installed plugin. Its members read the shell facts the latest committed
+ * render saw.
+ *
+ * It is the occurrence's for one Station: a different verified Station gives
+ * the occurrence a new capability, and the one it replaces — like the one an
+ * unmounted occurrence held — answers `context-mismatch` from then on,
+ * including for a request whose guard is still being answered.
  */
 export function useRelatedPanesHost(
   caller: RelatedPaneCaller | null,
@@ -609,12 +724,27 @@ export function useRelatedPanesHost(
   });
   const callerKey = caller ? JSON.stringify(caller) : null;
   const hasModel = model !== null;
+  const station = relations.stationId;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the serialized caller is its identity.
-  return useMemo(
-    () =>
-      caller && hasModel
-        ? createRelatedPanesHost(caller, () => liveRef.current)
-        : undefined,
-    [callerKey, hasModel],
-  );
+  const capability = useMemo(() => {
+    if (!caller || !hasModel) return undefined;
+    const held = { current: true };
+    return {
+      held,
+      host: createRelatedPanesHost(caller, () => liveRef.current, Date.now, {
+        station,
+        alive: () => held.current,
+      }),
+    };
+  }, [callerKey, hasModel, station]);
+  useEffect(() => {
+    if (!capability) return;
+    // Set again on (re)mount: StrictMode replays the cleanup on an
+    // occurrence that stays mounted.
+    capability.held.current = true;
+    return () => {
+      capability.held.current = false;
+    };
+  }, [capability]);
+  return capability?.host;
 }

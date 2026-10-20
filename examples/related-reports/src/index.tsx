@@ -4,7 +4,7 @@ import {
   useRelatedPanes,
 } from '@kontourai/station-sdk';
 import type { createRelatedPanesPaneHost } from '@kontourai/station-sdk/workspace-pane';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const PLUGIN = 'related-reports';
 const REPORT_PANE = `pane:plugin%3A${PLUGIN}:report`;
@@ -101,15 +101,27 @@ function reportActions(
 
 function Reports() {
   const related = useRelatedPanes();
+  // The host replaces the capability when, for example, the Station changes;
+  // the one it replaced answers `context-mismatch`. Always call the latest.
+  const current = useRef(related);
+  current.current = related;
   const [status, setStatus] = useState('');
   const [inline, setInline] = useState<Report | null>(null);
   const [handle, setHandle] = useState<string | null>(null);
   const [actions] = useState(() =>
-    reportActions(related, (next, shown, opened) => {
-      setStatus(next);
-      setInline(shown);
-      if (opened !== undefined) setHandle(opened);
-    }),
+    reportActions(
+      {
+        open: (request) => current.current.open(request),
+        reveal: (target) => current.current.reveal(target),
+        close: (target) => current.current.close(target),
+        target: () => current.current.target(),
+      },
+      (next, shown, opened) => {
+        setStatus(next);
+        setInline(shown);
+        if (opened !== undefined) setHandle(opened);
+      },
+    ),
   );
   return (
     <section aria-label="Related reports">

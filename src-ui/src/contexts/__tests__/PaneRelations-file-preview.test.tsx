@@ -29,7 +29,11 @@ import {
   readFilePreviewPaneState,
   writeFilePreviewPaneState,
 } from '../../workspace-panes/filePreviewPaneStateStorage';
-import { createPluginPaneStatePreparation } from '../../workspace-panes/pluginPaneOccurrence';
+import {
+  createPluginPaneStatePreparation,
+  type PluginPaneState,
+  pluginPaneTarget,
+} from '../../workspace-panes/pluginPaneOccurrence';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
@@ -473,6 +477,16 @@ describe('refusals leave everything as it was', () => {
         const hex = i.toString(16).padStart(32, '0');
         const preview = i < 24;
         const id = preview ? `file-preview:${hex}` : `plugin-pane:${hex}`;
+        const report: PluginPaneState = {
+          version: 1,
+          projectId: PROJECT.projectId,
+          projectSlug: PROJECT.projectSlug,
+          pluginId: 'reports',
+          generation: 'plugin:reports@1.0.0',
+          descriptorId: 'pane:plugin%3Areports:report',
+          modeId: 'project',
+          key: `report-${i}`,
+        };
         writePaneFence(localStorage, id, 'station-a');
         if (preview)
           writeFilePreviewPaneState(localStorage, id, {
@@ -482,16 +496,7 @@ describe('refusals leave everything as it was', () => {
             wrap: true,
           });
         else
-          createPluginPaneStatePreparation(localStorage, id, {
-            version: 1,
-            projectId: PROJECT.projectId,
-            projectSlug: PROJECT.projectSlug,
-            pluginId: 'reports',
-            generation: 'plugin:reports@1.0.0',
-            descriptorId: 'pane:plugin%3Areports:report',
-            modeId: 'project',
-            key: `report-${i}`,
-          }).prepare();
+          createPluginPaneStatePreparation(localStorage, id, report).prepare();
         entries.push({
           instanceId: id,
           stateKey: id,
@@ -505,13 +510,7 @@ describe('refusals leave everything as it was', () => {
                 path: `src/other-${i}.ts`,
                 thread: null,
               }
-            : {
-                kind: 'plugin',
-                pluginId: 'reports',
-                descriptorId: 'pane:plugin%3Areports:report',
-                modeId: 'project',
-                key: `report-${i}`,
-              },
+            : pluginPaneTarget(report),
           kept: true,
           openedAt: i,
         });

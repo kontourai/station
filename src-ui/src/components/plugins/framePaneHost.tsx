@@ -18,6 +18,7 @@ import {
   usePaneConfirmChrome,
   usePaneHostFacts,
 } from '../../workspace-panes/paneHostShellChrome';
+import { scopeRelatedPanes } from '../../workspace-panes/relatedPanesScope';
 import {
   type PluginBudget,
   pluginConfirmBudget,
@@ -522,15 +523,21 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
           return true;
         }
         // The host decodes and bounds the open request itself: the same
-        // admission a direct pane's call meets.
+        // admission a direct pane's call meets. Narrowed to THIS document: a
+        // request whose document was replaced or retired before its guard
+        // answered changes nothing, rather than only losing its answer.
+        const scoped = scopeRelatedPanes(
+          host,
+          () => lifetime === relatedLifetime.current && lifetime.active,
+        );
         const operation: Promise<unknown> =
           related.member === 'open'
-            ? host.open(params.request as RelatedPaneOpenRequest)
+            ? scoped.open(params.request as RelatedPaneOpenRequest)
             : related.member === 'reveal'
-              ? host.reveal(handle as string)
+              ? scoped.reveal(handle as string)
               : related.member === 'close'
-                ? host.close(handle as string)
-                : host.target();
+                ? scoped.close(handle as string)
+                : scoped.target();
         lifetime.pending += 1;
         void operation.then(
           (data) => {

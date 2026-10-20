@@ -4,6 +4,10 @@ import {
   type WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
 import { removePaneFence } from '../regions/pane-fence';
+import {
+  type PaneRelationTarget,
+  RELATED_TARGET_SCOPE_KEYS,
+} from '../regions/pane-relations';
 
 /**
  * A plugin pane the HOST minted for a related open
@@ -27,13 +31,7 @@ const PLUGIN_PANE_STATE_PREFIX = 'station:plugin-pane-state:v1';
 export const MAX_PLUGIN_PANE_STATES = 48;
 const MAX_PLUGIN_PANE_STATE_BYTES = 4 * 1024;
 
-const SCOPE_KEYS = [
-  'taskId',
-  'sessionId',
-  'runId',
-  'workspaceId',
-  'sourceId',
-] as const;
+const SCOPE_KEYS = RELATED_TARGET_SCOPE_KEYS;
 
 export type PluginPaneScope = Partial<
   Record<(typeof SCOPE_KEYS)[number], string>
@@ -210,6 +208,25 @@ export function mintPluginPaneId(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return `plugin-pane:${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * The exact related target a stored record is: what a relation naming this
+ * occurrence must agree with before the occurrence is focused or closed.
+ */
+export function pluginPaneTarget(
+  state: PluginPaneState,
+): Extract<PaneRelationTarget, { kind: 'plugin' }> {
+  return {
+    kind: 'plugin',
+    projectId: state.projectId,
+    scope: state.scope ?? {},
+    pluginId: state.pluginId,
+    generation: state.generation,
+    descriptorId: state.descriptorId,
+    modeId: state.modeId,
+    key: state.key,
+  };
 }
 
 /**

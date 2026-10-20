@@ -17,6 +17,24 @@
  * a fresh read, so two tabs cannot lose each other's entries.
  */
 
+/**
+ * The context a related plugin occurrence is opened in, beyond its Project:
+ * at most the opener's own identity fields, the selector its reads keep
+ * naming. Part of the target's identity, so a kept occurrence of one Session's
+ * report is never the occurrence another Session's open focuses.
+ */
+export const RELATED_TARGET_SCOPE_KEYS = [
+  'taskId',
+  'sessionId',
+  'runId',
+  'workspaceId',
+  'sourceId',
+] as const;
+
+export type RelatedTargetScope = Readonly<
+  Partial<Record<(typeof RELATED_TARGET_SCOPE_KEYS)[number], string>>
+>;
+
 /** What a related pane shows. Identity only: never a read grant. */
 export type PaneRelationTarget =
   | {
@@ -29,8 +47,14 @@ export type PaneRelationTarget =
     }
   | {
       readonly kind: 'plugin';
+      /** The Project the occurrence is bound to. */
+      readonly projectId: string;
+      /** The opener's captured scope; `{}` when it captured none. */
+      readonly scope: RelatedTargetScope;
       /** The installed plugin that owns the descriptor. */
       readonly pluginId: string;
+      /** The installation it was opened under. */
+      readonly generation: string;
       readonly descriptorId: string;
       readonly modeId: string;
       /** The plugin's own bounded, opaque target key. */
@@ -184,8 +208,12 @@ function parseTarget(value: unknown): PaneRelationTarget | null {
     };
   }
   if (value.kind === 'plugin') {
+    const scope = parseTargetScope(value.scope);
     if (
+      !scope ||
+      !boundedText(value.projectId, 256) ||
       !boundedText(value.pluginId, 256) ||
+      !boundedText(value.generation, 512) ||
       !boundedText(value.descriptorId, 256) ||
       !boundedText(value.modeId, 128) ||
       !boundedText(value.key, 256)
@@ -193,13 +221,31 @@ function parseTarget(value: unknown): PaneRelationTarget | null {
       return null;
     return {
       kind: 'plugin',
+      projectId: value.projectId,
+      scope,
       pluginId: value.pluginId,
+      generation: value.generation,
       descriptorId: value.descriptorId,
       modeId: value.modeId,
       key: value.key,
     };
   }
   return null;
+}
+
+/** Closed: only the defined keys, each bounded text. */
+export function parseTargetScope(value: unknown): RelatedTargetScope | null {
+  if (!isRecordObject(value)) return null;
+  const scope: Partial<
+    Record<(typeof RELATED_TARGET_SCOPE_KEYS)[number], string>
+  > = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!(RELATED_TARGET_SCOPE_KEYS as readonly string[]).includes(key))
+      return null;
+    if (!boundedText(entry, 256)) return null;
+    scope[key as (typeof RELATED_TARGET_SCOPE_KEYS)[number]] = entry;
+  }
+  return scope;
 }
 
 function parseSource(value: unknown): PaneOpenerSource | null {
@@ -276,7 +322,7 @@ function parseEntry(value: unknown): PaneRelation | null {
     !boundedText(value.instanceId, 512) ||
     !boundedText(value.stateKey, 512) ||
     !boundedText(value.stationId, 256) ||
-    !boundedText(value.generation, 128) ||
+    !boundedText(value.generation, 512) ||
     typeof value.kept !== 'boolean' ||
     typeof value.openedAt !== 'number' ||
     !Number.isSafeInteger(value.openedAt) ||
@@ -403,7 +449,12 @@ function sameOpenerSelection(a: PaneOpener, b: PaneOpener): boolean {
   );
 }
 
-/** Exact target identity: Station, Project, path and thread where they apply. */
+/**
+ * Exact target identity: Station, Project, path and thread for a file; for a
+ * plugin pane also every captured scope field and the installation, so an
+ * occurrence bound to another Session, run or plugin installation is never
+ * the one an open focuses.
+ */
 function paneTargetKey(stationId: string, target: PaneRelationTarget): string {
   switch (target.kind) {
     case 'file':
@@ -419,7 +470,10 @@ function paneTargetKey(stationId: string, target: PaneRelationTarget): string {
       return JSON.stringify([
         'plugin',
         stationId,
+        target.projectId,
+        ...RELATED_TARGET_SCOPE_KEYS.map((key) => target.scope[key] ?? null),
         target.pluginId,
+        target.generation,
         target.descriptorId,
         target.modeId,
         target.key,

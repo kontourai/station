@@ -52,8 +52,12 @@ import type { OpenPaneRefusal } from './useOpenInRegion';
  *    the opener's selection, the plan (the occurrence to focus or replace),
  *    the pane the open takes off screen and the adapter's own admission must
  *    all still be what step 2 asked about; otherwise the open is
- *    `superseded` / `station-changed` / the adapter's refusal. At the bound
- *    it is refused.
+ *    `superseded` / `station-changed` / the adapter's refusal. What the open
+ *    takes off screen is read from the model's committed arrangement and
+ *    phone layer, which a guard's own callback may have changed before it
+ *    answered. A guard registered for one of those panes from step 2 until
+ *    now is unsaved work nobody was asked about: the open is `superseded`.
+ *    At the bound it is refused.
  * 4. Focus the occurrence the plan named, or fence and store a new one, write
  *    the record, then commit the arrangement. A refusal at any step removes
  *    what the earlier steps wrote.
@@ -78,7 +82,7 @@ export type RelatedOpenOutcome<AdapterRefusal extends string = never> =
 
 export type RelatedOpenModel = Pick<
   RegionModelValue,
-  'regions' | 'phoneLayer' | 'openSurfaceInRegion' | 'replacePane'
+  'readRegions' | 'readPhoneLayer' | 'openSurfaceInRegion' | 'replacePane'
 >;
 
 /** A new occurrence's identity and state, staged but not yet written. */
@@ -104,6 +108,12 @@ export interface RelatedOccurrenceAdapter<AdapterRefusal extends string> {
    * inside the lock after any guard answered. Null admits.
    */
   admit?(): AdapterRefusal | null;
+  /**
+   * Whether an existing occurrence's OWN stored state is this exact target,
+   * asked before it is focused. A relation names an occurrence; it never
+   * vouches for what the occurrence is bound to.
+   */
+  confirms?(instanceId: string): boolean;
   /** Reveal an existing occurrence, carrying anything this request adds. */
   reveal(
     model: RelatedOpenModel,
@@ -139,12 +149,16 @@ function occurrenceToFocus(
   transient: PaneRelation | undefined,
   station: string,
   target: PaneRelationTarget,
+  confirms: (instanceId: string) => boolean,
 ): PaneRelation | undefined {
-  if (kept && relatedOccurrenceExists(kept.instanceId)) return kept;
+  const usable = (relation: PaneRelation) =>
+    relatedOccurrenceExists(relation.instanceId) &&
+    confirms(relation.instanceId);
+  if (kept && usable(kept)) return kept;
   if (
     transient &&
     sameRelationTarget(station, transient.target, target) &&
-    relatedOccurrenceExists(transient.instanceId)
+    usable(transient)
   )
     return transient;
   return undefined;
@@ -160,13 +174,39 @@ function paneHiddenBy(
   landingBeside: string | undefined,
   landing: DockRegionId,
 ): string | null {
-  if (model.phoneLayer) return model.phoneLayer.surfaceId;
+  const layer = model.readPhoneLayer();
+  if (layer) return layer.surfaceId;
+  const regions = model.readRegions();
   const region = landingBeside
-    ? occupiedRegion(model.regions, landingBeside)
+    ? occupiedRegion(regions, landingBeside)
     : landing;
   if (!region || !isDockRegion(region)) return null;
-  const state = model.regions[region];
+  const state = regions[region];
   return state.visible ? state.occupant : null;
+}
+
+/**
+ * The owners a guard was registered for from now until `stop`, through
+ * navigation's own registration notice: what an open asked about must not
+ * have gained unsaved work it was not asked about by the time it commits.
+ */
+export function watchGuardRegistrations(): {
+  readonly registered: ReadonlySet<string>;
+  stop(): void;
+} {
+  const registered = new Set<string>();
+  const stop = navigationStore.subscribeNavigationGuardOwners((owner) =>
+    registered.add(owner),
+  );
+  return { registered, stop };
+}
+
+/** None of `owners` gained a guard while `watch` was held. */
+function noneRegistered(
+  watch: { readonly registered: ReadonlySet<string> },
+  owners: readonly (string | null | undefined)[],
+): boolean {
+  return owners.every((owner) => !owner || !watch.registered.has(owner));
 }
 
 /**
@@ -201,8 +241,33 @@ export async function openRelatedOccurrence<AdapterRefusal extends string>(
   if (station === null) return { ok: false, reason: 'station-unverified' };
   const refusedFirst = adapter.admit?.() ?? null;
   if (refusedFirst !== null) return { ok: false, reason: refusedFirst };
+  const watch = watchGuardRegistrations();
+  try {
+    return await openWatched(
+      getModel,
+      relations,
+      opener,
+      adapter,
+      station,
+      watch,
+      options,
+    );
+  } finally {
+    watch.stop();
+  }
+}
 
+async function openWatched<AdapterRefusal extends string>(
+  getModel: () => RelatedOpenModel,
+  relations: PaneRelationsValue,
+  opener: PaneOpener,
+  adapter: RelatedOccurrenceAdapter<AdapterRefusal>,
+  station: string,
+  watch: { readonly registered: ReadonlySet<string> },
+  options: OpenInRegionOptions | undefined,
+): Promise<RelatedOpenOutcome<AdapterRefusal>> {
   const { target, landing } = adapter;
+  const confirms = adapter.confirms ?? (() => true);
   const selection = openerSelectionKey(opener);
   // A refusal the transaction cannot name in its own vocabulary: the
   // arrangement's, or the adapter's. The transaction refuses `refused` so
@@ -220,6 +285,7 @@ export async function openRelatedOccurrence<AdapterRefusal extends string>(
     relations.transientFor(opener),
     station,
     target,
+    confirms,
   );
   if (focus) {
     const focusId = focus.instanceId;
@@ -246,8 +312,10 @@ export async function openRelatedOccurrence<AdapterRefusal extends string>(
             transientPaneForOpener(fresh, station, opener),
             station,
             target,
+            confirms,
           )?.instanceId !== focusId ||
-          (coveredNow === focusId ? null : coveredNow) !== hidden
+          (coveredNow === focusId ? null : coveredNow) !== hidden ||
+          !noneRegistered(watch, [hidden, coveredNow])
         )
           return { ok: false, reason: 'superseded' };
         const outcome = adapter.reveal(model, focusId, options);
@@ -285,11 +353,18 @@ export async function openRelatedOccurrence<AdapterRefusal extends string>(
         return { ok: false, reason: 'superseded' };
       if (!readmitted()) return { ok: false, reason: 'refused' };
       const fresh = prunePaneRelations(tx.record, relatedOccurrenceExists);
+      const transientNow = transientPaneForOpener(fresh, station, opener);
       if (
-        transientPaneForOpener(fresh, station, opener)?.instanceId !==
-          replacing ||
-        keptPaneForTarget(fresh, station, target) !== undefined ||
-        paneHiddenBy(getModel(), replacing, landing) !== covered
+        transientNow?.instanceId !== replacing ||
+        occurrenceToFocus(
+          keptPaneForTarget(fresh, station, target),
+          transientNow,
+          station,
+          target,
+          confirms,
+        ) !== undefined ||
+        paneHiddenBy(getModel(), replacing, landing) !== covered ||
+        !noneRegistered(watch, [replacing, covered])
       )
         return { ok: false, reason: 'superseded' };
       const written = withPaneRelation(
@@ -324,8 +399,8 @@ export async function openRelatedOccurrence<AdapterRefusal extends string>(
       // is left to whichever tab places it, beside a new one.
       const inPlace =
         replacing !== undefined &&
-        model.phoneLayer?.surfaceId !== replacing &&
-        isDockRegion(occupiedRegion(model.regions, replacing) ?? 'main');
+        model.readPhoneLayer()?.surfaceId !== replacing &&
+        isDockRegion(occupiedRegion(model.readRegions(), replacing) ?? 'main');
       const outcome: OpenInRegionOutcome = inPlace
         ? model.replacePane(replacing, nextId)
         : model.openSurfaceInRegion(nextId, { region: landing, ...options });
@@ -378,6 +453,34 @@ export async function revealRelatedOccurrence<AdapterRefusal extends string>(
     return { ok: false, reason: 'unknown-handle' };
   const refusedFirst = adapter.admit?.() ?? null;
   if (refusedFirst !== null) return { ok: false, reason: refusedFirst };
+  const watch = watchGuardRegistrations();
+  try {
+    return await revealWatched(
+      getModel,
+      relations,
+      instanceId,
+      adapter,
+      station,
+      watch,
+    );
+  } finally {
+    watch.stop();
+  }
+}
+
+async function revealWatched<AdapterRefusal extends string>(
+  getModel: () => RelatedOpenModel,
+  relations: PaneRelationsValue,
+  instanceId: string,
+  adapter: {
+    readonly landing: DockRegionId;
+    admitRelation(relation: PaneRelation | undefined): boolean;
+    admit?(): AdapterRefusal | null;
+    reveal(model: RelatedOpenModel, instanceId: string): OpenInRegionOutcome;
+  },
+  station: string,
+  watch: { readonly registered: ReadonlySet<string> },
+): Promise<RelatedOpenOutcome<AdapterRefusal | 'unknown-handle'>> {
   const asked = paneHiddenBy(getModel(), instanceId, adapter.landing);
   const hidden = asked === instanceId ? null : asked;
   if (!(await guardsAllow([hidden])))
@@ -403,7 +506,10 @@ export async function revealRelatedOccurrence<AdapterRefusal extends string>(
       }
       const model = getModel();
       const coveredNow = paneHiddenBy(model, instanceId, adapter.landing);
-      if ((coveredNow === instanceId ? null : coveredNow) !== hidden)
+      if (
+        (coveredNow === instanceId ? null : coveredNow) !== hidden ||
+        !noneRegistered(watch, [hidden, coveredNow])
+      )
         return { ok: false, reason: 'superseded' };
       const outcome = adapter.reveal(model, instanceId);
       if (!outcome.ok) {

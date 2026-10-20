@@ -288,6 +288,11 @@ export interface RegionModelValue {
    */
   phoneLayer: { region: DockRegionId; surfaceId: string } | null;
   /**
+   * The phone layer as the model last committed it, read now — the
+   * `readRegions` of `phoneLayer`, for the same callers.
+   */
+  readPhoneLayer(): { region: DockRegionId; surfaceId: string } | null;
+  /**
    * Leave the phone layer — the "‹ Chat" control. Asks the unsaved-changes
    * guards first (`navigationStore.runNavigationGuards`), exactly as Back
    * does, then runs the same restore (`restorePhonePaneLayer`); the layer's history entry
@@ -1610,6 +1615,14 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         : null,
     [bottomOnly, phoneLayer],
   );
+  const bottomOnlyRef = useRef(bottomOnly);
+  bottomOnlyRef.current = bottomOnly;
+  const readPhoneLayer = useCallback(() => {
+    const layer = phoneLayerRef.current;
+    return layer && bottomOnlyRef.current
+      ? { region: layer.region, surfaceId: layer.surfaceId }
+      : null;
+  }, []);
   const value = useMemo(
     () => ({
       regions,
@@ -1632,6 +1645,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       canRenderRegionSurfaces: mountedSurfaceHosts > 0,
       registerRegionSurfaceHost,
       phoneLayer: phoneLayerView,
+      readPhoneLayer,
       closePhoneLayer,
     }),
     [
@@ -1654,6 +1668,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       mountedSurfaceHosts,
       registerRegionSurfaceHost,
       phoneLayerView,
+      readPhoneLayer,
       closePhoneLayer,
     ],
   );
