@@ -186,7 +186,8 @@ a rule or finds a conflict, it says so.
    including the transparency-log inclusion proof.
 2. **Everything in Coding moves into the plugin.** That includes the diff,
    file preview, terminal pane UI, PR review and the plan/readiness/trust
-   composition, not only the Coding-only panes. Core keeps the capabilities:
+   composition, not only the Coding-only panes. (File preview and PR review
+   were later given their own plugins; see the OPEN-13 answer below.) Core keeps the capabilities:
    data queries, the terminal session store and view in the SDK (per
    [terminal.md](terminal.md)), permissions and server routes. Other core
    surfaces that use these panes today consume them by pane descriptor
@@ -217,11 +218,20 @@ owner answered three items this record had left open:
 
 - **OPEN-14: pre-approved by lock.** Each `plugins.lock` entry lists the
   plugin's capabilities. A `kontour`-provenance plugin listed in the lock
-  gets exactly those capabilities with no prompt; anything beyond them
-  prompts.
-- **OPEN-12: wait for the SDK terminal view.** There is no interim. j ships
-  only once the SDK `TerminalView` exists ([terminal.md](terminal.md)'s
-  phases 2 to 4, slice SDK-5). The Coding plugin renders `TerminalView` or
+  gets exactly those capabilities with no prompt.
+  - *Engineering reading, for owner confirmation:* anything beyond the
+    listed capabilities prompts.
+  - *Engineering reading, for owner confirmation (the coordinator's
+    implementation of the answer):* capabilities in the high-risk class
+    (for example `approvals.render`, `agents.invoke`) are **excluded** from
+    lock pre-approval. Even when listed, they are decided on the consent
+    listener, as d3 requires for every high-risk grant. See
+    [the bundled-set exception](#trust-and-grants) under
+    Trust and grants.
+- **OPEN-12: "wait for Ghostty".** In the owner's words, j waits for
+  Ghostty: there is no interim. This record maps that to the SDK
+  `TerminalView`, which [terminal.md](terminal.md) builds on its Ghostty
+  adapter in phases 2 to 4 (slice SDK-5); j ships only once it exists. The Coding plugin renders `TerminalView` or
   opens the core closed terminal target.
 - **OPEN-13: their own default plugins.** File preview and PR review each
   ship as their own plugin in the bundled default set (slices jF and jP).
@@ -354,7 +364,9 @@ workflow to locked plugins because:
   bundled version).
 
 Provenance is **recomputed** against the running release's lock on every
-start, not recorded once at install. A plugin that a later release drops
+start, not recorded once at install. Recomputing means re-checking lock
+membership of the plugin's name against the verified signer identity stored
+in its d1 record at install; it does not re-verify signatures. A plugin that a later release drops
 from the lock therefore loses `kontour` provenance; i0 states what follows.
 The global pinned identity, compiled into Station, decides provenance. Each
 lock entry still carries its Sigstore identity (decision 3 names it), but
@@ -503,9 +515,30 @@ writer.
   `main`'s pull-request rule has `require_code_owner_review: false` and no
   required approvals (read from `gh api
   repos/kontourai/station/rules/branches/main` on 2026-10-20), so a
-  CODEOWNERS entry alone would bind nothing. That ruleset change is
+  CODEOWNERS entry alone would bind nothing. Protecting the lock is
   owner-gated: it is a **prerequisite of i0 that the owner performs**, not
-  something an i0 pull request can do.
+  something an i0 pull request can do. The options and their real cost:
+  - **Turn on `require_code_owner_review` for `main`.** It applies to every
+    pull request that touches any CODEOWNERS path, which today includes
+    `.github/workflows/`, `.github/CODEOWNERS` and many `scripts/` gates,
+    not only the lock. GitHub does not let an author approve their own pull
+    request, and every entry names the owner, so the owner's own changes to
+    those paths would need a second code owner or a ruleset bypass actor.
+  - **A narrow path-scoped ruleset.** As far as this record knows (not
+    verified against this repository's plan on 2026-10-20), rulesets have
+    no rule that requires review only when one file changes. The
+    path-restriction push rule blocks changes to a path outright, which
+    would also block the bot's lock bumps.
+  - **A required check scoped to the lock.** A check that, when a pull
+    request changes `plugins.lock`, passes only with an approving review
+    from a code owner listed for `plugins.lock` on the head commit, and
+    re-runs on review events. It reads reviews through the API and runs no
+    pull-request code. Adding it as a required check is still an owner
+    ruleset change, but a narrow one.
+
+  *Recommendation:* the scoped check. It touches only lock changes. Lock
+  bumps come from a bot, so the owner is not the author and can approve
+  them; only a human-authored lock change needs a second reviewer.
 - **CI.** Installs every entry from its released artifact, checks the sha256
   and the Sigstore bundle, and fails when an artifact is missing or
   unverifiable. CI never installs workspace sources of a plugin.
@@ -783,9 +816,22 @@ An **install trust record** is kept per installed plugin:
   - An update requesting any capability not previously granted re-prompts
     before its code activates. This closes "updates launder consent".
   - An unsigned plugin has no key, so every content change re-prompts.
+  - *Exception (2026-10-20, OPEN-14):* a `kontour` plugin listed in
+    `plugins.lock` receives the capabilities its lock entry lists with no
+    prompt, at install and on update to a locked version. The review of the
+    lock change stands in for the prompt
+    ([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
+    High-risk capabilities are excluded and still go through the consent
+    listener (an engineering reading for owner confirmation). Any capability
+    not in the lock entry re-prompts as above.
 - **Who is affected.** On a shared Station, trust and grant prompts list the
   scope of effect: all members and all paired devices, because in-process
-  code runs on every device that renders it.
+  code runs on every device that renders it. Lock pre-approved grants raise
+  no prompt, so the plugin manager discloses them instead: each bundled
+  plugin shows "granted by this Station's default set" with its capability
+  list and the same scope-of-effect line, and the operator is told once,
+  after the first start that installs or updates bundled plugins, what was
+  granted and to whom it applies.
 - **Remote-Station bundles.** The device-local `remotePluginBundlesAllowed`
   store is **retired** in slice d3. A remote Station's bundles run on this
   device at tier 3 only. The store sits in `localStorage`, which admitted
@@ -1334,13 +1380,13 @@ before merge.
 | SDK-6. Plugin device state | coordinate with #1359 | |
 | SDK-views. Diff view, file view, PR review data | — | |
 | KIT. UI kit upstream to `@kontourai/ui` | a `@kontourai/ui` release | |
-| i0. Offline bundled default set from `plugins.lock` | d1, i1, and the owner's code-owner ruleset change for `plugins.lock` | [security] |
+| i0. Offline bundled default set from `plugins.lock` | d1, i1, jG, d2 (the prompt for capabilities beyond the lock), and the owner's lock-review prerequisite | [security] |
 | i1. station-plugins repo scaffold and starter template | — (its CI has its own verifier; Station's verifier is d1's, which i0 uses) | [security] (release signing) |
 | i2. Board extraction as an installed plugin, with migration | d1, i1, i0 | [security] |
 | i3. kontour-default and acme manifests | g, h, i2 | [security] |
 | R. Growth-only ratchet on `coding-layout/` app-internal imports | — | |
 | jG. Capability grants and legacy pane-id adoption (Coding, file preview, PR review) | d1 | [security] |
-| jF. File preview → its own default plugin, with migration | i0, jG, SDK-4, SDK-views, KIT | [security] |
+| jF. File preview → its own default plugin, with migration | i0, jG, SDK-1, SDK-4, SDK-6, SDK-views, KIT | [security] |
 | jP. PR review → its own default plugin, with migration | i0, jG, SDK-1, SDK-4, SDK-views, KIT | [security] |
 | j. Coding → plugin, with migration | a, a2, i0, i2, jF, jP, jG, SDK-1, SDK-2, SDK-3, SDK-4, SDK-5, SDK-6, SDK-views, KIT | [security] |
 | k. Home → plugin, with migration | e, i2 | [security] |
@@ -1506,7 +1552,8 @@ redaction test.
 Owned by the #3875 lane: `host.panes.open/reveal/close(target)` answering
 `opened`, `focused`, `replaced` or `unavailable`, and `useUnsavedGuard(dirty)`
 bound to its close guard. This plan consumes it. Core callers that open file
-preview, PR review or Coding panes switch to it in j.
+preview switch to it in jF, callers that open PR review in jP, and callers
+that open Coding panes in j.
 
 ### SDK-5. Terminal session store, `TerminalView` and the `terminal` target [security]
 
@@ -1693,12 +1740,18 @@ selects `trusted-plugin-react`.
 - The high-risk grant class, enforceable for tier-3 and server-side
   contributions. For tier 2 it gates the raise only.
 - An update requesting any new capability does not activate until consent
-  is given.
+  is given. Exception (OPEN-14): capabilities listed in the plugin's
+  `plugins.lock` entry, for a `kontour` plugin, are pre-approved, except
+  high-risk ones.
 
 Acceptance:
 
 - A tier-3 plugin cannot select `trusted-plugin-react`.
 - An update adding `agents.invoke` stays inactive until consent is given.
+- A `kontour` locked plugin updated to a locked version gets the lock
+  entry's non-high-risk capabilities with no prompt. The same update listing
+  `agents.invoke` in its lock entry still stays inactive for that capability
+  until consent is given on the consent listener.
 - A tier-3 plugin requesting `approvals.render` is refused.
 
 Proof: frame-mount and installer tests, each failing when its rule is
@@ -1707,7 +1760,8 @@ reverted.
 ### d3. Raise on the consent listener; retire the remote-bundle store [security]
 
 - Raising a plugin to tier 2, and any high-risk grant, is decided only on the
-  distinct-origin consent listener.
+  distinct-origin consent listener. Lock pre-approval (OPEN-14) never covers
+  a high-risk grant, so this holds for bundled plugins too.
 - The prompt uses the exact tier-2 disclosure wording from
   [tier 2 is the kernel's own realm](#tier-2-is-the-kernels-own-realm) and
   lists who is affected.
@@ -1719,6 +1773,8 @@ reverted.
 Acceptance:
 
 - A raise sent to an ordinary authenticated route is refused.
+- A high-risk capability listed in a bundled plugin's lock entry is not
+  granted until it is decided on the consent listener.
 - The consent page shows the disclosure text.
 - A persisted `remotePluginBundlesAllowedKey` entry in `localStorage` no
   longer admits in-process code.
@@ -1838,9 +1894,16 @@ tests for the two refusals.
 ### i0. Offline bundled default set from `plugins.lock` [security]
 
 **Owner prerequisite.** Before i0 starts, the owner lists `plugins.lock` in
-`.github/CODEOWNERS` and changes `main`'s ruleset to require code-owner
-review. That is a repository-settings change an i0 pull request cannot make
-([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
+`.github/CODEOWNERS` and protects it, by one of the options in
+[decision 3](#decision-3-pluginslock-and-the-offline-default-set) (this
+record recommends the scoped required check). That is a repository-settings
+change an i0 pull request cannot make.
+
+**Dependencies.** i0's acceptance needs per-plugin grants and legacy-id
+adoption, so it depends on jG (and jG on d1 only, keeping the graph
+acyclic). The prompt for a capability beyond the lock entry is d2's update
+re-prompt, and a high-risk capability is decided on d3's consent listener;
+i0 owns neither prompt, only the decision of what the lock pre-approves.
 
 - Commit `plugins.lock`: per plugin, name, version, artifact URL, sha256,
   Sigstore identity (equal to the pinned identity) and capabilities.
@@ -1859,8 +1922,11 @@ review. That is a repository-settings change an i0 pull request cannot make
     downgrades a newer version the operator installed.
 - **Grants** (OPEN-14, answered): a `kontour` plugin listed in the lock gets
   exactly the lock entry's capabilities with no prompt, at install and at a
-  version update. A capability beyond the lock's list prompts the operator,
-  and the plugin stays inactive until that prompt is answered.
+  version update, except high-risk capabilities, which go to the consent
+  listener (d3). A capability beyond the lock's list prompts the operator
+  through d2's re-prompt, and the plugin stays inactive until that prompt is
+  answered. The plugin manager discloses lock-granted capabilities and who
+  they affect (see [Trust and grants](#trust-and-grants)).
 - **The uninstall record.** i0 owns it. When the operator uninstalls a
   bundled plugin, the installer writes a `bundledUninstalled` entry (plugin
   name) in the server's plugin installation state, beside the install
@@ -1869,13 +1935,25 @@ review. That is a repository-settings change an i0 pull request cannot make
   it. Disabling is different: a disabled plugin stays installed and
   disabled across starts and updates, and writes no uninstall record.
 - **Dropped from the lock.** A plugin that the running release no longer
-  locks loses `kontour` provenance at the next start, and with it its
-  legacy-id adoptions (jG) and its lock pre-approval. It is not removed. The
-  plugin manager shows it as "no longer in this Station's default set" and
-  asks the operator to keep it (as a `publisher`-provenance decision under
-  d1's rules) or uninstall it. Until then it is inactive, and panes that
-  relied on an adopted id render `unavailable` with that reason.
-  "Reinstall from the bundled set" offers only plugins in the current lock.
+  locks loses `kontour` provenance at the next start (recomputed from the
+  verified identity stored at install, without re-verifying signatures), and
+  with it its legacy-id adoptions (jG) and its lock pre-approval. It is not
+  removed. The plugin manager shows it as "no longer in this Station's
+  default set" and asks the operator to keep it or uninstall it. Until then
+  it is inactive, and panes that relied on an adopted id render
+  `unavailable` with that reason.
+  - **Keep** is persisted in the plugin's d1 trust record (the decision, who
+    made it, when, and the release that dropped it), so the operator is not
+    asked again on every start. A kept plugin has `publisher` provenance and
+    starts at tier 3 (OPEN-3's proposed default). A plugin that declares only
+    an in-process renderer, as Coding does, is therefore `unavailable` until
+    the operator raises it to tier 2 on the consent listener (d3).
+  - "Reinstall from the bundled set" is hidden for a dropped plugin; it is
+    offered only for plugins in the current lock.
+  - A dropped plugin that fills a required slot (Home, chat, approvals) is
+    treated by slice e's resolver as a failed filler: an override falls back
+    to the default filler, and a default filler that cannot resolve enters
+    safe mode (slice f).
 - **Name conflicts.** If an installed plugin has a locked name but is not
   `kontour` (for example a `publisher` plugin of the same name), it does not
   count as the bundled plugin. The installer does not replace it
@@ -1884,6 +1962,15 @@ review. That is a repository-settings change an i0 pull request cannot make
   one. Auto-replacing would let a start silently remove an operator's
   choice; leaving it unflagged would let a same-name plugin stand in for the
   bundled one.
+  - Uninstalling the conflicting non-`kontour` plugin does **not** write
+    `bundledUninstalled`; that record is only for a bundled plugin the
+    operator removed.
+  - After that uninstall, the bundled plugin installs **immediately**, in the
+    same operation, rather than waiting for the next start, so the operator
+    sees the outcome of the choice they just made.
+  - The conflict entry offers "Install bundled" as the one-step action: it
+    uninstalls the conflicting plugin and installs the bundled one, after
+    one confirmation naming both.
 - A bot PR bumps the lock.
 
 Acceptance, with a fixture lock of test plugins signed by a test identity
@@ -1910,7 +1997,14 @@ that a test build pins (no dependence on Coding or j):
   manager, and its adopted-id panes render `unavailable` with the reason.
 - **Name conflict:** a `publisher` plugin with a locked name is left in
   place, a conflict is surfaced, and the bundled plugin is not installed
-  until it is resolved.
+  until it is resolved. "Install bundled" replaces it in one step, writes no
+  `bundledUninstalled`, and the bundled plugin is installed before the
+  action returns.
+- **Keep after drop:** a kept dropped plugin is not asked about again on the
+  next start, runs at tier 3, and a Coding-like fixture declaring only an
+  in-process renderer is `unavailable` until raised.
+- **High-risk:** a lock entry listing `agents.invoke` does not grant it
+  without a consent-listener decision.
 - A tampered artifact in the payload is refused, and Station still boots:
   the affected layout is `unavailable` with a reason (safe mode only when a
   required-slot default filler is affected, per slice e).
@@ -2039,6 +2133,11 @@ added pair (non-zero exit, pair named) and one removed pair (zero exit).
   PR review descriptor and `pr:` family to the PR review plugin. Instance ids
   and stateKeys are kept. Each mapping is honoured only for that plugin, and
   only with `kontour` provenance (pinned identity and lock entry).
+- Instance families (`file-preview:`, `pr:`) are matched by parsing the
+  instance id with the family's own parser (for example the
+  `file-preview:<32 hex>` form), never by a string-prefix check. Today's
+  core code dedupes previews with `id.startsWith('file-preview:')`; the
+  adoption check must not copy that.
 - The same grant mechanism serves jF (file read) and jP (pull-request data),
   so neither builds its own.
 - **No terminal.** jG adopts no terminal id and adds no install-time
@@ -2058,11 +2157,17 @@ build pins and lists in a test lock (no dependence on j):
   from the lock, declaring a legacy id is refused the adoption.
 - A `kontour` plugin declaring a legacy id that the table maps to a
   different plugin is refused the adoption.
+- A non-`kontour` plugin claiming `pane:builtin:workspace-preview:file-preview`,
+  a `file-preview:` instance or a `pr:` instance is refused.
+- An instance id that starts with `file-preview:` but does not parse as the
+  family's form (for example `file-preview:../x`) is not adopted.
 - A plugin declaring `pane:builtin:coding:terminal` is refused at install.
 
 Proof: contracts and installer tests per rule, and a real-browser spec with
 a grant withheld. Restoring the provenance check must fail the plugin-pane
-test; removing the identity or lock condition must fail the spoofing test.
+test; removing the identity or lock condition must fail the spoofing test;
+replacing the family parser with a prefix check must fail the malformed-id
+test.
 
 ### jF. File preview → its own default plugin, with migration [security]
 
@@ -2072,19 +2177,41 @@ test; removing the identity or lock condition must fail the spoofing test.
   `DiffView`; its content uses `FileView`.
 - Chat, Sessions, the navigation store, `useOpenInRegion` and Coding open it
   by descriptor through SDK-4. Nothing in core imports it.
+- **The open handshake moves.** Today core's `openFilePreviewInRegion`
+  (`src-ui/src/contexts/useOpenInRegion.ts`) writes
+  `station:file-preview-pane-state:v1:<id>` before opening, rolls the write
+  back when the region model refuses, and dedupes by scanning placed
+  previews' stored state for the same project, path and thread. After jF:
+  - the request travels as the open target's parameters through SDK-4
+    (project, path, line range, thread), not as a pre-written record;
+  - the plugin owns its state: it writes it when its pane mounts with those
+    parameters, so a refused open writes nothing and needs no rollback;
+  - dedupe is a declared key on the target (project, path, thread), so
+    SDK-4 reveals an existing occurrence, and the plugin applies a newly
+    requested line range on reveal;
+  - the plugin reads its own state from SDK-6, not from a core
+    `localStorage` key.
+  How SDK-4 expresses the dedupe key is #3875's relation contract; jF does
+  not define a second one.
+- **Clipboard** (the copy action on file links and in the pane) uses SDK-1's
+  `host.clipboard`.
 - File read comes from a jG-style grant listed in its lock entry.
 - **Coordination:** #3875 reworks file-preview relations. jF lands on that
   lane's relation contract and does not carry a second version of it.
 - **Migration:** `pane:builtin:workspace-preview:file-preview` and the
-  `file-preview:` instance family are adopted by this plugin (jG), and the
-  stored `station:file-preview-pane-state:v1` entries keep reading.
+  `file-preview:` instance family are adopted by this plugin (jG). A one-time
+  import copies every stored `station:file-preview-pane-state:v1:<id>` entry
+  into the plugin's SDK-6 namespace under the same instance id, then stops
+  reading the old key.
 
 Acceptance:
 
 - A file link in chat opens the plugin's preview pane, with Coding
   uninstalled.
 - A file-preview pane saved in a layout or dock before jF reopens with its
-  stored state.
+  stored state, read from the plugin's SDK-6 namespace after the import.
+- A refused open leaves no state record; opening the same file twice reveals
+  one pane and applies the second request's line range.
 - Without the file-preview plugin, the open answers `unavailable`, and the
   link shows the path with a copy action.
 - `src-ui` has no file-preview pane source left.
