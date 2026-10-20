@@ -161,6 +161,33 @@ export async function fetchOrchestrationSessionEventWindow(
   return page;
 }
 
+/** Latest turn only; activity reads never paginate or populate session detail. */
+export function useOrchestrationSessionActivityQuery(
+  threadId: string,
+  apiBase?: string,
+  config?: QueryConfig<OrchestrationSessionEventWindow>,
+) {
+  return useApiQuery(
+    ['orchestration-session-activity', apiBase ?? 'default', threadId],
+    (signal) =>
+      fetchOrchestrationSessionEventWindow(
+        threadId,
+        apiBase,
+        { direction: 'newest', turnLimit: 1 },
+        { signal },
+      ),
+    {
+      enabled: Boolean(threadId) && (config?.enabled ?? true),
+      staleTime: config?.staleTime ?? 0,
+      gcTime: config?.gcTime,
+      refetchOnMount: config?.refetchOnMount ?? 'always',
+      refetchInterval: config?.refetchInterval,
+      retry: config?.retry ?? false,
+      cancelWhenInactive: config?.cancelWhenInactive ?? true,
+    },
+  );
+}
+
 export async function fetchOrchestrationConversationEventWindow(
   conversationId: string,
   apiBase?: string,

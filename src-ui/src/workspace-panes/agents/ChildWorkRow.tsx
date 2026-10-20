@@ -1,6 +1,7 @@
 import { CHILD_WORK_SUMMARY_MAX_CHARS } from '@kontourai/station-contracts/child-work';
 import {
   useInterruptDelegatedTaskMutation,
+  useOrchestrationSessionActivityQuery,
   useOrchestrationSessionQuery,
   useStopProviderTaskMutation,
 } from '@kontourai/station-sdk';
@@ -54,7 +55,7 @@ function provenanceText(provenance: ChildWorkProvenance): string {
 }
 
 /**
- * Accounting is shown on expansion; running activity shares the session query.
+ * Lifetime accounting is read only on expansion.
  */
 function DelegateUsage({
   threadId,
@@ -94,7 +95,7 @@ function DelegateActivity({
   threadId: string;
   progress?: string;
 }) {
-  const detail = useOrchestrationSessionQuery(threadId, {
+  const activity = useOrchestrationSessionActivityQuery(threadId, undefined, {
     staleTime: 0,
     refetchInterval: 2_000,
     retry: false,
@@ -102,8 +103,13 @@ function DelegateActivity({
   });
   const tool = useMemo(
     () =>
-      detail.data ? latestChildTool(detail.data.events, threadId) : undefined,
-    [detail.data, threadId],
+      activity.data
+        ? latestChildTool(
+            activity.data.events.map(({ event }) => event),
+            threadId,
+          )
+        : undefined,
+    [activity.data, threadId],
   );
   return <ChildWorkActivity tool={tool} progress={progress} />;
 }

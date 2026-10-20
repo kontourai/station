@@ -6,6 +6,9 @@
  */
 
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
+import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -17,6 +20,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ChildWorkRowModel } from '../childWorkSelectors';
 
 const useOrchestrationSessionQuery = vi.fn();
+const useOrchestrationSessionActivityQuery = vi.fn();
 const interruptMutate = vi.fn();
 const stopMutate = vi.fn();
 // #2486 review: a configurable mock so a test can drive the mutation's own
@@ -35,6 +39,8 @@ const { FakeStationHttpError } = vi.hoisted(() => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionActivityQuery: (...args: unknown[]) =>
+    useOrchestrationSessionActivityQuery(...args),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: () => ({
@@ -89,6 +95,9 @@ function mount(model: ChildWorkRowModel, now = 100_000) {
 
 beforeEach(() => {
   useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
+  useOrchestrationSessionActivityQuery
+    .mockReset()
+    .mockReturnValue({ data: undefined });
   useStopProviderTaskMutation.mockReturnValue({
     mutate: stopMutate,
     isPending: false,
@@ -101,6 +110,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 test('an unreported start and unreported usage render absent, not as zero', () => {
@@ -174,50 +185,154 @@ test('a transcript-file handle gets no button; a session handle opens that sessi
   expect(onOpenSession).toHaveBeenCalledWith('d-1');
 });
 
-test('a running delegate shows the latest tool from its own current turn', () => {
+test('a collapsed delegate polls one bounded turn, shows its own tool, and clears it on a new turn', async () => {
+  vi.useFakeTimers();
+  const sdk = await vi.importActual<typeof import('@kontourai/station-sdk')>(
+    '@kontourai/station-sdk',
+  );
+  useOrchestrationSessionActivityQuery.mockImplementation(
+    (threadId, _apiBase, config) =>
+      sdk.useOrchestrationSessionActivityQuery(
+        threadId,
+        'http://station.test',
+        config,
+      ),
+  );
   const base = {
     provider: 'codex' as const,
     createdAt: '2026-10-20T00:00:00.000Z',
-    turnId: 'turn-new',
+    turnId: 'turn-old',
+    threadId: 'delegate-live',
   };
-  useOrchestrationSessionQuery.mockReturnValue({
-    data: {
-      events: [
-        {
-          ...base,
-          eventId: 'start',
-          method: 'turn.started',
-          threadId: 'delegate-live',
-          prompt: 'Check the source',
-        },
-        {
-          ...base,
-          eventId: 'tool',
-          method: 'tool.started',
-          threadId: 'delegate-live',
-          toolName: 'Read',
-          itemId: 'tool-1',
-          toolCallId: 'tool-1',
-          arguments: {},
-        },
-        {
-          ...base,
-          eventId: 'other',
-          method: 'tool.started',
-          threadId: 'someone-else',
-          toolName: 'OtherTool',
-          itemId: 'tool-2',
-          toolCallId: 'tool-2',
-          arguments: {},
-        },
-      ],
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      ...base,
+      eventId: 'start',
+      method: 'turn.started',
+      prompt: 'Check the source',
     },
+    {
+      ...base,
+      eventId: 'old-tool',
+      method: 'tool.started',
+      toolName: 'OldTool',
+      itemId: 'old-tool',
+      toolCallId: 'old-tool',
+      arguments: {},
+    },
+    {
+      ...base,
+      turnId: 'turn-new',
+      eventId: 'next',
+      method: 'turn.started',
+      prompt: 'Continue',
+    },
+    {
+      ...base,
+      turnId: 'turn-new',
+      eventId: 'tool',
+      method: 'tool.started',
+      toolName: 'Read',
+      itemId: 'tool-1',
+      toolCallId: 'tool-1',
+      arguments: {},
+    },
+    ...['exec-1', 'sibling'].map(
+      (threadId): CanonicalRuntimeEvent => ({
+        ...base,
+        eventId: threadId,
+        method: 'tool.started',
+        threadId,
+        toolName: `${threadId}-tool`,
+        itemId: threadId,
+        toolCallId: threadId,
+        arguments: {},
+      }),
+    ),
+  ];
+  const fetcher = vi.fn(async (_url: string, _init?: RequestInit) =>
+    Response.json({
+      success: true,
+      data: {
+        protocolVersion: 1,
+        session: {
+          threadId: 'delegate-live',
+          provider: 'codex',
+          status: 'running',
+          createdAt: base.createdAt,
+          updatedAt: base.createdAt,
+          controlMode: 'station-owned',
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 10_000,
+          answerability: { answerable: true },
+        },
+        events: events.map((event, sequence) => ({ sequence, event })),
+        hasMore: true,
+        nextCursor: 'older-history',
+        watermark: events.length,
+      } satisfies OrchestrationSessionEventWindow,
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
   });
-  mount(row({ producer: 'station-delegate', childId: 'delegate-live' }));
+  const model = row({
+    producer: 'station-delegate',
+    childId: 'delegate-live',
+    progress: 'Working',
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ul>
+        <ChildWorkRow
+          row={model}
+          now={100_000}
+          showProvenance={false}
+          onOpenSession={onOpenSession}
+        />
+      </ul>
+    </QueryClientProvider>,
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(50);
+  });
   expect(
     screen.getByText('Read', { selector: '.child-work-activity__name' }),
   ).toBeTruthy();
-  expect(screen.queryByText('OtherTool')).toBeNull();
+  expect(screen.queryByText('OldTool')).toBeNull();
+  expect(screen.queryByText('exec-1-tool')).toBeNull();
+  expect(screen.queryByText('sibling-tool')).toBeNull();
+  expect(useOrchestrationSessionQuery).not.toHaveBeenCalled();
+
+  events.push({
+    ...base,
+    turnId: 'turn-next',
+    eventId: 'reset',
+    method: 'turn.started',
+    prompt: 'Next task',
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_050);
+  });
+  expect(
+    screen.queryByText('Read', { selector: '.child-work-activity__name' }),
+  ).toBeNull();
+  expect(screen.getByText('Working')).toBeTruthy();
+  expect(useOrchestrationSessionQuery).not.toHaveBeenCalled();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  for (const [url] of fetcher.mock.calls) {
+    expect(url).toBe(
+      'http://station.test/api/orchestration/sessions/delegate-live/event-window?direction=newest&turnLimit=1',
+    );
+  }
+  view.unmount();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(4_000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  client.clear();
 });
 
 test('Stop renders only from the row model, and reaches the matching seam', () => {
