@@ -1,0 +1,7 @@
+{
+  "revision": "a67a63fa6fafb31ef5fea485df93fe8483e130e3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed against MessageBubble.tsx (one label helper now builds both the chip and Retry names): the at-rest Basis chip sentence still holds; no prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}
