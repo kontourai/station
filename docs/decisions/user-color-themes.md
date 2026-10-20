@@ -91,7 +91,7 @@ a drift test fails when any differs:
 - one stylesheet per family, `public/color-themes/<family>.css`, served as a
   static file and loaded only when that family is selected. Nothing themed is
   in the entry bundle, so default users pay for none of it: entry CSS is
-  51858 gzip bytes at the base commit and 52462 with this change (the splash
+  51858 gzip bytes at the base commit and 52486 with this change (the splash
   subset), against 62698 when every theme sat in the entry sheet;
 - the splash subset (surfaces, text and focus for every flavor), imported by
   the splash stylesheet so the first paint is themed while the family sheet
