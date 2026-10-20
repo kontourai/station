@@ -20,13 +20,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import semver from 'semver';
+import { canonicalValue } from './lib/canonical-json.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { readPnpmLockfile, readPnpmWorkspace } from './lib/pnpm-lockfile.mjs';
 import { listWorkspacePackageManifests } from './workspace-dependency-provenance.mjs';
-
-function isRecord(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
 
 function problem(workspace, field, manifestValue, lockValue) {
   return { workspace, field, manifestValue, lockValue };
@@ -72,17 +69,6 @@ export function pnpmPackageExtensionsChecksum(extensions) {
   })}`;
 }
 
-function canonical(value) {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (isRecord(value))
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((key) => [key, canonical(value[key])]),
-    );
-  return value;
-}
-
 /** PNPM v9 importer specifiers and peer-qualified snapshots are distinct:
  * importer ownership determines manifest parity; snapshots determine peers. */
 export function findPnpmLockProblems({
@@ -95,7 +81,7 @@ export function findPnpmLockProblems({
   const report = (workspace, field, expected, actual) =>
     problems.push(problem(workspace, field, expected, actual));
   const equal = (a, b) =>
-    JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+    JSON.stringify(canonicalValue(a)) === JSON.stringify(canonicalValue(b));
   if (
     !equal(
       Object.keys(manifests).sort(),

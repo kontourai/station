@@ -1,3 +1,4 @@
+// UNWIRED(#419): no lane runs the daily-driver qualification; #419's automated turn-2 qualification is the intended caller. See docs/strategy/daily-driver-qualification.md.
 import { createHash } from 'node:crypto';
 import {
   DAILY_DRIVER_PROFILES,

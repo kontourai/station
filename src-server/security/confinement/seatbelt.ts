@@ -183,6 +183,22 @@ export function seatbeltHiddenPaths(
   };
 }
 
+/**
+ * #3800: the project-scoped engine configuration directories at the
+ * workspace root, write-denied whole under the profile. Codex merges
+ * `.codex/config.toml` over the user's configuration (its writable roots and
+ * MCP servers included) and Claude reads `.claude/settings.json`
+ * and `settings.local.json` (hooks, MCP approvals) plus agents and commands
+ * that can carry hooks of their own. Denying the directory, not its files,
+ * also refuses creating, renaming or replacing it, so a directory prepared
+ * elsewhere cannot be moved into place. Codex's own sandbox keeps `.codex`
+ * read-only the same way. Only the root is covered: a nested one applies
+ * only to a session started in that subdirectory.
+ */
+export function seatbeltEngineConfigPaths(workspace: string): string[] {
+  return [join(workspace, '.codex'), join(workspace, '.claude')];
+}
+
 export interface SeatbeltGrantInput {
   /** Every path symlink-resolved. */
   workspace: string;
@@ -210,6 +226,10 @@ export interface SeatbeltGrantInput {
  *   above, every other worktree's and submodule's pointers and config
  *   (`worktrees`, `modules`) read-only, and the `.git` directory itself
  *   cannot be removed, renamed or replaced by a pointer file.
+ * - Always (#3800): the engines' own project configuration in the workspace
+ *   (`seatbeltEngineConfigPaths`). A confined agent that could write it
+ *   could widen the next Codex session's sandbox, or plant hooks and MCP
+ *   servers that the next unconfined session in this checkout runs.
  */
 export function seatbeltGrants(
   input: SeatbeltGrantInput,
@@ -220,7 +240,7 @@ export function seatbeltGrants(
     input.stationConfigDir,
   ];
   const writableFiles: string[] = [];
-  const writeDenied: string[] = [];
+  const writeDenied: string[] = seatbeltEngineConfigPaths(input.workspace);
   const writeDeniedExact: string[] = [];
   const git = input.git;
   if (git) {
@@ -441,6 +461,13 @@ export function seatbeltWriteGrantKinds(
   bounds: SeatbeltBounds,
 ): ConfinementWriteGrant[] | undefined {
   if (seatbeltWorkspaceRefusal(bounds.workspace, bounds)) return undefined;
+  const engineConfigDenied = new Set(grants.writeDenied ?? []);
+  if (
+    !seatbeltEngineConfigPaths(bounds.workspace).every((path) =>
+      engineConfigDenied.has(path),
+    )
+  )
+    return undefined;
   const kinds = new Set<ConfinementWriteGrant>();
   const git = bounds.git;
   const linked = git && !within(bounds.workspace, git.commonDir);

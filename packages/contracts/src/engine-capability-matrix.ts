@@ -778,6 +778,54 @@ export function externalToolPolicyAdapters(): Array<{
  */
 export const ACP_MODEL_OVERRIDE_PER_TURN = false;
 
+/**
+ * #3290: who decides which of an ACP engine's actions ask before they run.
+ * ACP standardizes how a client answers `session/request_permission`, not
+ * which calls must reach it; each engine decides that from its own
+ * configuration.
+ *
+ * - `station`: Station launches the engine with its own permission rules set
+ *   to ask before every action that is not a read, and answers each request
+ *   by the chat's approval mode (Ask: a person decides; Auto: file edits are
+ *   allowed; full access: every request is allowed). The approval control
+ *   offers Station's approval modes.
+ * - `engine`: Station has no channel into the engine's permission rules. It
+ *   answers only the requests the engine chooses to send, so the approval
+ *   control says the engine decides and offers no mode.
+ */
+export type AcpApprovalControl = 'station' | 'engine';
+
+/** ACP engines whose launch configuration Station sets (#3290). */
+export type AcpStationApprovalEngine = 'opencode';
+
+/**
+ * The ACP engine a connection's command launches, when Station sets its
+ * approval rules at launch. Matched on the executable's own name (any
+ * directory, a Windows launcher extension ignored), the identity the
+ * OpenCode model listing also uses. A wrapper such as `npx opencode-ai` is
+ * not recognized, so that connection is `engine`-decided.
+ */
+export function acpStationApprovalEngine(
+  command: string | null | undefined,
+): AcpStationApprovalEngine | undefined {
+  if (typeof command !== 'string') return undefined;
+  const executable = command
+    .trim()
+    .replace(/\\/g, '/')
+    .split('/')
+    .pop()
+    ?.toLowerCase()
+    .replace(/\.(exe|cmd|bat)$/, '');
+  return executable === 'opencode' ? 'opencode' : undefined;
+}
+
+/** Who decides which of this ACP connection's actions ask (#3290). */
+export function acpApprovalControl(
+  command: string | null | undefined,
+): AcpApprovalControl {
+  return acpStationApprovalEngine(command) ? 'station' : 'engine';
+}
+
 export const ENGINE_CAPABILITY_MATRICES: Record<
   string,
   EngineCapabilityMatrix

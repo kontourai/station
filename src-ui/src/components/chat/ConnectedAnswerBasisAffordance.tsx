@@ -1,37 +1,69 @@
+import { AnswerBasisAffordance } from '@kontourai/station-basis-pane/answer-basis-affordance';
 import { createSessionInventoryBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useScopedProjectQuery } from '../../contexts/ProjectsContext';
 import { useBasisPaneLauncher } from '../../workspace-panes/BasisPaneLauncher';
 import { openSessionInventoryOccurrence } from '../chat-dock/sessionInventoryOccurrence';
 
 /**
+ * Whether `target` is on screen now. Without IntersectionObserver nothing is
+ * reported visible, so the chip stays plain "Basis" rather than reading every
+ * answer's Basis.
+ */
+function useOnScreen(target: RefObject<HTMLElement | null>): boolean {
+  const [onScreen, setOnScreen] = useState(false);
+  useEffect(() => {
+    const element = target.current;
+    if (!element || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry) setOnScreen(entry.isIntersecting);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [target]);
+  return onScreen;
+}
+
+/**
  * The answer's Basis chip: one tap from a settled answer's own action row to
  * that exact answer's Basis (`current-answer` scope for this session and
  * turn), through the same session-inventory host or Basis Pane launcher every
- * other Basis entry uses.
+ * other Basis entry uses. Its face names Surface's standing for this answer
+ * only when that standing is notable (`AnswerBasisAffordance`), and it reads
+ * that standing only while it is on screen.
  */
 export function ConnectedAnswerBasisAffordance({
   projectSlug,
   chatStoreId,
   sessionId,
   turnId,
-  label = 'Basis for this answer',
+  answerName = 'this answer',
 }: {
   projectSlug?: string;
   chatStoreId?: string;
   sessionId: string;
   turnId: string;
-  /** Accessible name naming which answer this chip opens; starts "Basis". */
-  label?: string;
+  /** Which answer this chip opens, for its accessible name. */
+  answerName?: string;
 }) {
-  const [enabled, setEnabled] = useState(false);
+  const chip = useRef<HTMLButtonElement>(null);
+  const onScreen = useOnScreen(chip);
+  // The Project lookup is click-initiated; the Basis read is visibility-led.
+  const [projectLookup, setProjectLookup] = useState(false);
   const [pendingTrigger, setPendingTrigger] = useState<HTMLElement | null>(
     null,
   );
   const authority = useHostRequestAuthorityScope();
   const projectQuery = useScopedProjectQuery(projectSlug ?? '', {
-    enabled: enabled && Boolean(projectSlug),
+    enabled: projectLookup && Boolean(projectSlug),
   }) as {
     data?: { id?: string };
     isFetching?: boolean;
@@ -72,7 +104,7 @@ export function ConnectedAnswerBasisAffordance({
     [authority?.authorityKey, chatStoreId, openBasis, sessionId, turnId],
   );
   useEffect(() => {
-    if (!pendingTrigger || !enabled) return;
+    if (!pendingTrigger || !projectLookup) return;
     // The Project lookup is intentionally click-initiated. Once that lookup
     // settles without a canonical Project, launch the local full fallback
     // without asking the person to press Basis a second time.
@@ -85,34 +117,31 @@ export function ConnectedAnswerBasisAffordance({
     launch(pendingTrigger, projectId);
     setPendingTrigger(null);
   }, [
-    enabled,
     launch,
     pendingTrigger,
     projectId,
     projectQuery.isFetching,
     projectQuery.isLoading,
     projectSlug,
+    projectLookup,
   ]);
   return (
     <>
-      {/* The chip states no standing, source count or gap count: nothing on
-          the row computes one, and reading Basis per rendered answer would
-          fire one request per message. The opened Basis states all three. */}
-      <button
-        type="button"
+      <AnswerBasisAffordance
+        ref={chip}
         className="answer-basis-chip"
-        title="Open the basis for this answer"
-        aria-label={label}
+        sessionId={sessionId}
+        turnId={turnId}
+        enabled={onScreen && Boolean(authority)}
+        requestScope={authority ?? undefined}
+        answerName={answerName}
         aria-busy={pendingTrigger ? true : undefined}
-        onClick={(event) => {
-          const trigger = event.currentTarget;
-          setEnabled(true);
+        onOpen={(trigger) => {
+          setProjectLookup(true);
           if (projectId || !projectSlug) launch(trigger, projectId);
           else setPendingTrigger(trigger);
         }}
-      >
-        Basis
-      </button>
+      />
       {fallback}
     </>
   );
