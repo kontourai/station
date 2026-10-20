@@ -281,21 +281,32 @@ inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer
 says the rows are the last known list.
 
-The pill uses compact state labels such as Sending, Working, Thinking, and
-Reconnecting; it does not expand to display tool names. **Sending** covers the
-chat's own send until the agent has its turn (no turn open on the server yet);
-once Station's delivery lookup says it has the message, its detail says Station
-has it and is starting the agent, and that the app may be closed only when
-that Station keeps running without the app (not the desktop's own Station when
-it stops with the app, nor while the desktop has not reported it). The user's
-own bubble carries the same state until the agent has the message
-(`MessageDeliveryNote`): outlined rather than filled (dashed while on its way,
-solid when not sent or when it may have reached the agent; only a send under
-way keeps the accent colour, and a send with no answer reads as a caution), with a short label that says whether it goes if the app
-closes (including waiting behind an unsent message, waiting for its own
-Station, and "Not confirmed" for this window's send with no answer), plus Retry
-and Edit when not sent (Discard is in the bubble's ⋯ menu) and Check and
-Discard… when it may have reached the agent. State changes animate its width with
+The pill uses compact state labels such as Sending, Starting, Working,
+Thinking, and Reconnecting; it does not expand to display tool names.
+**Sending** covers the chat's own send until Station's delivery lookup says it
+has the message; from then until the agent has its turn (no turn open on the
+server yet) the pill says **Starting**, and its detail uses the same words as
+the bubble: "Received. Safe to close the app." only when that Station keeps
+running without the app, "Received. Keep the app open." for the desktop's own
+Station that stops with it, and "Received" while the desktop has not reported
+it. Both labels are one pill kind, so the word swaps while the width eases.
+The user's own bubble carries the same state until the agent has the message
+(`MessageDeliveryNote`). The happy path has no text: sending is a dimmed dashed
+outline with a turning ring beside the bubble, received is the full dashed
+outline with a check, and delivered fills the bubble while the check fades out.
+The glyph's SVG title is its tooltip and accessible name, and one status region
+announces the received fact. Exceptions keep one short line with their action,
+folded open in place (grid rows `0fr` to `1fr`, so neighbours do not jump):
+"Sends when connected", "No answer yet. Resends only if it never arrived.",
+"Waits for the unsent message above", "Waits for its own Station", "Queued.
+Sends after this reply.", "Not sent" with Retry and Edit (Discard is in the
+bubble's ⋯ menu), "May have reached the agent" with Check and Discard…, and
+"Not confirmed" for this window's send with no answer. The outline stays solid
+for not sent and may-have-reached, and caution-coloured for a send with no
+answer. An assistant row with nothing to draw renders no bubble: the streaming
+row appears with its first text, reasoning or tool row (the pill carries the
+starting state before that) and eases in, and a settled row whose only content
+is reasoning keeps a collapsed **Reasoning · N words** disclosure. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. Running
 tool rows and batches show a subtle reflection sweeping left to right; settled
 calls and approval requests stay still. Reduced motion disables the reflection
@@ -773,7 +784,9 @@ Mobile message rows prioritize the authored text and essential live approval or
 error state. Each row with text has a 44px copy button beside a separate 44px
 actions button; the actions button opens attribution, model facts, provenance,
 ratings, and Task references on demand, and omits itself from a user message
-that has none of them. These details retain their original event-backed
+that has none of them. On desktop a durable user message lists **Add input to
+Task** in its ⋯ menu, as an answer lists **Add to Task**, rather than as a
+button under every message. These details retain their original event-backed
 identities. Desktop attribution stays inline. On every screen size a message's
 copy control is one icon button, named "Copy your message" or "Copy answer";
 no menu repeats it as text.
