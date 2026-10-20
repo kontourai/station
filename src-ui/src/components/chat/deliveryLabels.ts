@@ -19,7 +19,7 @@ export function receivedDeliveryLabel(
   stationOutlivesApp: boolean | undefined,
 ): string {
   return stationOutlivesApp === true
-    ? 'Received. Safe to close the app.'
+    ? 'Received. You can close the app.'
     : stationOutlivesApp === false
       ? 'Received. Keep the app open.'
       : 'Received';

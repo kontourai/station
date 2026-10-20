@@ -94,7 +94,7 @@ export function SessionScheduledSection({
           className="session-context-card__link session-scheduled__all"
           onClick={() => wrap(() => navigate('/schedule'))}
         >
-          Schedule
+          All jobs
         </button>
       </div>
       <ul className="session-scheduled__rows">
@@ -117,7 +117,7 @@ export function SessionScheduledSection({
                 <Row
                   glyph={<TimeGlyph className="session-scheduled__glyph" />}
                   name={item.wakeUp.note}
-                  when={`Once at ${clockTime(Date.parse(item.wakeUp.dueAt), now)}`}
+                  when={`Check-back at ${clockTime(Date.parse(item.wakeUp.dueAt), now)}`}
                   actions={
                     <Button
                       size="sm"

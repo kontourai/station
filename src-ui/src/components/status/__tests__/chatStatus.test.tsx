@@ -56,7 +56,7 @@ describe('deriveChatStatus — one status, by priority', () => {
     // Same kind, so the pill swaps the word and eases its width in place.
     expect(received?.kind).toBe(sending?.kind);
     expect(received?.details).toEqual([
-      { text: 'Received. Safe to close the app.' },
+      { text: 'Received. You can close the app.' },
     ]);
     // A Station that stops with this app (the desktop's own) says keep it
     // open; one not yet reported promises nothing either way.

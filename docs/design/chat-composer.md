@@ -286,7 +286,7 @@ Thinking, and Reconnecting; it does not expand to display tool names.
 **Sending** covers the chat's own send until Station's delivery lookup says it
 has the message; from then until the agent has its turn (no turn open on the
 server yet) the pill says **Starting**, and its detail uses the same words as
-the bubble: "Received. Safe to close the app." only when that Station keeps
+the bubble: "Received. You can close the app." only when that Station keeps
 running without the app, "Received. Keep the app open." for the desktop's own
 Station that stops with it, and "Received" while the desktop has not reported
 it. Both labels are one pill kind, so the word swaps while the width eases.

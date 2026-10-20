@@ -185,8 +185,8 @@ describe('MessageBubble delivery state', () => {
     // No text line: the check glyph names the fact, and it is announced.
     expect(lineText(first.bubble)).toBeNull();
     expect(glyph(first.bubble).getAttribute('data-glyph')).toBe('received');
-    expect(glyphTitle(first.bubble)).toBe('Received. Safe to close the app.');
-    expect(statusText(first.bubble)).toBe('Received. Safe to close the app.');
+    expect(glyphTitle(first.bubble)).toBe('Received. You can close the app.');
+    expect(statusText(first.bubble)).toBe('Received. You can close the app.');
     cleanup();
 
     platform.outlives = false;
@@ -431,7 +431,7 @@ describe('MessageBubble delivery state', () => {
       });
     });
     expect(bubble.querySelector('.message-delivery__status')).toBe(region);
-    expect(region?.textContent).toBe('Received. Safe to close the app.');
+    expect(region?.textContent).toBe('Received. You can close the app.');
   });
 
   it('a send with no answer reads as waiting for Station, in the words the list uses', () => {

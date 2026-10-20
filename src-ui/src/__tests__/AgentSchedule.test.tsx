@@ -296,7 +296,7 @@ describe('the "This chat" card’s Scheduled section', () => {
     );
     const section = await screen.findByRole('region', { name: 'Scheduled' });
     expect(section.textContent).toContain('check the deploy');
-    expect(section.textContent).toContain('Once at 4:12 PM');
+    expect(section.textContent).toContain('Check-back at 4:12 PM');
     expect(section.textContent).toContain('Resume after usage limit');
     expect(section.textContent).toContain('At 3:00 PM');
     expect(section.textContent).toContain('Needs your approval');
@@ -311,7 +311,7 @@ describe('the "This chat" card’s Scheduled section', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Edit nightly' }));
     expect(navigate).toHaveBeenCalledWith('/schedule', { job: 'nightly' });
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'All jobs' }));
     expect(navigate).toHaveBeenCalledWith('/schedule');
   });
 
