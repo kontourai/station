@@ -94,6 +94,15 @@ export function countsFromReport(report, required = []) {
     sum += count;
     const arrays =
       category === 'unused_dependencies' ? DEPENDENCY_ARRAYS : [category];
+    for (const key of arrays)
+      if (Object.hasOwn(report, key) && !Array.isArray(report[key]))
+        throw new Error(`the fallow report's ${key} findings are not a list`);
+    // Fallow omits the list only for a category with nothing to list; a
+    // nonzero count without its findings cannot be checked against them.
+    if (count > 0 && !arrays.every((key) => Array.isArray(report[key])))
+      throw new Error(
+        `the fallow report counts ${count} ${category} but has no findings list for it`,
+      );
     if (!arrays.some((key) => Array.isArray(report[key]))) continue;
     const listed = arrays.reduce(
       (total, key) =>

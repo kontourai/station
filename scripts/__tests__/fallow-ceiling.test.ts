@@ -199,6 +199,20 @@ describe('dead-code ceiling CLI', () => {
       'the fallow report totals 0 but its categories sum to 2',
     ],
     [
+      'a nonzero count whose findings list is missing',
+      (report: Report) => {
+        delete report.unused_exports;
+      },
+      'the fallow report counts 1 unused_exports but has no findings list for it',
+    ],
+    [
+      'findings that are not a list',
+      (report: Report) => {
+        report.unused_exports = {};
+      },
+      "the fallow report's unused_exports findings are not a list",
+    ],
+    [
       'no summary',
       (report: Report) => {
         delete report.summary;
