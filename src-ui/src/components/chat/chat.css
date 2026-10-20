@@ -2198,7 +2198,6 @@
      chip's accessible name and tooltip. */
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 100%;
 }
 .answer-basis-chip .station-basis-affordance__lead {
   flex: none;
