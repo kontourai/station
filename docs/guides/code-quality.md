@@ -196,6 +196,51 @@ findings from fixes and inherited debt. Freeze each repair batch for validation
 and landing; later discoveries belong to a subsequent batch. These gates reduce
 specific regressions; they cannot guarantee that new code has no defects.
 
+### Dead-code ceiling
+
+The baselines above list inherited findings by name, so a finding that moves
+or is renamed can look new. The dead-code ceiling holds counts instead.
+[`scripts/fallow-dead-code-ceiling.json`](../../scripts/fallow-dead-code-ceiling.json)
+records how many findings `fallow dead-code` reports in each category and in
+total. It records no file paths, symbols or line numbers.
+
+```bash
+npm run fallow:ceiling
+```
+
+The command analyzes the whole tree, which takes about 25 seconds. A category
+fails (exit 1) only when its count exceeds the recorded count plus headroom of
+`max(3, ceil(5% of the recorded count))`. The headroom absorbs findings that
+pull requests add independently and that land together in one merge-queue
+batch, so the next pull request is not failed for growth it did not cause. A
+category the ceiling has never recorded is held at zero plus headroom. Moving
+or editing code that keeps its findings never fails the check. A lower count
+is printed with a reminder to record it. If the analysis cannot run or its
+report has no counts, the command exits 2 and prints `NOT_VERIFIED`. It never
+reports a pass in that case.
+
+The ceiling is advisory until it is promoted through the
+[proof-family promotion workflow](../strategy/veritas/proof-family-promotion-workflow.md).
+
+To update the baselines and the ceiling, run one command on a clean, current
+`main`, or after merging `main` into your branch:
+
+```bash
+npm run fallow:baseline
+```
+
+It rewrites the three analyzer baselines in `fallow-baselines/` and then the
+ceiling. Commit the four files together, in their own commit, and state in the
+pull request why the counts changed. Raising a ceiling to admit new dead code
+needs the same justification as any other new finding.
+
+Regenerate after every fallow upgrade. The command accepts only the report
+kind and schema version it was written for. It refuses, with `NOT_VERIFIED`,
+a report whose counts disagree with its findings, whose total is not the sum
+of its categories, or that lacks a category the ceiling records. A category
+that fallow renames or adds is held at zero plus 3, so it can fail a run whose
+total did not change until the ceiling is regenerated.
+
 ## Local CI pipeline
 
 Use `npm run gate:for -- <paths>` before editing and run its focused checks.
