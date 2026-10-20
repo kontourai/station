@@ -46,7 +46,7 @@ section, and only on a personal Station.
 
 1. Confirm the host key once in a terminal: `ssh user@host`.
 2. Choose **Add device host** and enter a **Name** and an **SSH target**, such
-   as `me@mac-mini.local` or an alias from your SSH config.
+   as `me@build-host.example` or an alias from your SSH config.
 3. Choose **Test connection**. Station checks that it can reach the host and
    that Node.js, Xcode simulators and the Android SDK are available.
 4. Choose **Enable device hub** and confirm **Install and enable**. Station
