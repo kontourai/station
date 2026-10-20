@@ -140,7 +140,11 @@ export function createRelatedPanesPaneHost(
         isText(data.descriptorId, 256) &&
         isText(data.modeId, 128) &&
         isText(data.key, 256)
-        ? { descriptorId: data.descriptorId, modeId: data.modeId, key: data.key }
+        ? {
+            descriptorId: data.descriptorId,
+            modeId: data.modeId,
+            key: data.key,
+          }
         : null;
     }
     if (!isObject(data)) return unavailable('refused');

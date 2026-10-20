@@ -71,7 +71,10 @@ function hasControlCharacter(value: string): boolean {
 }
 
 /** A non-empty string of at most `max` characters with no control character. */
-export function isBoundedPaneText(value: unknown, max: number): value is string {
+export function isBoundedPaneText(
+  value: unknown,
+  max: number,
+): value is string {
   return (
     typeof value === 'string' &&
     value.length > 0 &&

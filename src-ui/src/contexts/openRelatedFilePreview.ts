@@ -95,35 +95,41 @@ export async function openRelatedFilePreview(
     wrap: true,
     ...(thread ? { thread } : {}),
   };
-  return openRelatedOccurrence(getModel, relations, opener, {
-    target: {
-      kind: 'file',
-      projectId,
-      projectSlug,
-      path,
-      thread: thread ?? null,
+  return openRelatedOccurrence(
+    getModel,
+    relations,
+    opener,
+    {
+      target: {
+        kind: 'file',
+        projectId,
+        projectSlug,
+        path,
+        thread: thread ?? null,
+      },
+      generation: BUILTIN_PANE_GENERATION,
+      landing: 'right',
+      reveal: (model, instanceId, revealOptions) =>
+        revealFilePreview(model, instanceId, lineRange, revealOptions),
+      mint: () => {
+        const instance = createFilePreviewPaneInstance(state, projectId);
+        if (!instance) return null;
+        const stateKey = String(instance.stateKey);
+        const preparation = createFilePreviewPaneStatePreparation(
+          window.localStorage,
+          stateKey,
+          state,
+        );
+        return {
+          instanceId: String(instance.instanceId),
+          stateKey,
+          prepare: () => preparation.prepare(),
+          rollback: () => preparation.rollback(),
+        };
+      },
     },
-    generation: BUILTIN_PANE_GENERATION,
-    landing: 'right',
-    reveal: (model, instanceId, revealOptions) =>
-      revealFilePreview(model, instanceId, lineRange, revealOptions),
-    mint: () => {
-      const instance = createFilePreviewPaneInstance(state, projectId);
-      if (!instance) return null;
-      const stateKey = String(instance.stateKey);
-      const preparation = createFilePreviewPaneStatePreparation(
-        window.localStorage,
-        stateKey,
-        state,
-      );
-      return {
-        instanceId: String(instance.instanceId),
-        stateKey,
-        prepare: () => preparation.prepare(),
-        rollback: () => preparation.rollback(),
-      };
-    },
-  }, options);
+    options,
+  );
 }
 
 /**
