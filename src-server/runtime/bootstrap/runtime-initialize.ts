@@ -963,7 +963,7 @@ export async function initializeRuntime(
           createEventStoreWorkItemPrincipalLiveness(orchestrationEventStore),
         ),
         resolveUnattendedGrant: deps.resolveUnattendedGrant,
-        // archive#1834 review round 2: the same guardian composition
+        // archive#1834: the same guardian composition
         // runtime-agent-builder gives every persisted agent.
         approvalGuardian: new ApprovalGuardianService({
           appConfig,
