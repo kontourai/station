@@ -553,7 +553,10 @@ resolves the `colorTheme`, `colorThemeFlavor` and `colorThemeAccent` settings
 against a small generated index (unknown ids fall back, nothing throws), so
 the startup path never loads the catalog;
 [color-themes.ts](../../src-ui/src/lib/color-themes.ts) exposes
-`COLOR_THEME_OPTIONS` for a picker. [color-theme-apply.ts](../../src-ui/src/lib/color-theme-apply.ts)
+`COLOR_THEME_OPTIONS` for a picker; the one picker is the lazily loaded
+[Appearance page](../../src-ui/src/pages/AppearancePage.tsx), which reads the
+root attributes and shows a chosen family as loading until they name it.
+[color-theme-apply.ts](../../src-ui/src/lib/color-theme-apply.ts)
 loads the selected family's stylesheet, stamps `data-color-theme*` and
 `theme-color` once it has settled, records the rendered appearance in
 [appearance-cache.ts](../../src-ui/src/lib/appearance-cache.ts), and stays

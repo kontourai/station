@@ -159,7 +159,12 @@ swatches for the current mode, the family's dark flavors, and its named
 accents (Station's own presets and custom colour when Station is selected).
 Choosing a family resets flavor and accent to that family's defaults, and
 choosing a named accent clears a custom `accentColor`, which would otherwise
-win. Settings keeps its Theme and Accent color rows as links to the page, so
+win. A different family's sheet loads first, so until the applier names it
+on the root the chosen card reads "Loading…" with no tick; rapid choices end
+on the last one ([AppearancePage.test.tsx](../../src-ui/src/__tests__/AppearancePage.test.tsx),
+and with real delayed sheets in
+[appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)).
+Settings keeps its Theme and Accent color rows as links to the page, so
 their search terms and `highlight=` links still land.
 
 ## White-label branding theme
