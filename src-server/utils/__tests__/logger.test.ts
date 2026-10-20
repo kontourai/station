@@ -484,7 +484,7 @@ describe('createLogger resolves STATION_LOG_LEVEL from creation, for EVERY logge
   it('a logger created with no explicit level honors STATION_LOG_LEVEL without its caller resolving it — the module-scope-logger shape used at ~57 call sites', () => {
     process.env.STATION_LOG_LEVEL = 'debug';
     // No `level` option at all — mirrors `createLogger({ name: 'config-loader' })`
-    // and the ~13 other module-scope call sites station#1895 found.
+    // and the ~13 other module-scope call sites archive#1895 found.
     const logger = createLogger({ name: 'module-scope-style' });
     expect(logger.getLevel()).toBe('debug');
   });
