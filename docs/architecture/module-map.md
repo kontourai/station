@@ -2351,9 +2351,11 @@ commits, or storing authoritative knowledge only in the derived vector index.
 ## SharedWorkingState
 
 **Purpose and interface.** [SharedWorkingState](../../src-server/domain/shared-working-state.ts)
-owns converged text for one exact Project/Task/document. `createSharedWorkingState()`
-separates untrusted `live.apply(operation, authorization)` from the adapter-owned
-`recovery.replay()` and `recovery.reconcile(currentGrant)` ports. Live results
+owns converged text for one exact Project/Task/document. Production callers
+construct `new SharedWorkingState(options)`, which exposes only the untrusted
+`apply(operation, authorization)` port. `createSharedWorkingState()` also
+returns the adapter-owned `recovery.replay()` and
+`recovery.reconcile(currentGrant)` ports; it has no production caller yet. Live results
 are `applied`, `duplicate`, `deferred` or a named rejection. Trusted replay can
 also return `replayed`; missing dependencies can still defer. The text,
 content-addressed revision, snapshot, compaction and resync APIs expose document
