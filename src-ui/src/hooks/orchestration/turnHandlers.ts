@@ -1,4 +1,5 @@
 import {
+  ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
@@ -297,6 +298,12 @@ export function handleTurnStartedEvent(
           approvalEscalationRejected:
             event.metadata?.approvalEscalationRejected === true,
         }
+      : {}),
+    // #3290: each turn says whether it could take the recorded posture; a
+    // turn that ran on the engine's own settings reports no mode at all.
+    approvalTakeoverFailed: event.metadata?.approvalTakeoverFailed === true,
+    ...(event.metadata?.approvalTakeoverFailed === true && !approvalMode
+      ? { lastAppliedApprovalMode: undefined }
       : {}),
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
@@ -736,6 +743,18 @@ export function handleRuntimeWarningEvent(
   // at spawn) must not leave the composer chip showing a posture that
   // never actually applied. The adapter reports which mode IS actually in
   // effect.
+  // #3290: the engine kept what it ran before; the chip must not show the
+  // pick as applied (the same turn's `turn.started` also says so).
+  if (event.code === ACP_APPROVAL_TAKEOVER_FAILED_CODE) {
+    const kept = event.details?.appliedApprovalMode;
+    activeChatsStore.updateChat(event.threadId, {
+      approvalTakeoverFailed: true,
+      lastAppliedApprovalMode:
+        isApprovalMode(kept) && kept !== 'connection-default'
+          ? kept
+          : undefined,
+    });
+  }
   if (event.code === APPROVAL_ESCALATION_REQUIRES_RESTART_CODE) {
     // The refusal is the engine's report of what still applies (#2436). The
     // recorded full access stays the conversation's decision — the server

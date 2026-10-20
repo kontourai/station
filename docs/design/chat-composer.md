@@ -466,7 +466,25 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
-  naturally and truncate when needed; Model does not stretch into unused space.
+  naturally and truncate with an ellipsis before the chevron, never under it;
+  Model does not stretch into unused space. On a phone, Agent and Model keep a
+  readable minimum (88px and 112px) and the rail scrolls instead, its
+  trailing edge faded until scrolled to the end.
+- On an ACP engine the approval control says who decides which actions ask
+  (#3290). OpenCode, whose rules Station sets at launch, offers Station's
+  approval modes, with OpenCode-specific descriptions. Its Default says
+  OpenCode's own settings decide until a mode is picked (the chip's name reads
+  "Engine default — OpenCode's own settings"), and "Ask — Ask first" after
+  Station has taken over. A pick the engine could not be switched to is never
+  shown as applied: the chip shows what still runs, marked pending, with text
+  that differs from Default ("Own settings", or "Ask · kept"), and its name
+  says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
+  shows **Approval: Set by engine**, which opens a read-only explanation and
+  offers no mode. An engine's advertised Mode (OpenCode's build or plan agent)
+  is a separate picker beside it, never a replacement for it. While Station
+  governs OpenCode it offers only build and plan; on OpenCode's own settings
+  it lists every agent. A refusal because Station's approval mode cannot
+  apply names the OpenCode setting and the next step, and offers no Retry.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
 - Drafts and Clear message are icon actions in the secondary row, leaving the
