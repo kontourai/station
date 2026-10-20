@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
-import { canonical, encode, hash } from '../encoding.js';
+import { bodyRef, canonical, encode, hash } from '../encoding.js';
 import { type BodyRef, DEFAULT_MODEL_POLICY } from '../index.js';
+import { runRecordSchema } from '../records.js';
 import { openSqliteModelStorage, openSqliteRuntimeBodies } from '../sqlite.js';
 import { fixture, key, operation } from './fixture.js';
 
@@ -363,6 +364,119 @@ for (const commandType of ['pin', 'acknowledge'] as const)
         .prepare('SELECT count(*) AS n FROM agent_runtime_receipts')
         .get()?.n,
     ).toBe(commandType === 'pin' ? 1 : 4);
+  });
+
+for (const corruption of ['byteLength', 'unexpected field'] as const)
+  it(`current partial ${corruption} cannot be hidden by a later outbox ref with the same codec and digest`, async () => {
+    const f = await fixture();
+    cleanup.push(() => f.close());
+    const pinned = await f.storage.execute(
+      operation({
+        type: 'pin',
+        key,
+        expected: f.opened.snapshot.fence,
+        pin: f.pin,
+      }),
+      f.context,
+    );
+    if (pinned.kind === 'refused') throw Error('pin prerequisite');
+    const begun = await f.storage.execute(
+      operation({
+        type: 'begin',
+        key,
+        expected: pinned.fence,
+        requestId: f.pin.requestId,
+      }),
+      f.context,
+    );
+    if (begun.kind !== 'execute') throw Error('begin prerequisite');
+    const bytes = encode({ type: 'stream-start', warnings: [] });
+    const body = await f.bodies.put('runtime-ai-sdk-v3-part/1', bytes);
+    const partial = await f.storage.execute(
+      operation({
+        type: 'partial',
+        key,
+        expected: begun.fence,
+        attempt: begun.attempt,
+        sequence: 0,
+        body,
+      }),
+      f.context,
+    );
+    if (partial.kind === 'refused') throw Error('partial prerequisite');
+    const listed = await f.storage.execute(
+      { type: 'listOutbox', key, limit: 10 },
+      f.context,
+    );
+    if (listed.kind !== 'listed' || listed.entries.length !== 1)
+      throw Error('one real partial projection prerequisite');
+    expect(listed.entries[0]).toMatchObject({ kind: 'partial', body });
+    const row = f.database
+      .prepare('SELECT id,record FROM agent_runtime_runs')
+      .get();
+    if (typeof row?.id !== 'string' || typeof row.record !== 'string')
+      throw Error('stored run prerequisite');
+    const run = runRecordSchema.parse(JSON.parse(row.record));
+    const attempt = run.pins[0]?.attempts[0];
+    if (!attempt) throw Error('stored attempt prerequisite');
+    expect(attempt).toMatchObject({
+      state: 'running',
+      tape: null,
+      partials: [body],
+    });
+    const snapshot = () =>
+      [
+        'meta',
+        'bodies',
+        'runs',
+        'retired',
+        'receipts',
+        'outbox',
+        'projection',
+      ].map((table) =>
+        f.database
+          .prepare(`SELECT * FROM agent_runtime_${table} ORDER BY rowid`)
+          .all(),
+      );
+    const original = snapshot();
+    const damagedBody =
+      corruption === 'byteLength'
+        ? { ...body, byteLength: body.byteLength + 1 }
+        : { ...body, unexpected: true };
+    expect(bodyRef.safeParse(damagedBody).success).toBe(
+      corruption === 'byteLength',
+    );
+    expect(damagedBody.codec).toBe(body.codec);
+    expect(damagedBody.digest).toBe(body.digest);
+    attempt.partials[0] = damagedBody;
+    f.database
+      .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+      .run(canonical(run), row.id);
+    const damaged = snapshot();
+    await expect(
+      f.storage.execute({ type: 'read', key }, f.context),
+    ).rejects.toThrow(
+      corruption === 'byteLength' ? 'DURABLE_BODY_DAMAGED' : 'Unrecognized key',
+    );
+    expect(snapshot()).toEqual(damaged);
+    f.database
+      .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+      .run(row.record, row.id);
+    expect(snapshot()).toEqual(original);
+    expect(
+      await f.storage.execute({ type: 'read', key }, f.context),
+    ).toMatchObject({
+      kind: 'found',
+      snapshot: { state: 'running', fence: partial.fence },
+    });
+    expect(
+      await f.storage.execute(
+        { type: 'listOutbox', key, limit: 10 },
+        f.context,
+      ),
+    ).toEqual(listed);
+    expect(await f.bodies.read(body)).toEqual(bytes);
+    expect(snapshot()).toEqual(original);
   });
 
 it('ordinary ACK persists its receipt before only its projection, rolls back both, and replay writes nothing', async () => {

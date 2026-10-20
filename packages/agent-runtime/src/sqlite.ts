@@ -383,6 +383,7 @@ function validateLinks(
   policy: ModelPolicy,
   state: ModelState,
 ) {
+  // Every ref was strictly decoded by this current loadState pass.
   const auditRefs = new Map<string, BodyRef>();
   for (const run of state.runs.values()) {
     const entry = entryData(
@@ -416,7 +417,10 @@ function validateLinks(
         for (const part of attempt.partials) {
           if (part.codec !== 'runtime-ai-sdk-v3-part/1')
             throw new RuntimeError('DURABLE_RECORD_DAMAGED');
-          auditRefs.set(canonical(part), part);
+          auditRefs.set(
+            JSON.stringify([part.codec, part.digest, part.byteLength]),
+            part,
+          );
         }
         if (attempt.tape) {
           completedProjection(
@@ -452,7 +456,14 @@ function validateLinks(
   }
   for (const { projection } of state.outbox.values())
     if (projection.body)
-      auditRefs.set(canonical(projection.body), projection.body);
+      auditRefs.set(
+        JSON.stringify([
+          projection.body.codec,
+          projection.body.digest,
+          projection.body.byteLength,
+        ]),
+        projection.body,
+      );
   for (const ref of auditRefs.values()) readBody(database, policy, ref);
 }
 export function openSqliteModelStorage(options: {
