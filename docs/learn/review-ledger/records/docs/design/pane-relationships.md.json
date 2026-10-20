@@ -42,7 +42,11 @@
 
     "tests/related-panes.spec.ts",
 
-    "tests/related-panes-frame.spec.ts"
+    "tests/related-panes-frame.spec.ts",
+
+    "src-ui/src/contexts/openRelatedOccurrence.ts",
+
+    "tests/helpers/related-pane-upgrade.ts"
   ],
 
   "checks": []
