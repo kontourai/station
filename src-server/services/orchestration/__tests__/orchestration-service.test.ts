@@ -1065,8 +1065,7 @@ describe('OrchestrationService', () => {
       ).toMatchObject({ confinementRoot: realpathSync.native(projectRoot) });
       // Compared and stamped canonically: a Project configured through a
       // symlink still contains the cwd (round 6 of the #3962 review).
-      const linkHome = mkdtempSync(join(tmpdir(), 'orchestration-link-'));
-      const linked = join(linkHome, 'P');
+      const linked = join(tmp, 'link-to-project');
       symlinkSync(projectRoot, linked);
       configuredProjects.push({
         slug: 'linked',
@@ -1083,7 +1082,6 @@ describe('OrchestrationService', () => {
       expect(
         service.firstStartedMetadataOfThread('linked-session'),
       ).toMatchObject({ confinementRoot: realpathSync.native(projectRoot) });
-      rmSync(linkHome, { recursive: true, force: true });
     });
 
     test('S2: only a session that predates the stamp gets the slug-lookup fallback', async () => {
