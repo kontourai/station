@@ -200,6 +200,14 @@ export interface RegionModelValue {
    */
   replacePane(previous: string, next: string): OpenInRegionOutcome;
   /**
+   * Make the pane a phone layer put over Chat an ORDINARY tab of Chat's
+   * region: Back, the "‹ Chat" control and a later replacement then leave it
+   * placed (and persisted) instead of removing the tab the layer minted. A
+   * kept related pane on a phone (docs/design/pane-relationships.md). A pane
+   * the layer is not showing, or did not mint, is left as it is.
+   */
+  retainLayerPane(surfaceId: string): void;
+  /**
    * Select a pane the region holds (#2046 2a): it becomes the region's
    * `occupant`, the pane `RegionPaneHost` shows. Places nothing and changes
    * no visibility; a surface the region does not hold is ignored.
@@ -1005,6 +1013,15 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     [commit],
   );
 
+  const retainLayerPane = useCallback(
+    (surfaceId: string) => {
+      const layer = phoneLayerRef.current;
+      if (!layer || layer.surfaceId !== surfaceId || !layer.mintedTab) return;
+      setPhoneLayer({ ...layer, mintedTab: false, origin: null });
+    },
+    [setPhoneLayer],
+  );
+
   const showSurface = useCallback(
     (
       surfaceId: string,
@@ -1571,6 +1588,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       showSurface,
       openSurfaceInRegion,
       replacePane,
+      retainLayerPane,
       selectPane,
       removePane,
       moveRegionPanes,
@@ -1591,6 +1609,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       showSurface,
       openSurfaceInRegion,
       replacePane,
+      retainLayerPane,
       selectPane,
       removePane,
       moveRegionPanes,

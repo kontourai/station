@@ -94,13 +94,15 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
-import { usePaneRelations } from '../contexts/PaneRelationsContext';
-import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import {
-  useOpenFilePreviewInRegion,
-  useOpenPullRequestInRegion,
-} from '../contexts/useOpenInRegion';
+  describeRelatedOpenRefusal,
+  useOpenRelatedFilePreview,
+} from '../contexts/openRelatedFilePreview';
+import { toastStore } from '../contexts/ToastContext';
+import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
+import { useOpenPullRequestInRegion } from '../contexts/useOpenInRegion';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
+import { filesOpener } from '../regions/pane-opener';
 import { BrowserPreviewWorkspacePane } from './BrowserPreviewWorkspacePane';
 import {
   type BuiltinWorkspacePaneRendererName,
@@ -119,11 +121,7 @@ import {
 } from './filePreviewPaneStateStorage';
 import type { OpenFilePreviewIntent } from './openFilePreviewIntent';
 import { ProjectTaskRoomConversation } from './ProjectTaskRoomConversation';
-import {
-  isWrongStationRelation,
-  RelatedPaneStrip,
-  RelatedPaneWrongStation,
-} from './RelatedPaneStrip';
+import { FencedRelatedPane, RelatedPaneStrip } from './RelatedPaneStrip';
 import { TaskRoomEditorPane } from './TaskRoomEditorPane';
 import { useWorkspacePaneBoundIdentity } from './useWorkspacePaneBoundIdentity';
 import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailable';
@@ -366,18 +364,25 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
   // selected the row and opened nothing. The region opener places the
   // preview as a sibling tab instead. Null in a layout mount, where the
   // host route below is still the one that works.
-  // A related open: the Files pane owns one reusable preview, the way a
-  // file tree's single click previews and does not pile up tabs.
+  // A related open: the Files pane owns one reusable preview per Project,
+  // the way a file tree's single click previews and does not pile up tabs.
+  // The opener carries the Project the pane is bound to, so Up returns to
+  // that Project's Files whatever the dock shows later.
   const filesOwner = useContext(UnsavedGuardOwnerContext);
-  const filesOpener = useMemo(
-    () => ({
-      occurrenceId: filesOwner ?? 'coding:file-browser',
-      selection: 'files',
-      label: 'Files',
-    }),
-    [filesOwner],
+  const projectName =
+    identity.state === 'resolved' ? identity.project.name : undefined;
+  const opener = useMemo(
+    () =>
+      projectId && projectSlug
+        ? filesOpener(filesOwner ?? 'coding:file-browser', {
+            projectId,
+            projectSlug,
+            projectName,
+          })
+        : null,
+    [filesOwner, projectId, projectName, projectSlug],
   );
-  const openPreviewInRegion = useOpenFilePreviewInRegion(filesOpener);
+  const openPreviewInRegion = useOpenRelatedFilePreview(opener);
   const { openFilePreviewIntent, setLayout } = useNavigation();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const workingDir = codingWorkingDirectory(
@@ -406,11 +411,16 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
           from: 'pane',
         });
       if (!layoutSlug && openPreviewInRegion) {
-        openPreviewInRegion({
+        void openPreviewInRegion({
           projectId,
           projectSlug: intent.projectSlug,
           path: intent.path,
           ...(intent.lineRange ? { lineRange: intent.lineRange } : {}),
+        }).then((outcome) => {
+          // A refused open says why; Cancel on an unsaved-changes guard is
+          // the user's own answer and needs no notice.
+          if (!outcome.ok && outcome.reason !== 'guard-cancelled')
+            toastStore.show(describeRelatedOpenRefusal(outcome.reason));
         });
         return;
       }
@@ -728,9 +738,19 @@ function WorkspaceTrustPane({ instance }: BuiltinWorkspacePaneProps) {
   return <TrustInspectorContent projectSlug={identity.project.slug} />;
 }
 
-function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
-  const relations = usePaneRelations();
-  const relation = relations.relationOf(String(instance.instanceId));
+/**
+ * A File Preview occurrence: gated by its Station fence before anything below
+ * reads its identity or its file (`FencedRelatedPane`).
+ */
+function FilePreviewWorkspacePane(props: BuiltinWorkspacePaneProps) {
+  return (
+    <FencedRelatedPane instanceId={String(props.instance.instanceId)}>
+      <FilePreviewWorkspaceReader {...props} />
+    </FencedRelatedPane>
+  );
+}
+
+function FilePreviewWorkspaceReader({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
   const stateKey = instance.stateKey;
   // SUBSCRIBED, not read at render time (#2085). The read was never stale —
@@ -746,10 +766,6 @@ function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
     [stateKey],
   );
   const state = useSyncExternalStore(subscribeFilePreviewPaneState, readState);
-  // A preview opened on another Station names that Station's file; it is
-  // never read against this one.
-  if (relation && isWrongStationRelation(relation, relations.stationId))
-    return <RelatedPaneWrongStation label={relation.opener.label} />;
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (

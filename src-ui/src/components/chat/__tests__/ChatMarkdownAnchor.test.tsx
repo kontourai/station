@@ -10,7 +10,13 @@
  * the handler rather than in what the href means.
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -37,12 +43,27 @@ vi.mock('@kontourai/station-sdk', () => ({
     return { data: repositoryContext };
   },
 }));
+const openRelatedFilePreview = vi.fn(
+  async (..._args: unknown[]): Promise<RelatedOpenOutcome> =>
+    ({ ok: true }) as RelatedOpenOutcome,
+);
+vi.mock('../../../contexts/openRelatedFilePreview', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../contexts/openRelatedFilePreview')
+  >()),
+  openRelatedFilePreview: (...args: unknown[]) =>
+    openRelatedFilePreview(...args),
+}));
 vi.mock('../../../platform/openExternalLink', () => ({
   hostOwnsExternalLinks: () => tauri,
   openNativeExternalLink: (url: string) => openNativeExternalLink(url),
 }));
 
+import { AuthorityHarness } from '../../../contexts/__tests__/paneRelationsHarness';
+import type { RelatedOpenOutcome } from '../../../contexts/openRelatedFilePreview';
+import { PaneRelationsProvider } from '../../../contexts/PaneRelationsContext';
 import { toastStore } from '../../../contexts/ToastContext';
+import { UnsavedGuardOwnerContext } from '../../../contexts/UnsavedGuardOwnerContext';
 import { ChatMarkdownAnchor } from '../ChatMarkdownAnchor';
 import {
   MarkdownLinkContext,
@@ -114,17 +135,12 @@ describe('a link in a chat message (#2049)', () => {
   test('a repo-relative path opens a preview for the conversation’s project', () => {
     const anchor = mount('src/app.ts#L4-L9');
     expect(click(anchor)).toBe(false);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      model,
-      {
-        projectId: 'alpha-id',
-        projectSlug: 'alpha',
-        path: 'src/app.ts',
-        lineRange: { start: 4, end: 9 },
-      },
-      undefined,
-      undefined,
-    );
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      lineRange: { start: 4, end: 9 },
+    });
     expect(openPathInMain).not.toHaveBeenCalled();
   });
 
@@ -356,17 +372,12 @@ describe('a forge file link (github.com/.../blob/...)', () => {
       branch: 'main',
     };
     expect(click(mount(url))).toBe(false);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      model,
-      {
-        projectId: 'alpha-id',
-        projectSlug: 'alpha',
-        path: 'src/app.ts',
-        lineRange: { start: 4, end: 4 },
-      },
-      undefined,
-      undefined,
-    );
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      lineRange: { start: 4, end: 4 },
+    });
   });
 
   test('opens on the forge when the checkout is another repository or unknown', () => {
@@ -412,17 +423,12 @@ describe('a forge file link (github.com/.../blob/...)', () => {
       'https://github.com/kontourai/station/blob/feature/x/src/app.ts#L2',
     );
     expect(click(anchor)).toBe(false);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      model,
-      {
-        projectId: 'alpha-id',
-        projectSlug: 'alpha',
-        path: 'src/app.ts',
-        lineRange: { start: 2, end: 2 },
-      },
-      undefined,
-      undefined,
-    );
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      lineRange: { start: 2, end: 2 },
+    });
     // The tooltip does not imply the local copy is the forge's revision.
     expect(anchor.getAttribute('title')).toMatch(
       /working copy of src\/app\.ts/,
@@ -490,25 +496,12 @@ describe('an explicit path link follows the session’s file scope', () => {
       threadId: 'thread-7',
     });
     expect(click(anchor)).toBe(false);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      model,
-      {
-        projectId: 'alpha-id',
-        projectSlug: 'alpha',
-        path: 'src/app.ts',
-        thread: 'thread-7',
-      },
-      undefined,
-      {
-        // A conversation with a session is the opener of what it opens.
-        relations: expect.anything(),
-        opener: {
-          occurrenceId: 'chat-workspace',
-          selection: 'thread:thread-7',
-          label: 'Chat',
-        },
-      },
-    );
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      thread: 'thread-7',
+    });
   });
 
   test('when the session directory cannot be read it refuses visibly, never opening the checkout copy', () => {
@@ -640,5 +633,123 @@ describe('a link whose text names another host than it goes to', () => {
       expect(anchor.querySelector('.chat-link-host')).toBeNull();
       cleanup();
     }
+  });
+});
+
+/**
+ * On a verified Station, a path link in a conversation opens a RELATED
+ * preview (docs/design/pane-relationships.md): the conversation is its
+ * opener, so it is reused per conversation and hidden while another one is
+ * on screen. Without a verified Station (every test above: no provider) the
+ * pre-relationship open is unchanged.
+ */
+describe('a path link on a verified Station opens a preview related to the conversation', () => {
+  function mountRelated(
+    href: string,
+    value: MarkdownLinkContextValue,
+    owner: string | null = null,
+  ): HTMLAnchorElement {
+    render(
+      <AuthorityHarness initial={{ station: 'station-a' }}>
+        <PaneRelationsProvider>
+          <UnsavedGuardOwnerContext.Provider value={owner}>
+            <MarkdownLinkContext.Provider value={value}>
+              <ChatMarkdownAnchor href={href}>link</ChatMarkdownAnchor>
+            </MarkdownLinkContext.Provider>
+          </UnsavedGuardOwnerContext.Provider>
+        </PaneRelationsProvider>
+      </AuthorityHarness>,
+    );
+    return screen.getByRole('link') as HTMLAnchorElement;
+  }
+
+  const SESSION = {
+    ...CONVERSATION,
+    conversationId: 'conversation-1',
+    threadId: 'thread-7',
+    projectRoots: ['/wt/lane'],
+    sessionDirectory: '/wt/lane',
+    openerLabel: 'Release review',
+  };
+
+  test('the hosting pane and the conversation it shows are the opener', async () => {
+    const anchor = mountRelated('src/app.ts#L4', SESSION, 'chat');
+    expect(click(anchor)).toBe(false);
+    await waitFor(() =>
+      expect(openRelatedFilePreview).toHaveBeenCalledTimes(1),
+    );
+    const [getModel, relations, opener, request] =
+      openRelatedFilePreview.mock.calls[0] ?? [];
+    expect((getModel as () => unknown)()).toBe(model);
+    expect(relations).toMatchObject({ stationId: 'station-a' });
+    expect(opener).toEqual({
+      occurrenceId: 'chat',
+      label: 'Release review',
+      source: {
+        kind: 'conversation',
+        conversationId: 'conversation-1',
+        threadId: 'thread-7',
+        projectSlug: 'alpha',
+      },
+    });
+    expect(request).toEqual({
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      lineRange: { start: 4, end: 4 },
+    });
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+  });
+
+  test('outside a region pane the opener is the workspace Chat', async () => {
+    click(mountRelated('src/app.ts', SESSION));
+    await waitFor(() =>
+      expect(openRelatedFilePreview).toHaveBeenCalledTimes(1),
+    );
+    expect(openRelatedFilePreview.mock.calls[0]?.[2]).toMatchObject({
+      occurrenceId: 'chat-workspace',
+    });
+  });
+
+  test('a region refusal takes the layout route; a relations refusal says why; Cancel does neither', async () => {
+    toastStore.clear();
+    const CHECKOUT = {
+      ...CONVERSATION,
+      conversationId: 'conversation-1',
+    };
+    openRelatedFilePreview.mockResolvedValueOnce({
+      ok: false,
+      reason: 'no-surface',
+    });
+    click(mountRelated('src/app.ts', CHECKOUT));
+    await waitFor(() =>
+      expect(openPathInMain).toHaveBeenCalledWith('src/app.ts', undefined),
+    );
+    cleanup();
+
+    openRelatedFilePreview.mockResolvedValueOnce({
+      ok: false,
+      reason: 'capacity',
+    });
+    click(mountRelated('src/app.ts', CHECKOUT));
+    await waitFor(() =>
+      expect(toastStore.getSnapshot().map((notice) => notice.message)).toEqual([
+        'Too many related panes are open. Close some, then open this one again.',
+      ]),
+    );
+    cleanup();
+
+    openRelatedFilePreview.mockResolvedValueOnce({
+      ok: false,
+      reason: 'guard-cancelled',
+    });
+    click(mountRelated('src/app.ts', CHECKOUT));
+    await waitFor(() =>
+      expect(openRelatedFilePreview).toHaveBeenCalledTimes(3),
+    );
+    // Let the refused open's continuation run.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(openPathInMain).toHaveBeenCalledTimes(1);
+    expect(toastStore.getSnapshot()).toHaveLength(1);
   });
 });

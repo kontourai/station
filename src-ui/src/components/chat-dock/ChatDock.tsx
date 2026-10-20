@@ -107,7 +107,7 @@ import {
   TASK_SHAPING_INSTRUCTION,
 } from '../../lib/task-shaping';
 import {
-  chatOpenerSelection,
+  conversationSelectionKey,
   WORKSPACE_CHAT_OPENER,
 } from '../../regions/pane-opener';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
@@ -2292,7 +2292,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const openerOwner = useContext(UnsavedGuardOwnerContext);
   usePublishOpenerSelection(
     openerOwner ?? WORKSPACE_CHAT_OPENER,
-    chatOpenerSelection(activeOrchestrationSession?.threadId, conversationId),
+    conversationSelectionKey({
+      conversationId,
+      threadId: activeOrchestrationSession?.threadId,
+      projectSlug: conversationProjectSlug,
+    }),
   );
   const openerLabel = activeSession?.title || 'Chat';
   const markdownLinkContext = useMemo(

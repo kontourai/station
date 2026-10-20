@@ -5,9 +5,10 @@
 }
 .sidebar__footer-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--k-space-2);
+  gap: var(--k-space-1) var(--k-space-2);
   padding: 0;
   color: var(--k-text-muted);
 }
@@ -17,24 +18,27 @@
   align-items: center;
   gap: var(--k-space-1);
 }
-/* Live work and the account control, side by side on the expanded footer and
-   stacked on the collapsed rail; the utilities follow them. */
+/* Live work and the account control share a full-width row of their own on
+   the expanded footer, so Live work's label and counts never run under the
+   account control beside them; the utilities wrap to the row below, at its
+   end. On the collapsed rail the two stack, followed by the utilities. */
 .sidebar__footer-identity {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 0 100%;
   align-items: center;
   gap: var(--k-space-1);
   min-width: 0;
 }
-.sidebar__account {
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-pill);
-  font-size: var(--k-text-xs);
-  font-weight: 600;
+.sidebar__footer-identity > .sidebar__footer-actions,
+.sidebar__footer-meta > .sidebar__footer-actions {
+  margin-left: auto;
 }
 .sidebar--collapsed .sidebar__footer-meta,
 .sidebar--collapsed .sidebar__footer-identity {
   flex-direction: column;
+}
+.sidebar--collapsed .sidebar__footer-identity {
+  flex: 0 0 auto;
 }
 .sidebar__footer-action {
   display: inline-flex;
@@ -54,6 +58,15 @@
 .sidebar__footer-action--active {
   background: var(--k-panel-raised);
   color: var(--k-text);
+}
+/* The account control is the footer action drawn as the signed-in person's
+   initials in a circle; declared after the action it refines so its border
+   and shape are the ones that apply. */
+.sidebar__account {
+  border: 1px solid var(--k-line);
+  border-radius: 50%;
+  font-size: var(--k-text-xs);
+  font-weight: 600;
 }
 .sidebar--collapsed .sidebar__footer-meta {
   justify-content: center;

@@ -41,6 +41,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station-starter-work-operations-v1', // Exact Starter Work retry-operation evidence.
   'station-layout-tabs', // Per-layout navigation memory.
   'station:chat-drafts:v1', // Draft message content, not a setting.
+  'station:pane-relations:v1', // Pane relationships side record (docs/design/pane-relationships.md): which pane opened which related pane, its target and Keep. Navigation/display state beside the arrangement, written only under an exclusive Web Lock; never a setting, a grant or a credential.
   'theme', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-accent-color', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-branding-theme-v1', // Validated branding cache for first paint; re-validated on read. Server data, not a device setting.

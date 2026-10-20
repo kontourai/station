@@ -5,6 +5,7 @@ import {
   type WorkspaceFilePreviewPaneState,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import { toWorkspacePaneStateKey } from '@kontourai/station-contracts/workspace-pane';
+import { removePaneFence } from '../regions/pane-fence';
 import type { WorkspacePaneHostOpenPreparation } from './WorkspacePaneHostOpenContext';
 import { workspacePaneHostReferenceDocuments } from './workspacePaneHostStorage';
 
@@ -128,6 +129,8 @@ function reclaimFilePreviewPaneStateCapacity(
     } catch {
       /* optional browser storage */
     }
+    // The occurrence is gone with its state; so is its Station fence.
+    removePaneFence(storage, stateKey);
   }
 }
 
@@ -290,12 +293,18 @@ export function createFilePreviewPaneStatePreparation(
   };
 }
 
+/**
+ * Remove a preview occurrence's state, and with it the occurrence's Station
+ * fence (`pane-fence.ts`): a preview's state key is its instance id, and an
+ * occurrence with no state has nothing a fence could protect.
+ */
 export function removeFilePreviewPaneState(
   storage: FilePreviewPaneStateStorage,
   stateKey: string,
 ): boolean {
   try {
     storage.removeItem(filePreviewPaneStateStorageKey(stateKey));
+    removePaneFence(storage, stateKey);
     notifyFilePreviewPaneState();
     return true;
   } catch {

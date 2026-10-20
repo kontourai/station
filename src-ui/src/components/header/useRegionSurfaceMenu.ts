@@ -36,7 +36,7 @@ import type { DockMode } from '../../types';
  * saved arrangement or a plugin placement — keeps its toggle, so hiding the
  * default glyph never strands their layout.
  */
-export function isDefaultRegionToggle(
+function isDefaultRegionToggle(
   region: DockRegionId,
   state: Pick<RegionState, 'panes' | 'visible'>,
 ): boolean {

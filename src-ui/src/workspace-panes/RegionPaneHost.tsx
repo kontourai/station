@@ -20,6 +20,7 @@ import { DockShell } from '../components/chat-dock/DockShell';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Empty } from '../components/state';
+import { navigationStore } from '../contexts/navigation-store';
 import { usePaneRelations } from '../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
@@ -690,20 +691,36 @@ export function RegionPaneHost({
     },
     [model, regionId],
   );
-  const closeTab = useCallback(
-    (surfaceId: string) => {
-      if (regionId && model) model.removePane(regionId, surfaceId);
+  // A close unmounts the pane, so the pane's OWN unsaved-changes guards are
+  // asked first (scoped by `UnsavedGuardOwnerContext`, `ownedByPane`): Cancel
+  // leaves the arrangement, the selection, the relation and the pane's state
+  // exactly as they were. A related pane's state, fence and relation go with
+  // it; nothing else can read them once it is gone.
+  const closePane = useCallback(
+    (surfaceId: string, forgetState: boolean) => {
+      if (!regionId || !model) return;
+      navigationStore.runNavigationGuards(
+        () => {
+          model.removePane(regionId, surfaceId);
+          const related = relations.relationOf(surfaceId) !== undefined;
+          if (forgetState || related) forgetRegionPaneState(surfaceId);
+          if (related) void relations.forget(surfaceId);
+        },
+        undefined,
+        { owner: surfaceId },
+      );
     },
-    [model, regionId],
+    [model, regionId, relations],
+  );
+  const closeTab = useCallback(
+    (surfaceId: string) => closePane(surfaceId, false),
+    [closePane],
   );
   // "Remove this pane" (#90 D9): the tab's close, plus the per-device state
   // the pane rendered from, which nothing can read once it is gone.
   const removePane = useCallback(
-    (surfaceId: string) => {
-      closeTab(surfaceId);
-      forgetRegionPaneState(surfaceId);
-    },
-    [closeTab],
+    (surfaceId: string) => closePane(surfaceId, true),
+    [closePane],
   );
   const reorderTab = useCallback(
     (surfaceId: string, toIndex: number) => {

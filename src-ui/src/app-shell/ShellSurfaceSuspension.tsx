@@ -16,7 +16,7 @@ const NO_SURFACES: readonly string[] = [];
  * (`PaneRelationsProvider`). Always rendered, so a change of what is
  * suspended re-derives the hosts instead of remounting them.
  */
-export function useShellSuspendedSurfaces(): readonly string[] {
+function useShellSuspendedSurfaces(): readonly string[] {
   const centerOwnsChat = useLayoutChatPlacement() === 'center';
   const { hiddenSurfaces } = usePaneRelations();
   return useMemo(() => {

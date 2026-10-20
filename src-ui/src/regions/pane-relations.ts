@@ -8,12 +8,13 @@
  * does not know this record still reads every arrangement it wrote. Entries
  * describe display and navigation only. They never grant a read, admit a
  * pane, rebind its context or establish domain (Task/run/Session) ancestry,
- * and nothing here is consulted for authorization.
+ * and nothing here is consulted for authorization. Which Station may read an
+ * occurrence is its own fence (`pane-fence.ts`), not this record, so nothing
+ * here dropping, bounding or failing to parse can unfence a pane.
  *
- * Every entry carries the exact Station (`AuthorityObservation.environmentId`)
- * it was opened against. Pane state in this browser is origin-wide, so a
- * reader switching Stations sees the other Station's occurrences; they are
- * matched and restored only against their own Station.
+ * The record is shared by every tab of this origin. Its writer
+ * (`PaneRelationsContext`) only ever changes it inside an exclusive lock after
+ * a fresh read, so two tabs cannot lose each other's entries.
  */
 
 /** What a related pane shows. Identity only: never a read grant. */
@@ -36,14 +37,41 @@ export type PaneRelationTarget =
       readonly key: string;
     };
 
+/**
+ * What the opener was showing when it opened the pane, typed so Up can return
+ * to EXACTLY that through the shell's canonical navigation:
+ *
+ * - `conversation`: a chat, by its durable conversation id (the navigation
+ *   `chat` selection, which also cold-opens a closed conversation) and, when
+ *   it has one, the execution session it was showing.
+ * - `files`: a Files pane, with the Project it was bound to when it opened.
+ * - `route`: a routed page (an app path and query, never an origin).
+ */
+export type PaneOpenerSource =
+  | {
+      readonly kind: 'conversation';
+      readonly conversationId: string | null;
+      readonly threadId: string | null;
+      readonly projectSlug: string | null;
+    }
+  | {
+      readonly kind: 'files';
+      readonly projectId: string;
+      readonly projectSlug: string;
+    }
+  | {
+      readonly kind: 'route';
+      readonly pathname: string;
+      readonly search: string;
+    };
+
 /** The UI occurrence that opened a pane, at the selection it had then. */
 export interface PaneOpener {
   /** The opener's region surface / occurrence id (e.g. `chat`). */
   readonly occurrenceId: string;
-  /** The opener's own selection identity (a conversation, a directory). */
-  readonly selection: string;
-  /** What Up names: the opener's selection as the reader knows it. */
+  /** What Up names. */
   readonly label: string;
+  readonly source: PaneOpenerSource;
 }
 
 export interface PaneRelation {
@@ -57,12 +85,12 @@ export interface PaneRelation {
   readonly target: PaneRelationTarget;
   /** Kept panes are ordinary tabs; unkept ones are one reusable preview. */
   readonly kept: boolean;
-  /** Ordering for the bound; not a clock anything else reads. */
+  /** Ordering only; not a clock anything else reads. */
   readonly openedAt: number;
 }
 
 export interface PaneRelationsRecord {
-  readonly version: typeof PANE_RELATIONS_VERSION;
+  readonly version: 1;
   readonly entries: readonly PaneRelation[];
 }
 
@@ -76,14 +104,13 @@ export type PaneRelationsRead =
   | { readonly status: 'empty'; readonly record: PaneRelationsRecord }
   | { readonly status: 'unsupported'; readonly record: PaneRelationsRecord };
 
-export const PANE_RELATIONS_VERSION = 1 as const;
 export const PANE_RELATIONS_LIMIT = 48;
 export const PANE_RELATIONS_STORAGE_KEY = 'station:pane-relations:v1';
 export const BUILTIN_PANE_GENERATION = 'builtin';
 const MAX_BYTES = 96 * 1024;
 
 export const EMPTY_PANE_RELATIONS: PaneRelationsRecord = Object.freeze({
-  version: PANE_RELATIONS_VERSION,
+  version: 1 as const,
   entries: Object.freeze([]) as readonly PaneRelation[],
 });
 
@@ -108,6 +135,26 @@ function boundedText(value: unknown, max = 1024): value is string {
   );
 }
 
+function nullableText(value: unknown, max = 512): value is string | null {
+  return value === null || boundedText(value, max);
+}
+
+/** An app-relative route: `/…` with no origin, fragment, backslash or traversal. */
+function isOpenerRoute(pathname: unknown, search: unknown): boolean {
+  return (
+    boundedText(pathname, 2048) &&
+    pathname.startsWith('/') &&
+    !pathname.startsWith('//') &&
+    !/[?#\\]/.test(pathname) &&
+    !pathname.split('/').includes('..') &&
+    typeof search === 'string' &&
+    search.length <= 2048 &&
+    !hasControlCharacter(search) &&
+    !search.includes('#') &&
+    (search === '' || search.startsWith('?'))
+  );
+}
+
 /** A closed projection: only the fields this version defines are kept. */
 function parseTarget(value: unknown): PaneRelationTarget | null {
   if (!isRecordObject(value)) return null;
@@ -116,7 +163,7 @@ function parseTarget(value: unknown): PaneRelationTarget | null {
       !boundedText(value.projectId) ||
       !boundedText(value.projectSlug) ||
       !boundedText(value.path, 4096) ||
-      !(value.thread === null || boundedText(value.thread))
+      !nullableText(value.thread, 1024)
     )
       return null;
     return {
@@ -146,19 +193,56 @@ function parseTarget(value: unknown): PaneRelationTarget | null {
   return null;
 }
 
+function parseSource(value: unknown): PaneOpenerSource | null {
+  if (!isRecordObject(value)) return null;
+  if (value.kind === 'conversation') {
+    if (
+      !nullableText(value.conversationId) ||
+      !nullableText(value.threadId) ||
+      !nullableText(value.projectSlug, 256) ||
+      (value.conversationId === null && value.threadId === null)
+    )
+      return null;
+    return {
+      kind: 'conversation',
+      conversationId: value.conversationId,
+      threadId: value.threadId,
+      projectSlug: value.projectSlug,
+    };
+  }
+  if (value.kind === 'files') {
+    if (
+      !boundedText(value.projectId, 256) ||
+      !boundedText(value.projectSlug, 256)
+    )
+      return null;
+    return {
+      kind: 'files',
+      projectId: value.projectId,
+      projectSlug: value.projectSlug,
+    };
+  }
+  if (value.kind === 'route') {
+    if (!isOpenerRoute(value.pathname, value.search)) return null;
+    return {
+      kind: 'route',
+      pathname: value.pathname as string,
+      search: value.search as string,
+    };
+  }
+  return null;
+}
+
 function parseOpener(value: unknown): PaneOpener | null {
   if (
     !isRecordObject(value) ||
     !boundedText(value.occurrenceId, 512) ||
-    !boundedText(value.selection, 1024) ||
     !boundedText(value.label, 160)
   )
     return null;
-  return {
-    occurrenceId: value.occurrenceId,
-    selection: value.selection,
-    label: value.label,
-  };
+  const source = parseSource(value.source);
+  if (!source) return null;
+  return { occurrenceId: value.occurrenceId, label: value.label, source };
 }
 
 function parseEntry(value: unknown): PaneRelation | null {
@@ -216,28 +300,16 @@ function cyclicEntries(entries: readonly PaneRelation[]): Set<string> {
   return cyclic;
 }
 
-/** Keeps the newest `PANE_RELATIONS_LIMIT` entries; transient ones go first. */
-function bounded(entries: readonly PaneRelation[]): readonly PaneRelation[] {
-  if (entries.length <= PANE_RELATIONS_LIMIT) return entries;
-  const ranked = [...entries].sort(
-    (a, b) => Number(b.kept) - Number(a.kept) || b.openedAt - a.openedAt,
-  );
-  const keep = new Set(
-    ranked.slice(0, PANE_RELATIONS_LIMIT).map((entry) => entry.instanceId),
-  );
-  return entries.filter((entry) => keep.has(entry.instanceId));
-}
-
 /**
  * Read the stored record. Invalid entries, duplicate occurrences or state
- * keys, cycles and entries past the bound are dropped one by one; the rest
- * stand. An oversized or unparsable record is empty; a newer version is
+ * keys and cycles are dropped one by one; the rest stand. A record holding
+ * more entries than the bound — which no writer of this build produces — is
+ * `unsupported` rather than cut, so nothing here chooses which entries to
+ * lose. An oversized or unparsable record is empty; a newer version is
  * `unsupported`.
  */
 export function parsePaneRelations(raw: string | null): PaneRelationsRead {
-  if (raw === null || raw.length === 0)
-    return { status: 'empty', record: EMPTY_PANE_RELATIONS };
-  if (raw.length > MAX_BYTES)
+  if (raw === null || raw.length === 0 || raw.length > MAX_BYTES)
     return { status: 'empty', record: EMPTY_PANE_RELATIONS };
   let value: unknown;
   try {
@@ -247,17 +319,16 @@ export function parsePaneRelations(raw: string | null): PaneRelationsRead {
   }
   if (!isRecordObject(value))
     return { status: 'empty', record: EMPTY_PANE_RELATIONS };
-  if (
-    typeof value.version === 'number' &&
-    value.version > PANE_RELATIONS_VERSION
-  )
+  if (typeof value.version === 'number' && value.version > 1)
     return { status: 'unsupported', record: EMPTY_PANE_RELATIONS };
-  if (value.version !== PANE_RELATIONS_VERSION || !Array.isArray(value.entries))
+  if (value.version !== 1 || !Array.isArray(value.entries))
     return { status: 'empty', record: EMPTY_PANE_RELATIONS };
+  if (value.entries.length > PANE_RELATIONS_LIMIT)
+    return { status: 'unsupported', record: EMPTY_PANE_RELATIONS };
   const entries: PaneRelation[] = [];
   const instanceIds = new Set<string>();
   const stateKeys = new Set<string>();
-  for (const candidate of value.entries.slice(0, PANE_RELATIONS_LIMIT * 2)) {
+  for (const candidate of value.entries) {
     const entry = parseEntry(candidate);
     if (
       !entry ||
@@ -273,26 +344,44 @@ export function parsePaneRelations(raw: string | null): PaneRelationsRead {
   return {
     status: 'ok',
     record: {
-      version: PANE_RELATIONS_VERSION,
-      entries: bounded(
-        entries.filter((entry) => !cyclic.has(entry.instanceId)),
-      ),
+      version: 1,
+      entries: entries.filter((entry) => !cyclic.has(entry.instanceId)),
     },
   };
 }
 
 export function serializePaneRelations(record: PaneRelationsRecord): string {
-  return JSON.stringify({
-    version: PANE_RELATIONS_VERSION,
-    entries: record.entries,
-  });
+  return JSON.stringify({ version: 1, entries: record.entries });
+}
+
+/**
+ * The opener selection an entry belongs to: one reusable preview per exact
+ * selection, and the key source changes compare. Derived from the typed
+ * source, so it cannot disagree with where Up returns.
+ */
+export function openerSelectionKey(opener: PaneOpener): string {
+  const { source } = opener;
+  switch (source.kind) {
+    case 'conversation':
+      return source.threadId !== null
+        ? `thread:${source.threadId}`
+        : `conversation:${source.conversationId}`;
+    case 'files':
+      return `files:${source.projectId}`;
+    case 'route':
+      return `route:${source.pathname}${source.search}`;
+  }
+}
+
+function sameOpenerSelection(a: PaneOpener, b: PaneOpener): boolean {
+  return (
+    a.occurrenceId === b.occurrenceId &&
+    openerSelectionKey(a) === openerSelectionKey(b)
+  );
 }
 
 /** Exact target identity: Station, Project, path and thread where they apply. */
-export function paneTargetKey(
-  stationId: string,
-  target: PaneRelationTarget,
-): string {
+function paneTargetKey(stationId: string, target: PaneRelationTarget): string {
   switch (target.kind) {
     case 'file':
       return JSON.stringify([
@@ -315,8 +404,12 @@ export function paneTargetKey(
   }
 }
 
-export function samePaneOpenerSelection(a: PaneOpener, b: PaneOpener): boolean {
-  return a.occurrenceId === b.occurrenceId && a.selection === b.selection;
+export function sameRelationTarget(
+  stationId: string,
+  a: PaneRelationTarget,
+  b: PaneRelationTarget,
+): boolean {
+  return paneTargetKey(stationId, a) === paneTargetKey(stationId, b);
 }
 
 export function paneRelationOf(
@@ -326,52 +419,59 @@ export function paneRelationOf(
   return record.entries.find((entry) => entry.instanceId === instanceId);
 }
 
-/** A kept occurrence of this exact target on this Station, if one is placed. */
+/** The kept occurrence of this exact target on this Station, if one exists. */
 export function keptPaneForTarget(
   record: PaneRelationsRecord,
   stationId: string,
   target: PaneRelationTarget,
-  isPlaced: (instanceId: string) => boolean,
 ): PaneRelation | undefined {
   const key = paneTargetKey(stationId, target);
   return record.entries.find(
     (entry) =>
       entry.kept &&
       entry.stationId === stationId &&
-      paneTargetKey(entry.stationId, entry.target) === key &&
-      isPlaced(entry.instanceId),
+      paneTargetKey(entry.stationId, entry.target) === key,
   );
 }
 
-/** The one transient preview this exact opener selection owns, if placed. */
+/** The one transient preview this exact opener selection owns, if any. */
 export function transientPaneForOpener(
   record: PaneRelationsRecord,
   stationId: string,
   opener: PaneOpener,
-  isPlaced: (instanceId: string) => boolean,
 ): PaneRelation | undefined {
   return record.entries.find(
     (entry) =>
       !entry.kept &&
       entry.stationId === stationId &&
-      samePaneOpenerSelection(entry.opener, opener) &&
-      isPlaced(entry.instanceId),
+      sameOpenerSelection(entry.opener, opener),
   );
 }
 
+export type PaneRelationsWrite =
+  | { readonly ok: true; readonly record: PaneRelationsRecord }
+  | { readonly ok: false; readonly reason: 'capacity' };
+
+/**
+ * Add (or replace, by occurrence or state key) one entry. At the bound a NEW
+ * entry is refused — nothing is evicted to make room, because every entry
+ * still in the record belongs to an occurrence that still exists
+ * (`prunePaneRelations` runs first).
+ */
 export function withPaneRelation(
   record: PaneRelationsRecord,
   relation: PaneRelation,
-): PaneRelationsRecord {
+  replacing?: string,
+): PaneRelationsWrite {
   const entries = record.entries.filter(
     (entry) =>
       entry.instanceId !== relation.instanceId &&
-      entry.stateKey !== relation.stateKey,
+      entry.stateKey !== relation.stateKey &&
+      entry.instanceId !== replacing,
   );
-  return {
-    version: PANE_RELATIONS_VERSION,
-    entries: bounded([...entries, relation]),
-  };
+  if (entries.length >= PANE_RELATIONS_LIMIT)
+    return { ok: false, reason: 'capacity' };
+  return { ok: true, record: { version: 1, entries: [...entries, relation] } };
 }
 
 export function withoutPaneRelation(
@@ -380,7 +480,7 @@ export function withoutPaneRelation(
 ): PaneRelationsRecord {
   if (!paneRelationOf(record, instanceId)) return record;
   return {
-    version: PANE_RELATIONS_VERSION,
+    version: 1,
     entries: record.entries.filter((entry) => entry.instanceId !== instanceId),
   };
 }
@@ -392,7 +492,7 @@ export function withKeptPane(
   const current = paneRelationOf(record, instanceId);
   if (!current || current.kept) return record;
   return {
-    version: PANE_RELATIONS_VERSION,
+    version: 1,
     entries: record.entries.map((entry) =>
       entry.instanceId === instanceId ? { ...entry, kept: true } : entry,
     ),
@@ -400,18 +500,18 @@ export function withKeptPane(
 }
 
 /**
- * Drop entries for occurrences the arrangement no longer holds. Run on the
- * writes this module makes, never on a read: an arrangement still loading is
- * not evidence that a pane was closed.
+ * Drop entries whose occurrence no longer EXISTS in durable, origin-wide
+ * storage (`exists`: its own state and fence are still stored). Never by
+ * whether this tab happens to place it: another tab may be showing it.
  */
 export function prunePaneRelations(
   record: PaneRelationsRecord,
-  isPlaced: (instanceId: string) => boolean,
+  exists: (instanceId: string) => boolean,
 ): PaneRelationsRecord {
-  const entries = record.entries.filter((entry) => isPlaced(entry.instanceId));
+  const entries = record.entries.filter((entry) => exists(entry.instanceId));
   return entries.length === record.entries.length
     ? record
-    : { version: PANE_RELATIONS_VERSION, entries };
+    : { version: 1, entries };
 }
 
 /**
@@ -419,9 +519,9 @@ export function prunePaneRelations(
  * selection: Security review's preview hides while Documentation review is
  * on screen and returns with Security review. Kept panes never hide. Neither
  * does a preview whose opener has published no selection (nothing says the
- * source changed), one opened on another Station (it renders its own
- * placeholder) or one `isProtected` names — a preview holding unsaved work
- * is never taken off screen by a source change.
+ * source changed), one opened on another Station (its fence keeps it
+ * unread), or one `isProtected` names — a preview holding unsaved work is
+ * never taken off screen by a source change.
  */
 export function sourceHiddenPanes(
   record: PaneRelationsRecord,
@@ -436,7 +536,7 @@ export function sourceHiddenPanes(
       const current = selections.get(entry.opener.occurrenceId);
       return (
         current !== undefined &&
-        current !== entry.opener.selection &&
+        current !== openerSelectionKey(entry.opener) &&
         !isProtected(entry.instanceId)
       );
     })
