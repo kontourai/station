@@ -19,7 +19,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
   afterEach,
   beforeAll,
@@ -107,6 +107,23 @@ function RegionShellProbe({ regionShell }: { regionShell: boolean }) {
   return null;
 }
 
+/** The modal's own `loading` state, which a test sets to take the quote away. */
+const modalHost = {
+  setLoading: null as ((loading: boolean) => void) | null,
+};
+function KnowledgeModal({ content }: { content: string }) {
+  const [loading, setLoading] = useState(false);
+  modalHost.setLoading = setLoading;
+  return (
+    <ProjectKnowledgeViewerModal
+      doc={DOC}
+      content={content}
+      loading={loading}
+      onClose={() => {}}
+    />
+  );
+}
+
 function mount(
   quote: SavedAnswerQuote = QUOTE,
   around?: (node: ReactNode) => ReactNode,
@@ -116,12 +133,7 @@ function mount(
   const tree = (
     <RegionModelProvider>
       <RegionShellProbe regionShell={regionShell} />
-      <ProjectKnowledgeViewerModal
-        doc={DOC}
-        content={content}
-        loading={false}
-        onClose={() => {}}
-      />
+      <KnowledgeModal content={content} />
     </RegionModelProvider>
   );
   render(
@@ -198,6 +210,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   model = null;
+  modalHost.setLoading = null;
   scope.apiBase = ORIGIN;
   scope.current = true;
   localStorage.clear();
@@ -460,6 +473,87 @@ describe('Open source conversation from a knowledge document', () => {
       expect(
         screen.getByRole('dialog', { name: 'Quoted answer source' }),
       ).toBeTruthy();
+    } finally {
+      guard.unregister();
+    }
+  });
+
+  // Navigation's own guard generation revokes an admission when a guard is
+  // registered while it waits; here, for the panes this open would hide.
+  test('a guard registered for the asked pane while its question is open is never bypassed', async () => {
+    navigationStore.navigate('/projects/station', { dock: 'open' });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => model?.placeSurface('activity', 'bottom'));
+    const first = deferredGuard('activity');
+    let second: ReturnType<typeof deferredGuard> | null = null;
+    try {
+      const search = window.location.search;
+      await inspectAndOpen();
+      expect(first.asked).toHaveBeenCalledTimes(1);
+      // More unsaved work in Activity while the first question is open.
+      second = deferredGuard('activity');
+      first.answer('proceed');
+      expect(second.asked).not.toHaveBeenCalled();
+      expect(model?.regions.bottom.occupant).toBe('activity');
+      expect(window.location.search).toBe(search);
+      expect(window.location.hash).toBe('');
+      expect(
+        screen.getByRole('dialog', { name: 'Quoted answer source' }),
+      ).toBeTruthy();
+    } finally {
+      first.unregister();
+      second?.unregister();
+    }
+  });
+
+  // The arrangement a guard's own callback changed is not rendered yet when
+  // it answers in the same event: the prediction reads what the model
+  // committed, which is what the reveal starts from.
+  test('a pane a guard moved in before answering, unrendered, is not hidden unasked', async () => {
+    navigationStore.navigate('/projects/station', { dock: 'open' });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => model?.placeSurface('activity', 'bottom'));
+    const agents = deferredGuard('workspace-agents');
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('activity answers at once'),
+      (proceed) => {
+        model?.placeSurface('workspace-agents', 'bottom');
+        proceed();
+      },
+      'activity',
+    );
+    try {
+      const search = window.location.search;
+      await inspectAndOpen();
+      expect(agents.asked).not.toHaveBeenCalled();
+      expect(model?.regions.bottom.occupant).toBe('workspace-agents');
+      expect(window.location.search).toBe(search);
+      expect(window.location.hash).toBe('');
+    } finally {
+      unregister();
+      agents.unregister();
+    }
+  });
+
+  test('a request whose quote went away while a guard waited opens nothing', async () => {
+    navigationStore.navigate('/projects/station', { dock: 'open' });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => model?.placeSurface('activity', 'bottom'));
+    const guard = deferredGuard('activity');
+    try {
+      const search = window.location.search;
+      await inspectAndOpen();
+      act(() => modalHost.setLoading?.(true));
+      expect(
+        screen.queryByRole('dialog', { name: 'Quoted answer source' }),
+      ).toBeNull();
+      guard.answer('proceed');
+      expect(model?.regions.bottom.occupant).toBe('activity');
+      expect(window.location.search).toBe(search);
+      expect(window.location.hash).toBe('');
     } finally {
       guard.unregister();
     }

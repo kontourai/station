@@ -1,6 +1,6 @@
 import { getAssistantQuoteSource } from '@kontourai/station-sdk/quote-source';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ReactNode, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { navigationStore } from '../../contexts/navigation-store';
@@ -168,10 +168,16 @@ function QuoteSourceInspection({
  *
  * Every pane that reveal would take off screen and that holds unsaved work —
  * one sharing Chat's region, the pane a phone layer shows over Chat — asks
- * its own guard first, once each, before anything changes. When the last one
- * answers, the open is admitted again and the reveal derived again from the
- * arrangement as it is then: a lost admission, or a guarded pane the reveal
- * would now hide that was not asked, opens nothing. Cancel changes nothing.
+ * its own guard first, once each, before anything changes. The prediction
+ * reads the arrangement the model last committed (`readRegions`), which is
+ * what the reveal starts from. When the last guard answers, the open is
+ * admitted again and the prediction made again. It opens nothing when
+ * admission was lost, when a guarded pane the reveal would now hide was not
+ * asked, or when a guard was registered for one of them while the question
+ * was open — unsaved work nobody was asked about, the case navigation's own
+ * guard generation revokes. Cancel changes nothing, and so does a request
+ * whose inspection went away while it waited.
+ *
  * Nothing is asked where the reveal is no region reveal (the Coding centre's
  * page, or no region shell rendered, when it is a deep link and navigation's
  * own guards apply). Where a Chat workspace layout owns the viewport, Chat is
@@ -189,13 +195,20 @@ function useGuardedChatReveal() {
   };
   const latest = useRef(current);
   latest.current = current;
+  const waiting = useRef(new Set<() => void>());
+  useEffect(() => {
+    const requests = waiting.current;
+    return () => {
+      for (const end of [...requests]) end();
+    };
+  }, []);
   const guardedPanesHidden = (): string[] => {
     const { model, placement, alone } = latest.current;
     const chat = resolveRegionSurface('chat');
     if (placement !== 'none' || !model.canRenderRegionSurfaces || !chat)
       return [];
     return panesHiddenByReveal(
-      model.regions,
+      model.readRegions(),
       'chat',
       chat.defaultRegion,
       alone,
@@ -208,9 +221,28 @@ function useGuardedChatReveal() {
   }) => {
     if (!request.admit()) return;
     const asked = guardedPanesHidden();
+    const registered = new Set<string>();
+    const stop = navigationStore.subscribeNavigationGuardOwners((owner) =>
+      registered.add(owner),
+    );
+    let live = true;
+    const end = () => {
+      if (!live) return;
+      live = false;
+      stop();
+      waiting.current.delete(end);
+    };
+    waiting.current.add(end);
     const proceed = () => {
+      if (!live) return;
+      end();
       if (!request.admit()) return;
-      if (guardedPanesHidden().some((owner) => !asked.includes(owner))) return;
+      if (
+        guardedPanesHidden().some(
+          (owner) => !asked.includes(owner) || registered.has(owner),
+        )
+      )
+        return;
       request.open();
       if (latest.current.placement !== 'viewport')
         latest.current.showSurface('chat');
@@ -222,9 +254,7 @@ function useGuardedChatReveal() {
         proceed();
         return;
       }
-      navigationStore.runNavigationGuards(() => ask(rest), undefined, {
-        owner,
-      });
+      navigationStore.runNavigationGuards(() => ask(rest), end, { owner });
     };
     ask(asked);
   };

@@ -142,6 +142,14 @@ function withoutSurfaceIntent(
 
 export interface RegionModelValue {
   regions: RegionArrangement;
+  /**
+   * The arrangement as the model last committed it, read now. `regions` is
+   * the rendered value, which lags a write made earlier in the same event; a
+   * caller that predicts what a reveal will take off screen — to ask those
+   * panes first, and again once they answer — reads this, which is what the
+   * reveal itself starts from.
+   */
+  readRegions(): RegionArrangement;
   lastShownRegion: RegionId | null;
   surfaces: typeof REGION_SURFACE_REGISTRY;
   setRegion(id: RegionId, patch: Partial<RegionState>): void;
@@ -717,6 +725,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // "corrected" at mount — and `setDockMode` would write the device setting
   // before the user touched anything.
   const seenNavigationRef = useRef({ dockMode, isDockOpen, isDockMaximized });
+
+  const readRegions = useCallback(() => regionsRef.current, []);
 
   const setRegion = useCallback((id: RegionId, patch: Partial<RegionState>) => {
     const next = updateRegion(regionsRef.current, id, patch);
@@ -1603,6 +1613,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       regions,
+      readRegions,
       lastShownRegion,
       surfaces: REGION_SURFACE_REGISTRY,
       setRegion,
@@ -1625,6 +1636,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     }),
     [
       regions,
+      readRegions,
       lastShownRegion,
       setRegion,
       placeSurface,
