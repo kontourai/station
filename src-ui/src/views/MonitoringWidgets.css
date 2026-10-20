@@ -1376,9 +1376,21 @@
 }
 
 /* A value that must stay on one line (the producer name): ellipsis, with the
-   full value in the element's title. */
+   full value in the element's title. Its inline group may shrink to the
+   row's width, so the pill truncates instead of running past the edge. */
+.log-inline--shrink {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+/* The 1fr grid column otherwise keeps the data column at least as wide as
+   its widest nowrap pill, so nothing inside it could truncate. */
+.log-row > .log-data {
+  min-width: 0;
+}
 .pill-badge--single-line {
   display: inline-block;
+  flex: 0 1 auto;
   max-width: 16rem;
   min-width: 0;
   overflow: hidden;

@@ -119,7 +119,7 @@ export function EventEntryHeader({
         )}
 
         {typeof event[K.TELEMETRY_PRODUCER] === 'string' && (
-          <span className="log-inline">
+          <span className="log-inline log-inline--shrink">
             <span className="meta-label">Producer:</span>
             <span
               className="pill-badge pill-badge--single-line"
