@@ -284,6 +284,11 @@ Android-specific tests run via `.github/workflows/android-test.yml`:
   after five seconds and scans crash output. It does not exercise pairing,
   credentials, capture, background behavior or a complete user journey.
 
+A triggering build that was cancelled (for example, superseded by a newer
+push) or that ran on a branch other than `main` has nothing to test, so the
+whole run is skipped rather than failed. A failed `main` build still fails the
+run.
+
 Run Playwright mobile tests locally:
 
 ```bash

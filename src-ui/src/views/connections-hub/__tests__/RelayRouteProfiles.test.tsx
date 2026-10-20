@@ -249,8 +249,39 @@ vi.mock('../../../platform/native/relayKeyApproval', () => ({
   },
 }));
 
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { NativeStationProfileStorage } from '../../../platform/native/stationProfileStorage';
 import { RelayRouteProfiles } from '../RelayRouteProfiles';
+
+/**
+ * The account boundary this view mounts inside, simulated: a signed-in person
+ * whose appearance differs from the device's own (light Nord vs dark Station).
+ * Returns what the boundary's unmount does.
+ */
+function bindSignedInAppearance(): () => void {
+  localStorage.setItem(
+    'station-device-settings-v1',
+    JSON.stringify({ version: 1, values: { theme: 'dark' } }),
+  );
+  localStorage.removeItem('station-appearance-v1');
+  deviceSettingsStore.reloadFromStorage();
+  return deviceSettingsStore.bindAccountPreferences(
+    { theme: 'light', colorTheme: 'nord' },
+    () => {},
+    true,
+    'person-a',
+  );
+}
+
+/** After the boundary is gone, the device's own appearance, not a hold. */
+function expectDeviceAppearance(): void {
+  expect(deviceSettingsStore.getAppearanceSource()).not.toBe('cache');
+  const { theme, colorTheme } = deviceSettingsStore.getSnapshot();
+  expect({ theme, colorTheme }).toEqual({
+    theme: 'dark',
+    colorTheme: 'station',
+  });
+}
 
 function pastePlainText(target: HTMLElement, text: string) {
   const event = new Event('paste', { bubbles: true, cancelable: true });
@@ -1864,13 +1895,23 @@ describe('RelayRouteProfiles', () => {
         name: 'More account actions for Home Station',
       }),
     );
-    fireEvent.click(
-      screen.getByRole('menuitem', {
-        name: 'Forget account session on this device',
-      }),
-    );
-    await screen.findByLabelText('Station account username');
-    expect(mocks.accountRetire).toHaveBeenCalledTimes(1);
+    // This order: the account boundary unmounts first, then the session is
+    // forgotten (the other order is the remote sign-out test below).
+    bindSignedInAppearance()();
+    try {
+      fireEvent.click(
+        screen.getByRole('menuitem', {
+          name: 'Forget account session on this device',
+        }),
+      );
+      await screen.findByLabelText('Station account username');
+      expect(mocks.accountRetire).toHaveBeenCalledTimes(1);
+      // No account session on this device any more: its own appearance.
+      await waitFor(() => expectDeviceAppearance());
+    } finally {
+      localStorage.clear();
+      deviceSettingsStore.reloadFromStorage();
+    }
     expect(
       screen.getByText(/remote Station account was not signed out or revoked/),
     ).toBeTruthy();
@@ -1947,6 +1988,7 @@ describe('RelayRouteProfiles', () => {
   });
 
   test('remote sign-out requires the typed revocation receipt and remains distinct from local retirement', async () => {
+    const unmountBoundary = bindSignedInAppearance();
     configureEnrollmentReadyRoute();
     selectNativeRelayRoute();
     mocks.accountSessionActive = true;
@@ -1962,6 +2004,15 @@ describe('RelayRouteProfiles', () => {
     );
     expect(mocks.accountLogout).toHaveBeenCalledTimes(1);
     expect(mocks.accountRetire).not.toHaveBeenCalled();
+    // Signed out inside the mounted boundary, then the boundary unmounts:
+    // the device's own appearance, not a hold of the signed-out person's.
+    unmountBoundary();
+    try {
+      expectDeviceAppearance();
+    } finally {
+      localStorage.clear();
+      deviceSettingsStore.reloadFromStorage();
+    }
     expect(
       screen.queryByLabelText('Project invitation link or code'),
     ).toBeNull();
@@ -1971,6 +2022,7 @@ describe('RelayRouteProfiles', () => {
   });
 
   test('does not claim remote revocation when sign-out outcome is unknown', async () => {
+    const unmountBoundary = bindSignedInAppearance();
     configureEnrollmentReadyRoute();
     selectNativeRelayRoute();
     mocks.accountSessionActive = true;
@@ -1995,6 +2047,15 @@ describe('RelayRouteProfiles', () => {
       screen.queryByText(/confirmed this account session was revoked/),
     ).toBeNull();
     expect(mocks.accountRetire).not.toHaveBeenCalled();
+    // The local session is retired either way, so once the boundary
+    // unmounts the device's own appearance applies.
+    unmountBoundary();
+    try {
+      expectDeviceAppearance();
+    } finally {
+      localStorage.clear();
+      deviceSettingsStore.reloadFromStorage();
+    }
   });
 
   test('does not forward an accepted invitation after the selected route epoch changes', async () => {

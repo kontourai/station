@@ -44,7 +44,7 @@ const HomeRolePane = lazy(() =>
  * built-in renders because `selectClientWorkspacePaneRenderer` selected it,
  * not because this file directly mounts a surface.
  *
- * Stage 3 (the Home role) reaches this host through exactly one seam: the
+ * The Home role reaches this host through exactly one seam: the
  * SERVER-derived `WorkspaceHomeRoleStatus` read through
  * `useWorkspaceHomeRoleStatus`. Browser storage is not grant authority:
  * the grant lives server-side and its production writer requires the

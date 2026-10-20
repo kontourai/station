@@ -1,0 +1,33 @@
+{
+  "path": "docs/user/settings.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "User page for the Feature previews, Developer tools, Shared answers and Device hosts settings sections, traced from the settings page and catalog definitions to the feature-preview registry/route, the developer-tools device setting, and the device-host panel and store.",
+
+  "limits": "Source evidence only; the rendered Settings UI and a live device host were not exercised. The listed preview reflects the registry bindings at this revision.",
+
+  "sources": [
+    "src-ui/src/views/settings/settings-pages.ts",
+
+    "src-ui/src/views/settings/settings-catalog.ts",
+
+    "src-ui/src/views/settings/FeaturePreviewsSection.tsx",
+
+    "src-server/routes/system/feature-previews.ts",
+
+    "src-server/services/feature-previews/feature-preview-registry.ts",
+
+    "packages/contracts/src/device-settings.ts",
+
+    "src-ui/src/views/settings/DeviceHostsPanel.tsx",
+
+    "src-server/services/devices/hosts/device-host-store.ts"
+  ],
+
+  "checks": [
+    "Checked section placement, labels, defaults, persistence scope, operator gating and host limit against source."
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "path": "docs/guides/inbound-webhooks.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Operator guide traced from POST /api/webhooks/inbound through header validation, HMAC-SHA256 signature check, grant matching, replay ledger, rate limits, audit ring and the webhook turn starter: configuration shape, request signing, response codes and limits.",
+
+  "limits": "Source and route-test evidence. The bash signing example was not executed against a running Station. Hosted-mode behaviour is not reviewed.",
+
+  "sources": [
+    "packages/contracts/src/inbound-webhook.ts",
+
+    "src-server/routes/webhooks/inbound-webhooks.ts",
+
+    "src-server/services/webhooks/inbound-webhook-authorization.ts",
+
+    "src-server/services/webhooks/inbound-webhook-store.ts",
+
+    "src-server/routes/webhooks/webhook-turn-starter.ts"
+  ],
+
+  "checks": [
+    "Verified header names, signature input, size limits, rate-limit constants and response bodies against the route and authorization source."
+  ]
+}

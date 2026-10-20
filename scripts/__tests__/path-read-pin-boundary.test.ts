@@ -113,6 +113,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // bundles are children, not imports. The supervisor-link and protocol
   // imports select it for changes.
   'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
+  // Reads back the launch record its fake OpenCode engine writes into a temp
+  // directory (#3922), never repository source. Its imports of the approval
+  // mapping and ACP adapter select it for changes.
+  'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
   // Reads the receipt its child Playwright run writes into a temp root
   // (#577), never repository source. Its imports select it for changes.
   'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
@@ -126,6 +130,9 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // impact edge selects it (#2922).
   'scripts/__tests__/ci-event-environment.test.ts',
   'packages/cli/src/__tests__/dev-security.test.ts',
+  // Walks every previewable example's src/ for SDK imports (a repo scan in
+  // REPO_SCAN_SUITES); no single pin could stand for it.
+  'packages/cli/src/__tests__/dev-sdk-mock-parity.test.ts',
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts',
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
   // Walks the whole SDK source tree (a repo scan), like its neighbours here.
@@ -529,6 +536,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
 > = Object.freeze({
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts':
     'walks its own fixture directory',
+  'src-ui/src/__tests__/color-theme-artifacts.test.ts':
+    'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
   'scripts/__tests__/ci-event-environment.test.ts':

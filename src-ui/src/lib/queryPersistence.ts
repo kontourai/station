@@ -49,7 +49,7 @@ import { buildInfo } from '../build-info';
  * Included (safe, useful, and asked for by archive#1223):
  *  - 'agents', 'agent', 'agent-tools' — agent list/detail/tools
  *  - 'conversations' — conversation summaries (NOT `messages`, which holds
- *    full message bodies; kept out of scope for this slice, see report)
+ *    full message bodies; see the exclusions below)
  *  - 'projects' — project list/detail, including the nested layouts/
  *    icon-candidate queries under the same prefix (still shell metadata,
  *    not file contents)
@@ -78,7 +78,7 @@ import { buildInfo } from '../build-info';
  *    'acp-connections' — live/volatile, SSE-refreshed, or point-in-time
  *    operational state that would be actively misleading if shown stale
  *  - 'messages' — full conversation message bodies (large, can carry
- *    pasted secrets/sensitive content; out of scope for this slice)
+ *    pasted secrets/sensitive content)
  *  - 'knowledge', 'mcp-tool-ui*', 'git-*', 'ssh-environments',
  *    'coding-repos', 'host-compatibility' — large blobs / file contents or
  *    connection-specific probes, not "last-loaded shell data"
@@ -202,7 +202,7 @@ function createIdbQueryStorage(): AsyncStorage<string> {
 }
 
 /**
- * Restore-side enforcement of this slice's no-mutation-hydration rule.
+ * Restore-side enforcement of the no-mutation-hydration rule.
  *
  * `shouldDehydrateMutation: () => false` (below) only filters the SAVE path:
  * `persistQueryClientRestore` hands the stored `clientState` straight to
@@ -305,8 +305,8 @@ export function buildPersistOptions(options?: {
 
   const dehydrateOptions: DehydrateOptions = {
     shouldDehydrateQuery: shouldPersistQuery,
-    // Never persist mutations in this slice — the outbound queue is
-    // archive#1224. Explicit rather than relying on the (isPaused-only)
+    // Never persist mutations — offline sends belong to the outbound queue
+    // (archive#1224). Explicit rather than relying on the (isPaused-only)
     // default, so a future paused-mutation-while-offline path elsewhere in
     // the client can never leak into this persister by accident.
     shouldDehydrateMutation: () => false,

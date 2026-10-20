@@ -7,6 +7,10 @@ owns the missing execution evidence.
 
 This optional profile runs the [product receiver](../../packages/telemetry-broker/README.md)
 and a separate authenticated OTel Collector, Prometheus, Tempo and Grafana.
+[`compose.yaml`](compose.yaml) holds the receiver and PostgreSQL and includes
+the diagnostic services from [`compose.diagnostics.yaml`](compose.diagnostics.yaml).
+The Grafana dashboard is [`dashboards/station.json`](dashboards/station.json).
+The [developer profile](#developer-profile) runs the diagnostic half alone.
 Product observations never enter the diagnostic stores. Neither path supplies
 personal usage accounting, person identity or an analytics source grant.
 Station's normal install enables none of these services or destinations.
@@ -285,6 +289,52 @@ and retention. The receiver's no-IP guarantee does not assert that Cloudflare
 never processes or retains an IP. No production calls were made to qualify
 this source recipe.
 
+## Developer profile
+
+For local Station development, run only the diagnostic services: the same
+pinned Collector, Prometheus, Tempo and Grafana, configuration and dashboard,
+without the product receiver or PostgreSQL. [`compose.dev.yaml`](compose.dev.yaml)
+overrides [`compose.diagnostics.yaml`](compose.diagnostics.yaml) to publish
+Prometheus on loopback and to make the diagnostics network a regular bridge,
+because Docker publishes no host port for a container attached only to an
+internal network.
+
+Create a private directory outside the checkout with two new random
+credentials. There is no default password; Compose refuses to start without
+`TELEMETRY_PRIVATE_DIR` and refuses to create a missing credential file. On a
+rootful Linux host, give the files the owners listed above.
+
+```sh
+umask 077
+mkdir -p "$HOME/.station-telemetry-dev"
+openssl rand -hex 32 > "$HOME/.station-telemetry-dev/otel-key"
+openssl rand -base64 24 > "$HOME/.station-telemetry-dev/grafana-password"
+chmod 0400 "$HOME/.station-telemetry-dev"/*
+
+export TELEMETRY_PRIVATE_DIR="$HOME/.station-telemetry-dev"
+docker compose -f deployment/telemetry/compose.diagnostics.yaml \
+  -f deployment/telemetry/compose.dev.yaml up -d
+```
+
+| Service | Address | Access |
+| --- | --- | --- |
+| Collector (OTLP HTTP) | `http://127.0.0.1:44482` | `x-api-key` from `otel-key` |
+| Grafana | `http://127.0.0.1:44484` | `telemetry-admin` with `grafana-password` |
+| Prometheus | `http://127.0.0.1:44483` | Loopback only |
+
+Traces are in Grafana's Tempo data source (Explore). Point Station at the
+Collector with its key, for example:
+
+```sh
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:44482
+export STATION_OTEL_API_KEY="$(cat "$HOME/.station-telemetry-dev/otel-key")"
+```
+
+The default project name is `station-telemetry-dev`; override it with
+`COMPOSE_PROJECT_NAME`. Stop the stack with the same two `-f` files and `down`.
+This profile is for development only. It is not a qualified deployment, and
+the diagnostic semantics below apply unchanged.
+
 ## Diagnostic semantics and retention
 
 The Collector authenticates `x-api-key` from its private file. Its resource
@@ -303,7 +353,7 @@ not present missing samples, dropped streams or exporter refusal as zero.
 Trace processing projects the declared operational attributes, replaces span
 names, removes status text/events/links, and propagates transformation failures.
 No OTLP log pipeline is enabled. Exact pinned-binary validation and injected
-private-content refusal remain pending. Grafana reuses the existing dashboard;
+private-content refusal remain pending. Grafana provisions `dashboards/station.json`;
 a panel or trace ID does not prove delivery or accurate aggregation.
 
 Product storage retains its existing 90-day policy, row/storage caps, schema

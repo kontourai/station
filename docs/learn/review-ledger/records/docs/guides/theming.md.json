@@ -104,7 +104,21 @@
 
     "src-ui/src/platform/native/startupPresentation.ts",
 
-    "src-ui/src/__tests__/startup-presentation.browser.test.tsx"
+    "src-ui/src/__tests__/startup-presentation.browser.test.tsx",
+
+    "src-ui/src/lib/color-theme-catalog.ts",
+
+    "src-ui/src/lib/color-themes.ts",
+
+    "src-ui/src/lib/color-theme-apply.ts",
+
+    "src-ui/src/lib/color-theme-css.ts",
+
+    "scripts/gen-color-themes.ts",
+
+    "src-ui/src/lib/color-theme-selection.ts",
+
+    "src-ui/src/lib/appearance-cache.ts"
   ],
 
   "checks": [

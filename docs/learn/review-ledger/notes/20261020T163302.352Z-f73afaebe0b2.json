@@ -1,0 +1,11 @@
+{
+  "revision": "b4fa764d40fb4184fbfcbd7f82879361a24c2522",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked the historical banner against the combined rollup: acp-adapter.ts changed only in comments (#3952 label rewrites; no code line changed), and docs/guides/acp.md only split a paragraph (#3907). One process lifecycle per thread in the ACP adapter still holds, the guide and module map still describe ownership, and ACPSessionPool/AcpSessionManager still do not exist.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"Checked against the combined rollup: strands-adapter.ts now logs a JSON-parse failure through the server logger instead of console.debug (#3912). This historical record makes no claim about that logging; its file paths and the --features=strands-runtime mechanism are unchanged.","inputs":["docs/design/strands-migration.md","src-server/runtime/frameworks/strands-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked against the regenerated src-server/tools/station-docs-content.ts: the change is the generator's output for documentation edited by the rollup's merged PRs (new digest and two topic bodies). The manual's description of how topics are generated, what they contain and their credential-free scope is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -5,9 +5,9 @@
  * Enriches a `startSession` command's input with a `ResolvedAgentDefinition`
  * when the session is starting as a real on-disk agent (a canonical
  * `metadata.agentSlug`) whose
- * provider has at least one session-delivery channel this wave (ACP tool
- * servers; Claude skills and, as of wave B, the authored system prompt; as
- * of wave C, muse/codex/ACP without a native systemPrompt channel receipt
+ * provider has at least one session-delivery channel today (ACP tool
+ * servers; Claude skills and the authored system prompt; muse/codex/ACP
+ * without a native systemPrompt channel receipt
  * the prompt `channel: 'first-turn'` instead of dropping it — see
  * `instructionsInFirstTurn` on `EngineCapabilityMatrix`). An authored
  * field — including an authored empty array — is the source of truth for
@@ -165,7 +165,7 @@ function withBuiltinStationAgentCapabilities(
  * the matrix (e.g. 'bedrock', 'ollama') never resolves — the resolver
  * no-ops for it, matching the prior map's behavior exactly. Within a mapped
  * provider, a capability the matrix marks not-`session` means the agent may
- * still author it, but this engine has no channel for it this wave — that
+ * still author it, but this engine has no channel for it today — that
  * is receipted `engine-unsupported`, never silently dropped.
  *
  * archive#895 wave B: codex has NO channels — an authored capability on a
@@ -190,7 +190,7 @@ function withBuiltinStationAgentCapabilities(
  * predates the field. So this cell stays `unsupported` in the matrix —
  * evidence-gated DROP, not a silent gap: `systemPrompt` delivery ships once
  * a genuine version/capability signal exists to gate on (a CLI-`--version`
- * probe is the likely next mechanism, deliberately not built this wave —
+ * probe is the likely next mechanism, deliberately not built yet —
  * it wasn't reviewed and duplicates none of the existing CLI-probe
  * machinery in `cli-auth.ts` without new design work).
  */
@@ -210,7 +210,7 @@ function recordUndelivered(
 
 /**
  * Resolve one capability's authored ids into delivered/undelivered entries.
- * When the engine has no channel for this capability this wave, every
+ * When the engine has no channel for this capability, every
  * authored id is receipted `engine-unsupported` and nothing is attached —
  * matching decided ambiguity resolution #3.
  */
@@ -381,7 +381,7 @@ export function createSessionAgentResolver(
         // authored with a non-empty `env` (e.g. a GITHUB_TOKEN) is NEVER
         // exempt on any channel: `isBuiltinStationControl` is the same
         // exact-command/args identity gate `withStationControlRuntimeEnv`
-        // uses. Post-#3063 nuance (review INFO-2): a def authored under a
+        // uses. Post-#3063 nuance: a def authored under a
         // DIFFERENT id keeps its authored command/env and can never pass;
         // a def a user hand-saved under the id `station-control` itself
         // DOES pass here — but only because the ConfigLoader overlay has
@@ -551,7 +551,7 @@ export function createSessionAgentResolver(
             undelivered: [],
           };
         } else if (input.resumeCursor !== undefined) {
-          // Independent review MEDIUM-2 (delta round): `resumeCursor` marks
+          // `resumeCursor` marks
           // every path that resumes the engine's OWN thread — not just a
           // cross-session continuation, but SAME-THREAD recovery too
           // (credential-profile restart via `restartCredentialProfileProviderSession`
@@ -576,7 +576,7 @@ export function createSessionAgentResolver(
           ENGINE_CAPABILITY_MATRICES[input.provider]?.instructionsInFirstTurn
             ?.state === 'session'
         ) {
-          // archive#895 wave C: no native systemPrompt channel this wave, but
+          // archive#895: no native systemPrompt channel, but
           // this engine's matrix names the `instructionsInFirstTurn`
           // fallback — deliver the authored prompt by prepending it into the
           // session's first turn instead (orchestration-service.ts's

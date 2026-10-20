@@ -44,6 +44,7 @@ import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
 import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
 import { RelaySetupHelp } from './RelaySetupHelp';
 import './ComputersSection.css';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 
 const NO_RELAY_PROFILES: readonly StationProfile[] = [];
 const NO_SUBSCRIBE = () => () => {};
@@ -550,6 +551,14 @@ function NativeRelayAccountSessionPanel({
         throw new Error('native_relay_selection_changed');
       return account.logout();
     },
+    // The owner retires the local account session whether or not the remote
+    // revocation is confirmed, so this device has no person either way: its
+    // own appearance replaces the account's cached one.
+    onSettled: (_, __, id) => {
+      if (isCurrentAccountOperation(id))
+        deviceSettingsStore.releaseBootAppearance();
+      settleAccountOperation(id);
+    },
     onSuccess: (result, id) => {
       if (!isCurrentAccountOperation(id)) return;
       if (result.revoked !== true) {
@@ -565,7 +574,6 @@ function NativeRelayAccountSessionPanel({
       if (!isCurrentAccountOperation(id)) return;
       setError(REMOTE_LOGOUT_UNCONFIRMED_COPY);
     },
-    onSettled: (_, __, id) => settleAccountOperation(id),
   });
 
   const retire = useMutation({
@@ -576,6 +584,7 @@ function NativeRelayAccountSessionPanel({
     },
     onSuccess: (_, id) => {
       if (!isCurrentAccountOperation(id)) return;
+      deviceSettingsStore.releaseBootAppearance();
       setError(null);
       setNotice(
         'The account session was cleared from this device. The remote Station account was not signed out or revoked.',

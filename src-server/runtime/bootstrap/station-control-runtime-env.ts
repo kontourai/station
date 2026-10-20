@@ -250,7 +250,7 @@ const BUILTIN_INTEGRATION_SPAWN_COMMAND = 'node';
  * `isBuiltinStationControl` matches on and `StationRuntime`'s constructor
  * registers the runtime-identity overlay under (archive#3063).
  */
-export const BUILTIN_STATION_CONTROL_TOOL_SERVER_ID = 'station-control';
+const BUILTIN_STATION_CONTROL_TOOL_SERVER_ID = 'station-control';
 
 /**
  * archive#3063: the spawn command a registered built-in integration id runs

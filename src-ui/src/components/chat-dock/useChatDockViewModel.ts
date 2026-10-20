@@ -267,7 +267,7 @@ export function useChatDockViewModel({
   );
 
   // Shared with the send path so the approval chip and the dispatched
-  // posture can never be resolved off different bindings (round 2 LOW-5).
+  // posture can never be resolved off different bindings (#2169).
   const agentConnectionId = resolveSessionEngineConnectionId({
     conversationOpenState: activeSessionForHook?.conversationOpenState,
     currentSessionId: activeSessionForHook?.currentSessionId,

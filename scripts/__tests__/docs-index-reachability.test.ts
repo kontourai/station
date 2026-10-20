@@ -517,7 +517,10 @@ describe('docs index reachability', () => {
       .filter((path) => path.split('/').length === 2)
       .map((path) => path.slice('docs/'.length))
       .filter((name) => name !== 'README.md');
-    expect(roots.length).toBeGreaterThan(3);
+    // Proves the glob reached the root records without pinning their count.
+    expect(roots).toEqual(
+      expect.arrayContaining(['architecture.md', 'glossary.md']),
+    );
     for (const name of roots) {
       expect(index, `docs/README.md never links docs/${name}`).toContain(
         `(${name})`,

@@ -539,7 +539,7 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
   afterEach(() => {
     vi.useRealTimers();
     // Env stubs (e.g. the supervisor-marker scrub test) must not leak into
-    // later tests in this worker (delta-review note); idempotent otherwise.
+    // later tests in this worker; idempotent otherwise.
     vi.unstubAllEnvs();
     for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true });
     tmpDirs = [];

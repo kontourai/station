@@ -44,8 +44,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^2.0.3",
-    "@kontourai/station-contracts": "^0.10.0",
-    "@kontourai/station-sdk": "^0.10.0",
+    "@kontourai/station-contracts": "^0.11.0",
+    "@kontourai/station-sdk": "^0.11.0",
     "@kontourai/surface": "^6.1.0",
     "@kontourai/ui": "^1.19.0"
   },
