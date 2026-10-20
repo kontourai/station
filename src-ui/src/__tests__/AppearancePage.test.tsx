@@ -358,10 +358,10 @@ describe('Appearance page while a theme sheet loads', () => {
   });
 
   // The applier's failure contract (lib/color-theme-apply.ts):
-  // `data-color-theme-failed` names the family whose latest sheet failed and
-  // stays set while a retry is in flight. The card follows it: failed with
-  // nothing in flight, loading while a retry is on its way, and back to the
-  // ordinary state once the marker clears.
+  // `data-color-theme-failed` names the family whose latest sheet failed, and
+  // is absent while a new request for it is in flight. The card follows it:
+  // failed when marked, loading while a retry is on its way, and back to the
+  // ordinary state once the theme applies.
   test("the failed state follows the applier's failure marker through retries and a new choice", async () => {
     renderPage();
     fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));
@@ -375,7 +375,7 @@ describe('Appearance page while a theme sheet loads', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(root.getAttribute('data-color-theme-failed')).toBe('catppuccin');
+    expect(root.getAttribute('data-color-theme-failed')).toBeNull();
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinLoading…');
     settleSheets('error');
     await settleSheetsAndObserve();
@@ -390,6 +390,39 @@ describe('Appearance page while a theme sheet loads', () => {
       screen.queryByRole('region', { name: 'Theme not loaded' }),
     ).toBeNull();
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinMocha');
+  });
+
+  // A failed theme must stay "Not loaded" through re-applies that do not
+  // change the selection — a mode toggle, a save of an unrelated setting —
+  // rather than flicker to "Loading…" as each one asks for the sheet again.
+  test('a mode toggle and a background save after a failure keep the card on "Not loaded"', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));
+    settleSheets('error');
+    await settleSheetsAndObserve();
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
+    const sheetsInHead = () =>
+      document.head.querySelectorAll('link[rel="stylesheet"]').length;
+    const before = sheetsInHead();
+
+    fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: 'Mode' })).getByRole(
+        'radio',
+        { name: 'Light' },
+      ),
+    );
+    await act(async () => {
+      deviceSettingsStore.set('chatFontSize', 17);
+      await Promise.resolve();
+    });
+
+    expect(deviceSettingsStore.getSnapshot().theme).toBe('light');
+    expect(sheetsInHead()).toBe(before);
+    expect(root.getAttribute('data-color-theme-failed')).toBe('catppuccin');
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
+    expect(
+      screen.getByRole('region', { name: 'Theme not loaded' }),
+    ).toBeTruthy();
   });
 
   test('rapid choices end on the last one, whichever sheet settles first', async () => {

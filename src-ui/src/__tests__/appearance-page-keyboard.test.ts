@@ -88,6 +88,8 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     delays: Readonly<Record<string, number>> = {},
     /** Families whose sheet answers 404 this many times before it serves. */
     failures: Record<string, number> = {},
+    /** Filled with every family sheet request, in order. */
+    requests: string[] = [],
   ): Promise<Page> {
     const page = await browser.newPage();
     const errors: string[] = [];
@@ -98,6 +100,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
         return route.fulfill({ contentType: 'text/javascript', body: script });
       const sheet = /^\/color-themes\/([a-z-]+)\.css$/.exec(path);
       if (sheet) {
+        requests.push(sheet[1]!);
         if ((failures[sheet[1]!] ?? 0) > 0) {
           failures[sheet[1]!]! -= 1;
           return route.fulfill({ status: 404, body: 'not found' });
@@ -279,6 +282,58 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
         .locator('.appearance-theme.is-selected .appearance-theme__detail')
         .textContent(),
     ).toBe('Mocha');
+    await page.close();
+  });
+
+  test('after a 404, a mode toggle and a background save neither re-request the sheet nor leave "Not loaded"', async () => {
+    const requests: string[] = [];
+    const page = await open({}, { catppuccin: 1 }, requests);
+    await page
+      .getByRole('radio', { name: /^Catppuccin/ })
+      .locator('xpath=ancestor::label[1]')
+      .click();
+    await page
+      .getByRole('region', { name: 'Theme not loaded' })
+      .waitFor({ timeout: 10_000 });
+    const detail = page.locator(
+      '.appearance-theme.is-selected .appearance-theme__detail',
+    );
+    // Record every text the card shows from here on, so a brief flicker to
+    // "Loading…" is caught even if it settles back.
+    await page.evaluate(() => {
+      const seen: string[] = [];
+      (window as unknown as { seen: string[] }).seen = seen;
+      const node = document.querySelector(
+        '.appearance-theme.is-selected .appearance-theme__detail',
+      )!;
+      new MutationObserver(() => seen.push(node.textContent ?? '')).observe(
+        node,
+        { childList: true, characterData: true, subtree: true },
+      );
+    });
+    await page
+      .getByRole('radiogroup', { name: 'Mode' })
+      .getByRole('radio', { name: 'Light' })
+      .locator('xpath=ancestor::label[1]')
+      .click();
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          store: { merge: (v: Record<string, unknown>) => void };
+        }
+      ).store.merge({ chatFontSize: 17 }),
+    );
+    await page.waitForTimeout(1000);
+    expect(requests.filter((family) => family === 'catppuccin')).toHaveLength(
+      1,
+    );
+    expect(await detail.textContent()).toBe('Not loaded');
+    expect(
+      await page.evaluate(() => (window as unknown as { seen: string[] }).seen),
+    ).not.toContain('Loading…');
+    expect(await rootAttribute(page, 'data-color-theme-failed')).toBe(
+      'catppuccin',
+    );
     await page.close();
   });
 
