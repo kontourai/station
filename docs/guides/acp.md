@@ -379,9 +379,10 @@ OpenCode runs some code without any permission request, so no approval mode reac
 - **Edits of OpenCode configuration.** Below full access in a `host` session, an edit of a path through a `.opencode` directory, or of a file named `opencode.json` or `opencode.jsonc`, at any depth and in any letter case, goes to a person. So do these edits:
 
   - an edit outside the project (the git root of the session's directory), which is where OpenCode's global configuration usually lives;
-  - an edit of the global configuration locations themselves (`$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`, `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG`), for a project that contains them;
+  - an edit of the global configuration locations themselves (`$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`, `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG`), for a project that contains them. On macOS and Windows these are matched in any letter case;
   - an edit whose target Station cannot read;
-  - an edit whose path goes through a symbolic link in the project, whether or not the link resolves. Such a link can point anywhere, and the write follows it.
+  - an edit whose path goes through a symbolic link in the project, whether or not the link resolves. Such a link can point anywhere, and the write follows it;
+  - an edit whose path is not already normalized, such as one with a `.` or `..` segment or a repeated separator. OpenCode passes an absolute path on as written, and the file system resolves `link/..` through the link, so Station judges the path as written instead of simplifying it.
 
   Links above the project are resolved. No approval mode, session grant or authored allow answers these edits.
 - **Your own plugins and custom tools.** Plugins and custom tools from your global OpenCode configuration still load, and their tools do not ask in any mode.
