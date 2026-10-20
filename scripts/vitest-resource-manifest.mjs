@@ -169,6 +169,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3101: runs the dequeue report as a child against temporary Git remotes
   // (git fetch + merge-tree) and a loopback GitHub API.
   'scripts/__tests__/merge-queue-dequeue.test.ts',
+  // #2908: runs the sweep's --upsert step as a short Node child with a fake
+  // `gh` (a sh script that spawns one more Node child for `issue list`).
+  'scripts/__tests__/dated-todo-sweep.test.ts',
   'src-server/services/connections/__tests__/browser-code-login.test.ts',
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
