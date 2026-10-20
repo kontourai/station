@@ -1865,6 +1865,7 @@ describe('RelayRouteProfiles', () => {
         name: 'More account actions for Home Station',
       }),
     );
+    const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
     fireEvent.click(
       screen.getByRole('menuitem', {
         name: 'Forget account session on this device',
@@ -1872,6 +1873,9 @@ describe('RelayRouteProfiles', () => {
     );
     await screen.findByLabelText('Station account username');
     expect(mocks.accountRetire).toHaveBeenCalledTimes(1);
+    // No account session on this device any more: release its appearance.
+    expect(release).toHaveBeenCalledTimes(1);
+    release.mockRestore();
     expect(
       screen.getByText(/remote Station account was not signed out or revoked/),
     ).toBeTruthy();
