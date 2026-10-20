@@ -200,8 +200,10 @@ platform credential store (internally `StationProfile`,
 `packages/contracts/src/station-profile.ts`). The entry answers "which
 Station am I talking to, and as whom" — it deliberately does not describe
 where an agent executes (an **Environment**) or how it is executed (an engine
-connection). Trust grants (e.g. remote extension bundles) are stored **per
-Station on this device**, so trusting one Station never extends to another.
+connection). Permission to load remote extension bundles is stored **per
+Station on this device**. That key does not isolate the code: an enabled
+extension can use app-wide authority, including data and available credentials
+for other Stations. The consent dialog names this scope before enabling.
 
 - **The user-facing noun is just "Station."** The switcher and manager list
   *Stations*; the affordances are "Connect a Station", "Edit Station", and
