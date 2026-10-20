@@ -3166,8 +3166,29 @@
     flex-basis: 100%;
   }
 
-  .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
+  .chat-input__activity:not(
+    :has(.chat-status-pill, .chat-scroll-to-bottom, .transcript-turn-actions)
+  ) {
     display: none;
+  }
+
+  /* #3862: at the latest message a narrow column keeps Previous turn
+     (TranscriptTurnRail.tsx). Holding only that step, the activity slot
+     does not take a row of its own: it ends the settings row, which gives
+     up the step's width (it already scrolls sideways). */
+  .chat-input__activity:has(> .transcript-turn-actions[data-latest]):not(
+    :has(.chat-status-pill)
+  ) {
+    order: 0;
+    flex-basis: auto;
+    margin-inline-start: 0;
+  }
+
+  .chat-input__meta:has(
+      > .chat-input__activity > .transcript-turn-actions[data-latest]
+    ):not(:has(.chat-status-pill))
+    > .chat-input__settings {
+    flex: 1 1 0;
   }
 
   /* In a dock too short for the transcript the Scroll to bottom button is not
