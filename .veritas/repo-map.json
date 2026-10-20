@@ -12,7 +12,7 @@
       "phase": "Phase S1 (The Wedge)",
       "workstream": "Kontour-native agent workspace",
       "matchedArtifacts": [
-        "docs/strategy/roadmap.md"
+        "docs/strategy/README.md"
       ]
     },
     "nonSliceableInvariants": [
@@ -26,7 +26,7 @@
       "explicit roadmap task or issue reference in prompt/branch/PR title",
       "matching initiative plan under docs/plans/**",
       "matching Veritas governance artifact under .veritas/**",
-      "active initiative from docs/strategy/roadmap.md",
+      "active initiative from docs/strategy/README.md",
       "multi-workstream fallback suppresses promotion"
     ],
     "resolutionRules": [
