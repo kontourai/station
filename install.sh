@@ -1189,7 +1189,13 @@ public_manifest_url="${STATION_INSTALL_PUBLIC_MANIFEST_URL:-}"
 # launcher then trials it. Nothing else changes: not current, not the channel
 # launcher, not the install state, not a service. The last line of output is
 # STATION_STAGED_VERSION=<the version now staged>, which is the running one
-# when the manifest names nothing newer.
+# when the manifest names nothing newer. Before that, stage-only also reports
+# its steps on stdout for the staging child (#3851;
+# packages/cli/src/commands/service-launcher-link.ts reads them):
+# STATION_STAGE_PHASE=downloading|verifying|installing, and before the
+# archive download STATION_STAGE_DOWNLOAD_SIZE=<signed size> and
+# STATION_STAGE_DOWNLOAD_FILE=<the file curl writes>, whose size on disk is
+# the download's progress.
 stage_only=false
 if [ "${STATION_INSTALL_STAGE_ONLY:-0}" = 1 ]; then
   [ -n "$public_manifest_url" ] || \
@@ -1520,6 +1526,10 @@ if [ -n "$public_manifest_url" ]; then
   fi
   archive="$tmp_root/$archive_name"
   checksum_file="$tmp_root/$archive_name.sha256"
+  if [ "$release_kind" = archive ] && [ "$stage_only" = true ]; then
+    printf 'STATION_STAGE_DOWNLOAD_SIZE=%s\nSTATION_STAGE_DOWNLOAD_FILE=%s\nSTATION_STAGE_PHASE=downloading\n' \
+      "$archive_size" "$archive"
+  fi
   if [ "$release_kind" = archive ]; then
     # The signed size bounds the download itself where curl can enforce it:
     # curl 8.4.0 and newer stop any transfer at one byte past it (exit 63);
@@ -1640,6 +1650,7 @@ file_digest() { node -e 'const fs=require("node:fs"),c=require("node:crypto");pr
 
 fi
 
+[ "$stage_only" = false ] || printf 'STATION_STAGE_PHASE=verifying\n'
 expected_checksum="$(awk 'NR == 1 { print $1 }' "$checksum_file")"
 case "$expected_checksum" in
   ''|*[!0-9A-Fa-f]*) fail 'release checksum is malformed' ;;
@@ -2179,6 +2190,7 @@ if [ "$release_complete" = false ] && [ "$release_kind" = archive ]; then
       safe_remove_tree "$release_dir"
     fi
   fi
+  [ "$stage_only" = false ] || printf 'STATION_STAGE_PHASE=installing\n'
   printf 'Extracting Station %s...\n' "$release_tag"
   release_stage="$releases_dir/.stage.$$"
   incoming_release="$releases_dir/.incoming.$$"

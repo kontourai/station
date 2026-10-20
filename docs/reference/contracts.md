@@ -106,7 +106,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
-| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, and update-provenance issue codes |
+| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -1046,7 +1046,16 @@ provenance resolver; consumers render from the code and never re-parse it out
 of prose. `ServiceUpdateProgress` (with its `ServiceUpdatePhase`) is the
 service launcher's update state for a prebuilt-archive install, as
 `GET /api/system/core-update/service-update` reads it from that install's
-runtime files. Runtime parsing of these shapes lives at the route and SDK
+runtime files. Since #3851 it also carries:
+- the `staged` state;
+- an optional request `intent` (`stage`, `apply` or `update`);
+- the staging phase (`ServiceStagePhase`) and its byte counts.
+
+The module also owns the server's own view of its update:
+`ServerUpdateState`, `ServerUpdateRunningTurns` and
+`ServerUpdateDownloadPolicy`. `GET /api/system/core-update/state` serves that
+view, and the `runtime-events` `server-update:changed` event carries it.
+Runtime parsing of these shapes lives at the route and SDK
 boundaries, not in this package.
 
 The deployment authentication descriptor's optional `externalLogins` lists

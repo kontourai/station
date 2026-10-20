@@ -94,6 +94,12 @@ export const SERVER_EVENTS = {
   PLUGINS_GRANTS_CHANGED: 'plugins:grants-changed',
   PLUGINS_UPDATES_AVAILABLE: 'plugins:updates-available',
   RUNTIME_HEALTH_CHANGED: 'runtime:health-changed',
+  /**
+   * The server's own update state changed (#3851): availability, staging
+   * progress, the apply-when-idle intent, or the download policy. Payload is
+   * `ServerUpdateState` (`@kontourai/station-contracts/system-status`).
+   */
+  SERVER_UPDATE_CHANGED: 'server-update:changed',
   SYSTEM_STATUS_CHANGED: 'system:status-changed',
   UI_NAVIGATE: 'ui:navigate',
 } as const;
@@ -227,6 +233,13 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: 'scoped',
   [SERVER_EVENTS.RUNTIME_HEALTH_CHANGED]: 'broadcast',
+  // `ServerUpdateState`: this install's versions, release-check result,
+  // update progress (launcher reason codes and the staging installer's last
+  // error line) and the apply-when-idle version. No thread, session, user or
+  // conversation: the same install facts the `/api/system/core-update` read
+  // routes serve. The running turns a restart would interrupt are NOT in it;
+  // they carry titles and are read per caller from `/core-update/running-turns`.
+  [SERVER_EVENTS.SERVER_UPDATE_CHANGED]: 'broadcast',
   [SERVER_EVENTS.SYSTEM_STATUS_CHANGED]: 'broadcast',
   // `{ path: string }` — not identity-carrying content by itself, but every
   // recipient ACTS on it (their own UI navigates). A hosted deployment has

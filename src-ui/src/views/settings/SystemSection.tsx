@@ -97,6 +97,39 @@ export function SystemSection({
         <ConnectedServerUpdates />
       </div>
 
+      <div
+        className="settings__field"
+        {...settingsRow('server-update-download-policy')}
+        tabIndex={-1}
+      >
+        <label
+          className="settings__field-label"
+          htmlFor="serverUpdateDownloadPolicy"
+        >
+          {settingsRow('server-update-download-policy').title}
+        </label>
+        <select
+          id="serverUpdateDownloadPolicy"
+          value={config.serverUpdateDownloadPolicy ?? 'after-24h'}
+          onChange={(event) =>
+            onChange({
+              ...config,
+              serverUpdateDownloadPolicy: event.target
+                .value as AppConfig['serverUpdateDownloadPolicy'],
+            })
+          }
+        >
+          <option value="never">Never</option>
+          <option value="after-24h">After 24 hours</option>
+          <option value="immediately">Immediately</option>
+        </select>
+        <span className="settings__field-hint">
+          For a Station service installed from a release archive: when it
+          downloads an available update by itself. It never restarts without
+          you.
+        </span>
+      </div>
+
       <div {...settingsRow('deployed-build')} tabIndex={-1}>
         {platformProfile.isTauri ? (
           <InstalledAppBuildProvenance

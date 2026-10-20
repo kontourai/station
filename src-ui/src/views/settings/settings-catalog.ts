@@ -197,6 +197,13 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['update channel'],
   },
   {
+    id: 'server-update-download-policy',
+    title: 'Automatic server download',
+    section: 'system',
+    keywords: ['update download automatic server service'],
+    configKeys: ['serverUpdateDownloadPolicy'],
+  },
+  {
     id: 'deployed-build',
     title: 'Deployed Build',
     section: 'system',

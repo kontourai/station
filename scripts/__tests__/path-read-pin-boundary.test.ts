@@ -533,6 +533,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
+  'packages/cli/src/__tests__/service-launcher-link.test.ts':
+    'lists the versions directory of the temporary install root its harness creates',
+  'scripts/__tests__/service-launcher-e2e.test.ts':
+    'lists the archive directory of the temporary install it builds, to read the signed archive size',
   'packages/supervisor/src/__tests__/control-server.test.ts':
     'lists the run directory under its temporary Station home to check leftover private socket names',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,

@@ -16,7 +16,12 @@ import type {
   SystemRuntimeIdentity,
   UpdateProvenanceIssue,
 } from '@kontourai/station-contracts/system-status';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { StationHttpError } from '../client/http';
 import {
@@ -25,6 +30,7 @@ import {
   type QueryConfig,
   useApiQuery,
 } from '../query-core';
+import { parseServerUpdateState } from '../system-update-status-parser';
 import {
   applyCoreUpdate,
   fetchAuthStatus,
@@ -36,8 +42,12 @@ import {
   fetchServerCapabilities,
   renewAuth,
   requestCoreUpdateStatus,
+  requestServerUpdateAction,
+  requestServerUpdateRunningTurns,
+  requestServerUpdateState,
   requestServiceUpdateProgress,
   requestSystemStatus,
+  type ServerUpdateAction,
   verifyBedrockConnection,
   verifyManagedRuntimeConnection,
 } from './systemRuntimeRequests';
@@ -55,9 +65,13 @@ export {
   fetchServerCapabilities,
   renewAuth,
   requestCoreUpdateStatus,
+  requestServerUpdateAction,
+  requestServerUpdateRunningTurns,
+  requestServerUpdateState,
   requestServiceUpdateProgress,
   requestSystemIdentity,
   requestSystemStatus,
+  type ServerUpdateAction,
   verifyBedrockConnection,
   verifyManagedRuntimeConnection,
 } from './systemRuntimeRequests';
@@ -323,6 +337,12 @@ export interface CoreUpdateStatus {
    * an update under way, or the last one's outcome. Absent otherwise.
    */
   serviceUpdate?: ServiceUpdateProgress;
+  /**
+   * #3851: the server takes separate download and restart requests (and
+   * apply-when-idle), so a client offers Download, then Restart. Absent on
+   * older servers, which keep the one-click update.
+   */
+  stagedUpdates?: true;
   /**
    * The channel remote could not be queried. A disclosed warning state, not
    * an `error`: `error` makes the request throw and would hide the install
@@ -810,4 +830,81 @@ export function useServerCapabilitiesQuery(
     (signal) => fetchServerCapabilities(signal),
     config,
   );
+}
+
+/** The query key the `server-update:changed` event writes (#3851). */
+export function serverUpdateStateQueryKey(apiBase: string) {
+  return ['server-update-state', apiBase] as const;
+}
+
+/**
+ * The server's own update state (#3851). Read once; after that the server
+ * pushes every change as `server-update:changed`, which `useServerEvents`
+ * writes into this key, so there is no polling.
+ */
+export function useServerUpdateStateQuery(
+  apiBase: string,
+  options: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: serverUpdateStateQueryKey(apiBase),
+    queryFn: ({ signal }) => requestServerUpdateState(apiBase, signal),
+    enabled: !!apiBase && (options.enabled ?? true),
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+}
+
+/** The running turns a restart would interrupt, read when a dialog opens. */
+export function useServerUpdateRunningTurnsQuery(
+  apiBase: string,
+  options: { enabled: boolean },
+) {
+  return useQuery({
+    queryKey: ['server-update-running-turns', apiBase],
+    queryFn: ({ signal }) => requestServerUpdateRunningTurns(apiBase, signal),
+    enabled: !!apiBase && options.enabled,
+    staleTime: 0,
+    retry: false,
+  });
+}
+
+export function useServerUpdateActionMutation(apiBase: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: ServerUpdateAction) =>
+      requestServerUpdateAction(apiBase, request),
+    // The pushed state normally arrives first; a refetch covers a client
+    // whose event stream is down.
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: serverUpdateStateQueryKey(apiBase),
+      }),
+  });
+}
+
+/**
+ * Writes a `server-update:changed` payload into `apiBase`'s state query: the
+ * push is the state, so no request follows it. An unreadable payload reads
+ * as unsupported, which offers nothing.
+ */
+export function applyServerUpdateStateEvent(
+  queryClient: QueryClient,
+  apiBase: string,
+  payload: unknown,
+): void {
+  const state = parseServerUpdateState(payload);
+  // The broadcast withholds a failed download's detail (the installer's
+  // error line): the state route, authenticated per caller, has it.
+  if (
+    (state.progress.state === 'staging-failed' ||
+      state.progress.state === 'rejected') &&
+    state.progress.reason === 'withheld'
+  ) {
+    void queryClient.invalidateQueries({
+      queryKey: serverUpdateStateQueryKey(apiBase),
+    });
+    return;
+  }
+  queryClient.setQueryData(serverUpdateStateQueryKey(apiBase), state);
 }

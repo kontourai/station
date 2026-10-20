@@ -279,6 +279,14 @@
   color: var(--error-text);
 }
 
+/* #3851: the restart confirmation's running turns, in the dialog's body
+   text, bullets inside its padding. Slice 5 replaces this dialog. */
+.settings__update-running-turns {
+  margin: var(--k-space-2) 0 0;
+  padding-inline-start: var(--k-space-5);
+  list-style-position: outside;
+}
+
 /* ── Character Counter ── */
 .settings__char-count {
   text-align: right;

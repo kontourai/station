@@ -11550,6 +11550,25 @@ export class OrchestrationService {
   }
 
   /**
+   * Every session with an active turn, ephemeral ones (webhooks, execution
+   * targets, delegations) included and no read authority applied: what a
+   * server restart would stop (#3851 apply-when-idle). The same predicate as
+   * `hasActiveTurn`, over every persisted, loaded or turn-tracked thread.
+   */
+  listActiveTurnThreadIds(): string[] {
+    const threadIds = new Set<string>([
+      ...(this.options.eventStore?.readSessions() ?? []).map(
+        (session) => session.threadId,
+      ),
+      ...this.sessionReadModel.keys(),
+      ...this.sessionExecutionCoordinator.threadIdsWithTurnState(),
+    ]);
+    return [...threadIds].filter((threadId) =>
+      this.sessionExecutionCoordinator.hasActiveTurn(threadId),
+    );
+  }
+
+  /**
    * archive#3350: every event reaching the publish body below pays a
    * read-model projection, a SQLite append with four projections, an
    * execution-coordinator and recovery observation, a monitoring call and a

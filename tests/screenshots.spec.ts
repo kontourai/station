@@ -5,6 +5,7 @@ import type { PublicStationHandshake } from '@kontourai/station-contracts/enviro
 import { expect, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { contrastRatio } from './helpers/color-contrast';
+import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
@@ -3493,7 +3494,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   // profile, review, sessions) — not rendering jitter, the dominant source
   // of this suite's non-determinism. Seed a fixed, deterministic "up to
   // date" answer so the banner never appears in the gallery at all.
-  await page.route('**/api/system/core-update', (route) =>
+  await routeCoreUpdateCheck(page, (route) =>
     route.fulfill({
       json: {
         installKind: 'source-checkout',

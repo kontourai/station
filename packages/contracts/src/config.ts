@@ -5,6 +5,7 @@ import type { FleetContributionConfig } from './fleet-contribution.js';
 import type { TelemetryTierChoices } from './product-telemetry.js';
 import type { ApprovalMode } from './provider.js';
 import type { RegistryTrustConfiguration } from './registry-trust.js';
+import type { ServerUpdateDownloadPolicy } from './system-status.js';
 import type { AgentConnectionSettings } from './tool.js';
 import type { UserProfileSettings } from './user-profile.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
@@ -69,6 +70,12 @@ export interface AppConfig {
    */
   defaultApprovalMode?: ApprovalMode;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
+  /**
+   * When a Station service run by the fixed launcher downloads an available
+   * server update by itself (#3851). Absent means `after-24h`
+   * (`DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY`). Downloading never restarts.
+   */
+  serverUpdateDownloadPolicy?: ServerUpdateDownloadPolicy;
   /** Default on, but nothing is sent unless an endpoint is configured. */
   /** Per-publisher explicit choices; absent publishers default to Lite. */
   telemetryTier?: Pick<TelemetryTierChoices, 'kontour' | 'operator'>;

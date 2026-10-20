@@ -968,8 +968,9 @@ for the full, occasionally-surprising list — a hidden connection-status chip
 still shifted its siblings until it was switched from `visibility: hidden`
 to `display: none`), waits out shared loading skeletons, and mocks the
 handful of live endpoints (resource posture, sessions, action-operations,
-Connections-hub engine detection) that otherwise raced the fixed settle
-window — so that two captures of the identical build decode to identical
+Connections-hub engine detection, and the server update check, routed by
+path because its URL carries a query that a whole-URL glob misses) that
+otherwise raced the fixed settle window — so that two captures of the identical build decode to identical
 pixels and exact comparison is strictly simpler, and strictly more
 trustworthy, than any threshold.
 
