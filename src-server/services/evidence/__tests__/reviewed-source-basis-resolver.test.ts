@@ -1,6 +1,9 @@
 import { parseReviewedWebSourceDescriptor } from '@kontourai/fieldwork/reviewed-web-source-contract';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { projectReviewedExtractionEvidence } from '@kontourai/surface';
+import {
+  projectReviewedExtractionEvidence,
+  reviewedExtractionEvidenceChoiceProfile,
+} from '@kontourai/surface';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const owner = vi.hoisted(() => ({
@@ -51,7 +54,7 @@ import { ReviewedSourceBasisResolver } from '../reviewed-source-basis-resolver.j
 import { reviewedSourceSessionInventoryRow } from '../reviewed-source-session-inventory-adapter.js';
 
 const exactRef = `fieldwork-reviewed-source:v1:${'a'.repeat(64)}`;
-const sourceEvidence = projectReviewedExtractionEvidence({
+const reviewedInput = {
   evidenceId: 'source-evidence',
   claimId: 'source-claim',
   proposalIndex: 0,
@@ -138,7 +141,10 @@ const sourceEvidence = projectReviewedExtractionEvidence({
       reviewedAt: '2026-08-26T00:00:00.000Z',
     },
   },
-}).evidence;
+};
+const sourceEvidence = projectReviewedExtractionEvidence(
+  reviewedInput as never,
+).evidence;
 
 const descriptor = {
   apiVersion: 'fieldwork.kontourai.io/v1',
@@ -555,6 +561,114 @@ describe.sequential('Fieldwork owner review state (#2949)', () => {
       reviewedSource: { review: 'not-accepted' },
       contributionGaps: expect.arrayContaining([
         'reviewed-source-review-not-accepted',
+      ]),
+    });
+  });
+
+  test('keeps a grounding-refused source that was chosen over rivals visible as not accepted', async () => {
+    // v3 evidence: the accepted decision chose candidate-a over candidate-b,
+    // so Surface derives `accepted` with a non-empty chosen-over list.
+    const input = structuredClone(reviewedInput) as typeof reviewedInput;
+    const proposal = input.importRecord.spec.envelope.result.proposals[0]!;
+    input.importRecord.spec.envelope.result.proposals.push({
+      ...proposal,
+      candidateValue: 'inactive',
+    });
+    const producer = 'survey.kontourai.io/extraction-envelope';
+    const [first] = input.reviewItem.spec.candidates;
+    input.reviewItem.spec.candidates = [
+      {
+        ...first!,
+        role: 'proposed',
+        producer: { [producer]: { importName: 'import-a', proposalIndex: 0 } },
+      },
+      {
+        ...first!,
+        id: 'candidate-b',
+        role: 'proposed',
+        value: 'inactive',
+        producer: { [producer]: { importName: 'import-a', proposalIndex: 1 } },
+      },
+    ] as never;
+    Object.assign(input.reviewDecision.spec, {
+      unselectedCandidateIds: ['candidate-b'],
+    });
+    const evidence = projectReviewedExtractionEvidence(input as never, {
+      profile: reviewedExtractionEvidenceChoiceProfile,
+      includeImportRecord: true,
+    }).evidence;
+    const choiceFacts = {
+      ...facts,
+      evidence,
+      assessment: {
+        ...facts.assessment,
+        evidence: {
+          cited: [
+            {
+              ...facts.assessment.evidence.cited[0]!,
+              sourceRef: evidence.sourceRef,
+              locator: evidence.sourceLocator ?? null,
+            },
+          ],
+        },
+      },
+    };
+    const choiceCaptured = {
+      assessment: { ...captured.assessment, value: choiceFacts.assessment },
+      reviewedSource: choiceFacts,
+    };
+    const readWith = async (state: string) => {
+      owner.descriptor = { ...descriptor, review: { revision: 1, state } };
+      owner.currentness = unknownCurrentness;
+      return new ReviewedSourceBasisResolver({
+        projectHomeDir: '/tmp/station-review-source-table',
+        logger: {} as never,
+      }).read({
+        answer: basisAnswer as never,
+        assessment: choiceCaptured as never,
+        authority,
+        current: () => true,
+      });
+    };
+    // Baseline: the fixture really reaches Surface's choice arm.
+    await expect(readWith('reviewed')).resolves.toMatchObject({
+      value: [
+        {
+          context: {
+            review: 'accepted',
+            choice: {
+              candidateCount: 2,
+              chosenOverCandidateIds: ['candidate-b'],
+            },
+          },
+        },
+      ],
+    });
+
+    const read = await readWith('grounding-refused');
+    expect(read).toMatchObject({
+      state: 'available',
+      value: [
+        {
+          context: {
+            review: 'not-accepted',
+            choice: { candidateCount: 2, chosenOverCandidateIds: [] },
+          },
+        },
+      ],
+    });
+    const projection = composeAuthorizedSessionAnswerBasis(
+      basisAnswer as never,
+      undefined,
+      undefined,
+      read,
+    );
+    expect(sourceItem(projection)).toMatchObject({
+      context: { review: 'not-accepted' },
+      gaps: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'reviewed-source-review-not-accepted',
+        }),
       ]),
     });
   });
