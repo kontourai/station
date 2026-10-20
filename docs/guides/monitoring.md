@@ -776,11 +776,17 @@ Current query limits matter when interpreting those panels:
   ran and observed no errors.
 
 [#2751](https://github.com/kontourai/station/issues/2751) owns the query/producer
-reconciliation. The Compose profile pins every image by digest, binds published
-ports to loopback and requires private credential files with no default
-password. It is still a development and private-operator profile, not a
-qualified production deployment. This audit did not start Docker or test
-Collector, Prometheus, Tempo or Grafana delivery.
+reconciliation. The Compose profile pins the Collector, Prometheus, Tempo,
+Grafana and PostgreSQL images by digest. The receiver and cloudflared images
+are operator-selected: Compose requires a value but does not enforce a digest,
+so select an exact source-built tag or digest as the
+[profile README](../../deployment/telemetry/README.md) describes. Published
+ports bind to loopback, and the profile requires private credential files with
+no default password. It is still a development and private-operator profile,
+not a qualified production deployment. One local start of the developer profile
+provisioned this dashboard, refused unauthenticated Grafana and OTLP requests,
+and carried a synthetic authenticated OTLP counter into Prometheus. It did not
+exercise Station's own export, traces in Tempo, or rendered panel values.
 
 ## Distributed Traces (Tempo)
 
