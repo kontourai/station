@@ -51,8 +51,16 @@ they never choose a row from the unfiltered inventory. Main's selection,
 search, filters and list scroll stay with Activity. **Open** keeps the exact
 review target as durable work, and **Open conversation**, when the canonical
 open policy offers it, uses that owner. Typing a reply protects the review
-through the existing draft store and unsaved guard. Closing the review asks
+through the existing draft store and unsaved guard. Related replies use a
+verified-Station/API/Session key, so an identically named Session on another
+Station does not inherit a reply. Closing the review asks
 its owner guard and returns focus to the invoking row control when it survives.
+
+The phone close also rechecks its captured layer after a guard answers. A
+replacement child or newly registered guard supersedes that close; an Activity
+close or Up additionally rechecks its Station and source. The chrome's Back
+caption uses every verified relation's captured opener label, including plugin
+openers; caption evidence does not qualify an opener's navigation route.
 
 ## Persistence and authority
 

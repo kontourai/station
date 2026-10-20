@@ -51,7 +51,10 @@ async function reviewItem(page: Page, title: string) {
 
 async function capture(page: Page, testInfo: TestInfo, name: string) {
   const path = testInfo.outputPath(name);
-  await page.screenshot({ path: testInfo.outputPath(name) });
+  await page.screenshot({
+    path: testInfo.outputPath(name),
+    animations: 'disabled',
+  });
   if (process.env.STATION_E2E_GALLERY_DIR) {
     mkdirSync(process.env.STATION_E2E_GALLERY_DIR, { recursive: true });
     copyFileSync(path, resolve(process.env.STATION_E2E_GALLERY_DIR, name));
@@ -205,13 +208,10 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
       kept,
     ),
   ).toBe(1);
-  sessions = sessions.filter((item) => item.threadId !== summary(1).threadId);
-  await expect(
-    main.getByRole('button', { name: 'Review activity 01', exact: true }),
-  ).toHaveCount(0, { timeout: 15_000 });
-  await expect(
-    review.getByRole('button', { name: 'Previous', exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByText('Nothing changed.', { exact: true })).toHaveCount(
+    0,
+    { timeout: 15_000 },
+  );
   for (const theme of ['dark', 'light']) {
     await page.evaluate(
       (value) => document.documentElement.setAttribute('data-theme', value),
@@ -219,6 +219,13 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
     );
     await capture(page, testInfo, `activity-review-${theme}.png`);
   }
+  sessions = sessions.filter((item) => item.threadId !== summary(1).threadId);
+  await expect(
+    main.getByRole('button', { name: 'Review activity 01', exact: true }),
+  ).toHaveCount(0, { timeout: 15_000 });
+  await expect(
+    review.getByRole('button', { name: 'Previous', exact: true }),
+  ).toBeDisabled();
   await review
     .getByRole('button', { name: 'Close review', exact: true })
     .click();

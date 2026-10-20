@@ -747,6 +747,23 @@ Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
 
+## Review Activity Without Changing Your Place
+
+Open **Activity** from the workspace sidebar. Use a row's **More actions →
+Quick review** to read it in Related while keeping the selected item, search,
+filters and list position. **Previous** and **Next** follow the rows currently
+visible in that list. When an item leaves the current results, review says so
+and disables those controls rather than choosing from hidden results.
+
+Choose **Open** to keep the reviewed item as durable work. Reopening the same
+kept item focuses it. Typing a reply also protects it; Cancel in the unsaved
+changes dialog leaves the reply and source in place. A review belongs to the
+Station it was opened on and does not read another Station's data.
+
+On a phone, review opens as a child screen. Back returns through the real
+history entry; **Up to Activity** returns to its captured Activity opener.
+Session properties sheets and cold child links remain separate planned work.
+
 ## See Conversations Started Outside Station
 
 **Activity** also lists Claude Code, Codex, Grok and OpenCode conversations
