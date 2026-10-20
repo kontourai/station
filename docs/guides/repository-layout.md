@@ -14,7 +14,6 @@ interfaces and composition rules.
 | `src-shared/` | Checkout-level shared source |
 | `packages/` | Contracts, SDK, shared helpers, pairing, CLI, pane packages, the optional product telemetry receiver, the Monument durability kernel, and the process supervisor |
 | `examples/` | Documented plugin and integration examples |
-| `experiments/` | Experiments with explicit limitations, not implied product support |
 
 New cross-package types belong in their owning module in `packages/contracts/`.
 Keep compatibility re-exports in `packages/shared/` for existing consumers.
