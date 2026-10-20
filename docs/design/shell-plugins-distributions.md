@@ -510,42 +510,61 @@ writer.
   answer). Entries are sorted by name, so two bumps touching different
   plugins merge cleanly.
 - **The lock is a trust root.** It decides which plugins are `kontour`, and
-  which capabilities they get with no prompt. It must be listed in
-  `.github/CODEOWNERS`, and `main` must require code-owner review. Today
-  `main`'s pull-request rule has `require_code_owner_review: false` and no
-  required approvals (read from `gh api
-  repos/kontourai/station/rules/branches/main` on 2026-10-20), so a
-  CODEOWNERS entry alone would bind nothing. Protecting the lock is
-  owner-gated: it is a **prerequisite of i0 that the owner performs**, not
-  something an i0 pull request can do. The options and their real cost:
-  - **Turn on `require_code_owner_review` for `main`.** It applies to every
-    pull request that touches any CODEOWNERS path, which today includes
-    `.github/workflows/`, `.github/CODEOWNERS` and many `scripts/` gates,
-    not only the lock. GitHub does not let an author approve their own pull
-    request, and every entry names the owner, so the owner's own changes to
-    those paths would need a second code owner or a ruleset bypass actor.
-  - **A narrow path-scoped ruleset.** As far as this record knows (not
-    verified against this repository's plan on 2026-10-20), rulesets have
-    no rule that requires review only when one file changes. The
-    path-restriction push rule blocks changes to a path outright, which
-    would also block the bot's lock bumps.
-  - **A required check scoped to the lock.** A check that, when a pull
-    request changes `plugins.lock`, passes only with an approving review
-    from a code owner listed for `plugins.lock` on the head commit, and
-    re-runs on review events. It reads reviews through the API and runs no
-    pull-request code. Adding it as a required check is still an owner
-    ruleset change, but a narrow one.
+  which capabilities they get with no prompt, so a change to it must be
+  reviewed by people Station trusts for that. Today nothing requires it:
+  `main`'s pull-request rule has `require_code_owner_review: false`, no
+  required approvals and `required_reviewers: []` (read from `gh api
+  repos/kontourai/station/rules/branches/main` on 2026-10-20). Protecting
+  the lock is a repository-settings change, so it is a **prerequisite of i0
+  that the owner performs**, not something an i0 pull request can do.
 
-  *Recommendation:* the scoped check. It touches only lock changes. Lock
-  bumps come from a bot, so the owner is not the author and can approve
-  them; only a human-authored lock change needs a second reviewer.
+  **Mechanism: GitHub's required reviewer ruleset rule.** It has been
+  generally available since 2026-02-17
+  ([changelog](https://github.blog/changelog/2026-02-17-required-reviewer-rule-is-now-generally-available/);
+  [available rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)).
+  It requires a number of approvals from named teams when a pull request
+  changes files matching `file_patterns` (`.gitignore` syntax). It is not
+  available on user-owned repositories; `kontourai/station` is
+  organization-owned. The team must have write permission for its approvals
+  to count. The rule would name `plugins.lock` and one reviewing team, with
+  one required approval.
+
+  Alternatives considered:
+  - Repository-wide `require_code_owner_review` gates every CODEOWNERS path
+    (`.github/workflows/`, `.github/CODEOWNERS`, many `scripts/` gates), not
+    only the lock.
+  - A required check written as a workflow in this repository is not a
+    control: the pull request it checks can rewrite the workflow. A check
+    is acceptable only from a pinned GitHub App, bound in the ruleset by
+    its `integration_id`.
+  - Push rulesets and their file-path restriction do not apply: GitHub
+    offers them for private and internal repositories, and this repository
+    is public.
+
+  Costs and limits of the required reviewer rule:
+  - **Owner-authored lock changes.** i0, i2, jF, jP and j each add a lock
+    entry in a pull request the owner may author, and an author cannot
+    approve their own pull request. The reviewing team therefore needs a
+    second member, or those pull requests need a ruleset bypass actor (which
+    then bypasses this check).
+  - **Automation credentials.** Agent sessions act with the owner's
+    credentials. If the owner's account is on the reviewing team, an agent
+    session can approve a bot's lock bump, and "the review is the review of
+    what Kontour code ships" then means "whoever holds that token approved
+    it". The reviewing team should contain only accounts whose credentials
+    no automation holds.
+  - **Merge queue.** `main` uses a merge queue. GitHub's documentation for
+    the rule does not say how it is evaluated for `merge_group` runs; the
+    expectation is that the pull request's approval gates entry to the queue
+    and the queue does not re-evaluate it. **To confirm** with a test lock
+    change before i0 relies on the rule.
 - **CI.** Installs every entry from its released artifact, checks the sha256
   and the Sigstore bundle, and fails when an artifact is missing or
   unverifiable. CI never installs workspace sources of a plugin.
-- **Bumps.** A bot PR changes the lock. Once the ruleset above requires
-  code-owner review, that review is the review of what Kontour code ships by
-  default and with which capabilities. Until then it is not, and i0 does
-  not start.
+- **Bumps.** A bot PR changes the lock. Once the required reviewer rule
+  above is in place, and its team excludes automation credentials, that
+  review is the review of what Kontour code ships by default and with which
+  capabilities. Until then it is not, and i0 does not start.
 - **Cross-repository testing.** station-plugins' CI runs against Station's
   published preview build, so the two repositories never move in lock-step.
 - **The offline default set (slice i0).** The Station release carries every
@@ -829,9 +848,11 @@ An **install trust record** is kept per installed plugin:
   code runs on every device that renders it. Lock pre-approved grants raise
   no prompt, so the plugin manager discloses them instead: each bundled
   plugin shows "granted by this Station's default set" with its capability
-  list and the same scope-of-effect line, and the operator is told once,
-  after the first start that installs or updates bundled plugins, what was
-  granted and to whom it applies.
+  list and the same scope-of-effect line. The operator is told what was
+  granted and to whom it applies after the first start that installs
+  bundled plugins, and again whenever the set of capabilities the lock
+  grants grows (a new bundled plugin, or a locked version listing more
+  capabilities).
 - **Remote-Station bundles.** The device-local `remotePluginBundlesAllowed`
   store is **retired** in slice d3. A remote Station's bundles run on this
   device at tier 3 only. The store sits in `localStorage`, which admitted
@@ -1335,12 +1356,14 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
 - **OPEN-13. File preview and PR review: answered 2026-10-20.** Each ships
   as its own plugin in the bundled default set (slices jF and jP), used by
   chat and Coding alike.
-- **OPEN-14. Grants for bundled plugins: answered 2026-10-20.** Pre-approved
-  by lock: each lock entry lists the plugin's capabilities, a `kontour`
-  plugin listed in the lock gets exactly those with no prompt, and anything
-  beyond them prompts. Because the lock now grants authority, it needs
-  code-owner review on `main` first
-  ([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
+- **OPEN-14. Grants for bundled plugins: answered 2026-10-20.** The owner's
+  answer: pre-approved by lock. Each lock entry lists the plugin's
+  capabilities, and a `kontour` plugin listed in the lock gets exactly those
+  with no prompt. Engineering readings, for owner confirmation: anything
+  beyond them prompts, and high-risk capabilities are excluded from
+  pre-approval and decided on the consent listener. Because the lock now
+  grants authority, it needs the owner-performed required reviewer rule
+  first ([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
 
 ## Delivery plan
 
@@ -1380,8 +1403,8 @@ before merge.
 | SDK-6. Plugin device state | coordinate with #1359 | |
 | SDK-views. Diff view, file view, PR review data | — | |
 | KIT. UI kit upstream to `@kontourai/ui` | a `@kontourai/ui` release | |
-| i0. Offline bundled default set from `plugins.lock` | d1, i1, jG, d2 (the prompt for capabilities beyond the lock), and the owner's lock-review prerequisite | [security] |
-| i1. station-plugins repo scaffold and starter template | — (its CI has its own verifier; Station's verifier is d1's, which i0 uses) | [security] (release signing) |
+| i0. Offline bundled default set from `plugins.lock` | d1, d2, d3, i1, jG, and the owner's lock-review prerequisite | [security] |
+| i1. station-plugins repo scaffold and starter template | — (its CI carries its own standalone verifier) | [security] (release signing) |
 | i2. Board extraction as an installed plugin, with migration | d1, i1, i0 | [security] |
 | i3. kontour-default and acme manifests | g, h, i2 | [security] |
 | R. Growth-only ratchet on `coding-layout/` app-internal imports | — | |
@@ -1742,14 +1765,16 @@ selects `trusted-plugin-react`.
 - An update requesting any new capability does not activate until consent
   is given. Exception (OPEN-14): capabilities listed in the plugin's
   `plugins.lock` entry, for a `kontour` plugin, are pre-approved, except
-  high-risk ones.
+  high-risk ones. d2 owns this pre-approval rule and its re-prompt, and
+  reads capabilities from a lock file in the format i0 commits; its tests
+  use a fixture lock, so d2 does not depend on i0.
 
 Acceptance:
 
 - A tier-3 plugin cannot select `trusted-plugin-react`.
 - An update adding `agents.invoke` stays inactive until consent is given.
-- A `kontour` locked plugin updated to a locked version gets the lock
-  entry's non-high-risk capabilities with no prompt. The same update listing
+- Against a fixture lock: a `kontour` locked plugin updated to a locked
+  version gets the lock entry's non-high-risk capabilities with no prompt. The same update listing
   `agents.invoke` in its lock entry still stays inactive for that capability
   until consent is given on the consent listener.
 - A tier-3 plugin requesting `approvals.render` is refused.
@@ -1761,7 +1786,9 @@ reverted.
 
 - Raising a plugin to tier 2, and any high-risk grant, is decided only on the
   distinct-origin consent listener. Lock pre-approval (OPEN-14) never covers
-  a high-risk grant, so this holds for bundled plugins too.
+  a high-risk grant, so this holds for bundled plugins too. d3 owns that
+  exclusion and tests it against a fixture lock, so d3 does not depend on
+  i0.
 - The prompt uses the exact tier-2 disclosure wording from
   [tier 2 is the kernel's own realm](#tier-2-is-the-kernels-own-realm) and
   lists who is affected.
@@ -1773,8 +1800,9 @@ reverted.
 Acceptance:
 
 - A raise sent to an ordinary authenticated route is refused.
-- A high-risk capability listed in a bundled plugin's lock entry is not
-  granted until it is decided on the consent listener.
+- Against a fixture lock: a high-risk capability listed in a locked
+  plugin's entry is not granted until it is decided on the consent
+  listener.
 - The consent page shows the disclosure text.
 - A persisted `remotePluginBundlesAllowedKey` entry in `localStorage` no
   longer admits in-process code.
@@ -1893,17 +1921,18 @@ tests for the two refusals.
 
 ### i0. Offline bundled default set from `plugins.lock` [security]
 
-**Owner prerequisite.** Before i0 starts, the owner lists `plugins.lock` in
-`.github/CODEOWNERS` and protects it, by one of the options in
-[decision 3](#decision-3-pluginslock-and-the-offline-default-set) (this
-record recommends the scoped required check). That is a repository-settings
-change an i0 pull request cannot make.
+**Owner prerequisite.** Before i0 starts, the owner adds a required reviewer ruleset rule for `plugins.lock`, with a reviewing team
+that excludes automation credentials and the merge-queue behaviour
+confirmed ([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
+That is a repository-settings change an i0 pull request cannot make.
 
-**Dependencies.** i0's acceptance needs per-plugin grants and legacy-id
-adoption, so it depends on jG (and jG on d1 only, keeping the graph
-acyclic). The prompt for a capability beyond the lock entry is d2's update
-re-prompt, and a high-risk capability is decided on d3's consent listener;
-i0 owns neither prompt, only the decision of what the lock pre-approves.
+**Dependencies.** i0 builds the real lock, the release payload and the
+start-time installer. It does not own the grant rules: d2 owns lock
+pre-approval of listed capabilities and the re-prompt for anything beyond
+them, and d3 owns the high-risk exclusion, each tested against a fixture
+lock. jG owns per-plugin grants and legacy-id adoption. i0 depends on d1,
+d2, d3, i1 and jG; d2, d3 and jG depend only on d1; d1 depends on #1521. So
+the graph is acyclic: no slice that i0 depends on depends on i0.
 
 - Commit `plugins.lock`: per plugin, name, version, artifact URL, sha256,
   Sigstore identity (equal to the pinned identity) and capabilities.
@@ -1942,12 +1971,27 @@ i0 owns neither prompt, only the decision of what the lock pre-approves.
   default set" and asks the operator to keep it or uninstall it. Until then
   it is inactive, and panes that relied on an adopted id render
   `unavailable` with that reason.
-  - **Keep** is persisted in the plugin's d1 trust record (the decision, who
-    made it, when, and the release that dropped it), so the operator is not
-    asked again on every start. A kept plugin has `publisher` provenance and
-    starts at tier 3 (OPEN-3's proposed default). A plugin that declares only
-    an in-process renderer, as Coding does, is therefore `unavailable` until
-    the operator raises it to tier 2 on the consent listener (d3).
+  - **The prompt states the consequences before the operator chooses.**
+    Keeping means:
+    - the plugin runs at tier 3 (`publisher` provenance, OPEN-3's proposed
+      default);
+    - a plugin that declares only an in-process renderer, such as Coding, is
+      `unavailable` until it is raised to tier 2 on the consent listener;
+    - panes under adopted legacy ids stay `unavailable`, because adoption
+      requires `kontour` provenance;
+    - the capabilities the lock granted are **dropped** and re-prompted
+      (this record's recommendation), because the lock review that stood in
+      for consent no longer covers the plugin.
+  - The prompt offers **Keep**, **Keep and raise** (which goes straight to
+    the consent listener for the tier-2 raise and the re-prompted
+    capabilities), and **Uninstall**.
+  - The choice is persisted in the plugin's d1 trust record (the decision,
+    who made it, when, and the release that dropped it), so the operator is
+    not asked again on every start.
+  - This is consistent with d1's "nothing drops to tier 3 silently": until
+    the operator chooses, the plugin is inactive and flagged, not running at
+    tier 3, and the move to tier 3 happens only through a choice whose
+    consequences the prompt stated.
   - "Reinstall from the bundled set" is hidden for a dropped plugin; it is
     offered only for plugins in the current lock.
   - A dropped plugin that fills a required slot (Home, chat, approvals) is
@@ -2000,11 +2044,14 @@ that a test build pins (no dependence on Coding or j):
   until it is resolved. "Install bundled" replaces it in one step, writes no
   `bundledUninstalled`, and the bundled plugin is installed before the
   action returns.
-- **Keep after drop:** a kept dropped plugin is not asked about again on the
-  next start, runs at tier 3, and a Coding-like fixture declaring only an
-  in-process renderer is `unavailable` until raised.
-- **High-risk:** a lock entry listing `agents.invoke` does not grant it
-  without a consent-listener decision.
+- **Keep after drop:** the prompt shows the four consequences before the
+  choice; a kept plugin is not asked about again on the next start, runs at
+  tier 3 without its lock-granted capabilities, and a Coding-like fixture
+  declaring only an in-process renderer is `unavailable` until raised.
+  "Keep and raise" opens the consent listener for the raise.
+- **High-risk:** with the real start-time installer, a lock entry listing
+  `agents.invoke` does not grant it without a consent-listener decision
+  (d3's rule, exercised end to end).
 - A tampered artifact in the payload is refused, and Station still boots:
   the affected layout is `unavailable` with a reason (safe mode only when a
   required-slot default filler is affected, per slice e).
@@ -2199,10 +2246,11 @@ test.
 - **Coordination:** #3875 reworks file-preview relations. jF lands on that
   lane's relation contract and does not carry a second version of it.
 - **Migration:** `pane:builtin:workspace-preview:file-preview` and the
-  `file-preview:` instance family are adopted by this plugin (jG). A one-time
-  import copies every stored `station:file-preview-pane-state:v1:<id>` entry
-  into the plugin's SDK-6 namespace under the same instance id, then stops
-  reading the old key.
+  `file-preview:` instance family are adopted by this plugin (jG). The
+  **host** performs a one-time import on the plugin's first activation: it
+  copies every stored `station:file-preview-pane-state:v1:<id>` entry into
+  the plugin's SDK-6 namespace under the same instance id, then deletes the
+  old keys. The plugin never reads core's key.
 
 Acceptance:
 
