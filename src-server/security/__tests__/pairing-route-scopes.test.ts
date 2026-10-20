@@ -786,7 +786,7 @@ describe('pairing-route-scopes: leaf-level coverage (station#1131)', () => {
     // (`context.app.route('<base>', createFoo())`). This fixture instead
     // mirrors `plugins.ts`'s real composition shape — a local
     // `const app = new Hono()` handed to a sibling `register*Routes(app,
-    // deps)` call — which the scan was blind to before this round (the
+    // deps)` call — which the scan was blind to before this fixture (the
     // `/api/plugins/**` subtree resolved zero leaves).
     const leaves = scanRegisteredLeafRoutes(
       FIXTURE_COMPOSED_RUNTIME_ROUTES_PATH,
@@ -879,7 +879,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     // credential got a fail-closed 403, invisible locally because loopback
     // callers bypass scope checks entirely.
     ['POST', '/tool-approval/some-approval-id', 'orchestration:operate'],
-    // archive#1097 review round 2 (HIGH): the cross-station-read leaf
+    // archive#1097: the cross-station-read leaf
     // override — see `pairing-route-scopes.ts`'s "Family-granularity
     // inheritance" docblock note and `docs/security/
     // remote-access-threat-model.md`'s "Cross-station reads" section.
@@ -926,7 +926,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['GET', '/api/connections/model-inventory', 'inference:invoke'],
     ['HEAD', '/api/connections/model-inventory', 'inference:invoke'],
     ['GET', '/api/connections/codex/quota', 'orchestration:read'],
-    // archive#1398 (security review, M-4): the fleet receipt leaves
+    // archive#1398: the fleet receipt leaves
     // name OTHER Stations — peer ids, operator-facing labels, contributed
     // model ids, and the fingerprints of peers that called in. Their source,
     // the outbound peer registry, is gated at `access:manage`, so anything
@@ -1225,8 +1225,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
   });
 
   test('station#1131 review round 1 (HIGH): plugin host-approvals require access:manage, not the family default', () => {
-    // Own-audit finding, not just the reviewer's two named leaves: before
-    // this entry, approving a plugin's 'trusted' permission grant
+    // Before this entry, approving a plugin's 'trusted' permission grant
     // resolved through the ordinary /api/plugins mutate tier
     // (orchestration:operate) — a tier the DEFAULT pairing preset
     // ('standard') already grants every paired device, defeating the
@@ -1650,7 +1649,7 @@ describe('pairing-route-scopes: WS upgrade paths', () => {
  * first-frame auth wrappers call — terminal's in
  * `runtime-service-bootstrap.ts` (`PAIRING_WS_SCOPES.terminal`) and voice's
  * in `runtime-initialize.ts` (`PAIRING_WS_SCOPES.voice`). Mirrored describe
- * blocks per archive#1098 review round 1: terminal already had a
+ * blocks per archive#1098: terminal already had a
  * capture-based bootstrap test (`runtime-service-bootstrap.test.ts`); voice
  * had none. Both are exercised identically here against the same shared
  * function, so this closes that gap without depending on either runtime's

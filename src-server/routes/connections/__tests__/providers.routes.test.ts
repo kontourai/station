@@ -6,7 +6,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 // Stable spies, not a fresh object per construction: a route test can only
 // assert that NO catalogue request was made if the calls are observable
-// (archive#3654 review round 2). Behaviour is unchanged from the literals they
+// (archive#3654). Behaviour is unchanged from the literals they
 // replace.
 const bedrockProvider = vi.hoisted(() => ({
   healthCheck: vi.fn(async () => true),
