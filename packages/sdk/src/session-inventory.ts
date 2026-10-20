@@ -183,17 +183,3 @@ export function useSessionInventoryGroupPage(
     () => clearSessionInventoryCache(client, scope, config?.requestScope),
   );
 }
-export function useInvalidateSessionInventory() {
-  const client = useQueryClient();
-  return useCallback(
-    (sessionId?: string) =>
-      client.invalidateQueries({
-        predicate: (query) =>
-          Array.isArray(query.queryKey) &&
-          (query.queryKey[0] === 'session-inventory' ||
-            query.queryKey[0] === 'session-inventory-page') &&
-          (!sessionId || JSON.stringify(query.queryKey).includes(sessionId)),
-      }),
-    [client],
-  );
-}
