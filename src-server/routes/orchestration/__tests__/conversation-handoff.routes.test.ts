@@ -51,10 +51,10 @@ describe('conversation handoff route', () => {
     );
   });
 
-  // archive#4075 stage 2 review round 1 (F1, HIGH): this route dropped the
+  // archive#4075 stage 2: this route dropped the
   // resolved principal from the payload to `handoffConversation` even though
-  // it resolved one for `userId` — the every-other-test-only-checks-userId
-  // gap the review named. This pins the fix by asserting `principal` reaches
+  // it resolved one for `userId`, and every other test checks only `userId`.
+  // This pins the fix by asserting `principal` reaches
   // the deps call, not just `userId`.
   test('forwards the resolved principal to handoffConversation, not only userId', async () => {
     const handoffConversation = vi.fn().mockResolvedValue({

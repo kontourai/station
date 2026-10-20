@@ -63,7 +63,7 @@ interface RuntimeDefaultAgentContext {
   >;
   agentHooksMap?: Map<string, ReturnType<typeof createAgentHooks>>;
   /**
-   * archive#1834 review round 2: the guardian the default agent's gate
+   * archive#1834: the guardian the default agent's gate
    * consults, matching what persisted agents get from
    * `runtime-agent-builder.ts`. Present ⇒ wired; both production bootstrap
    * paths construct it from the same runtime services the builder uses.
