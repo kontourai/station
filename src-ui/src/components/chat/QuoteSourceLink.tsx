@@ -1,8 +1,16 @@
 import { getAssistantQuoteSource } from '@kontourai/station-sdk/quote-source';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
+import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { navigationStore } from '../../contexts/navigation-store';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
+import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
+import {
+  panesHiddenByReveal,
+  resolveRegionSurface,
+} from '../../regions/region-model';
 import {
   quoteMatchesSource,
   type SavedAnswerQuote,
@@ -80,6 +88,7 @@ function QuoteSourceInspection({
     gcTime: 0,
     refetchOnMount: 'always',
   });
+  const revealChat = useGuardedChatReveal();
   const source =
     scope?.isCurrent() &&
     sameOrigin &&
@@ -99,11 +108,19 @@ function QuoteSourceInspection({
           <Button
             onClick={() => {
               if (!scope?.isCurrent()) return;
-              onClose();
-              navigationStore.navigate(window.location.pathname, {
-                chat: quote.sessionId,
+              revealChat(() => {
+                // A guard may have answered after the Station changed.
+                if (!scope.isCurrent()) return null;
+                onClose();
+                navigationStore.navigate(window.location.pathname, {
+                  chat: quote.sessionId,
+                });
+                return {
+                  after: () => {
+                    window.location.hash = `station-message=${encodeURIComponent(source.messageId)}`;
+                  },
+                };
               });
-              window.location.hash = `station-message=${encodeURIComponent(source.messageId)}`;
             }}
           >
             Open source conversation
@@ -140,4 +157,59 @@ function QuoteSourceInspection({
       )}
     </Dialog>
   );
+}
+
+/**
+ * Show Chat for an explicit "open this conversation" from outside it — a
+ * knowledge document, a Task's answer, a plan — through the canonical reveal
+ * (`useShowSurface`: the Coding centre's Chat page where it owns Chat, else
+ * Chat's region). Whatever that reveal would take off screen asks its own
+ * unsaved-changes guard first, once: a phone layer over Chat through its own
+ * close, a pane sharing Chat's region through its owner. Cancel changes
+ * nothing. `open` runs only once the way is clear and returns null to
+ * refuse, in which case Chat is not shown either; `after` runs once it is.
+ */
+function useGuardedChatReveal() {
+  const model = useRegionModelOptional();
+  const modelRef = useRef(model);
+  modelRef.current = model;
+  const showSurface = useShowSurface();
+  const centerOwnsChat = useLayoutChatPlacement() === 'center';
+  const alone = useDockFoldsToOneRegion();
+  return (open: () => { after?: () => void } | null) => {
+    const show = () => {
+      const opened = open();
+      if (!opened) return;
+      showSurface('chat');
+      opened.after?.();
+    };
+    const current = modelRef.current;
+    if (centerOwnsChat || !current) {
+      show();
+      return;
+    }
+    current.closePhoneLayer(() => {
+      const regions = modelRef.current?.regions ?? current.regions;
+      const chat = resolveRegionSurface('chat');
+      const guarded = chat
+        ? panesHiddenByReveal(
+            regions,
+            'chat',
+            chat.defaultRegion,
+            alone,
+          ).filter((owner) => navigationStore.hasNavigationGuard(owner))
+        : [];
+      const ask = (owners: readonly string[]) => {
+        const [owner, ...rest] = owners;
+        if (owner === undefined) {
+          show();
+          return;
+        }
+        navigationStore.runNavigationGuards(() => ask(rest), undefined, {
+          owner,
+        });
+      };
+      ask(guarded);
+    });
+  };
 }

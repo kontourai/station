@@ -583,6 +583,32 @@ export function showSurfaceAlone(
 }
 
 /**
+ * The panes on screen now that revealing `surfaceId` the way the model does
+ * (`revealSurface`; `showSurfaceAlone` on a folded device, `alone`) would take
+ * off screen: whose unsaved-changes guards a caller outside the model asks
+ * before it reveals the surface.
+ */
+export function panesHiddenByReveal(
+  arrangement: RegionArrangement,
+  surfaceId: string,
+  preferred: RegionId,
+  alone: boolean,
+): string[] {
+  const onScreen = (value: RegionArrangement) =>
+    REGION_IDS.flatMap((id) => {
+      const region = value[id];
+      return region.visible && region.occupant ? [region.occupant] : [];
+    });
+  const reveal = alone ? showSurfaceAlone : revealSurface;
+  const after = new Set(
+    onScreen(reveal(arrangement, surfaceId, preferred).arrangement),
+  );
+  return onScreen(arrangement).filter(
+    (id) => id !== surfaceId && !after.has(id),
+  );
+}
+
+/**
  * What the region showing Chat looked like before a phone layer opened over
  * it — the state one Back returns to.
  */
