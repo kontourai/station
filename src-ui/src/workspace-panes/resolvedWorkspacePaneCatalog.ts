@@ -82,21 +82,6 @@ export function rendererGateFromPluginRegistryLoadStatus(status: {
 }
 
 /**
- * The direct-pane host registry is the authoritative UI fact for this batch.
- * Layout-only, plugin, and MCP branches stay fail-closed until their host
- * adapters register an actual single-slot renderer.
- */
-export function clientWorkspacePaneRendererPresence(
-  descriptor: WorkspacePaneDescriptor,
-  mcpAppsEnabled = true,
-): ClientWorkspacePaneRendererPresence {
-  return selectClientWorkspacePaneRenderer(descriptor, { mcpAppsEnabled })
-    .state === 'selected'
-    ? 'present'
-    : 'missing';
-}
-
-/**
  * Whether the client facts renderer selection reads have SETTLED — and
  * deliberately not "do we have them".
  *

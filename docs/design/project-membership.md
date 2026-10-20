@@ -26,10 +26,12 @@
 
 > Status: initial verified-tailnet identity and explicit device binding approved
 > by the owner on 2026-09-12 for [#1513](https://github.com/kontourai/station/issues/1513).
-> This document specifies the contract; it does not claim implemented API or
-> membership capability. [#488](https://github.com/kontourai/station/issues/488)
-> owns implementation and [#497](https://github.com/kontourai/station/issues/497)
-> owns the two-human acceptance journey.
+> When approved, this document specified the contract and claimed no
+> implemented API. The membership service, routes and runtime composition
+> named in the banner above have since shipped under
+> [#488](https://github.com/kontourai/station/issues/488) (closed);
+> [#497](https://github.com/kontourai/station/issues/497) still owns the
+> two-human acceptance journey.
 
 ## Outcome and vocabulary
 

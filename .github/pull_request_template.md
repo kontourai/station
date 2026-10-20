@@ -6,6 +6,7 @@ Describe the user-visible outcome this change delivers.
 
 - Issue: #
 - Closure condition satisfied by this PR:
+- Closing a slice or epic: every `UNWIRED`/`SUNSET` marker citing it is removed or wired, and its design doc status is updated (see `docs/guides/code-hygiene.md`).
 - For defect fixes, classify the cause as a newly introduced regression, inherited defect, fixture defect, or unresolved. Link the introducing revision when established; a timeout alone does not establish flakiness.
 
 ## Documentation impact

@@ -1,8 +1,16 @@
 # Workspace map implementation evidence
 
-The accepted Quiet tree direction is implemented in source through
-`7743a0400d56eac0d349c462cb13f354769ca8fb`, compared with
-`777d9502ad8aedbbff2047a753550d8bece0ce01`. Later commits in this lane record
+Retention: until 2027-01-13
+
+After that date, move the screenshots to the evidence archive release and keep
+this README.
+
+The accepted Quiet tree direction landed in #3714, squash-merged to main as
+`64c3b8ced63`. The other commit IDs in this record, including the reviewed
+source `7743a0400d56eac0d349c462cb13f354769ca8fb`, are commits on that pull
+request's branch: they are not ancestors of main and are listed in the pull
+request's commit history. The comparison base
+`777d9502ad8aedbbff2047a753550d8bece0ce01` is on main. Later commits in this lane record
 review notes and screenshots. These observations are local evidence, not
 hosted, native-device, release, or merge qualification.
 

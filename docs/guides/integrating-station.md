@@ -73,10 +73,11 @@ references, and measure recovery time and recoverable data loss.
 
 ## First cloud target: AWS
 
-AWS remains the first planned commercial deployment profile. A [private GCP
-development recipe](../../deploy/gcp-dev/README.md) retains historical testing
-in an existing Google Cloud organization. Its foreground `service run`
-supervisor self-claims a fresh home without policy registration and waits while
+AWS remains the first planned commercial deployment profile. A private GCP
+development recipe once recorded historical testing in an existing Google Cloud
+organization; it was removed, and its last version is at
+[`db816d256f6`](https://github.com/kontourai/station/tree/db816d256f64707a1e1278ad763fc0bc8a54773e/deploy/gcp-dev).
+The foreground `service run` supervisor self-claims a fresh home without policy registration and waits while
 another live owner holds that home. Current image and cloud qualification remain
 separate from that startup contract. Start with one small EC2 instance for a
 persistent private development environment, using the existing local storage

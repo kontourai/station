@@ -46,7 +46,6 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 }));
 vi.mock('../components/chat/AttachAnswerToTaskButton', () => ({
   ConnectedAttachUserInputToTaskButton: () => null,
-  ConnectedAnswerBasisAffordance: () => null,
 }));
 vi.mock('../components/chat/SessionSummaryCard', () => ({
   SessionSummaryCard: () => null,

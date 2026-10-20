@@ -1,0 +1,7 @@
+{
+  "revision": "3a9b85c4e4c56e09e6e54b0102d896f74ca48bf4",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Delta-review fixes: YAML block scalars are tracked by indentation; run/script block content is read with shell quoting and other block-scalar content is skipped. The flag check refuses any STATION_FEATURES identifier, destructuring under any key spelling, computed keys and exported lists. Guide text checked against source-text.mjs hashComments and featureFlagsInSource and the new CLI tests, including runtime-initialize.ts with and without station-features.ts.","inputs":["docs/guides/code-hygiene.md","scripts/lib/hygiene/checks.mjs","scripts/lib/hygiene/source-text.mjs"]}
+  ]
+}
