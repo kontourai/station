@@ -3,10 +3,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../../domain/migrations/009-project-task-room-revision-attribution.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
+
+const { warnings } = vi.hoisted(() => ({ warnings: vi.fn() }));
+vi.mock('../../../utils/logger.js', () => ({
+  createLogger: () => ({ warn: warnings }),
+}));
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -28,6 +33,7 @@ let directory = '';
 afterEach(() => {
   if (directory) rmSync(directory, { recursive: true, force: true });
   directory = '';
+  warnings.mockReset();
 });
 const operation = (id: string, text: string) => ({
   schemaVersion: 1 as const,
@@ -87,12 +93,21 @@ describe('project task room working state', () => {
     try {
       expect(await first.agentLifecycle(input)).toBe('stored');
       expect(await first.agentLifecycle(input)).toBe('stored');
+      expect(warnings).not.toHaveBeenCalled();
       expect(
         await first.agentLifecycle({
           ...input,
           value: { ...input.value, sessionId: 'wrong-session' },
         }),
       ).toBe('unavailable');
+      expect(warnings).toHaveBeenCalledWith(
+        {
+          event: 'project-task-room-working-state-unavailable',
+          operation: 'agent-lifecycle',
+          reason: 'worker-unavailable-reply',
+        },
+        'Task room working state unavailable',
+      );
       expect(await first.readAgentLifecycles({ scope })).toEqual([
         { intentId: input.intentId, value: input.value },
       ]);
@@ -166,10 +181,96 @@ describe('project task room working state', () => {
     });
     const pending = working.read({ scope });
     await expect(pending).resolves.toEqual({ kind: 'unavailable' });
+    expect(warnings).toHaveBeenCalledWith(
+      {
+        event: 'project-task-room-working-state-unavailable',
+        operation: 'read',
+        reason: 'response-deadline',
+      },
+      'Task room working state unavailable',
+    );
     await expect(working.read({ scope })).resolves.toEqual({
       kind: 'unavailable',
     });
     await expect(working.close()).resolves.toBeUndefined();
+    await expect(working.close()).resolves.toBeUndefined();
+  });
+
+  test.each([
+    ['worker-error', 'throw new Error("worker failure with private database data");'],
+    ['worker-exit', 'process.exit(7);'],
+    [
+      'malformed-response',
+      'import { parentPort } from "node:worker_threads"; parentPort.on("message", () => parentPort.postMessage({ malformed: true }));',
+    ],
+  ] as const)(
+    'reports %s without exposing worker payload or changing refusal',
+    async (reason, source) => {
+    directory = mkdtempSync(join(tmpdir(), 'station-room-working-reason-'));
+    const working = createProjectTaskRoomWorkingState(
+      join(directory, 'orchestration.sqlite'),
+      {
+        workerSourceUrl: new URL(
+          `data:text/javascript,${encodeURIComponent(source)}`,
+        ),
+      },
+    );
+    try {
+      await expect(working.read({ scope })).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      expect(warnings).toHaveBeenCalledWith(
+        {
+          event: 'project-task-room-working-state-unavailable',
+          operation: 'read',
+          reason,
+        },
+        'Task room working state unavailable',
+      );
+      expect(JSON.stringify(warnings.mock.calls)).not.toContain('private database data');
+      await expect(working.read({ scope })).resolves.toEqual({
+        kind: 'unavailable',
+      });
+    } finally {
+      await working.close();
+    }
+  });
+
+  test('reports a real postMessage clone failure without serializing the request payload', async () => {
+    directory = mkdtempSync(join(tmpdir(), 'station-room-working-clone-'));
+    const working = createProjectTaskRoomWorkingState(
+      join(directory, 'orchestration.sqlite'),
+    );
+    try {
+      await expect(working.agentLifecycle({
+        scope,
+        intentId: 'private-intent',
+        value: () => 'private-payload',
+      })).resolves.toBe('unavailable');
+      expect(warnings).toHaveBeenCalledWith(
+        {
+          event: 'project-task-room-working-state-unavailable',
+          operation: 'agent-lifecycle',
+          reason: 'post-message-failed',
+        },
+        'Task room working state unavailable',
+      );
+      expect(JSON.stringify(warnings.mock.calls)).not.toContain('private-');
+    } finally {
+      await working.close();
+    }
+  });
+
+  test('keeps the unavailable result and owned shutdown when the diagnostic sink fails', async () => {
+    directory = mkdtempSync(join(tmpdir(), 'station-room-working-log-failure-'));
+    warnings.mockImplementation(() => {
+      throw new Error('diagnostic sink failed');
+    });
+    const working = createProjectTaskRoomWorkingState(
+      join(directory, 'orchestration.sqlite'),
+      { workerSourceUrl: new URL('data:text/javascript,process.exit(7);') },
+    );
+    await expect(working.read({ scope })).resolves.toEqual({ kind: 'unavailable' });
     await expect(working.close()).resolves.toBeUndefined();
   });
 
