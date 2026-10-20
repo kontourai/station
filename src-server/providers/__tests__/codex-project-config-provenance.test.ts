@@ -372,6 +372,23 @@ describe('a canonical confinement root (#3800)', () => {
     },
   );
 
+  test('a repository that exists only on the lexical path, above a link into the Project, is not trusted', () => {
+    // The Project folder is in no repository; an agent-built repository at
+    // `/x`, with its own `.codex` and remote-tracking ref, holds the link
+    // `/x/L` to it (round 7 of the #3962 review).
+    const project = realpathSync(makeTempDir('codex-lexical-project-'));
+    mkdirSync(join(project, 'sub'));
+    const outer = realpathSync(makeTempDir('codex-lexical-outer-'));
+    mkdirSync(join(outer, '.codex'));
+    writeFileSync(join(outer, '.codex', 'config.toml'), '[mcp_servers.x]\n');
+    commitAll(outer);
+    symlinkSync(project, join(outer, 'L'));
+    const cwd = join(outer, 'L', 'sub');
+    expect(findUnaccountedCodexConfig(cwd, { root: project })).toBe(
+      join(outer, '.codex'),
+    );
+  });
+
   test('a cwd reached through a symlink to the Project is judged from the Project', () => {
     const { root, pkg } = repository();
     const link = join(realpathSync(makeTempDir('codex-canonical-cwd-')), 'L');

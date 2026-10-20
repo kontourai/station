@@ -85,8 +85,20 @@ export function findUnaccountedCodexConfig(
   } catch {
     // A missing cwd fails the start on its own.
   }
+  // The trusted repository is chosen from the canonical root only; a pair
+  // whose own walk finds a different one (a repository that exists only on
+  // the lexical path, above a link into the Project) trusts nothing.
+  const trusted = options.root
+    ? innermostRepository(canonical(options.root))
+    : undefined;
   for (const [path, root] of pairs) {
-    const found = findOnPath(path, root, skipped, options.gitTimeoutMs);
+    const found = findOnPath(
+      path,
+      root,
+      trusted,
+      skipped,
+      options.gitTimeoutMs,
+    );
     if (found) return found;
   }
   return undefined;
@@ -99,21 +111,22 @@ export function findUnaccountedCodexConfig(
  * root, else the root itself (and the cwd then lies outside it).
  */
 function lexicalRoot(cwd: string, root: string): string {
-  const canonical = (() => {
-    try {
-      return realpathSync.native(root);
-    } catch {
-      return resolve(root);
-    }
-  })();
-  for (const dir of ancestors(cwd)) {
-    try {
-      if (realpathSync.native(dir) === canonical) return dir;
-    } catch {
-      // A missing ancestor resolves to nothing.
-    }
-  }
+  const target = canonical(root);
+  for (const dir of ancestors(cwd)) if (canonical(dir) === target) return dir;
   return resolve(root);
+}
+
+/** A path as the filesystem spells it, or only resolved when missing. */
+function canonical(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+function innermostRepository(dir: string): string | undefined {
+  return ancestors(dir).find((candidate) => exists(join(candidate, '.git')));
 }
 
 const MAX_CONFIG_FILES = 256;
@@ -142,20 +155,26 @@ function within(root: string, path: string): boolean {
 function findOnPath(
   cwd: string,
   root: string | undefined,
+  trusted: string | undefined,
   skipped: ReadonlySet<string>,
   gitTimeoutMs: number | undefined,
 ): string | undefined {
   const chain = ancestors(cwd);
   const bounded = root !== undefined && within(root, cwd);
   // The trusted repository: the innermost one containing the authorized
-  // root. Without a server root, none: every `.codex` is refused.
-  const repository = bounded
-    ? ancestors(root).find((dir) => exists(join(dir, '.git')))
-    : undefined;
+  // root, as this path spells it, and only if it is the one the canonical
+  // root has. Without a server root, none: every `.codex` is refused.
+  const found = bounded ? innermostRepository(root) : undefined;
+  const repository =
+    found !== undefined && trusted !== undefined && canonical(found) === trusted
+      ? found
+      : undefined;
   // Every layer Codex could read: from the trusted repository's root (or the
   // authorized root, or for an unbounded start the outermost repository
   // above the cwd) down to the cwd.
-  let top = repository ?? (bounded ? root : undefined);
+  // A repository found but not trusted is still walked from, since Codex
+  // reads layers from it; nothing in it is trusted.
+  let top = found ?? (bounded ? root : undefined);
   if (top === undefined)
     for (const dir of chain) if (exists(join(dir, '.git'))) top = dir;
   const walk = chain.slice(0, chain.indexOf(top ?? cwd) + 1).reverse();
