@@ -705,3 +705,155 @@ describe('patch-binding admission', () => {
     );
   });
 });
+
+describe('binding schema validation', () => {
+  const record = () => {
+    const { remediation } = fixture();
+    return structuredClone(remediation);
+  };
+  const entry = (path: string) => ({ path, sha256: hash(path) });
+
+  it.each([
+    [
+      'a binding of the wrong schema version',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.schemaVersion = 2;
+      },
+      /unsupported identity/,
+    ],
+    [
+      'an unknown binding field',
+      (r: ReturnType<typeof record>) => {
+        Object.assign(r.patchBinding, { acceptAny: true });
+      },
+      /unknown binding field/,
+    ],
+    [
+      'a binding that names another package',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.package = 'node-forge-fork';
+      },
+      /unsupported identity/,
+    ],
+    [
+      'a binding that names another version',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.version = '1.4.1';
+      },
+      /unsupported identity/,
+    ],
+    [
+      'a binding for another Node major',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.nodeMajor = 22;
+      },
+      /unsupported identity/,
+    ],
+    [
+      'an escaping patch path',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.patchPath = '../outside.patch';
+      },
+      /invalid patch identity/,
+    ],
+    [
+      'an absolute patch path',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.patchPath = '/etc/passwd';
+      },
+      /invalid patch identity/,
+    ],
+    [
+      'a malformed patch digest',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.patchSha256 = 'abc';
+      },
+      /invalid patch identity/,
+    ],
+    [
+      'more than 128 evidence entries',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.installedEntrypoints = Array.from(
+          { length: 129 },
+          (_, i) => entry(`node_modules/node-forge/f${i}.js`),
+        );
+      },
+      /missing entrypoint evidence/,
+    ],
+    [
+      'evidence that is not a list',
+      (r: ReturnType<typeof record>) => {
+        Object.assign(r.patchBinding, { installedEntrypoints: 'all' });
+      },
+      /missing entrypoint evidence/,
+    ],
+    [
+      'an evidence entry with an unknown key',
+      (r: ReturnType<typeof record>) => {
+        Object.assign(r.patchBinding.installedEntrypoints[0], { skip: true });
+      },
+      /invalid or duplicate entrypoint evidence/,
+    ],
+    [
+      'an evidence entry with an escaping path',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.installedEntrypoints[0].path = '../x.js';
+      },
+      /invalid or duplicate entrypoint evidence/,
+    ],
+    [
+      'an evidence entry with a malformed digest',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.installedEntrypoints[0].sha256 = 'zz';
+      },
+      /invalid or duplicate entrypoint evidence/,
+    ],
+    [
+      'a duplicated evidence path',
+      (r: ReturnType<typeof record>) => {
+        r.patchBinding.installedEntrypoints.push({
+          ...r.patchBinding.installedEntrypoints[0],
+        });
+      },
+      /invalid or duplicate entrypoint evidence/,
+    ],
+    [
+      'a binding that is a list',
+      (r: ReturnType<typeof record>) => {
+        Object.assign(r, { patchBinding: [] });
+      },
+      /missing binding/,
+    ],
+  ])('refuses %s', (_name, mutate, message) => {
+    const r = record();
+    expect(validateDependencyPatchBinding(r)).toBe(r.patchBinding);
+    mutate(r);
+    expect(() => validateDependencyPatchBinding(r)).toThrow(message);
+  });
+
+  it('accepts exactly 128 evidence entries', () => {
+    const r = record();
+    r.patchBinding.installedEntrypoints = Array.from({ length: 128 }, (_, i) =>
+      entry(`node_modules/node-forge/f${i}.js`),
+    );
+    expect(validateDependencyPatchBinding(r)).toBe(r.patchBinding);
+  });
+
+  it('blocks the finding when the workspace does not use the hoisted layout', () => {
+    const f = fixture();
+    expect(f.evaluate().ok).toBe(true);
+    f.write(
+      'pnpm-workspace.yaml',
+      JSON.stringify({
+        nodeLinker: 'isolated',
+        patchedDependencies: { 'node-forge@1.4.0': 'patches/package.patch' },
+      }),
+    );
+    const result = f.evaluate();
+    expect(result.ok).toBe(false);
+    expect(result.blockingFindings).toHaveLength(1);
+    expect(result.exceptionErrors.join(' ')).toMatch(
+      /unsupported installed layout/,
+    );
+  });
+});
