@@ -535,6 +535,17 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     await page.close();
   });
 
+  test("a hovered Station accent swatch still paints only its 28px circle", async () => {
+    const page = await open();
+    const swatch = page.getByRole('button', { name: 'Accent color #f43f5e' });
+    await swatch.hover();
+    const clip = await swatch.evaluate(
+      (button) => getComputedStyle(button).backgroundClip,
+    );
+    expect(clip).toBe('content-box');
+    await page.close();
+  });
+
   test('the theme shortcut toggles mode on this page', async () => {
     const page = await open();
     const theme = () =>

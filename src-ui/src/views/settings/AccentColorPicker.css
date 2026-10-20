@@ -23,7 +23,10 @@
   border-radius: 50%;
   cursor: pointer;
 }
-.settings__accent-swatch {
+/* `:hover` too: the global `button:hover` background shorthand outranks the
+   bare class and would reset the clip, painting the whole 44px box. */
+.settings__accent-swatch,
+.settings__accent-swatch:hover {
   background-clip: content-box;
 }
 .settings__accent-swatch {
