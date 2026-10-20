@@ -15,7 +15,7 @@ import {
   installE2EWorkspacePaneCatalog,
 } from './helpers/current-station-contract';
 import { dismissSetupLauncher } from './helpers/orchestration';
-import { dragDockTo } from './helpers/region-placement';
+import { chooseChatRegionRow, dragDockTo } from './helpers/region-placement';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -367,9 +367,7 @@ test.describe('Dock Mode Preference', () => {
     const dock = page.locator('.chat-dock');
     await expect(dock).toHaveClass(/chat-dock--right/);
     await expect(dock).not.toHaveClass(/is-maximized/);
-    await page
-      .getByRole('button', { name: 'Expand dock region to workspace' })
-      .click();
+    await chooseChatRegionRow(page, 'Maximize');
     await expect(dock).toHaveClass(/is-maximized/);
 
     const mainBox = await page.locator('.app__main').boundingBox();

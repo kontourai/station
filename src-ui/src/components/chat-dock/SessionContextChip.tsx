@@ -13,17 +13,22 @@ export function SessionContextChip({
   triggerRef,
   expanded,
   onOpen,
+  exiting = false,
 }: {
   status: { word: string; text: string; tone: WorkStatusTone } | null;
   triggerRef: RefObject<HTMLButtonElement | null>;
   expanded: boolean;
   onOpen: () => void;
+  /** Leaving for the card; see `.session-context-chip--exiting`. */
+  exiting?: boolean;
 }) {
   return (
     <button
       ref={triggerRef}
       type="button"
-      className="session-context-chip"
+      className={`session-context-chip${exiting ? ' session-context-chip--exiting' : ''}`}
+      aria-hidden={exiting || undefined}
+      tabIndex={exiting ? -1 : undefined}
       aria-haspopup="dialog"
       aria-expanded={expanded}
       aria-label={status ? `This chat — ${status.text}` : 'This chat'}

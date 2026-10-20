@@ -1597,6 +1597,7 @@ button:hover {
   letter-spacing: -2px;
   opacity: 0;
   pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
 .chat-dock__header:hover .chat-dock__placement-grab,
@@ -2107,28 +2108,6 @@ button:hover {
   touch-action: none;
 }
 
-/* archive#1064: the project context now shares the header row instead of occupying a
-   third chrome bar. It takes the space the "Chat Dock" label used to hold, and
-   must yield before the row's fixed-width controls do.
-
-   #1536 F: `flex: 0 1 auto`, not `1 1 auto`. Two blocks that both GREW split
-   the row's spare width between them, so the identity and the project context
-   drifted to opposite ends and the bar read as three unrelated fragments
-   ([avatar | title] ……… [token] [×] ……… [No project]) rather than one
-   left-aligned cluster. They still shrink — that is what makes the title and
-   the token truncate — but the growth lives in `.chat-dock__title-spacer`
-   below, which is empty and therefore cannot look like a gap inside a label. */
-.chat-dock__header-context {
-  display: flex;
-  min-width: 0;
-  flex: 0 1 auto;
-  align-items: center;
-  overflow: hidden;
-  /* A fixed seam after the identity cluster, so the project badge reads as the
-     next thing along rather than as a separate right-hand region. */
-  margin-left: var(--space-4);
-}
-
 .chat-dock__header-identity {
   display: flex;
   min-width: 0;
@@ -2148,14 +2127,6 @@ button:hover {
 
 .chat-dock__header-identity .chat-dock__active-identity {
   min-width: 0;
-}
-
-.chat-dock__header-context .chat-dock__project-context {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  overflow: hidden;
 }
 
 .chat-dock__title {
@@ -2242,18 +2213,6 @@ button:hover {
   color: var(--text-primary);
 }
 
-/* archive#3309 retired the tab strip and clustered its panel toggles (inbox,
-   background tasks) in this bar beside the gear. #1536 F folded that cluster,
-   the gear, and Session inventory into the header's More menu — thirteen
-   controls in a 40px bar left the conversation title about one character — so
-   `.chat-dock__header-workspace` and the `.chat-dock__inbox-toggle` shell it
-   sized are gone with the buttons. The context meter still shares the row. */
-.chat-dock__header-meter {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-}
-
 /* archive#3309 motion polish. The dock's own height already animates
    (`.chat-dock`'s `transition: height`), but everything the expanded dock
    ADDS to its bar — the panel toggles, the context meter, the Open/New pair —
@@ -2262,7 +2221,6 @@ button:hover {
    the pane opens, so a mount-triggered entrance is the whole mechanism: no
    state to track, and nothing runs on collapse (they unmount). Same idiom as
    the inbox panel's own entrance below. */
-.chat-dock__header-meter,
 .chat-dock__tab-actions {
   animation: chat-dock-chrome-enter var(--motion-base) var(--ease-standard);
 }
@@ -2332,21 +2290,6 @@ button:hover {
   flex: 0 0 auto;
   color: var(--text-tertiary);
 }
-/* #1536 F: one line, always. A long project name used to wrap this row into a
-   second line inside a bar whose height is a shared geometry token, and the
-   token then lied about it. It truncates instead; the full path (and the name
-   with it) is the button's `title`. */
-.chat-dock__project-badge-lines {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-}
-.chat-dock__project-badge-caption {
-  color: var(--text-secondary);
-  font-size: var(--k-text-sm);
-  line-height: var(--k-leading-tight);
-}
 .chat-dock__project-badge-name {
   min-width: 0;
   overflow: hidden;
@@ -2375,17 +2318,6 @@ button:hover {
 .chat-dock__project-badge-clear:focus-visible {
   color: var(--text-primary);
   background: var(--bg-tertiary);
-}
-/* archive#4525: the muted lead-in the facts row shows only
-   when the active session's own project differs from the badge's bound
-   project — same type scale as the directory it precedes, deliberately
-   never the accent color the badge/leaf use (this names a DIVERGENCE, not
-   the current context). */
-.chat-dock__project-session-name {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 /* #1536 F: the start-truncated directory segment (parent + accent leaf, its
    bidi isolate for #304, and the `HomeFolderLabel` fallback) is gone from this
@@ -3342,6 +3274,92 @@ button:hover {
   color: var(--text-primary);
 }
 
+/* New and its destination project, one split control: New starts a chat,
+   the caret half shows and changes where. Both halves keep the bar's quiet
+   chrome; one shared frame says they belong together. */
+.chat-dock__new-split {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  border: var(--k-border-thin, 1px) solid var(--border-primary);
+  border-radius: var(--radius-md);
+}
+
+.chat-dock__new-split .chat-dock__tab-actions {
+  flex: 0 0 auto;
+}
+
+.chat-dock__header-actions .chat-dock__new-split .chat-dock__new {
+  border: 0;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.chat-dock__new-split:not(:has(.chat-dock__project-context)) .chat-dock__new {
+  border-radius: var(--radius-md);
+}
+
+/* The inbox toggle carries the working chats' count, and a dot for unread
+   replies; both facts are also in its name. */
+.chat-dock__inbox-toggle {
+  position: relative;
+}
+
+/* The More menu's wrapper only marks where a working-chat choice is made
+   (`data-working-chat-origin`); it takes no box of its own. */
+.chat-dock__more {
+  display: contents;
+}
+
+.chat-dock__inbox-working {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  display: inline-flex;
+  min-width: 15px;
+  height: 15px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--success-text);
+  color: var(--text-on-accent);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  line-height: 1;
+  animation: chat-dock-status-arrive var(--motion-base) var(--ease-spring);
+}
+
+.chat-dock__inbox-toggle[data-unread]::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
+/* A working chat's row in the More menu: the same green as the badge. */
+.chat-dock__working-glyph {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success-text);
+}
+
+@keyframes chat-dock-status-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .chat-dock__body {
   display: flex;
   flex-direction: column;
@@ -3488,19 +3506,23 @@ button:hover {
   gap: var(--space-2);
 }
 
+/* One line: the title, then the agent and engine. The context gives up its
+   width long before the title does (flex-shrink 100 against 1). */
 .chat-dock__active-identity-text {
   display: flex;
-  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
-  gap: 0;
+  align-items: baseline;
+  gap: var(--k-space-2);
+  overflow: hidden;
 }
 .chat-dock__active-identity-avatar {
   flex-shrink: 0;
 }
 .chat-dock__active-identity-title {
   display: block;
-  min-width: 0;
+  flex: 0 1 auto;
+  min-width: 3em;
   overflow: hidden;
   color: var(--k-text);
   font-size: var(--k-text-md);
@@ -3511,10 +3533,16 @@ button:hover {
 }
 .chat-dock__active-identity-context {
   display: flex;
+  flex: 0 100 auto;
   min-width: 0;
-  align-items: center;
-  gap: var(--k-space-2);
+  align-items: baseline;
+  gap: var(--k-space-1);
+  overflow: hidden;
   line-height: 1.3;
+}
+.chat-dock__active-identity-agent + .chat-dock__active-identity-engine::before {
+  content: "·";
+  margin-right: var(--k-space-1);
 }
 .chat-dock__active-identity-agent,
 .chat-dock__active-identity-engine {
@@ -3536,9 +3564,6 @@ button:hover {
   display: inline-flex;
   align-items: center;
   gap: var(--k-space-2);
-}
-.chat-dock__header-identity {
-  flex: 1 1 auto;
 }
 .chat-dock__header-identity--pane .chat-dock__active-identity-title,
 .chat-dock__header-identity--pane .chat-dock__active-identity-close {
@@ -5168,23 +5193,6 @@ button.tool-call__line:hover {
 .chat-controls-row button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-.context-indicator {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.context-indicator-content {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-  padding: 4px 8px;
 }
 
 .command-autocomplete {
@@ -7914,14 +7922,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     > :is([data-region="left"], [data-region="right"])
     .chat-controls-row {
     flex-wrap: nowrap;
-  }
-
-  /* Compact context indicator in side mode */
-  .app__main
-    > :is([data-region="left"], [data-region="right"])
-    .context-indicator-content {
-    font-size: var(--text-2xs);
-    padding: 2px 4px;
   }
 
   /* Side-mode session info bar */

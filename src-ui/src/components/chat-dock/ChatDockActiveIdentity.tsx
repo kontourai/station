@@ -28,7 +28,7 @@ interface ChatDockActiveIdentityProps {
   onClose: (id: string) => void;
 }
 
-/** Conversation title first; assistant and execution identity remain on the second line. */
+/** One line: the conversation title, then the agent and engine, muted; the context truncates before the title. */
 export function ChatDockActiveIdentity({
   session,
   agent,
@@ -90,11 +90,13 @@ export function ChatDockActiveIdentity({
     icon: agent?.icon,
     engineId: parseEngineId(originProvider) ?? agent?.engineId,
   };
-  // One muted token, not a pill plus a span: `engineChipLabel` already joins an
-  // engine with its own model ("OpenCode · GLM-4.7"), and the model this chat
-  // actually runs joins on with the same separator. Empty when neither is
-  // known, so the row names nothing it cannot derive.
-  const engineTrail =
+  // The bar shows the agent and the engine on the title's line; the model and
+  // the route are the composer's (its model picker names them), so here they
+  // are only the tooltip. `engineChipLabel` already joins an engine with its
+  // own model ("OpenCode · GLM-4.7"); the trail names nothing it cannot
+  // derive and is empty when neither is known.
+  const engineLabel = originLabel ?? engineChipLabel(engineChip);
+  const fullTrail =
     originLabel ??
     [
       engineChipLabel(engineChip),
@@ -103,6 +105,9 @@ export function ChatDockActiveIdentity({
     ]
       .filter(Boolean)
       .join(' · ');
+  const contextTitle = [!originLabel ? agentName : null, fullTrail]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="chat-dock__active-identity">
@@ -120,19 +125,21 @@ export function ChatDockActiveIdentity({
         >
           {session.title}
         </span>
-        <span className="chat-dock__active-identity-context">
+        <span
+          className="chat-dock__active-identity-context"
+          title={contextTitle || undefined}
+        >
           {agentName && !originLabel && (
             <strong className="chat-dock__active-identity-agent">
               {agentName}
             </strong>
           )}
-          {engineTrail && (
+          {engineLabel && (
             <span
               className={`chat-dock__active-identity-engine${originLabel ? ' chat-dock__active-identity-origin' : ''}`}
-              title={engineTrail}
             >
               {originLabel && <AgentIcon agent={iconSubject} size={18} />}
-              {engineTrail}
+              {engineLabel}
             </span>
           )}
         </span>

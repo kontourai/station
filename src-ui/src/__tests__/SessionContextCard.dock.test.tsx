@@ -54,6 +54,11 @@ const fixture = vi.hoisted(() => ({
   cardChunk: 'ready' as 'ready' | 'loading' | 'failed',
   // Renders of the real card's rows, counted through the one hook they call.
   cardRowRenders: 0,
+  // The session's directory and whether the server reports it as a folder
+  // Station created for the chat (`cwdManagedWorkspace`).
+  cwd: '/work/demo',
+  cwdManaged: false,
+  realExit: false,
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -208,9 +213,19 @@ vi.mock('../hooks/useDerivedSessions', () => ({
   useDerivedSessions: () => [],
 }));
 
-vi.mock('../hooks/useExitTransition', () => ({
-  useExitTransition: (open: boolean) => ({ mounted: open, exiting: false }),
-}));
+// Exits are instant here unless a test asks for the real hook
+// (`fixture.realExit`): most of this file is about WHICH surface shows, not
+// how it leaves.
+vi.mock('../hooks/useExitTransition', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../hooks/useExitTransition')>();
+  return {
+    useExitTransition: (open: boolean, exitMs: number) => {
+      const real = actual.useExitTransition(open, exitMs);
+      return fixture.realExit ? real : { mounted: open, exiting: false };
+    },
+  };
+});
 
 vi.mock('../hooks/orchestration/ensureOrchestrationEventStream', () => ({
   ensureOrchestrationEventStream: () => {},
@@ -225,7 +240,8 @@ vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
     activeOrchestrationSessionRead: 'present',
     gitStatus: fixture.git,
     sessionProjectName: 'Demo project',
-    sessionDisplayCwd: '/work/demo',
+    sessionDisplayCwd: fixture.cwd,
+    sessionCwdManaged: fixture.cwdManaged,
     sessionCodingLayout: undefined,
     dockProjectSlug: undefined,
     mobileProjectName: undefined,
@@ -448,6 +464,9 @@ beforeEach(() => {
   fixture.pullRequests = [];
   fixture.cardChunk = 'ready';
   fixture.cardRowRenders = 0;
+  fixture.cwd = '/work/demo';
+  fixture.cwdManaged = false;
+  fixture.realExit = false;
   // The one layout fact the fit reads: the conversation surface's width.
   HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
     const rect = realRect.call(this);
@@ -499,8 +518,9 @@ const card = () =>
   document.querySelector<HTMLElement>('aside.session-context-card');
 const branchBadge = () => document.querySelector('.git-badge');
 const moreBadge = () => document.querySelector('.chat-dock__more-badge');
-// The header's "This chat: <project>" lead-in, shown when the chat's own
-// project differs from the dock's bound one (the fixture binds none).
+// The header no longer repeats the chat's branch or project at all: the card
+// (or, folded, the chip's sheet) is where they live. Kept as a probe so the
+// tests below fail if either comes back to the bar.
 const mismatchLabel = () =>
   document.querySelector('.chat-dock__project-session-name');
 const chip = () => screen.queryByRole('button', { name: /^This chat/ });
@@ -512,9 +532,7 @@ describe('session context card visibility follows the dock body width', () => {
     await waitFor(() => expect(card()).not.toBeNull());
     expect(branchBadge()).toBeNull();
     expect(moreBadge()).toBeNull();
-    // Not a repeat: the lead-in is the header's contrast with the bound
-    // project (#4525 MED-1), so it stays beside the badge.
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
+    expect(mismatchLabel()).toBeNull();
     expect(chip()).toBeNull();
     const aside = card()!;
     expect(aside.textContent).toContain('feature/parser');
@@ -524,22 +542,23 @@ describe('session context card visibility follows the dock body width', () => {
     expect(aside.textContent).toContain('Demo project');
   });
 
-  test('a narrow dock folds the card behind a chip and keeps the header items', async () => {
+  test('a narrow dock folds the card behind a chip; the bar keeps only the running count', async () => {
     // 919px: one short of the 640px transcript floor plus the 280px card.
     fixture.surfaceWidth = 919;
     renderDock();
     await waitFor(() => expect(chip()).not.toBeNull());
     expect(card()).toBeNull();
-    expect(branchBadge()?.textContent).toContain('feature/parser');
+    // The branch is the chip's sheet's, not a header badge.
+    expect(branchBadge()).toBeNull();
+    expect(mismatchLabel()).toBeNull();
     expect(moreBadge()?.textContent).toBe('2');
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
   });
 
   test.each([
     ['still loading', 'loading'],
     ['failed to load', 'failed'],
   ] as const)(
-    'while the card chunk is %s the header keeps its facts',
+    'while the card chunk is %s the More trigger keeps the running count',
     async (_, state) => {
       fixture.cardChunk = state;
       fixture.surfaceWidth = 1200;
@@ -551,21 +570,20 @@ describe('session context card visibility follows the dock body width', () => {
           await new Promise((resolve) => setTimeout(resolve, 50));
         });
       expect(card()).toBeNull();
-      expect(branchBadge()?.textContent).toContain('feature/parser');
       expect(moreBadge()?.textContent).toBe('2');
-      expect(mismatchLabel()).not.toBeNull();
+      expect(branchBadge()).toBeNull();
     },
   );
 
-  test('a card that unmounts stops counting as present, so a regrow with its chunk held back keeps the header facts', async () => {
+  test('a card that unmounts stops counting as present, so a regrow with its chunk held back keeps the running count', async () => {
     fixture.surfaceWidth = 1200;
     renderDock();
     await waitFor(() => expect(card()).not.toBeNull());
-    expect(branchBadge()).toBeNull();
+    expect(moreBadge()).toBeNull();
     // Shrink: the card folds away (and unmounts).
     await resizeSurface(600);
     await waitFor(() => expect(card()).toBeNull());
-    expect(branchBadge()?.textContent).toContain('feature/parser');
+    expect(moreBadge()?.textContent).toBe('2');
     // Grow again while the card's chunk is held back: the card is wanted but
     // not on screen, so the header must still carry the facts.
     fixture.cardChunk = 'loading';
@@ -575,8 +593,7 @@ describe('session context card visibility follows the dock body width', () => {
     });
     expect(chip()).toBeNull();
     expect(card()).toBeNull();
-    expect(branchBadge()?.textContent).toContain('feature/parser');
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
+    expect(moreBadge()?.textContent).toBe('2');
   });
 
   test('the threshold is the transcript floor plus the card column', async () => {
@@ -654,6 +671,74 @@ describe('each row opens the existing surface', () => {
   });
 });
 
+describe('the card and its chip trade places without a snap', () => {
+  test('a folding card plays its exit while the chip enters, then leaves the tree', async () => {
+    fixture.realExit = true;
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(card()!.classList.contains('session-context-card--exiting')).toBe(
+      false,
+    );
+
+    await resizeSurface(600);
+    // Still mounted, leaving: inert and out of the accessibility tree.
+    expect(card()?.classList.contains('session-context-card--exiting')).toBe(
+      true,
+    );
+    expect(card()!.getAttribute('aria-hidden')).toBe('true');
+    expect(chip()).not.toBeNull();
+    // Gone once its exit has played.
+    await waitFor(() => expect(card()).toBeNull());
+  });
+
+  test('a chip giving way to the card fades where it stands before it unmounts', async () => {
+    fixture.realExit = true;
+    fixture.surfaceWidth = 600;
+    renderDock();
+    await waitFor(() => expect(chip()).not.toBeNull());
+
+    await resizeSurface(1200);
+    await waitFor(() => expect(card()).not.toBeNull());
+    // The leaving chip is hidden from assistive tech, so query it directly.
+    const leaving = document.querySelector('.session-context-chip');
+    expect(leaving?.classList.contains('session-context-chip--exiting')).toBe(
+      true,
+    );
+    expect(leaving?.getAttribute('tabindex')).toBe('-1');
+    await waitFor(() =>
+      expect(document.querySelector('.session-context-chip')).toBeNull(),
+    );
+  });
+});
+
+describe('a folder Station made for the chat is named, not printed', () => {
+  const MANAGED = `/home/me/.station/runtime/acp-workspaces/session/${'ab12'.repeat(16)}`;
+
+  test('the Workspace row says "Chat workspace" and keeps the hash path out of the text', async () => {
+    fixture.cwd = MANAGED;
+    fixture.cwdManaged = true;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    const row = card()!.querySelector('.session-context-card__row')!;
+    expect(row.textContent).toContain('Chat workspace');
+    expect(row.textContent).not.toContain('acp-workspaces');
+    // The path is still there for whoever needs it, as the label's tooltip.
+    expect(row.querySelector(`[title="${MANAGED}"]`)).not.toBeNull();
+  });
+
+  test('a folder the server does not flag prints its path, even one shaped like a managed workspace', async () => {
+    // The UI does not match the path itself: only the server's flag names it.
+    fixture.cwd = MANAGED;
+    fixture.cwdManaged = false;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    const row = card()!.querySelector('.session-context-card__row')!;
+    expect(row.textContent).not.toContain('Chat workspace');
+    expect(row.textContent).toContain(MANAGED);
+  });
+});
+
 describe('the chip opens the rows as a sheet', () => {
   test('opens and closes; Escape returns focus to the chip', async () => {
     fixture.surfaceWidth = 600;
@@ -669,8 +754,6 @@ describe('the chip opens the rows as a sheet', () => {
     );
     expect(chip()!.getAttribute('aria-expanded')).toBe('false');
     await waitFor(() => expect(document.activeElement).toBe(chip()));
-    // Folded, so the header keeps the chat's project lead-in.
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
   });
 
   test('a row action closes the sheet before opening its surface', async () => {
@@ -825,8 +908,6 @@ describe('linked pull requests', () => {
     const row = await screen.findByRole('button', {
       name: '1 linked pull request — open chat details',
     });
-    // The card is shown and the header's lead-in still stands.
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
     expect(row.textContent).toContain('#42');
     expect(row.textContent).toContain('Parser fix');
     showSurfaceStub.mockClear();

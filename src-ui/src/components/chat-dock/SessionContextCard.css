@@ -17,6 +17,53 @@
   color: var(--text-primary);
 }
 
+/* The card comes and goes with the dock's width (and with Chat inventory,
+   which takes its room). It fades and slides in place; its column never
+   animates. The show/hide decision is a measured fit with anti-oscillation
+   (sessionContextCardModel.ts), and a width animation would feed that
+   ResizeObserver mid-flight. Leaving, it keeps its column for one motion
+   beat while it fades, then gives it back in one step. The exit class is
+   only ever applied with motion on: under reduced motion
+   `useExitTransition` unmounts at once. */
+.session-context-card:not(.session-context-card--sheet) {
+  animation: session-context-card-enter var(--motion-base) var(--ease-standard);
+}
+
+.session-context-card--exiting:not(.session-context-card--sheet) {
+  pointer-events: none;
+  animation: session-context-card-exit var(--motion-base) var(--ease-standard)
+    forwards;
+}
+
+@keyframes session-context-card-enter {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes session-context-card-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-context-card:not(.session-context-card--sheet),
+  .session-context-card--exiting:not(.session-context-card--sheet) {
+    animation: none;
+  }
+}
+
 .session-context-card--sheet {
   width: auto;
   border-left: 0;
