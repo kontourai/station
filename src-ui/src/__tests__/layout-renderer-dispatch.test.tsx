@@ -186,8 +186,7 @@ describe('LayoutRenderer component dispatch', () => {
 
   test('names the remote-isolation refusal for a plugin view instead of claiming it is uninstalled', () => {
     // The plugin IS installed server-side; its bundle was refused by policy.
-    // The slot must say so (archive#2539 phone report) — and render without a
-    // the normal selected-Station provider.
+    // The slot names that refusal and reviews access in place.
     registryLoadStatus = {
       state: 'degraded',
       failedPluginNames: [],

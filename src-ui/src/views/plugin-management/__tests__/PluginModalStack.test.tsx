@@ -176,23 +176,46 @@ describe('PluginModalStack folder picker (plugin management)', () => {
   });
 });
 
-test.each([false, true])(
-  'plugin management previews review client code only: %s',
-  (hasBundle) => {
+test.each([
+  {
+    name: 'prebuilt bundle',
+    hasBundle: true,
+    entrypoint: undefined,
+    reviewExpected: true,
+  },
+  {
+    name: 'source entrypoint',
+    hasBundle: false,
+    entrypoint: 'src/index.tsx',
+    reviewExpected: true,
+  },
+  {
+    name: 'built-in only',
+    hasBundle: false,
+    entrypoint: undefined,
+    reviewExpected: false,
+  },
+])(
+  'plugin management previews review client code only: $name',
+  ({ hasBundle, entrypoint, reviewExpected }) => {
     const install = vi.fn();
     renderFolderPicker({
       showFolderPicker: false,
       onConfirmInstall: install,
       previewData: {
         valid: true,
-        manifest: { name: 'bundle-plugin', version: '1.0.0' },
+        manifest: {
+          name: 'bundle-plugin',
+          version: '1.0.0',
+          ...(entrypoint ? { entrypoint } : {}),
+        },
         hasBundle,
         components: [],
         conflicts: [],
       },
     });
     const review = screen.queryByRole('button', { name: 'Review and enable' });
-    if (hasBundle) {
+    if (reviewExpected) {
       if (!review) throw new Error('Client code access review missing');
       fireEvent.click(review);
       expect(

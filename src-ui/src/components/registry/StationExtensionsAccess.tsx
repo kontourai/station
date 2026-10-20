@@ -8,6 +8,7 @@ import {
   setRemotePluginBundlesAllowed,
   subscribeRemotePluginBundleConsent,
 } from '../../core/remotePluginBundleConsent';
+import { remotePluginConsentRequired } from '../../core/remotePluginConsentPolicy';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { Button } from '../Button';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -108,7 +109,8 @@ export function useStationExtensionsAccess() {
   return {
     allowed,
     blocked,
-    manageable: blocked || (isTauri && (allowed || remote)),
+    manageable:
+      blocked || remotePluginConsentRequired(apiBase, isTauri, remote),
     name,
     review: () => openReview(true),
     disable: () => openReview(false),
@@ -119,12 +121,26 @@ export function useStationExtensionsAccess() {
 export function StationExtensionsAccess({
   onlyWhenOff = false,
   installation = false,
+  compact = false,
 }: {
   onlyWhenOff?: boolean;
   installation?: boolean;
+  compact?: boolean;
 }) {
   const access = useStationExtensionsAccess();
   if (!access.manageable || (onlyWhenOff && access.allowed)) return null;
+  if (compact)
+    return (
+      <>
+        <Button
+          className="station-extensions-access__button"
+          onClick={access.review}
+        >
+          Review and enable
+        </Button>
+        {access.dialog}
+      </>
+    );
   return (
     <section
       className="station-extensions-access"

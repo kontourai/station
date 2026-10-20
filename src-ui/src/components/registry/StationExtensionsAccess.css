@@ -11,7 +11,8 @@
   margin: 0;
 }
 
-.station-extensions-access > .button {
+.station-extensions-access > .button,
+.station-extensions-access__button {
   justify-self: start;
   min-height: 44px;
 }

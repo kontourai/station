@@ -863,7 +863,9 @@ export function CommandPalette() {
               : {
                   label: entry.descriptor.name,
                   stateLabel: presentation.stateLabel,
-                  reasonLabel: presentation.reasonLabel,
+                  reasonLabel: presentation.reviewExtensions
+                    ? 'Review extension access in this Project’s pane picker or the current Station’s details.'
+                    : presentation.reasonLabel,
                   actionLabel: presentation.actionLabel,
                 },
           );

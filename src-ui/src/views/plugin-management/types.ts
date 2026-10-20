@@ -1,10 +1,8 @@
 import type {
-  ConflictInfo,
   PermissionTier,
-  PluginComponent,
   PluginInstallationReadiness,
   PluginInstallationRevision,
-  PluginManifest,
+  PluginPreview,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
 
@@ -70,26 +68,17 @@ export function isRejectedPlugin(
   return 'status' in plugin && plugin.status === 'rejected';
 }
 
-export type PreviewComponent = PluginComponent;
-
 export interface GitInfo {
   hash: string;
   branch: string;
   remote?: string;
 }
 
-export interface PreviewData {
+export interface PreviewData extends PluginPreview {
   grantRevision?: string;
   registryTrustRevision?: string;
   installationRevision?: PluginInstallationRevision | null;
   existingDataScope?: boolean;
-  valid: boolean;
-  error?: string;
-  manifest?: PluginManifest;
-  /** Whether the staged source already contains a client bundle. */
-  hasBundle?: boolean;
-  components: PreviewComponent[];
-  conflicts: ConflictInfo[];
   /**
    * SHA-256 of the staged source the preview inspected (archive#4288).
    * Carried back into `POST /install` so the server can refuse — before it

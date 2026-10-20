@@ -2290,16 +2290,6 @@ The [Agent Plugins reference](agent-plugins.md) covers the package format;
 [installation lifecycle](../design/plugin-installation-lifecycle.md) covers
 retained generations and recovery.
 
-### Preview a plugin installation
-
-`POST /api/plugins/preview` stages the source and returns its parsed `manifest`,
-components, conflicts and consent basis. The top-level `hasBundle` reports whether
-that staged source contains `dist/bundle.js`; it is not a manifest field or proof
-that the bundle can run. A declared `manifest.entrypoint` may build client code
-during installation. Native install previews use these facts to offer a separate
-extension-access review. A layout declaration alone does not require this access:
-a layout can use built-in views without loading plugin code.
-
 ### List Installed Plugins
 
 `GET /api/plugins` returns `{plugins}` after projecting the installed inventory
@@ -2593,8 +2583,13 @@ stages source, validates it, reports components/conflicts/dependencies, and
 cleans the staged directory without installing it. `valid: true` also carries
 `contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
 observed `installationRevision`, `existingDataScope`, and permission/dependency
-consent information. When an open install proposal names the source, preview
-copies a local folder without its `.git` entries, refuses a local Git repository
+consent information. The optional top-level `hasBundle` reports whether the staged
+source already contains `dist/bundle.js`. It is not a manifest field or runtime
+readiness. Installation can build client code from `manifest.entrypoint` even
+when `hasBundle` is false. Native install previews use either fact to offer a
+separate loading-access review; a layout declaration alone does not require it,
+because a layout can use built-in views. When an open install proposal names the
+source, preview copies a local folder without its `.git` entries, refuses a local Git repository
 URL, and reports `gitMetadata: "excluded"`. A folder once installed that way
 stays stripped: Station records it in `plugin-source-staging.json`, so later
 previews exclude its git metadata after the proposal resolves or the plugin is

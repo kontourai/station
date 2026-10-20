@@ -148,6 +148,28 @@ describe('Station extension access at the user decision', () => {
     ).toBeNull();
   });
 
+  test('an owned native loopback ignores legacy consent and never offers an inert revoke', () => {
+    const origin = 'http://127.0.0.1:3141';
+    setRemotePluginBundlesAllowed('owned', origin, true);
+    render(
+      <ConnectionsProvider
+        seedDefault={false}
+        injectedConnection={{
+          id: 'owned',
+          name: 'Local',
+          url: origin,
+          source: 'managed-loopback',
+          ownerId: 'local-owner',
+        }}
+      >
+        <StationExtensionsAccess />
+      </ConnectionsProvider>,
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Turn off extensions' }),
+    ).toBeNull();
+  });
+
   test('turning off verifies removal before reloading', () => {
     const { a } = mount();
     act(() => {

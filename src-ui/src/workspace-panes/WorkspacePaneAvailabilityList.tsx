@@ -1,7 +1,7 @@
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
 import { type CSSProperties, useId, useState } from 'react';
 import { PlugGlyph } from '../components/icons/Glyph';
-import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
+import { useStationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import {
   presentWorkspacePaneAvailability,
   type WorkspacePaneAvailabilityCatalogEntry,
@@ -232,20 +232,16 @@ function WorkspacePaneAvailabilityCard({
                 <span id={openLabelId}>Open</span>
               </button>
             )}
-            {!isAvailable &&
-              reviewActionAvailable &&
-              (onReviewExtensions ? (
-                <button
-                  type="button"
-                  className="workspace-pane-availability-list__remedy"
-                  onClick={() => onReviewExtensions?.()}
-                  disabled={pending}
-                >
-                  Review and enable
-                </button>
-              ) : (
-                <StationExtensionsAccess onlyWhenOff />
-              ))}
+            {!isAvailable && reviewActionAvailable && onReviewExtensions && (
+              <button
+                type="button"
+                className="workspace-pane-availability-list__remedy"
+                onClick={onReviewExtensions}
+                disabled={pending}
+              >
+                Review and enable
+              </button>
+            )}
             {!isAvailable && executableAction && (
               <button
                 type="button"
@@ -291,7 +287,7 @@ function WorkspacePaneAvailabilityCard({
  * keyboard, and touch activation; unavailable entries stay enabled so their
  * reason and bounded next action remain reachable.
  */
-export function WorkspacePaneAvailabilityList({
+function PaneAvailabilityCards({
   entries,
   onSelect,
   onAction,
@@ -316,5 +312,35 @@ export function WorkspacePaneAvailabilityList({
         />
       ))}
     </ul>
+  );
+}
+
+function ExtensionReviewList(props: WorkspacePaneAvailabilityListProps) {
+  const access = useStationExtensionsAccess();
+  return (
+    <>
+      <PaneAvailabilityCards {...props} onReviewExtensions={access.review} />
+      {access.dialog}
+    </>
+  );
+}
+
+export function WorkspacePaneAvailabilityList(
+  props: WorkspacePaneAvailabilityListProps,
+) {
+  const needsReview =
+    !props.onReviewExtensions &&
+    props.entries.some(
+      (entry) =>
+        presentWorkspacePaneAvailability(
+          entry.availability,
+          entry.rendererGate,
+          entry.rendererResolution,
+        ).reviewExtensions,
+    );
+  return needsReview ? (
+    <ExtensionReviewList {...props} />
+  ) : (
+    <PaneAvailabilityCards {...props} />
   );
 }
