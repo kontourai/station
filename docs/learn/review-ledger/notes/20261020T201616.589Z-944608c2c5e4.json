@@ -1,0 +1,7 @@
+{
+  "revision": "716ba1e0714a3166a05c503da7e60d383f682997",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed queue integration repair after main removed the managed-chat route argument. Both config route fixtures now bind reconfiguration and tier-lowering feedback to the current factory positions, matching the production runtime caller. Existing refusal and feedback-ordering assertions are preserved. The pre-fix focused run failed the feedback-ordering assertion; after repair all 140 focused route/publisher tests and typecheck:server-tests pass. No telemetry behavior or guide prose changes; receiver/device delivery remains unverified.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/system/__tests__/config.routes.test.ts","src-server/services/__tests__/telemetry-publishers.test.ts","src-server/utils/logger.ts"]}
+  ]
+}
