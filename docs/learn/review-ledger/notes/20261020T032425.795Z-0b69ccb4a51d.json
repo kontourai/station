@@ -1,0 +1,7 @@
+{
+  "revision": "fb30680be9fd5805ef96da78aa9c8edcf976e43a",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"This branch's pairing-route-scopes.ts change classifies the three /v1 telemetry ingest leaves and the operator-only /api/telemetry-producers routes explicitly. The MCP UI host doc makes no claim about those routes or their scope tiers; its MCP app, sandbox proxy and elicitation claims are unaffected.","inputs":["docs/design/mcp-ui-host.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}
