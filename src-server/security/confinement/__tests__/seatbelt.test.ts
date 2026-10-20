@@ -206,7 +206,9 @@ describe('Seatbelt grants and profile', () => {
     );
     // After every allow, so no grant re-opens them.
     expect(lines.indexOf(named[0]!)).toBeGreaterThan(
-      lines.findLastIndex((line) => line.startsWith('(allow ')),
+      lines.length -
+        1 -
+        [...lines].reverse().findIndex((line) => line.startsWith('(allow ')),
     );
     expect(() =>
       seatbeltProfile({
