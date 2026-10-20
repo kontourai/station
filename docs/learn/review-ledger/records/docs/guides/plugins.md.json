@@ -128,7 +128,13 @@
 
     "src-ui/src/components/registry/StationExtensionsAccess.css",
 
-    "src-ui/src/views/plugin-management/InstallPreviewExtensionAccess.tsx"
+    "src-ui/src/views/plugin-management/InstallPreviewExtensionAccess.tsx",
+
+    "src-ui/src/core/remotePluginConsentPolicy.ts",
+
+    "src-ui/src/app-shell/__tests__/ProjectLayoutRenderer.test.tsx",
+
+    "src-ui/src/views/plugin-management/__tests__/PluginModalStack.test.tsx"
   ],
 
   "checks": [
