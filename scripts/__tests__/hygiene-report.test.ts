@@ -141,6 +141,7 @@ describe('hygiene markers check', () => {
       '// TODO(2026-11-01): a dated TODO belongs to another sweep.',
       '// The convention is UNWIRED(#N): <what remains>.',
       "const text = 'UNWIRED(#200): inside a string is not a comment';",
+      "const url = 'https://example.com/ SUNSET(#200): a URL is not a comment';",
       '',
     ].join('\n'),
     'docs/guides/notes.md': [
