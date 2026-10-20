@@ -4,6 +4,10 @@
 > below describe the migration and later annotations. For current selection,
 > evidence locations and command behavior, use [Veritas for Station](../../../.veritas/README.md)
 > and the checked-in Repo Map and Standards it links.
+>
+> The 0.3-era files named below (`.veritas/repo.adapter.json`,
+> `.veritas/policy-packs/*` and `scripts/veritas-report.mjs`) no longer exist;
+> the tables record where each one went.
 
 
 Date: 2026-06-11. Executed per `brownfield-migration-runbook.md`: every 0.3-era check family was inventoried and classified before migrating — nothing was copied 1:1. Reference consumer: the `kontourai/veritas` repo's own `.veritas/` (repo-map + repo-standards + authority + attestations, gated by `veritas readiness --working-tree`).
@@ -30,9 +34,9 @@ Source of truth: `.veritas/proof-families/repo-guardrails.families.json`. No `re
 | Family (0.3 form) | Disposition | 0.5 form |
 | --- | --- | --- |
 | `repo-governance` — `proof:repo-governance` via `scripts/proof-family-lane.mjs`, used removed `loadPolicyPack`/`evaluatePolicyPack` | **required** (unchanged) | Script ported to live `loadRepoStandards`/`evaluateRepoStandards` exports; registered as the **required + default evidence check** `repo-governance` in the repo-map, so `veritas readiness` runs it on every gate. Policy rules it evaluates moved to repo-standards (`required-station-governance-artifacts`, `ai-instruction-files-synced`, `brownfield-gap-log-present`). Also checks CI wiring (ci:fast, connected-agents, `veritas readiness` evidence step) and pinned workflow actions. |
-| `architecture-boundaries` — `proof:architecture-boundaries` | candidate (unchanged) | Plain npm proof lane, declared as an inventory entry but **not routed** for `packages/*` changes as of #2376: it returns `NOT_VERIFIED` because it has no executable assertions. |
-| `ui-data-access` — `proof:ui-data-access` | candidate (unchanged) | Plain npm proof lane, declared as an inventory entry but **not routed** for `src-ui` changes as of #2376, until it has executable assertions. |
-| `runtime-contracts` — `proof:runtime-contracts` | move-to-test / advisory (unchanged) | Lane remains declared as an advisory inventory entry but is **not routed** as of #2376 because it has no executable assertions. `connected-agents` (`npm run test:connected-agents`) alone remains routed for `src-server` changes as the behavioral replacement proof. Route selection — previously proven by a `scripts/veritas-report.mjs` unit test — is now owned by the repo-map `evidenceCheckRoutes` and protected by `scripts/__tests__/veritas-repo-map.test.ts`. |
+| `architecture-boundaries` — `proof:architecture-boundaries` | candidate (unchanged) | Plain npm proof lane, declared as an inventory entry but **not routed** for `packages/*` changes as of archive#2376: it returns `NOT_VERIFIED` because it has no executable assertions. |
+| `ui-data-access` — `proof:ui-data-access` | candidate (unchanged) | Plain npm proof lane, declared as an inventory entry but **not routed** for `src-ui` changes as of archive#2376, until it has executable assertions. |
+| `runtime-contracts` — `proof:runtime-contracts` | move-to-test / advisory (unchanged) | Lane remains declared as an advisory inventory entry but is **not routed** as of archive#2376 because it has no executable assertions. `connected-agents` (`npm run test:connected-agents`) alone remains routed for `src-server` changes as the behavioral replacement proof. Route selection — previously proven by a `scripts/veritas-report.mjs` unit test — is now owned by the repo-map `evidenceCheckRoutes` and protected by `scripts/__tests__/veritas-repo-map.test.ts`. |
 | `product-route-and-schema-behavior` | move-to-test (unchanged) | Covered by `verify:static` (Vitest/tsc/biome); inventoried with `evidenceCheckId: static-verification`. No Veritas-side assertion. |
 | `retired-surfaces` — `proof:retired-surfaces` | candidate (unchanged) | Plain npm proof lane, declared as evidence check, not routed by default. Expiry trigger unchanged (three clean releases). |
 | `refactor-shape-tombstones` — `proof:migration-tombstones` | retire (in progress) | Advisory lane retained for the retirement window; remove when a tombstone fails without a user-visible regression. |

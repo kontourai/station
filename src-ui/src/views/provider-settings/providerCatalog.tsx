@@ -237,12 +237,6 @@ export const MODEL_PROVIDER_CHOICES: ModelProviderChoice[] = [
   },
 ];
 
-export function findModelProviderChoice(
-  id: string | null,
-): ModelProviderChoice | undefined {
-  return MODEL_PROVIDER_CHOICES.find((choice) => choice.id === id);
-}
-
 export type ProviderReadiness =
   | 'Ready'
   | 'Sign in required'

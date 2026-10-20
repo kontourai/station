@@ -48,7 +48,9 @@ shape is no longer accepted by the installer or manifest CLI.
 [release-manifest.mjs](../../packages/shared/src/release-manifest.mjs) and
 [portable-server-targets.mjs](../../packages/shared/src/portable-server-targets.mjs)
 own the platform format and target vocabulary. `assemble` checks descriptor
-identity, common Node version and required target coverage; when an archive sits
+identity, a common Node version equal to the pin in
+[`config/portable-server-node-runtime.json`](../../config/portable-server-node-runtime.json),
+and required target coverage; when an archive sits
 beside its descriptor, it also checks those bytes. A descriptor without that
 archive is not a download/readback receipt.
 

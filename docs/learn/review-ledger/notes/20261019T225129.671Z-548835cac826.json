@@ -1,0 +1,7 @@
+{
+  "revision": "f9c04d5a33046dce1fbb465644b23deaa5386729",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the Activity details tail-follow claim against src-ui/src/components/session-detail/useSessionTranscriptScroll.ts and src-ui/src/__tests__/session-follow-reader.browser.test.tsx at f9c04d5a33046dce1fbb465644b23deaa5386729, with caller routing checked in SessionTranscript.tsx and AttachedSessionDetail.tsx. Accepting a positive one-pixel downward step retains the existing tail, growth-window and native-anchoring checks, so the documented latest/paused/Jump to latest contract remains accurate and needs no prose change. The deterministic Chromium regression failed the original hook with a 20 px gap; the fixed suite passed 29/29 and the 14-worker loaded batch passed 30/30 ArrowDown trials. Committed-clean ArrowDown resume fault injection failed both ArrowDown tests for the expected gap and visible Jump control; byte-identical restoration passed 29/29. This note reviews only the transcript-follow claim and these changed inputs, not unrelated Board behavior or native-device delivery.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/session-follow-reader.browser.test.tsx","src-ui/src/components/session-detail/useSessionTranscriptScroll.ts"]}
+  ]
+}
