@@ -1106,7 +1106,21 @@
 
     "src-server/tools/station-control-device-tools.ts",
 
-    "packages/telemetry-broker/src/client-address.ts"
+    "packages/telemetry-broker/src/client-address.ts",
+
+    "src-ui/src/lib/color-theme-catalog.ts",
+
+    "src-ui/src/lib/color-themes.ts",
+
+    "src-ui/src/lib/color-theme-apply.ts",
+
+    "src-ui/src/lib/color-theme-css.ts",
+
+    "scripts/gen-color-themes.ts",
+
+    "src-ui/src/lib/color-theme-selection.ts",
+
+    "src-ui/src/lib/appearance-cache.ts"
   ],
 
   "checks": [

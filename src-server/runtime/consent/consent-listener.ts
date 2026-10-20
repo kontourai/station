@@ -42,7 +42,8 @@
  * ALLOWED_ORIGINS — that would make consent pages trusted callers of the
  * whole API.
  */
-import { serve } from '@hono/node-server';
+import type { Server } from 'node:http';
+import { createAdaptorServer } from '@hono/node-server';
 import { Hono } from 'hono';
 import {
   assertConsentListenerRouteCoverage,
@@ -63,6 +64,10 @@ import { consentDecisionOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
 import { parseDeviceSessionCookie } from '../bootstrap/runtime-http.js';
+import {
+  closeStableListener,
+  listenerLink,
+} from '../bootstrap/supervisor-link.js';
 import { registerOperatorPasskeyEnrollmentRoutes } from './operator-passkey-enrollment-routes.js';
 
 const CONSENT_SESSION_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -574,49 +579,31 @@ export async function startConsentListener(opts: {
   host?: string;
   logger?: Logger;
 }): Promise<ConsentListenerStart> {
-  return new Promise((resolve) => {
-    let settled = false;
-    try {
-      const server = serve(
-        {
-          fetch: opts.app.fetch,
-          port: opts.port,
-          ...(opts.host ? { hostname: opts.host } : {}),
-        },
-        (info) => {
-          if (settled) return;
-          settled = true;
-          resolve({
-            status: 'listening',
-            listener: {
-              port: info.port,
-              close: () =>
-                new Promise<void>((done) => {
-                  server.close(() => done());
-                }),
-            },
-          });
-        },
-      );
-      (server as { on?: (e: string, cb: (err: unknown) => void) => void }).on?.(
-        'error',
-        (error) => {
-          if (settled) return;
-          settled = true;
-          resolve({
-            status: 'unavailable',
-            reason: `The consent listener failed to bind port ${opts.port}: ${sanitizedTransportError(error).message}`,
-          });
-        },
-      );
-    } catch (error) {
-      if (!settled) {
-        settled = true;
-        resolve({
-          status: 'unavailable',
-          reason: `The consent listener failed to start: ${sanitizedTransportError(error).message}`,
-        });
-      }
-    }
-  });
+  let server: Server;
+  try {
+    server = createAdaptorServer({
+      fetch: opts.app.fetch,
+      ...(opts.host ? { hostname: opts.host } : {}),
+    }) as Server;
+  } catch (error) {
+    return {
+      status: 'unavailable',
+      reason: `The consent listener failed to start: ${sanitizedTransportError(error).message}`,
+    };
+  }
+  try {
+    const { port } = await listenerLink().listen('consent', server, {
+      port: opts.port,
+      ...(opts.host ? { host: opts.host } : {}),
+    });
+    return {
+      status: 'listening',
+      listener: { port, close: () => closeStableListener(server) },
+    };
+  } catch (error) {
+    return {
+      status: 'unavailable',
+      reason: `The consent listener failed to bind port ${opts.port}: ${sanitizedTransportError(error).message}`,
+    };
+  }
 }

@@ -109,6 +109,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // Reads identity/config files created in isolated Station temp homes, never
   // repository source. Direct telemetry imports own changed-test selection.
   'src-server/__tests__/telemetry.test.ts',
+  // Reads the supervisor control token from its isolated temp home; its built
+  // bundles are children, not imports. The supervisor-link and protocol
+  // imports select it for changes.
+  'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
   // Reads back the launch record its fake OpenCode engine writes into a temp
   // directory (#3922), never repository source. Its imports of the approval
   // mapping and ACP adapter select it for changes.
@@ -532,6 +536,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
 > = Object.freeze({
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts':
     'walks its own fixture directory',
+  'src-ui/src/__tests__/color-theme-artifacts.test.ts':
+    'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
   'scripts/__tests__/ci-event-environment.test.ts':

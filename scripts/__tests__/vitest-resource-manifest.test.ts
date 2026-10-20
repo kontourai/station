@@ -5,12 +5,18 @@ import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { BaseSequencer } from 'vitest/node';
 import config from '../../vitest.config';
-import { PROCESS_HEAVY_MAX_WORKERS } from '../run-vitest-corpus.mjs';
+import {
+  buildVitestCommand,
+  ORDINARY_SHARD_DESCRIPTORS,
+  PROCESS_HEAVY_MAX_WORKERS,
+} from '../run-vitest-corpus.mjs';
 import {
   assertOrdinaryVitestSelection,
+  assertWindowsCommandLineFits,
   buildVitestResourceGroups,
   COORDINATOR_EXCLUSIVE_VITEST_FILES,
   CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES,
+  compactExactPaths,
   DOGFOOD_RECONCILE_PREFIX,
   discoverVitestFiles,
   discoverVitestResourceGroups,
@@ -24,7 +30,9 @@ import {
   QUARANTINED_VITEST_FILES,
   quarantinedVitestFiles,
   SHARED_OUTPUT_VITEST_FILES,
+  VITEST_RESOURCE_MANIFEST,
   vitestQuarantineErrors,
+  WINDOWS_COMMAND_LINE_LIMIT,
 } from '../vitest-resource-manifest.mjs';
 
 const temporaryRoots: string[] = [];
@@ -81,6 +89,18 @@ beforeAll(() => {
   assertOrdinaryVitestSelection(groups);
   repositoryDiscovery = Object.freeze({ files, groups });
 }, 70_000);
+
+/** The ordinary group's command as the runner builds it, at worst-case paths. */
+function worstCaseOrdinaryCommand(excludes: readonly string[]): string[] {
+  const longPath = `C:\\${'x'.repeat(256)}`;
+  const shard = ORDINARY_SHARD_DESCRIPTORS.at(-1);
+  if (!shard) throw new Error('no ordinary shard');
+  return buildVitestCommand({ ...shard, noFileParallelism: true }, ['x'], {
+    root: longPath,
+    ordinaryExcludes: excludes,
+    coverageDirectory: longPath,
+  });
+}
 
 describe('Vitest resource manifest', () => {
   it('partitions Vitest discovery exactly once with no omitted files', () => {
@@ -310,15 +330,50 @@ describe('Vitest resource manifest', () => {
     expect(excludes).toContain(`${DOGFOOD_RECONCILE_PREFIX}*.test.ts`);
     expect(excludes).toContain(`${DOGFOOD_RECONCILE_PREFIX}/**`);
     expect(assertOrdinaryVitestSelection(groups)).toEqual(groups.ordinary);
-    const argv = [
-      process.execPath,
-      'node_modules/vitest/vitest.mjs',
-      'run',
-      '--maxWorkers=4',
-      ...excludes.map((pattern) => `--exclude=${pattern}`),
-    ].join('\0');
-    expect(Buffer.byteLength(argv)).toBeLessThan(32_767);
+    // The command the runner actually builds, with worst-case (MAX_PATH)
+    // root, coverage directory, and node paths rather than this host's.
+    expect(WINDOWS_COMMAND_LINE_LIMIT).toBe(32_767);
+    expect(
+      assertWindowsCommandLineFits(worstCaseOrdinaryCommand(excludes)),
+    ).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT);
   }, 70_000);
+
+  it('refuses an ordinary command line that could exceed the Windows limit', () => {
+    // One file per directory compacts to nothing: an oversized exclusion.
+    const oversized = Array.from(
+      { length: 700 },
+      (_, index) => `src-server/oversized-${index}/__tests__/a.test.ts`,
+    );
+    const excludes = ordinaryVitestExcludes({
+      ...VITEST_RESOURCE_MANIFEST,
+      processHeavy: {
+        ...VITEST_RESOURCE_MANIFEST.processHeavy,
+        files: [...VITEST_RESOURCE_MANIFEST.processHeavy.files, ...oversized],
+      },
+    });
+    expect(() =>
+      assertWindowsCommandLineFits(worstCaseOrdinaryCommand(excludes)),
+    ).toThrow(/over the Windows limit of 32767/);
+  });
+
+  it('compacts exact paths into exact per-directory alternations', () => {
+    expect(
+      compactExactPaths([
+        'a/__tests__/y.test.ts',
+        'a/__tests__/x.test.ts',
+        'b/z.test.ts',
+        'c/odd,name.test.ts',
+        'a/__tests__/x.test.ts',
+        // Inside braces, `..` reads as a range.
+        'a/__tests__/v1..2.test.ts',
+      ]),
+    ).toEqual([
+      'a/__tests__/{x.test.ts,y.test.ts}',
+      'b/z.test.ts',
+      'a/__tests__/v1..2.test.ts',
+      'c/odd,name.test.ts',
+    ]);
+  });
 
   it('uses Vitest configuration to exclude sibling worktrees from discovery', () => {
     expect((config.test as { exclude?: string[] }).exclude).toContain(

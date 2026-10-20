@@ -1,4 +1,5 @@
 import { SERVICE_LAUNCHER_ENV } from '@kontourai/station-shared/service-launcher-protocol';
+import { SUPERVISOR_ENV } from '@kontourai/station-supervisor/protocol';
 import { INTERNAL_API_TOKEN_ENV } from './internal-api-token.js';
 
 /**
@@ -28,8 +29,13 @@ export const BOOT_INTERNAL_SECRET_ENV_KEYS = [
  */
 const SUPERVISOR_CHANNEL_ENV_KEYS = [
   'STATION_STDOUT_LOGS',
-  'STATION_SUPERVISOR_PID',
+  SUPERVISOR_ENV.pid,
   'STATION_SUPERVISOR_BIRTH',
+  // The process supervisor's generation markers. A Station started from a
+  // terminal or engine that inherited them would believe it was a forked
+  // generation, and refuse to start without the IPC channel it never had.
+  SUPERVISOR_ENV.ipc,
+  SUPERVISOR_ENV.generation,
   'STATION_SERVICE_MANAGED',
   SERVICE_LAUNCHER_ENV,
 ] as const;

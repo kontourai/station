@@ -7,6 +7,12 @@ interface AuthorityPersistenceContextValue {
   /** Verified durable namespace; null while current authority is unverified. */
   namespace: string | null;
   observation: AuthorityObservation | null;
+  /**
+   * The Station refused this credential (401): a definite "no person", unlike
+   * the other 'unavailable' states (no connection, a native relay account not
+   * ready yet). Absent means false.
+   */
+  refused?: boolean;
 }
 
 export const AuthorityPersistenceContext =

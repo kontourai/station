@@ -10,6 +10,7 @@
  * Environment:
  *   FAKE_CORE_PORT                  port the first generation binds (required)
  *   FAKE_CORE_NEVER_READY=1         park and accept promote, but never listen or report ready
+ *   FAKE_CORE_SERVE_WITHOUT_READY=1 adopt and serve the held listener, but never report ready
  *   FAKE_CORE_EXIT_AFTER_PROMOTE=1  exit(1) on promote
  *   FAKE_CORE_NO_ADOPT=1            ignore adopted handles and bind FAKE_CORE_PORT itself
  *   FAKE_CORE_VOICE_SESSIONS=<n>    report n live voice sessions while draining (never ends them)
@@ -80,6 +81,7 @@ const server = http.createServer((req, res) => {
         generation,
         pid: process.pid,
         entry: process.argv[1],
+        inheritedBirth: process.env.STATION_SUPERVISOR_BIRTH ?? null,
       }),
     );
     return;
@@ -177,6 +179,11 @@ process.on(
         if (message.name !== 'api' || !expected.includes('api')) return;
         // A real core only listens once boot is complete; a hung boot never does.
         if (process.env.FAKE_CORE_NEVER_READY === '1') return;
+        if (process.env.FAKE_CORE_SERVE_WITHOUT_READY === '1') {
+          // Serving clients already, as a real core does well before ready.
+          server.listen(/** @type {any} */ (handle));
+          return;
+        }
         if (process.env.FAKE_CORE_NO_ADOPT === '1') {
           server.listen(port, host, reportReady);
           return;

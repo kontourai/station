@@ -49,6 +49,13 @@ import {
 } from '../regions/region-arrangement-record';
 import { isRecord } from '../utils/isRecord';
 import { applyAccountPreferencePatch } from './account-preference-values';
+import {
+  APPEARANCE_KEYS,
+  type Appearance,
+  type AppearanceSource,
+  bootAppearanceFrom,
+  readAppearanceCache,
+} from './appearance-cache';
 import { parseCodingSessionPanelsRecord } from './coding-panels-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
@@ -402,17 +409,30 @@ function validateImportedValue<K extends keyof DeviceSettings>(
         : { valid: false };
     case 'string':
       if (candidate === null) {
-        // `accentColor` and `chatDockProjectSlug` are the nullable
-        // string-kind device settings — `null` is each one's legitimate
-        // "no override"/"no project bound" value (archive#4525).
-        return definition.key === 'accentColor' ||
-          definition.key === 'chatDockProjectSlug'
+        // A string-kind setting whose default is `null` is nullable, and
+        // `null` is its legitimate unset value: `accentColor` ("no
+        // override"), `chatDockProjectSlug` ("no project bound",
+        // archive#4525), and the color-theme flavor and accent ("the
+        // family default"). Derived from the registry rather than listed
+        // here, so a new nullable setting cannot be forgotten.
+        return definition.defaultValue === null
           ? { valid: true, value: null as DeviceSettings[K] }
           : { valid: false };
       }
-      return typeof candidate === 'string'
-        ? { valid: true, value: candidate as DeviceSettings[K] }
-        : { valid: false };
+      // The descriptor's bounds are part of what an import must satisfy;
+      // the color-theme ids share the account server's pattern, so an
+      // imported value is never one that fails the whole account patch.
+      if (
+        typeof candidate !== 'string' ||
+        (descriptor.minLength !== undefined &&
+          candidate.length < descriptor.minLength) ||
+        (descriptor.maxLength !== undefined &&
+          candidate.length > descriptor.maxLength) ||
+        (descriptor.pattern !== undefined &&
+          !new RegExp(descriptor.pattern).test(candidate))
+      )
+        return { valid: false };
+      return { valid: true, value: candidate as DeviceSettings[K] };
     case 'number': {
       if (candidate === null) {
         // `chatFontSize` is the one nullable number-kind device setting —
@@ -688,12 +708,32 @@ class DeviceSettingsStore {
         values: AccountPreferences | undefined;
         write: (patch: AccountPreferencesPatch) => void;
         writable: boolean;
+        /** A definite no-person answer arrived while bound: hold nothing. */
+        released: boolean;
       }
     | undefined;
+  /**
+   * The account whose binding ended released, for a re-bind in the same
+   * microtask (the boundary's effect cleanup and re-run happen in one
+   * synchronous React commit): it inherits the release. Cleared in a
+   * microtask, so a later sign-in holds again.
+   */
+  private releasedRebind: { owner: string | undefined } | undefined;
   private envelope: DeviceSettingsEnvelope;
   private snapshot: DeviceSettings;
   private listeners = new Set<Listener>();
   private hydratedState: boolean;
+  /**
+   * The account appearance this device last rendered, in force until this
+   * page knows whose appearance applies (lib/appearance-cache.ts).
+   */
+  private bootAppearance: Appearance | null = null;
+  /**
+   * Whose appearance `bootAppearance` holds when the account binding set it
+   * (its authority namespace); `null` for the startup cache, which is per
+   * origin. A binding for a different namespace releases a held appearance.
+   */
+  private bootAppearanceOwner: string | null = null;
 
   constructor() {
     // Hydration is synchronous in this environment (localStorage reads are
@@ -704,6 +744,7 @@ class DeviceSettingsStore {
     // through without changing the public shape.
     this.hydratedState = false;
     this.envelope = this.loadOrMigrate();
+    this.bootAppearance = bootAppearanceFrom(readAppearanceCache());
     this.snapshot = this.resolve();
     this.hydratedState = true;
 
@@ -851,6 +892,8 @@ class DeviceSettingsStore {
       }
       result.featureSettings = features;
     }
+    if (!this.account?.values && this.bootAppearance)
+      for (const key of APPEARANCE_KEYS) result[key] = this.bootAppearance[key];
     return result as unknown as DeviceSettings;
   }
 
@@ -912,6 +955,8 @@ class DeviceSettingsStore {
    */
   reloadFromStorage = (): void => {
     this.envelope = this.loadOrMigrate();
+    this.bootAppearance = bootAppearanceFrom(readAppearanceCache());
+    this.bootAppearanceOwner = null;
     this.snapshot = this.resolve();
     this.notify();
   };
@@ -929,18 +974,93 @@ class DeviceSettingsStore {
 
   getEnvelope = (): DeviceSettingsEnvelope => this.envelope;
 
+  /** Where the resolved appearance comes from right now. */
+  getAppearanceSource = (): AppearanceSource | 'cache' =>
+    this.account?.values ? 'account' : this.bootAppearance ? 'cache' : 'device';
+
+  /**
+   * The account boundary found no person (or the device's own appearance was
+   * chosen): stop showing the cached account appearance.
+   */
+  releaseBootAppearance = (): void => {
+    // Signed out while the account boundary is still mounted (an in-app
+    // sign-out): when it unmounts it must not hold this person's appearance.
+    if (this.account) this.account.released = true;
+    if (!this.bootAppearance) return;
+    this.bootAppearance = null;
+    this.bootAppearanceOwner = null;
+    this.snapshot = this.resolve();
+    this.notify();
+  };
+
+  /** A device write to an appearance key is a choice: the cache yields to it. */
+  private yieldBootAppearance(keys: readonly string[]): void {
+    if (
+      this.bootAppearance &&
+      keys.some((key) => (APPEARANCE_KEYS as readonly string[]).includes(key))
+    ) {
+      this.bootAppearance = null;
+      this.bootAppearanceOwner = null;
+    }
+  }
+
   /** Account values never enter the origin-wide device envelope. */
   bindAccountPreferences = (
     values: AccountPreferences | undefined,
     write: (patch: AccountPreferencesPatch) => void,
     writable = true,
+    owner?: string,
   ): (() => void) => {
-    const binding = { values, write, writable };
+    const binding = {
+      values,
+      write,
+      writable,
+      released:
+        this.releasedRebind !== undefined &&
+        this.releasedRebind.owner === owner,
+    };
     this.account = binding;
+    // An appearance held for one account never stands in for another.
+    if (
+      this.bootAppearanceOwner !== null &&
+      owner !== this.bootAppearanceOwner
+    ) {
+      this.bootAppearance = null;
+      this.bootAppearanceOwner = null;
+    }
+    // The account answered: its values, not the cache, are the appearance
+    // from here on, including after this binding ends.
+    if (values) {
+      this.bootAppearance = null;
+      this.bootAppearanceOwner = null;
+    }
     this.snapshot = this.resolve();
     this.notify();
     return () => {
       if (this.account !== binding) return;
+      // The binding ends whenever the account boundary unmounts: sign-out,
+      // but also an authority re-check after a dropped connection, which
+      // remounts it moments later. Neither is a definite "no person" by
+      // itself, so the account's appearance is held, exactly like the boot
+      // cache, until the account answers again, the device's own appearance
+      // is chosen, or a definite no-person answer releases it.
+      if (binding.released) {
+        const marker = { owner };
+        this.releasedRebind = marker;
+        queueMicrotask(() => {
+          if (this.releasedRebind === marker) this.releasedRebind = undefined;
+        });
+      } else if (binding.values) {
+        const { theme, colorTheme, colorThemeFlavor, colorThemeAccent } =
+          this.snapshot;
+        this.bootAppearance = {
+          theme,
+          colorTheme,
+          colorThemeFlavor,
+          colorThemeAccent,
+        };
+        this.bootAppearanceOwner = owner ?? null;
+      }
       this.account = undefined;
       this.snapshot = this.resolve();
       this.notify();
@@ -977,6 +1097,7 @@ class DeviceSettingsStore {
     }
     const laddered = runMigrationLadder(input);
     const { values, droppedKeys } = sanitizeImportedValues(laddered.values);
+    this.yieldBootAppearance(Object.keys(values));
     this.applyEnvelope({ version: CURRENT_ENVELOPE_VERSION, values });
     return { droppedKeys };
   };
@@ -996,6 +1117,7 @@ class DeviceSettingsStore {
       partial = device;
     }
     const fresh = this.readPersistedEnvelope();
+    this.yieldBootAppearance(Object.keys(partial));
     this.applyEnvelope({
       ...fresh,
       values: { ...fresh.values, ...partial },
@@ -1036,6 +1158,15 @@ class DeviceSettingsStore {
     }
     const fresh = this.readPersistedEnvelope();
     const currentValue = this.resolveValue(fresh, key);
+    if (this.bootAppearance && APPEARANCE_KEYS.some((k) => k === key)) {
+      // Even an unchanged device value is chosen over the cached one.
+      this.yieldBootAppearance([key]);
+      if (valuesEqual(currentValue, value)) {
+        this.snapshot = this.resolve();
+        this.notify();
+        return;
+      }
+    }
     if (valuesEqual(currentValue, value)) return;
 
     this.applyEnvelope({
@@ -1071,6 +1202,14 @@ class DeviceSettingsStore {
       );
     }
     const fresh = this.readPersistedEnvelope();
+    if (
+      this.bootAppearance &&
+      keys.some((key) => APPEARANCE_KEYS.some((k) => k === key))
+    ) {
+      this.yieldBootAppearance(keys);
+      this.snapshot = this.resolve();
+      this.notify();
+    }
     const stored = keys.filter((key) => Object.hasOwn(fresh.values, key));
     if (stored.length === 0) return;
     const nextValues = { ...fresh.values };
@@ -1092,7 +1231,12 @@ export const deviceSettingsStore = new DeviceSettingsStore();
 export function resolveBootTheme(
   envelopeRaw: string | null,
   priorRaw: string | null,
+  appearanceRaw: string | null = null,
 ): 'light' | 'dark' {
+  // The account appearance this device last rendered wins, as in
+  // startup-theme.js (lib/appearance-cache.ts).
+  const cached = bootAppearanceFrom(appearanceRaw);
+  if (cached) return cached.theme;
   if (envelopeRaw !== null) {
     try {
       const parsed = JSON.parse(envelopeRaw);

@@ -9,7 +9,7 @@ import { connectControl } from '../control-client.ts';
 import type { Clock } from '../generation-manager.ts';
 import { resolveControlEndpoint } from '../protocol.ts';
 import { runSupervisor } from '../supervisor.ts';
-import { FAKE_CORE, freePort } from './harness.ts';
+import { FAKE_CORE, freePort, trackHome } from './harness.ts';
 
 const makeTempDir = trackTempDirs();
 const savedPort = process.env.FAKE_CORE_PORT;
@@ -53,6 +53,7 @@ describe('embedded supervisor', () => {
     });
     void runSupervisor({
       entry: FAKE_CORE,
+      home: trackHome(home),
       buildRoot: dirname(FAKE_CORE),
       endpoint,
       instance: 'embed',
