@@ -121,7 +121,9 @@ function rootsConfined(
  * confined session); a repository's checked-in configuration can too, with
  * the trust its `.codex` already has. A writable root outside the workspace
  * still shows in the reported `writableRoots` and is refused there. The
- * agent cannot add one: every `.codex` is denied to it.
+ * agent cannot write a `.codex` under the workspace roots; one it stages in
+ * temp and moves in is refused before the next start
+ * (`findUnaccountedCodexConfig`).
  *
  * `sandbox_workspace_write.writable_roots` is pinned to none for a thread
  * that is not under the profile (a `read-only` review start, or a Codex

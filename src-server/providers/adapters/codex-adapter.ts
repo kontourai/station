@@ -41,6 +41,7 @@ import { validateInputRequestContent } from '@kontourai/station-shared/input-req
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   assertRequiredConfinementObserved,
+  ConfinementRefusedError,
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
@@ -156,6 +157,7 @@ import {
 } from './codex-mcp-passthrough.js';
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
+import { findUnaccountedCodexConfig } from './codex-project-config-provenance.js';
 import { codexAnswers, codexInputRequest } from './harness-questions.js';
 import {
   nativeResumeBindingKey,
@@ -1776,6 +1778,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
+    // #3800: refused before Codex is spawned, since a project `mcp_servers`
+    // command runs outside the sandbox at thread start (start, resume, fork
+    // and respawn all come through here).
+    if (input.confinement !== 'host' && input.cwd) {
+      const unaccounted = findUnaccountedCodexConfig(input.cwd, {
+        codexHome: process.env.CODEX_HOME,
+      });
+      if (unaccounted)
+        throw new ConfinementRefusedError(
+          'confinement_workspace_incompatible',
+          `This codex session was not started: ${unaccounted} is Codex project configuration its repository does not account for (not committed, changed since HEAD, or inside a nested or missing repository), and a session that does not run as the operator would load it. Commit or remove it, or run the session as the operator (a host session).`,
+        );
+    }
     const startedAt = Date.now();
     const resumeRecord =
       input.resumeCursor &&

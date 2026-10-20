@@ -824,7 +824,12 @@ other sessions there would load. It ignores every
 your own. It also ignores `sandbox_workspace_write.network_access`: to give
 these sessions network, set `[permissions.station-workspace.network]
 enabled = true` in your own Codex configuration. A `.codex` the repository
-already contains still applies, as the top-level one does. If Codex does not
+has committed still applies, as the top-level one does. A `.codex` it does
+not account for (uncommitted, changed since the last commit, inside a nested
+repository, or in a folder outside any repository), anywhere from the
+repository root down to the session's folder, stops the session from
+starting, with the directory named: commit or remove it, or run the session
+as `host`. If Codex does not
 report the profile applied (a Codex version without permission profiles),
 a session that must be confined is refused, and any other is recorded as
 `configured-but-failed`. On Linux, Codex cannot deny a `.codex` the session

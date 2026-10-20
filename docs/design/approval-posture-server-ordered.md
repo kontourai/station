@@ -865,12 +865,44 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
     An operator gives a confined session network with
     `[permissions.station-workspace.network] enabled = true` in their own
     Codex configuration (tables merge across layers).
-  - **Checked-in configuration is still honoured.** A `.codex` the
-    repository already contains, at any depth, is repository content with
-    the same trust as the top-level one: its `mcp_servers` still run, and its
-    keys merge into the profile. A writable root it adds outside the
-    workspace still shows in `writableRoots` and is refused above. What the
-    profile closes is the agent planting or changing one.
+  - **Planted through temp: refused at start.** The deny rules cover the
+    workspace roots only; Codex refuses glob rules under `/tmp` and
+    `TMPDIR`, which stay writable, and moving an ancestor of a `.codex` is
+    not a write to it. An agent can therefore build
+    `$TMPDIR/x/pkg/.codex/config.toml` and move `pkg` into its workspace,
+    and a later session started in `pkg` would run its `mcp_servers` command
+    outside the sandbox (EXECUTED, codex-cli 0.162.1). Before spawning Codex
+    for any session not started as `host` (start, resume, fork, adoption and
+    respawn all pass through `startReservedSession`), Station checks every
+    directory from the outermost Git work tree containing the cwd down to
+    the cwd, on the lexical and the resolved path
+    ([codex-project-config-provenance.ts](../../src-server/providers/adapters/codex-project-config-provenance.ts)).
+    A `.codex` there must be a real directory inside that outermost
+    repository whose every file is a `HEAD` blob with the same bytes (Git is
+    asked only for `ls-tree` and `hash-object --no-filters`, which run no
+    hooks or filters). Otherwise the start is refused with
+    `confinement_workspace_incompatible`, naming the directory, whether or
+    not the session requires confinement, since the command would run
+    unconfined either way.
+    - An uncommitted `.codex` at the repository root is refused too: Station
+      cannot tell an operator's local file from one an agent placed. Commit
+      it, or run the session as `host`. The user's `~/.codex` and
+      `CODEX_HOME` are user configuration and are skipped.
+    - A `.codex` inside a nested repository (including a submodule) is
+      refused: a planted repository is nested by construction, so only the
+      outermost one is trusted.
+    - **Residual:** a workspace that is not inside any Git repository has no
+      such anchor, so an agent that moves in a whole committed repository is
+      not told apart from a real one. Closing it needs the Project root from
+      the server, which the start input does not carry.
+  - **Checked-in configuration is still honoured.** A committed `.codex`, at
+    any depth, is repository content with the same trust as the top-level
+    one: its `mcp_servers` still run, and its keys merge into the profile. A
+    writable root it adds outside the workspace still shows in
+    `writableRoots` and is refused above. A checked-in root `.codex` can also
+    grant writes inside the workspace that `:workspace` keeps read-only, such
+    as `.git/hooks`; that is accepted as trusted repository content. What
+    Station closes is the agent planting or changing one.
   - **Residual: Linux.** Outside macOS, Codex expands a deny glob from a
     snapshot of existing paths before the sandbox starts. A `.codex` the
     agent creates later is not denied there, so the nested-write path stays
@@ -879,8 +911,8 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
     file was refused). The live probe runs only on macOS and warns
     elsewhere.
   - Every other project key from a checked-in file still applies, including
-    network access, which Station does not judge (Seatbelt leaves the
-    network open too). The Seatbelt profile denies every `.codex` (below),
+    network access, which Station does not judge and the posture does not
+    record (unchanged from before; Seatbelt leaves the network open too). The Seatbelt profile denies every `.codex` (below),
     so a confined Claude session cannot plant one either.
 - A required start that is not reported `confined` is refused
   (`confinement_not_observed`). The refusal runs before `session.started` is
