@@ -232,7 +232,11 @@ function boundPort(server: NetServer, fallback: number): number {
  * Closes a stable listener on shutdown without throwing or hanging when it is
  * already closed, as it is after a supervisor drain. A listening server
  * closes as `server.close()` always has; one that no longer listens only has
- * its idle connections closed.
+ * its idle connections closed. Its promise does not wait for a connection
+ * served with `connection.adopt`, which net.Server does not count; a drain
+ * waits for those through the link's own connection set before shutdown
+ * reaches here, but a shutdown without a drain (SIGINT, or the supervisor
+ * gone) does not.
  */
 export function closeStableListener(server: NetServer): Promise<void> {
   if (!server.listening) {
