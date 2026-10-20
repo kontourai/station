@@ -747,6 +747,141 @@ describe('#3163 Claude subagent model and transcript identity', () => {
     });
   });
 
+  test.each([
+    { ordering: 'before start', identity: 'matching', expectedTool: 'Write' },
+    { ordering: 'after start', identity: 'matching', expectedTool: 'Write' },
+    {
+      ordering: 'before resume',
+      identity: 'matching',
+      expectedTool: undefined,
+    },
+    {
+      ordering: 'before start',
+      identity: 'other recipient',
+      expectedTool: undefined,
+    },
+    {
+      ordering: 'before start',
+      identity: 'subagent sender',
+      expectedTool: undefined,
+    },
+    {
+      ordering: 'before start',
+      identity: 'other tool',
+      expectedTool: undefined,
+    },
+    {
+      ordering: 'before start',
+      identity: 'other call',
+      expectedTool: undefined,
+    },
+    { ordering: 'before start', identity: 'absent', expectedTool: undefined },
+  ])(
+    'resumed reply $ordering with $identity resume identity attributes only current-run tools',
+    ({ ordering, identity, expectedTool }) => {
+      const [, innerCall, rerunCall] = spawnCalls();
+      const [, inner, rerun] = expectedChildIds('nested-agent');
+      const { events } = replayClaudeTaskCapture('nested-agent', {
+        rewrite: (lines) => {
+          const resumeAt = lines.findIndex(
+            (line) =>
+              line.message?.type === 'assistant' &&
+              line.message.parent_tool_use_id === null &&
+              line.message.message.content.some(
+                (block) => block.type === 'tool_use' && block.id === rerunCall,
+              ),
+          );
+          const startAt = lines.findIndex(
+            (line) => view(line).tool_use_id === rerunCall,
+          );
+          const reply = lines
+            .slice(startAt + 1)
+            .find(
+              (line) =>
+                line.message?.type === 'assistant' &&
+                line.message.parent_tool_use_id === innerCall,
+            );
+          const resume = lines[resumeAt];
+          if (
+            resume?.message?.type !== 'assistant' ||
+            reply?.message?.type !== 'assistant'
+          )
+            throw new Error('capture has no resume or resumed reply');
+          expect(startAt).toBeGreaterThan(resumeAt);
+          const toolReply = {
+            message: {
+              ...reply.message,
+              message: {
+                ...reply.message.message,
+                model: INNER_MODEL,
+                content: [
+                  {
+                    type: 'tool_use' as const,
+                    id: 'resumed-write',
+                    name: 'Write',
+                    input: {},
+                  },
+                ],
+              },
+            },
+          };
+          const rewritten = lines.slice(0, startAt + 1);
+          rewritten[resumeAt] = {
+            message: {
+              ...resume.message,
+              parent_tool_use_id:
+                identity === 'subagent sender' ? innerCall : null,
+              message: {
+                ...resume.message.message,
+                content:
+                  identity === 'absent'
+                    ? []
+                    : resume.message.message.content.map((block) =>
+                        block.type === 'tool_use'
+                          ? {
+                              ...block,
+                              id:
+                                identity === 'other call'
+                                  ? 'unrelated-resume'
+                                  : block.id,
+                              name:
+                                identity === 'other tool' ? 'Read' : block.name,
+                              input: {
+                                recipient:
+                                  identity === 'other recipient'
+                                    ? 'other-child'
+                                    : inner,
+                              },
+                            }
+                          : block,
+                      ),
+              },
+            },
+          };
+          const insertAt =
+            ordering === 'before resume'
+              ? resumeAt
+              : ordering === 'before start'
+                ? startAt
+                : startAt + 1;
+          rewritten.splice(insertAt, 0, toolReply);
+          return rewritten;
+        },
+      });
+      const items = itemsOf(events);
+      expect(
+        items.find((item) => item.childId === inner)?.latestTool,
+      ).toBeUndefined();
+      const resumed = items.find((item) => item.childId === rerun);
+      expect(resumed?.latestTool).toBe(expectedTool);
+      expect(resumed?.model).toEqual(
+        expectedTool
+          ? { id: INNER_MODEL, source: 'subagent-reply' }
+          : undefined,
+      );
+    },
+  );
+
   test('early tool-only replies retain the last block name through a later model-only reply', () => {
     const [outerCall] = spawnCalls();
     const { events } = replayClaudeTaskCapture('nested-agent', {
