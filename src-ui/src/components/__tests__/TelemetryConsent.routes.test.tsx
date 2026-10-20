@@ -628,9 +628,7 @@ test('an environment-configured additional destination discloses only its host, 
     expect((await service.disclosure()).additionalHost).toBe(
       'receiver.test:8443',
     );
-    expect(screen.getByRole('dialog').textContent).not.toMatch(
-      /private-path/,
-    );
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/private-path/);
     fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
     expect(
       screen.getByRole('region', { name: "What's included" }).textContent,
