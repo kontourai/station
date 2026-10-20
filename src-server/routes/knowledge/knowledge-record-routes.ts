@@ -1,19 +1,18 @@
 /**
  * K5 knowledge-record routes — thin delegations onto the K2 `KnowledgeStoreProvider`
  * seam's per-root adapter (`docs/design/knowledge-foundation.md`'s K2 section;
- * `packages/contracts/src/knowledge-store.ts`'s `KnowledgeStoreAdapter`). This closes
- * one of the two flagged primitive gaps `s203-knowledge-meeting-notes--plan.md`'s
- * Wave 1 Task 2 names: `KnowledgeStoreProvider.adapterFor(rootId)` had NO HTTP route
- * before this file — only root-registry (`knowledge-store-routes.ts`) and
+ * `packages/contracts/src/knowledge-store.ts`'s `KnowledgeStoreAdapter`).
+ * `KnowledgeStoreProvider.adapterFor(rootId)` had NO HTTP route before this
+ * file — only root-registry (`knowledge-store-routes.ts`) and
  * index-rebuild/migrate (`knowledge-index-routes.ts`) routes existed.
  *
- * Scope (Q4 "genuine primitive gap, not scope creep"): this file exposes ONLY the
- * record operations K5's capture+recall flow needs — create, get, listByType, link,
- * and a bulk graph read for the wikilink pane. It deliberately does NOT expose the
+ * Scope: this file exposes ONLY the record operations K5's capture+recall flow
+ * needs — create, get, listByType, link, and a bulk graph read for the
+ * wikilink pane. It deliberately does NOT expose the
  * rest of the adapter's §8 surface over HTTP (`update`/`propose`/`apply`/`reject`/
- * `supersede`/`retire` stay unexposed — nothing in this plan needs them).
+ * `supersede`/`retire` stay unexposed — no caller of these routes needs them).
  *
- * Path-safety (SEC-1, mirroring `knowledge-store-routes.ts`'s `projectSlug` guard and
+ * Path-safety (mirroring `knowledge-store-routes.ts`'s `projectSlug` guard and
  * `knowledge-index-routes.ts`'s `isPlausibleRootId` guard): `rootId` never reaches a
  * filesystem path directly (the store resolves roots by registry id), so it only gets
  * the same defensive shape/length check `knowledge-index-routes.ts` already applies.
@@ -41,12 +40,11 @@
  * `listByType`'s own `KitRecord.links` field (already the same forward-edge data
  * `getLinks(id).forward` would return for that same record) rather than an
  * additional `getLinks` call per record — same data, one read per record instead of
- * two. A Neo4j-connected root's graph read (Wave 1 Task 1's `readGraph`) is
- * deliberately NOT wired in here: that module lives under `src-server/knowledge-store/
- * neo4j-graph-provider.ts`, owned by a different, file-disjoint Wave 1 task — every
- * root this route serves goes through its registered `KnowledgeStoreAdapter` only.
- * Wiring a Neo4j-backed root's graph read through this route is follow-up scope for
- * whichever task lands `runtime-routes.ts`'s final wiring decision, not this file.
+ * two. A Neo4j-connected root's graph read (`readGraph` in `src-server/knowledge-store/
+ * neo4j-graph-provider.ts`) is deliberately NOT wired in here — every root this
+ * route serves goes through its registered `KnowledgeStoreAdapter` only. The
+ * Neo4j-backed read lives in `neo4j-graph-routes.ts`, at the distinct
+ * `/roots/:rootId/graph/neo4j*` sub-path.
  *
  * Error-code honesty: adapter mutation methods throw one of the five
  * `KnowledgeStoreErrorCode`s (`src-server/knowledge-store/errors.ts`) rather than a

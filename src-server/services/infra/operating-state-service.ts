@@ -76,9 +76,9 @@ import {
 import { errorMessage } from '../../utils/error-message.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 
-export const STATION_OPERATING_STATE_PRODUCER_ID = 'station-workflow';
+const STATION_OPERATING_STATE_PRODUCER_ID = 'station-workflow';
 export const STATION_OPERATING_STATE_PRODUCT = 'station';
-export const STATION_OPERATING_STATE_SCOPE_KIND = 'repo';
+const STATION_OPERATING_STATE_SCOPE_KIND = 'repo';
 
 interface OperatingStateLogger {
   warn(message: string, meta?: Record<string, unknown>): void;

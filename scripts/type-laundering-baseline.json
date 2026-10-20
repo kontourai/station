@@ -1239,12 +1239,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/runtime/conversation/fleet-routing-receipt-log.ts",
-      "rule": "as-unknown",
-      "fingerprint": "c0ca896fb3bbfd3adc376ec6c1a7afcb08b76caeb1420a1ca06ad3c290121161",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/runtime/conversation/receipt-chain.ts",
       "rule": "as-unknown",
       "fingerprint": "e001520046e74845a346b40af025b875f3d161492f540568b40a1926ef7454e8",

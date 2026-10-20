@@ -270,6 +270,7 @@
         "docs/reference/verification-receipts.md",
         ".veritas/README.md",
         "docs/guides/documentation.md",
+        "docs/guides/documentation-review-ledger.md",
         "docs/plans/documentation-code-audit.md"
       ],
       "modules": [

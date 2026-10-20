@@ -539,7 +539,7 @@ export function ProviderSettingsView({
       emptyContent={
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/*
-            M2 (delta review round 3): this panel's own "nothing to select"
+            This panel's own "nothing to select"
             label duplicated whichever fact the list pane had already
             stated — "No model connections yet" (listEmptyTitle, when
             llmEmbeddingProviders is empty) or "Nothing in model

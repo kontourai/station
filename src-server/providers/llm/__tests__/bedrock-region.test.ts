@@ -98,7 +98,7 @@ describe('one resolution for the Bedrock region', () => {
   });
 
   it('discards a malformed AWS_REGION rather than passing it on', () => {
-    // Review round 2, HIGH. `BedrockModelCatalog`'s constructor THROWS on a
+    // archive#1557: `BedrockModelCatalog`'s constructor THROWS on a
     // value failing the region grammar, and `runtime-initialize.ts` builds one
     // at boot with no try/catch. Routing the environment into the resolver put
     // an arbitrary user env var on that path for the first time, so

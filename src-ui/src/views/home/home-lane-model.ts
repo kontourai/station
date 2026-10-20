@@ -450,12 +450,6 @@ export function formatWakeTime(wakeAt: number, now: number): string {
   return `in ${days}d`;
 }
 
-// Snooze preset date math (design (b): In 1 hour / This evening / Tomorrow
-// 9am / Next week Mon 9am) lives in `./snooze-presets.ts`, not here. Only
-// the lazily-loaded `SnoozeMenu` needs it (this module is imported
-// eagerly by `useHomeWorkLanes`, so keeping the preset-menu-only code out of
-// it keeps that code out of the entry bundle too).
-
 /** Count actionable members, not only folded roots. */
 export function workAttentionCount(
   items: readonly HomeWorkItem[],

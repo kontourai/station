@@ -716,7 +716,7 @@ export function defaultSelectableManagedRuntimeConnection(
  * One derivation because two surfaces read it for the same session and must
  * not disagree: the composer decides whether to render an approval control
  * from it (`useChatDockViewModel`), and the send path decides whether to put
- * a posture on the wire from it (`useSendMessage`). Round 2 LOW-5 — the
+ * a posture on the wire from it (`useSendMessage`). #2169: the
  * enforcement side read only `chatState.agentConnectionId`, so a chip shown
  * off an OBSERVED binding could sit above a dispatch that carried nothing.
  *
@@ -1003,7 +1003,7 @@ export function resolveSessionExecutionSummary(
  * `snapshotHandlers`).
  *
  * The writers of `orchestrationStatus` this derivation has been checked
- * against, because the distinction is the whole point (round 4 N1). The
+ * against, because the distinction is the whole point (#2169). The
  * field is written from three vocabularies, none of which is
  * `SessionLifecycleState`: `session.state-changed` carries a `SessionState`
  * (`packages/contracts/src/runtime-events.ts`), the connect-time snapshot
@@ -1022,8 +1022,9 @@ export function resolveSessionExecutionSummary(
  * LIVE here regardless: the server decides continuation on the lifecycle
  * state, not this string, and an errored thread can return to idle. Likewise
  * 'aborted': a user pressing Stop leaves the process alive and
- * `orchestrationSessionStarted` untouched. Both were settled in round 3,
- * which re-requested the posture into a session the server merely continues.
+ * `orchestrationSessionStarted` untouched. Both were settled in #2169:
+ * reading them as ended re-requested the posture into a session the server
+ * merely continues.
  *
  * Known gap, tracked in #2168: the snapshot vocabulary's 'dead' and
  * 'closed' fall through both halves below and read live, so a send against
@@ -1051,7 +1052,7 @@ function orchestrationStatusIsSessionSettled(status: string): boolean {
  *
  * Deliberately NOT `orchestrationSessionStarted || currentSessionId`, which
  * was true on two paths where the server really does call `startSession`
- * (round 3 F1): `currentSessionId` outlives the session it names —
+ * (#2169): `currentSessionId` outlives the session it names —
  * `session.exited` writes `orchestrationSessionStarted: false` and leaves the
  * id in place — and `commitConversationOpen` sets BOTH for any
  * `status: 'resolved'` resolution, which means "continuable", not "running"

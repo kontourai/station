@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useRegionModelOptional } from './RegionModelContext';
 
 /**
- * A chat-focus intent's half of the phone layer (review M4): focusing a
+ * A chat-focus intent's half of the phone layer (#2549): focusing a
  * conversation — `focusSession`, `openChatForAgent`, opening one — shows
  * Chat, so a pane open OVER Chat on a phone must get out of the way rather
  * than keep covering the conversation the user just asked for. It leaves the

@@ -1,4 +1,4 @@
-# Scoped answer share permalinks (station#1423)
+# Scoped answer share permalinks (archive#1423)
 
 > **Reading status: current share contract with historical review findings.**
 > [Share routes](../../src-server/routes/share/answer-share-routes.ts),
@@ -11,9 +11,9 @@
 
 > Status: **shipped, v1** — the design contract for `/api/shares`,
 > `/.well-known/station/v1/share/view`, and the standalone `/share` page.
-> Parent: #1391 (per-answer provenance cards). Depends on #1410 (turn
-> provenance envelope), #1424/#1434 (attribution + composition), and #1467's
-> pairing-scope decoupling. Successor: #1392 (Kontour-account identities).
+> Parent: archive#1391 (per-answer provenance cards). Depends on archive#1410 (turn
+> provenance envelope), archive#1424/archive#1434 (attribution + composition), and archive#1467's
+> pairing-scope decoupling. Successor: #580 (Kontour-account identities).
 
 Station's first sharing primitive: an operator shares **one answer**, and the
 recipient gets that answer plus its provenance card, read-only, revocable, and
@@ -35,7 +35,7 @@ would authorize the share *route family* while the record still carried the
 only binding that matters: two mechanisms for one decision, with the weaker one
 being the one a reader sees in a scope string. That is the same
 "the lower tier is the effective one and the higher gate is decorative" failure
-station#1398's security review named (M-4).
+#98's security review named (M-4).
 
 Two further reasons the pairing machinery is the wrong host:
 
@@ -117,8 +117,8 @@ unrevoked, unexpired record, the route serves nothing.
 ## 3. Enumeration posture (the deliberate decision)
 
 Two requirements pull against each other. An honest surface must say "revoked"
-rather than 404 (#1423). A public route must not become an oracle for which
-shares exist (#1467's discipline). The resolution: **possession of the token is
+rather than 404 (archive#1423). A public route must not become an oracle for which
+shares exist (archive#1467's discipline). The resolution: **possession of the token is
 the discriminator, and the record is keyed by the token's digest so the two are
 the same lookup.**
 
@@ -183,7 +183,7 @@ the rest, because the *response* is deliberately uninformative while the
 
 ## 4. Re-applied authorization on every dereference
 
-#1410 R4 requires every dereference to re-apply authorization. A share token
+archive#1410 R4 requires every dereference to re-apply authorization. A share token
 confers no standing on the routes the envelope's references point at, so
 `projectEnvelopeForShareViewer` replaces each unauthorized reference with an
 explicitly named gap before the envelope leaves the server:
@@ -192,7 +192,7 @@ explicitly named gap before the envelope leaves the server:
 | --- | --- | --- |
 | `trustReport` | `GET /api/projects/:slug/trust-bundles/:id` (`orchestration:read`) | restricted |
 | `routingReceipt` | `/monitoring/fleet-routing-receipts` (`access:manage`) | restricted |
-| `sources` | no route exists yet (#1409) | restricted |
+| `sources` | no route exists yet (archive#1409) | restricted |
 
 The reason is a **new** `TurnProvenanceUnavailableReason`,
 `restricted-for-this-viewer`, and that is load-bearing. Reusing
@@ -200,7 +200,7 @@ The reason is a **new** `TurnProvenanceUnavailableReason`,
 captured it, they are simply not authorized. Passing the reference through
 would leak a project slug and bundle id to someone with no standing on that
 project *and* offer a drill-down that can only 403. A named restriction is
-simultaneously the more honest answer and the smaller disclosure — #1409 AC5's
+simultaneously the more honest answer and the smaller disclosure — archive#1409 AC5's
 idiom ("a truthful restricted-source gap with no excerpt leakage").
 
 Two further re-authorizations happen on the same read:
@@ -218,7 +218,7 @@ An already-`unavailable` slot keeps its own reason: "this engine never reported
 it" is a more specific truth than "you may not see it", and it discloses
 nothing.
 
-Refs are location-independent by construction (#1410) — snapshot ids, bundle
+Refs are location-independent by construction (archive#1410) — snapshot ids, bundle
 ids, receipt ids — so the card resolves identically for any viewer; nothing in
 the payload depends on the sharer's local paths.
 
@@ -295,12 +295,12 @@ idempotent and does not move the recorded moment.
 ## 8. Out of scope for v1, and recorded residuals
 
 Out of scope by the issue: multi-turn/session shares, public anonymous links,
-hosted permalink serving (#1393), channel machinery (#1392).
+hosted permalink serving (#94), channel machinery (#580).
 
 Residuals disclosed at merge (the first six are security-review findings
 accepted with rationale rather than fixed in this slice):
 
-- **Historical, resolved by station#2051: `GET /api/shares` previously
+- **Historical, resolved by archive#2051: `GET /api/shares` previously
   disclosed more than "what was already published"** (N-6). A share's `label`
   is operator-authored prose and the fact-of-publication is a relationship
   fact. All share reads now require a credential and `access:manage`; a bare
@@ -315,7 +315,7 @@ accepted with rationale rather than fixed in this slice):
 
 - **Historical, resolved: allow-by-spread in the viewer projection.**
   `projectEnvelopeForShareViewer` now enumerates the forwarded envelope fields.
-  The later #1598 note below records that correction; newly added fields are
+  The later archive#1598 note below records that correction; newly added fields are
   not automatically disclosed to a share holder.
 - **The share recipient downloads the whole operator app** (L-2). Only the
   share VIEW is lazy; `main.tsx` still statically imports the app tree. No
@@ -338,7 +338,7 @@ Scope residuals:
 - **Serving the SPA to a remote recipient is not solved here.** The share view
   route is public, but Station's static asset serving is outside this change; a
   recipient must be able to load `index.html` from the Station. Hosted serving
-  is #1393's job.
+  is #94's job.
 - **Answer text renders as plain paragraphs**, not markdown. A share is a
   read-only excerpt surface and pulling the markdown renderer into a
   standalone, unauthenticated page is a larger decision (sanitisation surface,
@@ -351,11 +351,11 @@ Scope residuals:
   sharer. Hosted minting returns 409 until tenant-bound viewer authority is
   implemented; it must not be advertised as working hosted sharing.
 - **v2 is the `AnswerShareRefAuthorization` seam.** Kontour-account identities
-  (#1392) will answer the three reference questions independently — a viewer
+  (#580) will answer the three reference questions independently — a viewer
   who is a member of the project may well open its trust report while still
   having no standing on this Station's fleet receipts.
 
-### 8.1 station#1598 — the recorded channel binding
+### 8.1 archive#1598 — the recorded channel binding
 
 > The absence claims in this historical residual concern the answer-share
 > observer/history-resolver seam. [Personal Task-room history](project-task-room-history.md)
@@ -368,7 +368,7 @@ at mint time, plus a `contentDigest` over the served blocks. Residuals this
 slice adds or touches:
 
 - **The `committed` branch has no production producer, by design.** Station has
-  no channel log (slice 2 of station#1484). The mint path can therefore only
+  no channel log (slice 2 of archive#1484). The mint path can therefore only
   affirmatively observe `{ binding: 'none' }`, and a `committed` record computes
   `unavailable: 'history-not-served'`. That is not a gap being papered over: it
   is the cleanest available proof of the anti-echo requirement, because
@@ -391,7 +391,7 @@ slice adds or touches:
   is deliberately total — it returns a binding or it throws, and a throw fails
   the mint — because there is no stored state for "I could not tell" and an
   absent field already means something else.
-- **A pre-#1598 payload gains one additive field.** Its `channel` reads
+- **A pre-archive#1598 payload gains one additive field.** Its `channel` reads
   `{status: 'unavailable', reason: 'predates-channel-addressing'}` and its
   `schemaVersion` stays `1`. Response bytes for legacy records are therefore
   *not* byte-identical; what is preserved is the resolution path, the version,

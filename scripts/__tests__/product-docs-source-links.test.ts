@@ -214,7 +214,7 @@ describe('public product documentation source links', () => {
       ...markdownFilesUnder('docs/architecture'),
       ...markdownFilesUnder('docs/patterns'),
       'docs/architecture.md',
-      'docs/reference/api-summary.md',
+      'docs/reference/endpoints.md',
       'docs/reference/session-api.md',
     ];
     const retiredPhrases = [
