@@ -8,9 +8,12 @@ import './telemetry.js';
  * Main entry point
  */
 
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
+import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
@@ -33,6 +36,16 @@ import type { SelfHostedBrokerStatus } from './runtime/bootstrap/self-hosted-bro
 import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
+import {
+  createSigtermHandler,
+  runSupervisorDrain,
+} from './runtime/bootstrap/supervisor-drain.js';
+import {
+  allowHomeAccess,
+  installListenerLink,
+  parkUnderSupervisor,
+  type SupervisorLink,
+} from './runtime/bootstrap/supervisor-link.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
 import {
   getInstalledServerLogSink,
@@ -61,7 +74,40 @@ function flushLogSink(): void {
   }
 }
 
+async function parkOrExit(): Promise<SupervisorLink | null> {
+  try {
+    return await parkUnderSupervisor();
+  } catch (error) {
+    console.error('Station could not start under its supervisor:', error);
+    process.exit(1);
+  }
+}
+
 async function main() {
+  // Under the process supervisor this generation is loaded while the previous
+  // one still serves and owns the home, so it parks before anything below:
+  // the temp and orphan sweeps (which could kill the live generation's
+  // engines), the schema gate, the log sink, and the lifecycle journal.
+  const supervisorLink = await parkOrExit();
+  if (supervisorLink) installListenerLink(supervisorLink);
+  allowHomeAccess();
+  // Set as boot reaches them; a drain before then exits without them.
+  let runtimeForDrain: StationRuntime | undefined;
+  let gracefulShutdown:
+    | ((
+        signal: LifecycleShutdownReason,
+        forcedExitCode?: number,
+      ) => Promise<void>)
+    | undefined;
+  supervisorLink?.onDrain((request) => {
+    void runSupervisorDrain(request, {
+      link: supervisorLink,
+      runtime: () => runtimeForDrain,
+      shutdown: () => gracefulShutdown,
+      exit: (code) => process.exit(code),
+    });
+  });
+
   if (process.env.STATION_SERVICE_MANAGED === '1') {
     lifecycleService.add(1, { action: 'boot', platform: process.platform });
   }
@@ -85,6 +131,17 @@ async function main() {
     process.env.PORT,
     process.env.STATION_PORT_MODE,
   );
+  // A later generation serves on the sockets its supervisor holds, so their
+  // base port wins over PORT (and over allocating a fresh block for PORT=0).
+  const adoptedApiPort = supervisorLink?.adoptedPort('api') ?? null;
+  if (adoptedApiPort !== null) {
+    if (port !== AUTO_ALLOCATE_PORT && port !== adoptedApiPort) {
+      console.warn(
+        `[station] PORT ${port} differs from the supervisor-held API port ${adoptedApiPort}; serving on ${adoptedApiPort}`,
+      );
+    }
+    port = adoptedApiPort;
+  }
   const projectHomeDir = resolveHomeDir();
 
   // The schema gate must own the first write to a Station home. In
@@ -144,11 +201,9 @@ async function main() {
         }
       : {}),
   });
+  runtimeForDrain = runtime;
 
   let stdoutBrokenPipe = false;
-  let gracefulShutdown:
-    | ((signal: string, forcedExitCode?: number) => Promise<void>)
-    | undefined;
   // Install before runtime initialization: boot logs are still stdout writes,
   // and Desktop can disappear while initialization is in flight.
   installStdoutEpipeGuard(process.stdout, () => {
@@ -178,12 +233,13 @@ async function main() {
     console.log('═══════════════════════════════════════════════════\\n');
     logger.info('Station started', { port, host, agents: loadedAgents });
 
-    gracefulShutdown = async (signal: string, forcedExitCode?: number) => {
+    gracefulShutdown = async (
+      signal: LifecycleShutdownReason,
+      forcedExitCode?: number,
+    ) => {
       if (shuttingDown) return;
       shuttingDown = true;
-      processLifecycle.observeShutdown(
-        signal as 'SIGINT' | 'SIGTERM' | 'uncaughtException',
-      );
+      processLifecycle.observeShutdown(signal);
       console.log(`\n\nShutting down gracefully (${signal})...`);
       logger.info('Station shutting down', { signal });
       let exitCode = forcedExitCode ?? (signal === 'uncaughtException' ? 1 : 0);
@@ -199,11 +255,23 @@ async function main() {
         });
       }
       processLifecycle.observeExit(exitCode);
+      if (supervisorLink?.draining) await supervisorLink.reportDrained();
       process.exit(exitCode);
     };
 
     process.on('SIGINT', () => void gracefulShutdown?.('SIGINT'));
-    process.on('SIGTERM', () => void gracefulShutdown?.('SIGTERM'));
+    process.on(
+      'SIGTERM',
+      createSigtermHandler({
+        link: supervisorLink,
+        shutdown: () => gracefulShutdown,
+        killGraceMs: HANDOFF_DEFAULTS.killGraceMs,
+      }),
+    );
+    // The supervisor's IPC channel closing means it is gone (protocol).
+    supervisorLink?.setShutdownHandler(() =>
+      gracefulShutdown?.('supervisor_disconnect', 1),
+    );
     armSupervisedParentWatchdog({
       logger,
       onSupervisorGone: () => gracefulShutdown?.('SIGTERM', 1),
@@ -233,6 +301,10 @@ async function main() {
     }
     // Cover both an earlier async EPIPE and a synchronous handshake refusal.
     if (stdoutBrokenPipe) void gracefulShutdown('stdout_epipe', 1);
+    // The supervisor's readiness, sent once every listener has settled. The
+    // boot id is per generation: STATION_BOOT_ID is inherited unchanged by
+    // every generation a supervisor forks.
+    await supervisorLink?.ready(randomUUID(), port);
   } catch (error) {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);

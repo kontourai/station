@@ -3,11 +3,13 @@
  * the supervisor keeps serving. A genuinely unexpected error is logged, the
  * active generation drained, and the supervisor exits nonzero.
  */
+
 import { chmodSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
-import { startSupervisor, writeCoreVariant } from './harness.ts';
+import { supervisorRunDir } from '../protocol.ts';
+import { startSupervisor, trackHome, writeCoreVariant } from './harness.ts';
 
 const makeTempDir = trackTempDirs();
 const posixOnly = process.platform === 'win32' ? it.skip : it;
@@ -18,7 +20,7 @@ describe('supervisor resilience (real processes)', () => {
     async () => {
       const home = makeTempDir('sup-registry-fail-');
       const supervisor = await startSupervisor({ home });
-      const run = join(home, 'run');
+      const run = supervisorRunDir(trackHome(home));
       chmodSync(run, 0o500);
       try {
         expect(await supervisor.handoff()).toMatchObject({
@@ -120,12 +122,12 @@ describe('supervisor resilience (real processes)', () => {
       expect(supervisor.output()).toContain('received SIGHUP');
       expect(() => process.kill(core, 0)).toThrow();
       // The lock is released: its top epoch stays on disk, marked released.
-      const locks = readdirSync(join(home, 'run')).filter((name) =>
+      const locks = readdirSync(supervisorRunDir(home)).filter((name) =>
         /\.lock\.\d+$/.test(name),
       );
       expect(locks).toEqual(['instance-test.lock.1']);
       const content = JSON.parse(
-        readFileSync(join(home, 'run', locks[0] as string), 'utf8'),
+        readFileSync(join(supervisorRunDir(home), locks[0] as string), 'utf8'),
       );
       expect(content.releasedAt).toBeTypeOf('number');
     },

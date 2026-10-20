@@ -1,5 +1,72 @@
 # @kontourai/station-contracts
 
+## 0.11.0
+
+### Minor Changes
+
+- 9b1c96b: Say who decides which of an ACP engine's actions ask before they run (#3290).
+  `engine-capability-matrix` adds `AcpApprovalControl` (`station` or `engine`),
+  `acpStationApprovalEngine`, which names the ACP engine whose approval rules
+  Station sets at launch (OpenCode, matched on the command's executable name),
+  and `acpApprovalControl`. Station launches such an engine asking before every
+  action that is not a read and answers its requests by the chat's approval
+  mode; any other ACP engine decides for itself, and its approval control says
+  so instead of offering a mode. `PROVIDER_MODEL_OPTION_SUPPORT` is unchanged:
+  `approvalMode` stays unsupported for the `acp` provider as a whole, and the
+  server admits it only for an ACP connection whose control is `station`.
+  
+  `provider` adds `ACP_APPROVAL_TAKEOVER_FAILED_CODE`, the `runtime.warning`
+  code an ACP adapter publishes when it could not move the engine onto the
+  launch rules a picked approval mode needs and the session kept what it ran
+  before.
+  
+  `provider` also adds `ACP_APPROVAL_GOVERNANCE_REFUSED_CODE`, the code on a
+  start or send refused because Station cannot apply its approval mode to the
+  ACP engine (its resolved rules override Station's, or the chat runs an agent
+  Station does not govern). It is not retryable until that changes.
+- b97b819: Support repeatable `station delegate --attach=<path>` for new current-host tasks. Stage files with owner and digest checks, preserve exact bytes in the resolved workspace, and refuse unsupported hosts or over-limit batches instead of dropping files.
+  
+  Use coded refusals, release staged bindings and remove workspace files after confirmed pre-effect failure, and retain files for uncertain invocations. Refuse unsupported attachment fields instead of stripping them; pre-check duplicate basenames and cancel CLI stages on failed dispatch.
+- 8d1d328: Expose the provider-failure contract subpath and optional runtime-error classification for legacy readers. Built-in server writers require engine-neutral kind, computed retryability and effect phase. Preserve existing diagnostic codes and add kind, retryable and failurePhase to SDK HTTP errors.
+  
+  Distinguish confirmed pre-effect refusal from uncertain invocation and preserve structured insufficient-quota classification across the model-provider SSE relay.
+- f94583e: Remove exports that had no consumer. Import the replacements where one exists.
+  
+  - Shared: remove the `./guidance-assets`, `./agent-validation` and
+    `./mcp-elicitation-form` subpaths and the root re-exports of
+    `skillToGuidanceAsset`, `requiresAgentPrompt` and
+    `requiresAgentPromptForRuntime`. Use
+    `@kontourai/station-contracts/guidance-assets` (its copy also keeps the
+    skill's `provenance`, which the shared copy dropped) and
+    `@kontourai/station-contracts/agent-validation`. Read MCP elicitations with
+    `inputRequestFromRequestEvent` from `@kontourai/station-shared/input-request`.
+  - Contracts: remove `McpElicitationForm`, which only the removed shared reader
+    returned. The field types stay.
+  - SDK: remove the unused `KeyboardCommand`, `WindowOptions` and
+    `IKnowledgeProvider` types; the `./answer-narrative-binding` subpath
+    (`getAnswerNarrativeTarget`, `publishAnswerNarrative`,
+    `removeAnswerNarrative`, `AnswerNarrativeBindingRequestError`);
+    `useSecretBindingQuery`; `useSessionOutputsQuery` and
+    `sessionOutputsQueries`; `useKeepDeclaredOutputMutation` and
+    `keepDeclaredOutput` (use `useKeepSessionOutputMutation` from
+    `./session-output-actions`); and `useInvalidateSessionInventory`.
+- 2bd9640: Remove the inert `AppConfig.managedChatOrchestration` field. `GET /config/app`
+  no longer injects it, and `STATION_FEATURES=managed-chat-orchestration` no
+  longer has any effect; managed chat has run through orchestration
+  unconditionally since ADR 0014. Add `RETIRED_APP_CONFIG_KEYS`, which the server
+  uses to drop the key from config files written by earlier releases.
+  `PUT /config/app` now reports the key as `unknown` instead of
+  `runtime-derived`.
+
+### Patch Changes
+
+- 9e9d0ff: Correct the Default approval mode setting's description: Full access turns off approval prompts where the engine allows it, but a start without a full-access grant, such as a webhook, still runs inside Station's workspace confinement. It no longer says such sessions run with no sandbox.
+- 2bd9640: Mark `AgentSpec.streaming` (`useNewPipeline`, `enableThinking`,
+  `debugStreaming`) deprecated in the contract and in `schemas/agent.schema.json`.
+  Station reads none of these fields; agent files that carry them still load.
+  The server no longer reads `DEBUG_STREAMING`. Document that
+  `partialMessageIncluded` is only true on summaries earlier builds persisted.
+
 ## 0.10.0
 
 ### Minor Changes

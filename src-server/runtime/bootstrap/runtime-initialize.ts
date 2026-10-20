@@ -125,7 +125,7 @@ import type { StrandsFramework } from '../frameworks/strands-adapter.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   type HonoServerConfig,
-  honoServer,
+  stationHonoServer,
 } from '../frameworks/voltagent-hono-runtime.js';
 import * as MCPManager from '../mcp/mcp-manager.js';
 import {
@@ -1050,7 +1050,7 @@ export async function initializeRuntime(
   // Station's handler immediately as well, before awaiting VoltAgent.ready.
   void serverStartup.catch(() => {});
   let serverStartInvoked = false;
-  const createServer = honoServer(serverConfig);
+  const createServer = stationHonoServer(serverConfig);
   const trackedServerFactory: ServerProviderFactory = (serverDeps) => {
     const provider = createServer(serverDeps);
     return {

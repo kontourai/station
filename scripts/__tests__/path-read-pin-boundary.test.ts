@@ -109,6 +109,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // Reads identity/config files created in isolated Station temp homes, never
   // repository source. Direct telemetry imports own changed-test selection.
   'src-server/__tests__/telemetry.test.ts',
+  // Reads the supervisor control token from its isolated temp home; its built
+  // bundles are children, not imports. The supervisor-link and protocol
+  // imports select it for changes.
+  'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
   // Reads back the launch record its fake OpenCode engine writes into a temp
   // directory (#3922), never repository source. Its imports of the approval
   // mapping and ACP adapter select it for changes.
