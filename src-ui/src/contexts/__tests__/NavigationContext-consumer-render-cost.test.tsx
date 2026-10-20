@@ -123,7 +123,10 @@ vi.mock('../../hooks/useBranding', () => ({
 vi.mock('../../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isTauri: false }),
 }));
-vi.mock('../../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../../build-info', () => ({
   buildInfo: { version: '0.0.0-test', commit: 'test' },
 }));

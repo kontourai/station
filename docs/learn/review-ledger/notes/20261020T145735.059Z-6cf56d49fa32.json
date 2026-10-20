@@ -1,0 +1,7 @@
+{
+  "revision": "c6fbaa8f3330ffe4393f92f76bd799824c85a2e5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"veritas-readiness-evidence tests now cover Veritas 1.11.3, where an explicit --evidence-check-command is a required check: the Station wrapper sets aside only that flag-added requirement when the nested command exits 2, so NOT_VERIFIED stays exit 2 and configured requirements still fail. The fast-CI JSON readiness paragraph is unchanged and still accurate (ci:fast runs the engine directly, not this wrapper).","inputs":["docs/guides/testing.md","scripts/__tests__/veritas-readiness-evidence.test.ts"]}
+  ]
+}
