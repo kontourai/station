@@ -54,8 +54,10 @@ a pending Save does not record early; that save owns the notice after persistenc
 A failed choice
 save records no notice. A failed notice write leaves the saved preference intact,
 reports that separate failure and keeps counts paused. Viewing Privacy & sharing
-also records nothing; its Save action records a notice only for its visibly
-presented sharing section. Hidden or covered surfaces cannot supply that evidence.
+also records nothing; its Save action records a notice only when the combined
+sharing question itself is visible. Advanced saves still persist preferences
+when that question is offscreen, but record no built-in notice. A visible plugin
+row cannot supply that evidence. Hidden or covered questions cannot supply it either.
 DNT still refuses notice writes. CLI/headless starts are unchanged: printing
 the notice counts as showing it. A status fetch alone never records presentation. A current
 notice prevents another prompt on remount; a changed notice revision prompts

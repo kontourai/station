@@ -2265,73 +2265,104 @@ describe('settings catalog completeness', () => {
     expect(persisted).toEqual({ kontour: 'lite', operator: 'off' });
   });
 
-  test('viewing Privacy records nothing; saving Off records the visible notice only after both choices persist', async () => {
-    window.history.replaceState({}, '', '/settings?view=telemetry');
-    configSnapshot = {
-      config: {
-        ...INITIAL_CONFIG,
-        telemetryTier: { kontour: 'lite', operator: 'lite' },
-      },
-      dataUpdatedAt: 1,
-    };
-    const original = vi.mocked(authenticatedFetch).getMockImplementation()!;
-    vi.mocked(authenticatedFetch).mockImplementation(async (...args) =>
-      String(args[0]).endsWith('/lite-notices')
-        ? new Response(JSON.stringify({ success: true }), { status: 200 })
-        : original(...args),
-    );
-    const rect = vi
-      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-      .mockImplementation(function (this: HTMLElement) {
-        const clipped =
-          this.getAttribute('aria-label') === 'Usage sharing choices';
-        return {
-          top: clipped ? -400 : 100,
-          bottom: clipped ? -200 : 300,
-          height: 200,
-          left: 0,
-          right: 390,
-          width: 390,
-          x: 0,
-          y: 100,
-          toJSON: () => ({}),
-        };
-      });
-    const view = await renderSettings();
-    const notices = () =>
-      vi
-        .mocked(authenticatedFetch)
-        .mock.calls.filter(([url]) => String(url).endsWith('/lite-notices'));
-    try {
-      await act(async () => {
-        await new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        );
-      });
-      expect(notices()).toHaveLength(0);
-      for (const name of ['Kontour telemetry', 'Operator telemetry']) {
-        fireEvent.change(screen.getByRole('combobox', { name }), {
-          target: { value: 'off' },
-        });
-        fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
-      }
-      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-      await waitFor(() => expect(notices()).toHaveLength(2));
-      expect(updateConfig.mock.calls.map(([patch]) => patch)).toEqual([
-        { telemetryTier: { kontour: 'off' } },
-        { telemetryTier: { operator: 'off' } },
-      ]);
-      const firstNotice = vi
-        .mocked(authenticatedFetch)
-        .mock.calls.findIndex(([url]) => String(url).endsWith('/lite-notices'));
-      expect(updateConfig.mock.invocationCallOrder.at(-1)).toBeLessThan(
-        vi.mocked(authenticatedFetch).mock.invocationCallOrder[firstNotice],
+  test.each([true, false])(
+    'viewing Privacy records nothing; Save records only a visible combined notice (visible %s)',
+    async (noticeVisible) => {
+      window.history.replaceState({}, '', '/settings?view=telemetry');
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: {
+            kontour: 'lite',
+            operator: 'lite',
+            'publisher:fixture': 'off',
+          },
+        },
+        dataUpdatedAt: 1,
+      };
+      const original = vi.mocked(authenticatedFetch).getMockImplementation()!;
+      vi.mocked(authenticatedFetch).mockImplementation(async (...args) =>
+        String(args[0]).endsWith('/lite-notices')
+          ? new Response(JSON.stringify({ success: true }), { status: 200 })
+          : original(...args),
       );
-    } finally {
-      view.unmount();
-      rect.mockRestore();
-    }
-  });
+      const rect = vi
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          const clipped =
+            !noticeVisible &&
+            (this.getAttribute('aria-label') === 'Usage sharing choices' ||
+              (this.classList.contains('telemetry-publisher') &&
+                !this.textContent?.includes('fixture telemetry')));
+          return {
+            top: clipped ? -400 : 100,
+            bottom: clipped ? -200 : 300,
+            height: 200,
+            left: 0,
+            right: 390,
+            width: 390,
+            x: 0,
+            y: 100,
+            toJSON: () => ({}),
+          };
+        });
+      const view = await renderSettings();
+      const notices = () =>
+        vi
+          .mocked(authenticatedFetch)
+          .mock.calls.filter(([url]) => String(url).endsWith('/lite-notices'));
+      try {
+        fireEvent.click(screen.getByText('Advanced', { selector: 'summary' }));
+        await act(async () => {
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          );
+        });
+        expect(notices()).toHaveLength(0);
+        if (noticeVisible) {
+          for (const name of ['Kontour telemetry', 'Operator telemetry']) {
+            fireEvent.change(screen.getByRole('combobox', { name }), {
+              target: { value: 'off' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+          }
+        } else {
+          fireEvent.change(
+            screen.getByRole('combobox', { name: 'fixture telemetry' }),
+            {
+              target: { value: 'lite' },
+            },
+          );
+        }
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() =>
+          expect(screen.queryByRole('button', { name: 'Save' })).toBeNull(),
+        );
+        expect(notices()).toHaveLength(noticeVisible ? 2 : 0);
+        expect(updateConfig.mock.calls.map(([patch]) => patch)).toEqual(
+          noticeVisible
+            ? [
+                { telemetryTier: { kontour: 'off' } },
+                { telemetryTier: { operator: 'off' } },
+              ]
+            : [{ telemetryTier: { 'publisher:fixture': 'lite' } }],
+        );
+        if (noticeVisible) {
+          const firstNotice = vi
+            .mocked(authenticatedFetch)
+            .mock.calls.findIndex(([url]) =>
+              String(url).endsWith('/lite-notices'),
+            );
+          expect(updateConfig.mock.invocationCallOrder.at(-1)).toBeLessThan(
+            vi.mocked(authenticatedFetch).mock.invocationCallOrder[firstNotice],
+          );
+        }
+      } finally {
+        view.unmount();
+        rect.mockRestore();
+      }
+    },
+  );
 
   test('saving two deliberate publisher edits retains both choices', async () => {
     window.history.replaceState({}, '', '/settings?view=telemetry');
