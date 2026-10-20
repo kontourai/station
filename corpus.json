@@ -4,7 +4,9 @@
   "builtOn": [
     {
       "product": "conduit",
-      "via": ["@kontourai/conduit"],
+      "via": [
+        "@kontourai/conduit"
+      ],
       "for": "Project agent hook outcomes through framework host adapters."
     },
     {
@@ -18,62 +20,87 @@
     },
     {
       "product": "datum",
-      "via": ["@kontourai/datum"],
+      "via": [
+        "@kontourai/datum"
+      ],
       "for": "Parse and materialize secret references through the public runner contract."
     },
     {
       "product": "dispatch",
-      "via": ["@kontourai/dispatch"],
+      "via": [
+        "@kontourai/dispatch"
+      ],
       "for": "Route model requests through execution plans with dispatch receipts."
     },
     {
       "product": "ephemeris",
-      "via": ["@kontourai/ephemeris"],
+      "via": [
+        "@kontourai/ephemeris"
+      ],
       "for": "Validate schedules and calculate upcoming job occurrences."
     },
     {
       "product": "fieldwork",
-      "via": ["@kontourai/fieldwork"],
+      "via": [
+        "@kontourai/fieldwork"
+      ],
       "for": "Validate owner-provided reviewed source descriptors and currentness."
     },
     {
       "product": "flow",
-      "via": ["@kontourai/flow"],
+      "via": [
+        "@kontourai/flow"
+      ],
       "for": "Read and evaluate workflow gates with bound evidence references."
     },
     {
       "product": "flow-agents",
-      "via": ["@kontourai/flow-agents"],
+      "via": [
+        "@kontourai/flow-agents"
+      ],
       "for": "Read workflow sidecars, validate run correlation, and project process status."
     },
     {
       "product": "relay",
-      "via": ["@kontourai/relay"],
+      "via": [
+        "@kontourai/relay"
+      ],
       "for": "Report typed model invocation failures in fleet inference."
     },
     {
       "product": "surface",
-      "via": ["@kontourai/surface"],
+      "via": [
+        "@kontourai/surface"
+      ],
       "for": "Derive trust assessments and render Task Basis evidence panels."
     },
     {
       "product": "survey",
-      "via": ["@kontourai/survey"],
+      "via": [
+        "@kontourai/survey"
+      ],
       "for": "Present workflow review items and apply review session decisions."
     },
     {
       "product": "thread",
-      "via": ["@kontourai/ferry", "@kontourai/thread"],
+      "via": [
+        "@kontourai/ferry",
+        "@kontourai/thread"
+      ],
       "for": "Normalize retained tool results and export portable conversations."
     },
     {
       "product": "ui",
-      "via": ["@kontourai/ui"],
+      "via": [
+        "@kontourai/ui"
+      ],
       "for": "Render shared React controls and semantic visual primitives."
     },
     {
       "product": "veritas",
-      "via": ["@kontourai/veritas"],
+      "via": [
+        "@kontourai/veritas"
+      ],
       "for": "Classify changed files to route review lenses."
     }
   ],

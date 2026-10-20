@@ -164,7 +164,12 @@ describe('background task settle notice', () => {
   test("a subagent's own report stays visible inline", async () => {
     handlers.applyChildWorkToChat(
       threadId,
-      settle('agent', 'completed', 'Research', 'Research found the regression in #12.'),
+      settle(
+        'agent',
+        'completed',
+        'Research',
+        'Research found the regression in #12.',
+      ),
     );
     const card = await renderNotice(storedNotices()[0]!);
     expect(card.querySelector('details')).toBeNull();
