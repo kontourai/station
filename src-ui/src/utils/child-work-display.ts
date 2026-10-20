@@ -3,6 +3,7 @@ import type {
   ChildWorkStatus,
   ChildWorkUsage,
 } from '@kontourai/station-contracts/child-work';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
  * The words every child-work surface (the Agents pane's row, the transcript's
@@ -61,3 +62,17 @@ export const CHILD_WORK_MODEL_SOURCE_TEXT: Record<
   'spawn-result': 'Reported by the engine when it spawned the subagent',
   'child-thread': "Reported by the subagent's own thread",
 };
+
+/** Most recent tool started by this execution in its current loaded turn. */
+export function latestChildTool(
+  events: readonly CanonicalRuntimeEvent[],
+  threadId: string,
+): string | undefined {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    if (event.threadId !== threadId) continue;
+    if (event.method === 'tool.started') return event.toolName;
+    if (event.method === 'turn.started') return undefined;
+  }
+  return undefined;
+}

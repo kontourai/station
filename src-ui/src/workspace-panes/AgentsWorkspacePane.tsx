@@ -16,6 +16,7 @@ import {
   TaskRow,
 } from '../components/chat-dock/backgroundTaskRows';
 import { Empty, ErrorState, SkeletonBlock } from '../components/state';
+import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
@@ -34,6 +35,7 @@ import {
   useChatBackgroundTasks,
   useChatStoreKey,
 } from '../hooks/useBackgroundTasks';
+import { sessionIconAgent } from '../utils/sessionDisplay';
 import { ChildWorkRow } from './agents/ChildWorkRow';
 import {
   type ChildWorkListView,
@@ -178,6 +180,7 @@ export function AgentsWorkspacePane() {
   // No chat on screen: there is no "this conversation" to show.
   const scope: ChildWorkScope = chatKey ? (storedScope ?? 'chat') : 'all';
   const tools = useChatBackgroundTasks(scope === 'chat' ? chatKey : null);
+  const agents = useAgents();
   const sessionsQuery = useOrchestrationSessionsQuery();
   const sessions = sessionsQuery.data ?? EMPTY_SESSIONS;
   const { apiBase } = useApiBase();
@@ -306,11 +309,24 @@ export function AgentsWorkspacePane() {
   const openSession = (threadId: string) =>
     showSurface('activity', { session: threadId });
 
+  const sessionByThread = useMemo(
+    () => new Map(sessions.map((session) => [session.threadId, session])),
+    [sessions],
+  );
+  const delegateIcon = (threadId: string | undefined) => {
+    const session = threadId ? sessionByThread.get(threadId) : undefined;
+    return session ? sessionIconAgent(session, agents) : undefined;
+  };
   const childRow = (row: ChildWorkRowModel) => (
     <ChildWorkRow
       key={row.key}
       row={row}
       now={now}
+      agent={
+        row.item.producer === 'station-delegate'
+          ? delegateIcon(row.item.childId)
+          : undefined
+      }
       showProvenance={scope === 'all'}
       onOpenSession={openSession}
     />
@@ -397,6 +413,12 @@ export function AgentsWorkspacePane() {
                 <TaskRow
                   key={entry.id}
                   entry={entry}
+                  agent={delegateIcon(entry.delegateThreadId)}
+                  provider={
+                    sessionByThread.get(
+                      entry.sessionThreadId ?? entry.delegateThreadId ?? '',
+                    )?.provider
+                  }
                   elapsedMs={backgroundTaskElapsedMs(entry, now)}
                   onOpenTranscript={openSession}
                 />
@@ -421,6 +443,12 @@ export function AgentsWorkspacePane() {
                 <TaskRow
                   key={entry.id}
                   entry={entry}
+                  agent={delegateIcon(entry.delegateThreadId)}
+                  provider={
+                    sessionByThread.get(
+                      entry.sessionThreadId ?? entry.delegateThreadId ?? '',
+                    )?.provider
+                  }
                   elapsedMs={backgroundTaskElapsedMs(entry, now)}
                   outcomeChip={entry.state}
                   onOpenTranscript={openSession}

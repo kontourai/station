@@ -18,6 +18,10 @@ import type {
   BackgroundTaskEntry,
   BackgroundTaskState,
 } from '../../contexts/background-tasks-store';
+import { latestChildTool } from '../../utils/child-work-display';
+import type { SessionIconAgent } from '../../utils/sessionDisplay';
+import { ChildWorkActivity } from '../chat/ChildWorkActivity';
+import { ChildWorkIdentity } from '../chat/ChildWorkIdentity';
 import { AgentGlyph, TerminalGlyph } from '../icons/Glyph';
 import './BackgroundTasksSheet.css';
 
@@ -72,8 +76,12 @@ export function TaskRow({
   elapsedMs,
   outcomeChip,
   onOpenTranscript,
+  agent,
+  provider,
 }: {
   entry: BackgroundTaskEntry;
+  agent?: SessionIconAgent;
+  provider?: string;
   /** Absent when no start was reported: the meta line then shows no time. */
   elapsedMs: number | undefined;
   outcomeChip?: BackgroundTaskState;
@@ -117,6 +125,13 @@ export function TaskRow({
     if (!firstLine) return null;
     return firstLine.length > 80 ? `${firstLine.slice(0, 79)}…` : firstLine;
   }, [detail.data]);
+  const latestTool = useMemo(
+    () =>
+      entry.state === 'running' && delegateThreadId && detail.data
+        ? latestChildTool(detail.data.events, delegateThreadId)
+        : undefined,
+    [detail.data, delegateThreadId, entry.state],
+  );
   const interrupt = useInterruptDelegatedTaskMutation();
   const stopRequested = interrupt.isPending || interrupt.isSuccess;
   /**
@@ -144,7 +159,14 @@ export function TaskRow({
         onClick={() => hasDetail && setExpanded((current) => !current)}
       >
         <span className="background-tasks-sheet__glyph" aria-hidden="true">
-          <TaskGlyph kind={entry.kind} />
+          {entry.kind === 'agent' ? (
+            <ChildWorkIdentity
+              provider={provider ?? detail.data?.session?.provider}
+              agent={agent}
+            />
+          ) : (
+            <TaskGlyph kind={entry.kind} />
+          )}
         </span>
         <span className="background-tasks-sheet__row-text">
           <strong className="background-tasks-sheet__title">
@@ -154,6 +176,7 @@ export function TaskRow({
             {KIND_LABEL[entry.kind]}
             {elapsedMs !== undefined && ` · ${formatElapsed(elapsedMs)}`}
           </span>
+          {latestTool && <ChildWorkActivity tool={latestTool} />}
         </span>
         {outcomeChip && (
           <span

@@ -38,10 +38,6 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: var(--k-border-thin, 1px) solid var(--k-line);
-  border-radius: 50%;
   color: var(--k-text-muted);
 }
 
@@ -257,4 +253,25 @@
 .subagent-card__main[aria-expanded="true"] .subagent-card__title {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.subagent-group__avatars {
+  display: inline-flex;
+  align-items: center;
+}
+
+.subagent-group__avatars > * + * {
+  margin-inline-start: calc(-1 * var(--k-space-2));
+}
+
+.subagent-group__more {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--k-space-5);
+  min-height: var(--k-space-5);
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-pill);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
 }

@@ -250,6 +250,28 @@ describe('BackgroundTasksSheet', () => {
             prompt: 'Audit the release workflow',
           },
           {
+            method: 'tool.started',
+            provider: 'claude-code',
+            threadId: 'task:delegate-2',
+            createdAt: '2026-07-29T00:00:20.100Z',
+            turnId: 'turn-1',
+            itemId: 'own-tool',
+            toolCallId: 'own-tool',
+            toolName: 'Read',
+            arguments: {},
+          },
+          {
+            method: 'tool.started',
+            provider: 'claude-code',
+            threadId: 'another-child',
+            createdAt: '2026-07-29T00:00:20.200Z',
+            turnId: 'turn-1',
+            itemId: 'other-tool',
+            toolCallId: 'other-tool',
+            toolName: 'WrongChildTool',
+            arguments: {},
+          },
+          {
             method: 'token-usage.updated',
             provider: 'claude-code',
             threadId: 'task:delegate-2',
@@ -282,6 +304,10 @@ describe('BackgroundTasksSheet', () => {
       finished: [],
     });
 
+    expect(
+      screen.getByText('Read', { selector: '.child-work-activity__name' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('WrongChildTool')).toBeNull();
     expect(screen.queryByText('150 tokens · 1 tool use')).toBeNull();
     fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('150 tokens · 1 tool use')).not.toBeNull();

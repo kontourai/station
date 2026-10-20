@@ -370,6 +370,7 @@ test.describe('subagent transcript cards', () => {
           ),
         ).toBe(true);
       }
+      await expect(card.getByRole('img', { name: 'Codex' })).toBeVisible();
       await expect(card.getByText('Completed')).toBeVisible();
       await expect(card.getByText('gpt-5.5')).toHaveCount(0);
       await expect(card.getByText('done', { exact: true })).toBeVisible();
@@ -483,6 +484,8 @@ test.describe('subagent transcript cards', () => {
     const card = page.getByTestId('subagent-card');
     await expect(card).toHaveCount(1);
     await expect(card.getByText(runningChild.title)).toBeVisible();
+    await expect(card.getByRole('img', { name: 'Claude Code' })).toBeVisible();
+    await expect(card.locator('.brand-icon--claude svg')).toBeVisible();
     await expect(card.getByText('Running')).toBeVisible();
     await expect(card.getByText('Reading the decision records')).toBeVisible();
     await expect(card.getByText('claude-opus-5-5')).toHaveCount(0);

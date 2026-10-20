@@ -9,13 +9,13 @@ import {
 } from '../../utils/child-work-display';
 import { Button } from '../Button';
 import {
-  AgentGlyph,
   ArrowDownGlyph,
   ArrowRightGlyph,
   CheckGlyph,
   CloseGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { ChildWorkIdentity } from './ChildWorkIdentity';
 import { LazyMarkdown } from './LazyMarkdown';
 import type { ToolCallLike } from './tool-call-runs';
 import {
@@ -123,8 +123,8 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
         aria-controls={expanded ? detailId : undefined}
         onClick={() => setExpanded((current) => !current)}
       >
-        <span className="subagent-card__glyph" aria-hidden="true">
-          <AgentGlyph />
+        <span className="subagent-card__glyph">
+          <ChildWorkIdentity provider={provider} />
         </span>
         <span className="subagent-card__text">
           <span className="subagent-card__headline">
@@ -292,7 +292,19 @@ function SubagentCallGroup({
           aria-controls={groupId}
           onClick={() => setExpanded((current) => !current)}
         >
-          <AgentGlyph />
+          <span className="subagent-group__avatars" aria-hidden="true">
+            {children.slice(0, 3).map((child) => (
+              <ChildWorkIdentity
+                key={child.item.childId}
+                provider={child.provider}
+              />
+            ))}
+            {children.length > 3 && (
+              <span className="subagent-group__more">
+                +{children.length - 3}
+              </span>
+            )}
+          </span>
           <strong>{children.length} subagents</strong>
           <span className="subagent-group__counts" aria-live="polite">
             {[...counts]

@@ -1183,6 +1183,9 @@ describe('subagent transcript cards', () => {
       );
       renderTranscript();
       const card = await findCard();
+      expect(
+        within(card).getByRole('img', { name: 'Claude Code' }),
+      ).toBeTruthy();
       expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
       expect(
         within(card).getByText('[opus] review station#3657 ADR freeze'),

@@ -10,13 +10,16 @@ import {
 } from '@kontourai/station-shared/usage-fold';
 import { type CSSProperties, useId, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
-import { AgentGlyph } from '../../components/icons/Glyph';
+import { ChildWorkActivity } from '../../components/chat/ChildWorkActivity';
+import { ChildWorkIdentity } from '../../components/chat/ChildWorkIdentity';
 import {
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
   childWorkUsageClauses,
   formatChildWorkElapsed,
+  latestChildTool,
 } from '../../utils/child-work-display';
+import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import { ChildWorkTranscript } from './ChildWorkTranscript';
 import type {
   ChildWorkProvenance,
@@ -85,13 +88,36 @@ function DelegateUsage({
   );
 }
 
+function DelegateActivity({
+  threadId,
+  progress,
+}: {
+  threadId: string;
+  progress?: string;
+}) {
+  const detail = useOrchestrationSessionQuery(threadId, {
+    staleTime: 0,
+    refetchInterval: 2_000,
+    retry: false,
+    cancelWhenInactive: true,
+  });
+  const tool = useMemo(
+    () =>
+      detail.data ? latestChildTool(detail.data.events, threadId) : undefined,
+    [detail.data, threadId],
+  );
+  return <ChildWorkActivity tool={tool} progress={progress} />;
+}
+
 export function ChildWorkRow({
   row,
   now,
   showProvenance,
   onOpenSession,
+  agent,
 }: {
   row: ChildWorkRowModel;
+  agent?: SessionIconAgent;
   now: number;
   showProvenance: boolean;
   onOpenSession: (threadId: string) => void;
@@ -169,8 +195,8 @@ export function ChildWorkRow({
         disabled={!expandable}
         onClick={() => expandable && setExpanded((current) => !current)}
       >
-        <span className="child-work-row__glyph" aria-hidden="true">
-          <AgentGlyph />
+        <span className="child-work-row__glyph">
+          <ChildWorkIdentity provider={row.provider} agent={agent} />
         </span>
         <span className="child-work-row__text">
           <strong className="child-work-row__title">{row.title}</strong>
@@ -186,9 +212,14 @@ export function ChildWorkRow({
               {model ? model.id : 'model not reported'}
             </span>
           )}
-          {running && item.progress && (
-            <span className="child-work-row__progress">{item.progress}</span>
-          )}
+          {running && isDelegate ? (
+            <DelegateActivity
+              threadId={item.childId}
+              progress={item.progress}
+            />
+          ) : running && item.progress ? (
+            <ChildWorkActivity progress={item.progress} />
+          ) : null}
           {showProvenance && (
             <span className="child-work-row__provenance">
               {provenanceText(row.provenance)}

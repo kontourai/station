@@ -42,6 +42,7 @@ vi.mock('../contexts/useShowSurface', () => ({
 vi.mock('../hooks/orchestration/ensureOrchestrationEventStream', () => ({
   ensureOrchestrationEventStream: () => () => {},
 }));
+vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));

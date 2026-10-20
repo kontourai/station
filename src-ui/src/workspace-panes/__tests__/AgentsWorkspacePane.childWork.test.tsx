@@ -8,11 +8,14 @@
  * `AgentsWorkspacePane.streamRefresh.test.tsx`.
  */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import type { SessionIconAgent } from '../../utils/sessionDisplay';
 
 let activeChat: string | null = null;
+let agents: SessionIconAgent[] = [];
 let sessionsResult: {
   data?: Partial<OrchestrationSessionSummary>[];
   isError?: boolean;
@@ -31,6 +34,7 @@ vi.mock('../../contexts/useShowSurface', () => ({
 vi.mock('../../hooks/orchestration/ensureOrchestrationEventStream', () => ({
   ensureOrchestrationEventStream: () => () => {},
 }));
+vi.mock('../../contexts/AgentsContext', () => ({ useAgents: () => agents }));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
@@ -95,6 +99,7 @@ function claudeRegistry(active: unknown[]) {
 }
 
 beforeEach(() => {
+  agents = [];
   localStorage.clear();
   childWorkGlobalStore.reset();
   backgroundTasksStore.reset();
@@ -205,10 +210,19 @@ test('a server refusal is shown in the server’s words, and a later report retr
 test('a delegate from the session read model shows in All with its provenance and opens its session', () => {
   // `surface: 'cli'` is what the CLI declares since #2459 (packages/cli);
   // here it is a read-model fixture, not a live observation.
+  agents = [
+    {
+      name: 'Release reviewer',
+      slug: 'reviewer',
+      icon: '🦉',
+      engineId: 'claude',
+    },
+  ];
   sessionsResult = {
     data: [
       {
         threadId: 'delegate-cli',
+        assignedAgentSlug: agentId('reviewer'),
         provider: 'codex',
         turnOrigin: {
           latest: {
@@ -234,6 +248,10 @@ test('a delegate from the session read model shows in All with its provenance an
   };
   render(<AgentsWorkspacePane />);
   expect(screen.getByText('Running (1)')).toBeTruthy();
+  expect(
+    screen.getByRole('img', { name: 'Release reviewer · Codex' }),
+  ).toBeTruthy();
+  expect(screen.getByText('🦉')).toBeTruthy();
   expect(screen.getByText('Nightly audit')).toBeTruthy();
   expect(screen.getByText('Started from the CLI')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();

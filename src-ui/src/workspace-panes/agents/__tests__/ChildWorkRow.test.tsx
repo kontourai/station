@@ -174,6 +174,31 @@ test('a transcript-file handle gets no button; a session handle opens that sessi
   expect(onOpenSession).toHaveBeenCalledWith('d-1');
 });
 
+test('a running delegate shows the latest tool from its own current turn', () => {
+  useOrchestrationSessionQuery.mockReturnValue({
+    data: {
+      events: [
+        {
+          method: 'turn.started',
+          threadId: 'delegate-live',
+          turnId: 'turn-new',
+        },
+        { method: 'tool.started', threadId: 'delegate-live', toolName: 'Read' },
+        {
+          method: 'tool.started',
+          threadId: 'someone-else',
+          toolName: 'OtherTool',
+        },
+      ],
+    },
+  });
+  mount(row({ producer: 'station-delegate', childId: 'delegate-live' }));
+  expect(
+    screen.getByText('Read', { selector: '.child-work-activity__name' }),
+  ).toBeTruthy();
+  expect(screen.queryByText('OtherTool')).toBeNull();
+});
+
 test('Stop renders only from the row model, and reaches the matching seam', () => {
   mount(row({ controls: { stop: 'provider-task-stop' } }));
   // The item has a seam, but the model derived no control (no wired cell).
