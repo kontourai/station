@@ -27,9 +27,11 @@
 }
 
 /* The visible focus ring belongs on the label, because the input is clipped.
-   It is the text color, offset clear of the card, because a selected card is
-   already ringed in the accent: focus and selection must read differently.
-   A build or brand that chose a focus color keeps it (below). */
+   It is the text color, offset clear of the card, on every build: a selected
+   card is ringed in the accent, and every color-theme sheet and Dev, Beta or
+   Nightly channel sets `--k-focus` to that same accent, so the product-level
+   focus color would make focus and selection identical here. `--k-text`
+   rates at least 4.5:1 on every theme surface. */
 :is(
   .appearance-mode__option,
   .appearance-theme,
@@ -38,21 +40,6 @@
 ):has(.appearance__radio:focus-visible) {
   outline: 2px solid var(--k-text);
   outline-offset: 3px;
-}
-
-:is(
-    :root[data-brand-focus],
-    :root.is-dev-build,
-    :root[data-app-channel="beta"],
-    :root[data-app-channel="nightly"]
-  )
-  :is(
-    .appearance-mode__option,
-    .appearance-theme,
-    .appearance-choice,
-    .appearance-accent
-  ):has(.appearance__radio:focus-visible) {
-  outline-color: var(--k-focus);
 }
 
 /* ── Mode ── */

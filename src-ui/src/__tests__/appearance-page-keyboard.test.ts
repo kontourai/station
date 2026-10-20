@@ -19,6 +19,20 @@ const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 const ORIGIN = 'http://station.test';
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 const PUBLIC_DIR = resolve(REPO_ROOT, 'src-ui/public');
+/**
+ * The product-level :focus-visible rules from the real index.css (the plain
+ * one and its channel/brand override), so the page is measured against the
+ * outline every build actually draws, not an absent one.
+ */
+const PRODUCT_FOCUS_RULES = (() => {
+  const css = readFileSync(resolve(REPO_ROOT, 'src-ui/src/index.css'), 'utf8');
+  const rules = css.match(
+    /(?:^|\n)(?::where\(|:is\(\n\s+:root\[data-brand-focus\])[^{]*\):focus-visible\s*\{[^}]*\}/g,
+  );
+  if (!rules || rules.length < 2)
+    throw new Error('index.css focus-visible rules not found');
+  return rules.join('\n');
+})();
 const NORD_DARK_BACKGROUND = (
   JSON.parse(
     readFileSync(
@@ -117,7 +131,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
         contentType: 'text/html',
         // `--accent-primary` is defined so the focus ring has a colour to
         // resolve; without it the declaration is invalid and draws nothing.
-        body: `<!doctype html><html data-theme="dark"><head><style>:root{--accent-primary:#ff0000;--k-text:#00ff00}${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
+        body: `<!doctype html><html data-theme="dark"><head><style>:root{--accent-primary:#ff0000;--k-text:#00ff00;--k-focus:#ff0000;--text-primary:#0000ff;--text-secondary:#888888}${PRODUCT_FOCUS_RULES}${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
       });
     });
     await page.goto(`${ORIGIN}/`);
@@ -363,38 +377,99 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
 
   // Focus and selection must read differently on a selected card: selection is
   // the accent border, focus a text-colored outline.
-  test('a focused selected card shows a focus outline distinct from its selected border', async () => {
-    const page = await open();
-    await page.getByRole('radio', { name: /^Station/ }).focus();
-    await page.keyboard.press('ArrowRight');
-    await untilTheme(page, 'catppuccin');
-    const ring = await page.evaluate(() => {
-      const label = document.activeElement!.closest('label')!;
-      const style = getComputedStyle(label);
-      return {
-        selected: label.classList.contains('is-selected'),
-        outlineStyle: style.outlineStyle,
-        outlineColor: style.outlineColor,
-        borderColor: style.borderColor,
-        offset: style.outlineOffset,
-        text: (() => {
-          const probe = document.createElement('span');
-          probe.style.color = 'var(--k-text)';
-          document.body.append(probe);
-          const color = getComputedStyle(probe).color;
-          probe.remove();
+  // On Dev, Beta and Nightly builds (and under a theme sheet) `--k-focus`
+  // equals the accent that rings a selected card, so the focus outline must
+  // not follow it there either.
+  test.each([
+    ['a stable build', {}],
+    ['a Nightly build', { channel: 'nightly' }],
+    ['a Dev build', { devBuild: true }],
+  ] as const)(
+    'on %s a focused selected card shows a focus outline distinct from its selected border',
+    async (_label, build: { channel?: string; devBuild?: boolean }) => {
+      const page = await open();
+      await page.evaluate((b) => {
+        const root = document.documentElement;
+        if (b.channel) root.setAttribute('data-app-channel', b.channel);
+        if (b.devBuild) root.classList.add('is-dev-build');
+      }, build);
+      await page.getByRole('radio', { name: /^Station/ }).focus();
+      await page.keyboard.press('ArrowRight');
+      await untilTheme(page, 'catppuccin');
+      const ring = await page.evaluate(() => {
+        const label = document.activeElement!.closest('label')!;
+        const style = getComputedStyle(label);
+        const probe = (value: string) => {
+          const span = document.createElement('span');
+          span.style.color = value;
+          document.body.append(span);
+          const color = getComputedStyle(span).color;
+          span.remove();
           return color;
-        })(),
-      };
-    });
-    expect(ring.selected).toBe(true);
-    expect(ring.outlineStyle).toBe('solid');
-    // The theme's own text color (the sheet sets `--k-text`), not the accent.
-    expect(ring.outlineColor).toBe(ring.text);
-    expect(ring.outlineColor).not.toBe(ring.borderColor);
-    expect(ring.offset).toBe('3px');
-    await page.close();
-  });
+        };
+        return {
+          selected: label.classList.contains('is-selected'),
+          outlineStyle: style.outlineStyle,
+          outlineColor: style.outlineColor,
+          borderColor: style.borderColor,
+          offset: style.outlineOffset,
+          text: probe('var(--k-text)'),
+          focus: probe('var(--k-focus)'),
+        };
+      });
+      expect(ring.selected).toBe(true);
+      expect(ring.outlineStyle).toBe('solid');
+      // The theme's own text color (the sheet sets `--k-text`), not the
+      // accent and not the build's focus color.
+      expect(ring.outlineColor).toBe(ring.text);
+      expect(ring.outlineColor).not.toBe(ring.borderColor);
+      expect(ring.outlineColor).not.toBe(ring.focus);
+      expect(ring.offset).toBe('3px');
+      await page.close();
+    },
+  );
+
+  // The product focus outline (index.css, !important) is drawn on whichever
+  // swatch has focus; selection must still show inside it, so a focused
+  // swatch reads differently chosen and not chosen, on every build.
+  test.each([
+    ['a stable build', undefined],
+    ['a Nightly build', 'nightly'],
+  ] as const)(
+    'on %s a focused Station accent swatch still shows whether it is chosen',
+    async (_label, channel) => {
+      const page = await open();
+      if (channel)
+        await page.evaluate(
+          (c) => document.documentElement.setAttribute('data-app-channel', c),
+          channel,
+        );
+      await page.getByRole('button', { name: 'Accent color #ec4899' }).click();
+      const read = (name: string) =>
+        page.evaluate((n) => {
+          const button = document.querySelector<HTMLElement>(
+            `[aria-label="${n}"]`,
+          )!;
+          button.focus();
+          const own = getComputedStyle(button);
+          const ring = getComputedStyle(button, '::after');
+          return {
+            focusOutline: `${own.outlineStyle} ${own.outlineOffset}`,
+            ring: ring.borderTopColor,
+          };
+        }, name);
+      // Keyboard focus, so :focus-visible applies.
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      const chosen = await read('Accent color #ec4899');
+      const other = await read('Accent color #f43f5e');
+      expect(chosen.focusOutline).toBe('solid 2px');
+      expect(other.focusOutline).toBe('solid 2px');
+      expect(chosen.ring).toBe('rgb(0, 0, 255)');
+      expect(other.ring).toBe('rgba(0, 0, 0, 0)');
+      await page.close();
+    },
+  );
 
   // Station's preset swatches and custom color are painted at 28px; each must
   // still take a 44px touch target at phone width, without overlapping its

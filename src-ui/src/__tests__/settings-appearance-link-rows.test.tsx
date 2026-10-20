@@ -13,10 +13,11 @@ afterEach(cleanup);
 
 /**
  * Settings' Theme row only switches light and dark; the color theme lives on
- * the Appearance page. Its "Use default" therefore resets the mode alone, and
- * a signed-in color theme with no saved mode offers no reset here at all — a
- * reset that silently kept (or silently cleared) the color theme would not be
- * what the row shows.
+ * the Appearance page. These pin the row's behavior as a person meets it:
+ * "Use default" resets the mode alone, and a saved color theme with no saved
+ * mode offers no reset here. They do not prove the catalog's key scoping —
+ * the reset already followed a row's first account key before it — only
+ * that the row does what it shows.
  */
 function renderThemeRow(values: Record<string, unknown>) {
   const save = vi.fn();
@@ -39,7 +40,7 @@ function renderThemeRow(values: Record<string, unknown>) {
   return save;
 }
 
-test("the Theme row's Use default resets the mode only", () => {
+test("the Theme row's Use default resets the mode, not the color theme", () => {
   const save = renderThemeRow({ theme: 'light', colorTheme: 'catppuccin' });
   fireEvent.click(
     screen.getByRole('button', { name: 'Use default for Theme' }),

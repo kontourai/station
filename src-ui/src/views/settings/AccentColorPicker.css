@@ -26,14 +26,29 @@
 .settings__accent-swatch {
   background-clip: content-box;
 }
-.settings__accent-swatch:hover {
-  outline: 2px solid var(--text-secondary);
-  outline-offset: -7px;
+.settings__accent-swatch {
+  position: relative;
 }
-.settings__accent-swatch--active,
-.settings__accent-swatch--active:hover {
-  outline: 2px solid var(--text-primary);
-  outline-offset: -7px;
+/* Selection (and hover) is a ring just outside the painted circle, drawn
+   inside the 44px box. Not an outline: the product's :focus-visible rule
+   (index.css) owns the outline with !important and would replace it, so a
+   focused swatch would look the same chosen or not. With the ring here,
+   focus is the outer outline and selection the inner ring, in every mode
+   and on channel builds. */
+.settings__accent-swatch::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.settings__accent-swatch:hover::after {
+  border-color: var(--text-secondary);
+}
+.settings__accent-swatch--active::after,
+.settings__accent-swatch--active:hover::after {
+  border-color: var(--text-primary);
 }
 .settings__accent-custom-hit {
   display: inline-grid;
