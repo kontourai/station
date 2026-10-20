@@ -24,9 +24,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { act, createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
-import type { HomeTaskItem } from '../views/home/home-view-model';
+import type { HomeWorkItem } from '../views/home/home-view-model';
 
-const tasks: HomeTaskItem[] = [
+const tasks: HomeWorkItem[] = [
   {
     id: 'chat:one',
     kind: 'chat',
@@ -38,7 +38,7 @@ const tasks: HomeTaskItem[] = [
     lifecycle: 'active',
     updatedAt: Date.now(),
     chatSessionId: 'one',
-  } as unknown as HomeTaskItem,
+  } as unknown as HomeWorkItem,
 ];
 
 function stubFrame() {

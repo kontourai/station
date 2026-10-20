@@ -168,9 +168,6 @@ export interface HomeWorkItem {
   environmentLabel?: string;
 }
 
-/** @deprecated Use HomeWorkItem for new Home surfaces. */
-export type HomeTaskItem = HomeWorkItem;
-
 export function chatTaskSessionId(task: HomeWorkItem): string {
   return task.chatSessionId ?? task.id;
 }
@@ -836,9 +833,6 @@ function mergeSingleExecutionAgentSlug(
     ? chat.agentSlug
     : undefined;
 }
-
-/** @deprecated Use buildHomeWorkItems for new Home surfaces. */
-export const buildHomeTaskItems = buildHomeWorkItems;
 
 function isPersistedTaskCorrelation(
   item: HomeWorkItem,
