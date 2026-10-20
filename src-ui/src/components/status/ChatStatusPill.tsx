@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
+import { prefersReducedMotion } from '../../lib/reduced-motion';
 import { formatDuration } from '../../utils/relativeTime';
 import type { ChatStatus } from './chatStatus';
 import {
@@ -19,14 +20,6 @@ import {
 export const CHAT_STATUS_CELEBRATE_MS = 1_100;
 /** The float-out (`--motion-fast`); the pill unmounts after it. */
 const LEAVE_MS = 150;
-
-function reducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
-}
 
 function clockText(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -162,7 +155,7 @@ export function ChatStatusPill({
       return;
     }
     if (!lastShown.current) return;
-    if (reducedMotion()) {
+    if (prefersReducedMotion()) {
       lastShown.current = undefined;
       setLeaving(false);
       return;
@@ -235,7 +228,7 @@ export function ChatStatusPill({
     if (
       previous === undefined ||
       previous === width ||
-      reducedMotion() ||
+      prefersReducedMotion() ||
       typeof element.animate !== 'function'
     )
       return;

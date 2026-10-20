@@ -180,6 +180,8 @@ export function runColdStartProbe(
  * @typedef {{ log?: (line: string) => void, pause?: (ms: number) => void, attempts?: number }} ColdStartProbeOptions
  */
 
+// Same bytes as lib/canonical-json.mjs. Kept inline because the Dockerfile
+// dependencies stage copies this module's import closure file by file.
 export function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object')

@@ -35,13 +35,13 @@ describe('sanitizeAppConfigUpdate', () => {
 
   test('strips and reports runtime-derived (internal) keys', () => {
     const result = sanitizeAppConfigUpdate({
-      managedChatOrchestration: true,
+      pluginFrameOrigin: 'http://127.0.0.1:4556',
       mcpUiFrameOrigin: 'http://127.0.0.1:4555',
     });
     expect(result.accepted).toEqual({});
     expect(result.ignored).toEqual(
       expect.arrayContaining([
-        { key: 'managedChatOrchestration', reason: 'runtime-derived' },
+        { key: 'pluginFrameOrigin', reason: 'runtime-derived' },
         { key: 'mcpUiFrameOrigin', reason: 'runtime-derived' },
       ]),
     );
@@ -178,17 +178,12 @@ describe('buildAppConfigProvenance', () => {
       {
         injected: {
           mcpUiFrameOrigin: 'MCP_UI_FRAME_PORT',
-          managedChatOrchestration: 'STATION_FEATURES',
         },
       },
     );
     expect(provenance.mcpUiFrameOrigin).toEqual({
       source: 'env',
       envVar: 'MCP_UI_FRAME_PORT',
-    });
-    expect(provenance.managedChatOrchestration).toEqual({
-      source: 'env',
-      envVar: 'STATION_FEATURES',
     });
   });
 

@@ -8,6 +8,7 @@
  */
 
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { isPlainRecord } from '../utils/isRecord';
 
 export const STARTER_WORK_OPERATION_STORAGE_KEY =
   'station-starter-work-operations-v1';
@@ -89,15 +90,6 @@ function operationFor(
   return Object.hasOwn(projects, projectId) ? projects[projectId] : undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
-
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]) {
   const actual = Object.keys(value);
   return (
@@ -140,10 +132,10 @@ function parseDocument(
     return null;
   }
   if (
-    !isRecord(candidate) ||
+    !isPlainRecord(candidate) ||
     !exactKeys(candidate, ['schemaVersion', 'projects']) ||
     candidate.schemaVersion !== SCHEMA_VERSION ||
-    !isRecord(candidate.projects)
+    !isPlainRecord(candidate.projects)
   ) {
     return null;
   }
@@ -154,7 +146,7 @@ function parseDocument(
   for (const [projectId, project] of projectEntries) {
     if (
       !validProjectId(projectId) ||
-      !isRecord(project) ||
+      !isPlainRecord(project) ||
       !exactKeys(project, ['operationId']) ||
       !validOperationId(project.operationId)
     ) {

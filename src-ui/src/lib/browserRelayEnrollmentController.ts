@@ -20,6 +20,7 @@ import {
   digestRelayEnrollmentBundle,
   type RelayEnrollmentKey,
 } from '@kontourai/station-sdk/relay-enrollment';
+import { isRecord } from '../utils/isRecord';
 
 export type BrowserRelayEnrollmentState =
   | 'idle'
@@ -78,10 +79,6 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_CEREMONY_MS = 5 * 60_000;
 const MAX_RESPONSE_BYTES = 16 * 1024;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
 
 function sameKey(left: unknown, right: RelayEnrollmentKey['publicKey']) {
   return (

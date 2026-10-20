@@ -233,10 +233,6 @@ export function createConfigRoutes(
   // Runtime-derived origin of the dedicated MCP-UI frame server, if running.
   // Injected into GET /app only (never persisted via the update schema).
   getMcpUiFrameOrigin?: () => string | undefined,
-  // archive#980: runtime-derived (STATION_FEATURES=managed-chat-orchestration,
-  // never persisted) — same injected-into-GET-/app-only, never-in-the-update-
-  // schema pattern as `getMcpUiFrameOrigin` above.
-  getManagedChatOrchestrationEnabled?: () => boolean,
   // archive#1194 (epic archive#1191, slice B): re-applies the built-in default
   // agent's engine binding via the existing bootstrap function whenever an
   // update touches `builtinAgentEngineConnectionId` — Voice is deliberately
@@ -380,8 +376,6 @@ export function createConfigRoutes(
       const config = await configLoader.loadAppConfig();
       const frameOrigin = getMcpUiFrameOrigin?.();
       const pluginFrameOrigin = getPluginFrameOrigin?.();
-      const managedChatOrchestrationEnabled =
-        getManagedChatOrchestrationEnabled?.() === true;
       // #1582 D9: what a terminal would start here with nothing configured,
       // derived from the resolver a spawn actually walks rather than a
       // hard-coded hint the Settings input would print on every host. Same
@@ -394,9 +388,6 @@ export function createConfigRoutes(
       const injected: Record<string, string> = {};
       if (frameOrigin) injected.mcpUiFrameOrigin = 'MCP_UI_FRAME_PORT';
       if (pluginFrameOrigin) injected.pluginFrameOrigin = 'MCP_UI_FRAME_PORT';
-      if (managedChatOrchestrationEnabled) {
-        injected.managedChatOrchestration = 'STATION_FEATURES';
-      }
       // Only claimed as environment-sourced when the environment is what
       // supplied it; a platform fallback is nobody's setting.
       if (terminalShellDefault?.source === 'env') {
@@ -412,9 +403,6 @@ export function createConfigRoutes(
           ...projectPublicAppConfig(config),
           ...(frameOrigin ? { mcpUiFrameOrigin: frameOrigin } : {}),
           ...(pluginFrameOrigin ? { pluginFrameOrigin } : {}),
-          ...(managedChatOrchestrationEnabled
-            ? { managedChatOrchestration: true }
-            : {}),
           ...(terminalShellDefault
             ? { defaultTerminalShell: terminalShellDefault.shell }
             : {}),

@@ -650,6 +650,36 @@ describe('attachment refusal (attachment_input_unsupported)', () => {
   });
 });
 
+describe('approval governance refusal (acp_approval_governance_refused, #3290)', () => {
+  it('names the setting and the next step, with no "temporary" hint, not retryable', () => {
+    const translated = translateChatError({
+      status: 400,
+      code: 'acp_approval_governance_refused',
+      message:
+        "Station can't apply its approval mode to OpenCode, so the chat was not started: your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking).",
+    });
+    expect(translated.title).toBe("Station's approval mode wasn't applied");
+    expect(translated.body).toContain('for bash in the build agent');
+    // The server's sentence already says nothing started; it is not repeated.
+    expect(translated.body).not.toContain('Nothing was sent');
+    expect(
+      translateChatError({
+        status: 400,
+        code: 'acp_approval_governance_refused',
+        message:
+          "Station's approval modes cover OpenCode's build and plan agents only; the helper agent keeps its own permission rules.",
+      }).body,
+    ).toMatch(/permission rules\. Nothing was sent\.$/);
+    expect(translated.hint).toBe(
+      'Change the OpenCode setting or mode named above.',
+    );
+    // Whether Default helps is the server's to say for this chat (#3290).
+    expect(translated.hint).not.toContain('Default');
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.retryable).toBe(false);
+  });
+});
+
 describe('engine changed (execution_engine_changed)', () => {
   const stale = {
     status: 409,

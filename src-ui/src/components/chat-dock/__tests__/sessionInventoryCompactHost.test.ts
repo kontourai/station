@@ -2,7 +2,11 @@
 
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, expect as expectPlaywright } from '@playwright/test';
+import {
+  chromium,
+  expect as expectPlaywright,
+  type Locator,
+} from '@playwright/test';
 import { render } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -71,7 +75,7 @@ function buildBasisFallbackHtml(): string {
 <style>${buildFixtureCss()}</style></head>
 <body style="margin:0"><header id="app-header" style="position:fixed;inset:0 0 auto;height:46px;z-index:1;background:#111;color:#fff">App header</header>
 <main style="padding-top:46px"><div class="chat-dock__conversation-surface" style="width:480px;height:360px;overflow:hidden;transform:translateZ(0)">Chat dock</div></main>
-<div class="station-dialog__overlay responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="station-dialog station-dialog--lg basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="station-dialog__header"><div class="station-dialog__heading"><h2 class="station-dialog__title">Basis</h2></div><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><div class="station-dialog__body"><section class="session-inventory"><h2>Session inventory</h2></section></div></div></div></body></html>`;
+<div class="station-dialog__overlay responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="station-dialog station-dialog--lg basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="station-dialog__header"><div class="station-dialog__heading"><h2 class="station-dialog__title">Basis</h2></div><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><div class="station-dialog__body"><section class="session-inventory"><h2>Chat inventory</h2></section></div></div></div></body></html>`;
 }
 
 function renderCompactMarkup(density: 'aside' | 'card'): string {
@@ -190,6 +194,24 @@ describe('Session inventory compact host', () => {
   });
 });
 
+/**
+ * One rendered line of `element`'s text, in CSS pixels: the height of a
+ * single-glyph probe laid out with the element's own computed font and line
+ * height, so the bound follows whatever fonts this host resolves.
+ */
+async function lineHeightOf(element: Locator): Promise<number> {
+  return element.evaluate((node) => {
+    const probe = document.createElement('span');
+    const style = getComputedStyle(node);
+    probe.style.cssText = `display:block;position:absolute;visibility:hidden;white-space:nowrap;font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing}`;
+    probe.textContent = 'X';
+    node.parentElement!.appendChild(probe);
+    const height = probe.getBoundingClientRect().height;
+    probe.remove();
+    return height;
+  });
+}
+
 describe.skipIf(!chromiumAvailable)(
   'Session inventory compact host geometry',
   () => {
@@ -259,8 +281,14 @@ describe.skipIf(!chromiumAvailable)(
           expect(inventoryBox!.width).toBeLessThanOrEqual(fixture.inventoryMax);
           expect(chatBox!.width).toBeGreaterThanOrEqual(fixture.chatMin);
           expect(titleBox!.width).toBeGreaterThan(100);
-          expect(titleBox!.height).toBeLessThanOrEqual(60);
-          expect(scopeBox!.height).toBeLessThanOrEqual(40);
+          // At most two lines each, measured in the element's own line
+          // height rather than pixels: a fixed 60px bound held on the hosted
+          // Linux fonts and failed on macOS's, where the same two-line title
+          // measures 62px (#3887). Three lines still fail on either.
+          const titleLine = await lineHeightOf(heading.locator('h2'));
+          const scopeLine = await lineHeightOf(heading.locator('bdi'));
+          expect(titleBox!.height).toBeLessThanOrEqual(2 * titleLine + 1);
+          expect(scopeBox!.height).toBeLessThanOrEqual(2 * scopeLine + 1);
           const highlights = page.getByRole('region', {
             name: 'Inventory highlights',
           });

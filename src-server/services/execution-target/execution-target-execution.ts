@@ -378,6 +378,8 @@ export interface ExecutionTargetExecutionDependencies
     input: {
       threadId: string;
       provider: EngineId;
+      /** #3290: the engine connection, which decides an ACP thread's knob. */
+      connectionId?: string;
       approvalMode: ApprovalMode;
       basedOnSequence: number | null;
       clientOrigin?: ClientOrigin;
@@ -1009,6 +1011,9 @@ export async function executeForegroundMessage(
     ? deps.recordApprovalMode?.(resolved.access, {
         threadId: sessionId,
         provider: resolved.provider,
+        ...(resolved.engine.kind === 'connection'
+          ? { connectionId: resolved.engine.connectionId }
+          : {}),
         approvalMode: input.setApprovalMode,
         basedOnSequence: input.setApprovalModeBasedOn ?? null,
         ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),

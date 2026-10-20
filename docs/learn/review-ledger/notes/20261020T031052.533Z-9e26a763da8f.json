@@ -1,0 +1,39 @@
+{
+  "revision": "6c0faa6c4366332d11ee19f0735a460eb1b9b6b4",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Checked the claims citing the changed sources: workspacePaneHostNavigation.ts loses two exports nothing imported (WORKSPACE_PANE_ACTIVE_INSTANCE_QUERY_PARAM, isWorkspacePaneHostSelection); host selection writes are unchanged. No claim here needs to change.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/workspace-panes/workspacePaneHostNavigation.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the claims citing the changed sources: useActiveChatSessions.ts drops an unused usePruneActiveChats re-export; ActiveChatsContext still imports the hook directly. No claim here needs to change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessions.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked the claims citing the changed sources: the Shared answers empty state now says Share answer is in the Turn provenance dialog, which matches the documented mint control beside the provenance card. No claim here needs to change.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/views/settings/AnswerSharesSection.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the claims citing the changed sources: MobileTaskSwitcher types its rows as HomeWorkItem instead of the deprecated HomeTaskItem alias of the same type; home-view-model.ts drops the deprecated HomeTaskItem/buildHomeTaskItems aliases (production already used buildHomeWorkItems) and one comment cites #2338 instead of a review label. No claim here needs to change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/views/home/home-view-model.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the claims citing the changed sources: connection-sections.ts loses the unused connectionSectionForPath export; the section registry and canonical paths are unchanged; providerCatalog.tsx loses the unused findModelProviderChoice export; readiness and presets are unchanged. No claim here needs to change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the claims citing the changed sources: layouts/index.tsx loses the unused clientLayoutRendererPresence export; LayoutRenderer behaviour is unchanged. No claim here needs to change.","inputs":["docs/design/placement.md","src-ui/src/layouts/index.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked the claims citing the changed sources: ProjectSidebarRow only rewords its seam comment: no per-project attention count renders, consistent with the claim that the map does not manufacture one. No claim here needs to change.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/guides/agents.md","note":"Checked the claims citing the changed sources: connection-sections.ts loses the unused connectionSectionForPath export; the section registry and canonical paths are unchanged; providerCatalog.tsx loses the unused findModelProviderChoice export; readiness and presets are unchanged. No claim here needs to change.","inputs":["docs/guides/agents.md","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the claims citing the changed sources: connection-sections.ts loses the unused connectionSectionForPath export; the section registry and canonical paths are unchanged; providerCatalog.tsx loses the unused findModelProviderChoice export; readiness and presets are unchanged. No claim here needs to change.","inputs":["docs/guides/connections.md","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the claims citing the changed sources: MobileTaskSwitcher types its rows as HomeWorkItem instead of the deprecated HomeTaskItem alias of the same type. No claim here needs to change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the claims citing the changed sources: connection-sections.ts loses the unused connectionSectionForPath export; the section registry and canonical paths are unchanged; providerCatalog.tsx loses the unused findModelProviderChoice export; readiness and presets are unchanged. No claim here needs to change.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the claims citing the changed sources: AttachedSessionDetail now awaits the bound-starter continuation inside its classifying try and routes message copy through copyToClipboard; the starter-work flow described here is unchanged. No claim here needs to change.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the claims citing the changed sources: layouts/index.tsx loses the unused clientLayoutRendererPresence export; LayoutRenderer behaviour is unchanged. No claim here needs to change.","inputs":["docs/reference/api.md","src-ui/src/layouts/index.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Checked the claims citing the changed sources: ProjectSidebarRow only rewords its seam comment: no per-project attention count renders, consistent with the claim that the map does not manufacture one. No claim here needs to change.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the claims citing the changed sources: MobileTaskSwitcher types its rows as HomeWorkItem instead of the deprecated HomeTaskItem alias of the same type. No claim here needs to change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked the claims citing the changed sources: layouts/index.tsx loses the unused clientLayoutRendererPresence export; LayoutRenderer behaviour is unchanged. No claim here needs to change.","inputs":["docs/user/personal-boards.md","src-ui/src/layouts/index.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the claims citing the changed sources: connection-sections.ts loses the unused connectionSectionForPath export; the section registry and canonical paths are unchanged; providerCatalog.tsx loses the unused findModelProviderChoice export; readiness and presets are unchanged. No claim here needs to change.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]}
+  ]
+}
