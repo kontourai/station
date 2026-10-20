@@ -58,8 +58,10 @@ shared value upstream when it belongs to the public design system.
 [startup-theme.js](../../src-ui/public/startup-theme.js) selects the saved
 light/dark preference before the entry HTML paints, reading the device-settings
 envelope before the legacy theme key and falling back to dark if storage is
-unavailable. [main.tsx](../../src-ui/src/main.tsx) applies the canonical theme,
-accent and cached branding before React renders. The initial HTML and
+unavailable. It also stamps the saved named color theme and `theme-color`
+(see [Named color themes](#named-color-themes)). [main.tsx](../../src-ui/src/main.tsx)
+applies the canonical theme, accent and cached branding before React renders,
+and binds the color theme to the settings store. The initial HTML and
 [StartupScreen](../../src-ui/src/components/StartupScreen.tsx) share the same
 startup artwork through platform and authority resolution. One launch presentation
 survives React bootstrap handoffs outside the application root. The lightweight

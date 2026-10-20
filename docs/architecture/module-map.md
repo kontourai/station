@@ -32,6 +32,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SessionDigest](#sessiondigest) | Account for a Session's turns from recorded events alone, in pages that never exceed a byte cap. | `src-server/services/orchestration/session-digest.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
+| [ColorThemes](#colorthemes) | Resolve a stored named palette and put it in force before first paint without changing Station's default. | `src-ui/src/lib/color-theme-catalog.ts` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
 | [WorkspacePaneHostContributions](#workspacepanehostcontributions) | Bind package-level Pane-host actions and explicit Agent selection without treating Pane requirements as routing authority. | `src-server/services/plugins/workspace-pane-host-contributions.ts` |
 | [WorkspacePaneHostAdmission](#workspacepanehostadmission) | Admit one captured package action at the existing foreground invocation boundary. | `src-server/services/plugins/workspace-pane-host-admission.ts` |
@@ -536,6 +537,39 @@ exercise DOM events and synthetic handlers. The independent Space probe enters
 through the mounted editor and provider; it does not qualify physical keyboards
 or native-shell interception. Keep the modal-guard and registration-loop
 regression rationale when changing this owner.
+
+## ColorThemes
+
+**Purpose.** A person chooses a named palette (Catppuccin, Rosé Pine, Gruvbox,
+Nord, Tokyo Night) on top of light and dark; `station` sets nothing. The
+[decision record](../decisions/user-color-themes.md) owns settings,
+compatibility and precedence.
+
+**Interface.** The [catalog](../../src-ui/src/lib/color-theme-catalog.ts) is the
+single source of every value: per family, flavors mapped onto the `--k-*`
+roles and Station's functional colours, named accents and per-flavor channel
+brands. [color-themes.ts](../../src-ui/src/lib/color-themes.ts) resolves the
+`colorTheme`, `colorThemeFlavor` and `colorThemeAccent` settings (unknown ids
+fall back, nothing throws) and exposes `COLOR_THEME_OPTIONS` for a picker.
+[color-theme-apply.ts](../../src-ui/src/lib/color-theme-apply.ts) stamps
+`data-color-theme*` and `theme-color` on the document and stays bound to the
+settings store from `main.tsx`.
+
+**Generated artifacts.** [color-theme-css.ts](../../src-ui/src/lib/color-theme-css.ts)
+renders the stylesheets and the index block in
+[startup-theme.js](../../src-ui/public/startup-theme.js);
+[gen-color-themes.ts](../../scripts/gen-color-themes.ts)
+(`npm run gen:color-themes`) only writes them. Selector weight, not import
+order, decides precedence against `index.css` and the channel blocks.
+
+**Evidence.** [Contrast](../../src-ui/src/__tests__/color-theme-contrast.test.ts)
+rates every family, flavor and accent with `@kontourai/ui/contrast`;
+[artifacts](../../src-ui/src/__tests__/color-theme-artifacts.test.ts) fails on
+drift; [cascade](../../src-ui/src/__tests__/color-theme-cascade.test.ts) runs the
+real startup script, store and applier against the real stylesheets in
+Chromium, including Station's unchanged default. Pre-paint reads device
+storage only, so a signed-in person's account theme applies once preferences
+load. No native shell or rendered screenshot is covered.
 
 ## UnifiedSearchService
 
