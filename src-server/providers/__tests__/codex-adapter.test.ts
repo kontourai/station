@@ -5495,6 +5495,7 @@ describe('CodexAdapter', () => {
 
       const startSessionPromise = adapter.startSession({
         provider: 'codex',
+        confinement: 'host',
         threadId: 'thread-app-home',
         cwd: '/tmp/project',
         modelId: 'gpt-5-codex',
@@ -5546,6 +5547,7 @@ describe('CodexAdapter', () => {
 
       const started = adapter.startSession({
         provider: 'codex',
+        confinement: 'host',
         threadId: 'thread-profile-with-tools',
         cwd: '/tmp/project',
         credentialProfileRef: profileRef,
@@ -5796,6 +5798,7 @@ describe('CodexAdapter', () => {
 
       const startSessionPromise = adapter.startSession({
         provider: 'codex',
+        confinement: 'host',
         threadId: 'thread-connection-env',
         cwd: '/tmp/project',
         modelId: 'gpt-5-codex',
@@ -5837,6 +5840,7 @@ describe('CodexAdapter', () => {
 
       const startSessionPromise = adapter.startSession({
         provider: 'codex',
+        confinement: 'host',
         threadId: 'thread-connection-env-only',
         cwd: '/tmp/project',
         modelId: 'gpt-5-codex',
@@ -5934,6 +5938,7 @@ describe('CodexAdapter', () => {
 
         const startSessionPromise = adapter.startSession({
           provider: 'codex',
+          confinement: 'host',
           threadId: 'thread-profile-overlay',
           cwd: '/tmp/project',
           modelId: 'gpt-5-codex',
@@ -6103,6 +6108,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
     const startSessionPromise = adapter.startSession({
       provider: 'codex',
+      confinement: 'host',
       threadId: 'thread-no-tools',
       cwd: '/tmp/project',
       modelId: 'gpt-5-codex',
@@ -6135,6 +6141,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
     const startSessionPromise = adapter.startSession({
       provider: 'codex',
+      confinement: 'host',
       threadId: 'thread-tools',
       cwd: '/tmp/project',
       modelId: 'gpt-5-codex',
@@ -6201,6 +6208,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
     const startSessionPromise = adapter.startSession({
       provider: 'codex',
+      confinement: 'host',
       threadId: 'thread-station-control',
       cwd: '/tmp/project',
       modelId: 'gpt-5-codex',
@@ -6268,6 +6276,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
     const startSessionPromise = adapter.startSession({
       provider: 'codex',
+      confinement: 'host',
       threadId: 'thread-impostor',
       cwd: '/tmp/project',
       modelId: 'gpt-5-codex',

@@ -1,5 +1,96 @@
 [
   {
+    "timestampUtc": "2026-10-20T10:38:25Z",
+    "channel": "nightly-npm",
+    "version": "0.9.0-nightly.2484.39407854711",
+    "sha": "6569ee5af0d4ae711594c7521736fd23cce435ab",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39407854711",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.9.0-nightly.2484.39407854711 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e0c9c64081f5901e3d1533f386bede1249b403f4",
+      "groups": {
+        "feat": [
+          "[#3926](https://github.com/kontourai/station/pull/3926) feat(ui): name a notable Basis standing on the answer chip",
+          "[#3896](https://github.com/kontourai/station/pull/3896) feat(scripts): add advisory code hygiene checks and nightly tracking"
+        ],
+        "fix": [
+          "[#3927](https://github.com/kontourai/station/pull/3927) fix(scripts): end YAML block scalars by content indentation and read quoted keys",
+          "[#3939](https://github.com/kontourai/station/pull/3939) fix(ui): stop the full-access copy promising no sandbox",
+          "[#3923](https://github.com/kontourai/station/pull/3923) fix(security): keep workspace engine config from widening confinement",
+          "[#3922](https://github.com/kontourai/station/pull/3922) fix(acp): enforce Station approval mode on ACP engines",
+          "[#3921](https://github.com/kontourai/station/pull/3921) fix(security): decide path containment on native-resolved real paths",
+          "[#3916](https://github.com/kontourai/station/pull/3916) fix(cli): make tasks help match what the parser accepts"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3931](https://github.com/kontourai/station/pull/3931) docs(deploy): state that hosted Stations refuse new answer shares"
+        ],
+        "other": [
+          "[#3928](https://github.com/kontourai/station/pull/3928) chore(scripts): retire the refactor-shape guardrail family and drop literal pins",
+          "[#3933](https://github.com/kontourai/station/pull/3933) test(cli): run each tasks usage line against valid answers and advertise basis --json",
+          "[#3937](https://github.com/kontourai/station/pull/3937) refactor(server): retire the managed-chat-orchestration flag and mark unwired and sunset code",
+          "[#3940](https://github.com/kontourai/station/pull/3940) test(scripts): pin the archive repository in the generated manifest note",
+          "[#3865](https://github.com/kontourai/station/pull/3865) build(deps): bump the runtime-and-ui-minor-patch group across 1 directory with 15 updates",
+          "[#3897](https://github.com/kontourai/station/pull/3897) refactor(ui): share duplicated UI helpers and fix two consistency gaps"
+        ]
+      },
+      "note": null,
+      "commitCount": 15
+    }
+  },
+  {
+    "timestampUtc": "2026-10-20T05:54:27Z",
+    "channel": "nightly-npm",
+    "version": "0.9.0-nightly.2484.39374315524",
+    "sha": "e0c9c64081f5901e3d1533f386bede1249b403f4",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39374315524",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.9.0-nightly.2484.39374315524 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "cd1929819a5dba3ab71596d37e2df7dcd1f4cb55",
+      "groups": {
+        "feat": [
+          "[#3855](https://github.com/kontourai/station/pull/3855) feat(ui): put Basis on the answer; fix session inventory refetch loop",
+          "[#3868](https://github.com/kontourai/station/pull/3868) feat(chat): show and remove server-held follow-ups across clients",
+          "[#3856](https://github.com/kontourai/station/pull/3856) feat(ui): add a session context card beside the chat transcript",
+          "[#3854](https://github.com/kontourai/station/pull/3854) feat(ui): add a live turn rail beside the transcript"
+        ],
+        "fix": [
+          "[#3918](https://github.com/kontourai/station/pull/3918) fix(ui): delete dead UI code and fix four #2722 UI defects",
+          "[#3914](https://github.com/kontourai/station/pull/3914) fix(basis): never count a grounding-refused Fieldwork source as accepted",
+          "[#3904](https://github.com/kontourai/station/pull/3904) fix(answers): accept a symlinked Station home; docs: stop listing required checks in AGENTS.md",
+          "[#3919](https://github.com/kontourai/station/pull/3919) fix(ci): defer global Vitest triggers from fast feedback",
+          "[#3874](https://github.com/kontourai/station/pull/3874) fix(ui): resume transcript follow on one-pixel keyboard steps"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3911](https://github.com/kontourai/station/pull/3911) docs(strategy): state retention for dated evidence sets and fix the archive location",
+          "[#3906](https://github.com/kontourai/station/pull/3906) docs(packages): supervisor README, contracts helper rule, subpath indexes and comment hygiene",
+          "[#3893](https://github.com/kontourai/station/pull/3893) docs(design): align lifecycle status with banners and retire stale records"
+        ],
+        "other": [
+          "[#3917](https://github.com/kontourai/station/pull/3917) refactor(scripts): Node.js pin in assemble, shared canonical JSON, dead scripts, daily-driver doc",
+          "[#3905](https://github.com/kontourai/station/pull/3905) chore(deploy): remove committed PR screenshots and the historical GCP recipe"
+        ]
+      },
+      "note": null,
+      "commitCount": 14
+    }
+  },
+  {
     "timestampUtc": "2026-10-19T21:59:06Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2483.2",

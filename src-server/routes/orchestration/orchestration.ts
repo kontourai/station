@@ -5506,6 +5506,9 @@ export function createOrchestrationRoutes(
     }
   });
 
+  // UNWIRED(#418): nothing in this repository publishes or removes a
+  // narrative binding, and the SDK publisher has no consumer (#3895);
+  // Flow Agents narrative publication under #418 will call these routes.
   app.put(
     '/sessions/:threadId/turns/:turnId/narrative',
     validate(answerNarrativePutSchema),

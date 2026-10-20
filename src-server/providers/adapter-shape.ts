@@ -22,6 +22,7 @@ import type {
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
 import {
+  ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
@@ -85,6 +86,21 @@ export class SendTurnRefusedError extends Error {
   ) {
     super(message);
     this.name = 'SendTurnRefusedError';
+  }
+}
+
+/**
+ * #3290: Station cannot apply its approval mode to this ACP engine (see
+ * `ACP_APPROVAL_GOVERNANCE_REFUSED_CODE`). Thrown before the start or turn
+ * has any effect, so it is a `SendTurnRefusedError`, carrying a structured
+ * code so clients withhold a blind retry.
+ */
+export class ApprovalGovernanceRefusedError extends SendTurnRefusedError {
+  readonly code = ACP_APPROVAL_GOVERNANCE_REFUSED_CODE;
+
+  constructor(message: string) {
+    super(message, 'permission_denied');
+    this.name = 'ApprovalGovernanceRefusedError';
   }
 }
 
@@ -517,6 +533,13 @@ export interface ProviderAdapterShape {
      */
     connectionId?: string;
   }): Promise<Prerequisite[]>;
+  /**
+   * #3290: a pre-effect check the orchestrator runs before it claims the
+   * start boundary. A refusal thrown here is definitive (nothing was
+   * started), unlike a failure of `startSession` itself, which the boundary
+   * must treat as possibly started.
+   */
+  preflightStart?(input: ProviderSessionStartInput): Promise<void>;
   /** Reads provider-reported connection quota data when the engine supports it. */
   readQuotaSnapshot?(options: {
     connectionId: string;

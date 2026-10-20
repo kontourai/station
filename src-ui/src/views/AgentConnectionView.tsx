@@ -65,6 +65,7 @@ import {
   runtimeCatalogSourceSentence,
   runtimeCatalogVisibleModels,
 } from '../utils/execution';
+import { formatBytes } from '../utils/formatBytes';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
 import { EngineAccountOverview } from './EngineAccountOverview';
@@ -1238,19 +1239,6 @@ function ClaudeSkillsMaterializationField({
  * explicit user action — never triggered by the toggle or a form save —
  * and always renders its copied/skipped report, never silent.
  */
-/** `sizeBytes` → a short human-readable string (e.g. `1.2 MB`). */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let value = bytes / 1024;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(1)} ${units[unitIndex]}`;
-}
-
 function AppHomeProfileField({
   connectionId,
   engineLabel,

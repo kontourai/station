@@ -1,0 +1,11 @@
+{
+  "revision": "1a8ce563ccaf466bd54d0ab6cdff41ad9c6f577e",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Review fix: the ancestry sentence limits off-main to the branch-owned review revisions and names the cited main revisions (777d9502ad8, d6c25a3c0728, 672aa69b0532, 9658fa21a33e), each confirmed with git merge-base --is-ancestor against origin/main.","inputs":["docs/reviews/workspace-map-20261015/README.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed against the manifest change: scripts/vitest-resource-manifest.mjs only adds dogfood-evidence-retention.test.ts to the process-heavy list because it now spawns the archive generator as a real child process; no testing-guide claim about the manifest changes.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed against the manifest change: one test file is added to PROCESS_HEAVY_VITEST_FILES; no script contract or instruction here changes.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

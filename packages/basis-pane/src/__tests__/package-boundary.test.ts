@@ -86,7 +86,12 @@ describe('@kontourai/station-basis-pane package boundary', () => {
     // `AnswerBasisRequestError` check, and review H3 added the title that
     // states what is true of BOTH 404 cases without claiming which.
     // Measured 6_862 at that change.
-    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(6_880);
+    // Raised from 6_880 for the owner decision on #926 (epic #418): the
+    // answer chip names a notable Surface standing on its face (a closed list
+    // of Surface's standing codes), carries the standing in its accessible
+    // name and uses Surface's description as its title. Measured 6_925 at
+    // that change (main was 6_877); the cap leaves 35 bytes of headroom.
+    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(6_960);
     expect(
       await bundledGzipBytes('workspace-basis-pane.ts'),
     ).toBeLessThanOrEqual(1_536);

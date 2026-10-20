@@ -143,6 +143,7 @@ import {
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
 import {
+  codexConfinementConfigArgs,
   describeCodexSandboxGap,
   observeCodexSandboxPosture,
   requiredByReportedPolicy,
@@ -1859,11 +1860,14 @@ export class CodexAdapter implements ProviderAdapterShape {
         input.threadId,
         Boolean(input.credentialProfileRef) && !input.nativeResumeBindingKey,
       );
+    const spawnArgs = [
+      ...connectionLaunch.args,
+      ...(toolServers.configArgs ?? []),
+      ...codexConfinementConfigArgs(input.confinement),
+    ];
     const processHandle = this.processFactory(
       spawnEnv,
-      connectionLaunch.args.length
-        ? [...connectionLaunch.args, ...(toolServers.configArgs ?? [])]
-        : toolServers.configArgs,
+      spawnArgs.length ? spawnArgs : undefined,
     );
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,

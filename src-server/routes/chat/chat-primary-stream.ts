@@ -673,7 +673,6 @@ export function streamPrimaryAgentChat({
       accumulatedText = '';
       reasoningText = '';
 
-      const debugStreaming = process.env.DEBUG_STREAMING === 'true';
       // Read the model BEFORE the pipeline is built: the tool events emitted
       // inside it carry the engine and model (archive#3074), and this is the only
       // construction path, so a value resolved afterwards never reaches them.
@@ -711,7 +710,6 @@ export function streamPrimaryAgentChat({
         toolNames: agentTools.map((tool) => tool.name).slice(0, 5),
         maxTokens: agentModel?.settings?.maxTokens,
         temperature: agentModel?.settings?.temperature,
-        debugStreaming,
       });
 
       const wrappedStream = stripOutputDeclarationHandles(
