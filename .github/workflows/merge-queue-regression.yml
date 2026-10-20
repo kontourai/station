@@ -1,4 +1,4 @@
-name: "Diagnostic: Merge integration"
+name: "Diagnostic (manual): Merge integration"
 
 # Automatic integration belongs to ci.yml's same-run fast-checks graph.
 # Keep the existing dispatch entry point as a conservative full-corpus diagnostic.

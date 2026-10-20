@@ -100,7 +100,7 @@
  * claim is made here for query domains outside `useApiQuery` (which
  * threads its signal by construction) plus the two named above. Cache
  * clears do not cancel dispatched mutations, and root contexts/drafts/
- * queued turns/deep links remain independent later exits — this slice
+ * queued turns/deep links remain independent later exits — this module
  * claims query partition only, never full #481.
  */
 
@@ -559,6 +559,7 @@ export function AuthorityQueryProvider({
           status: unauthorized ? 'unavailable' : 'unverified',
           namespace: null,
           observation: null,
+          refused: unauthorized,
         }}
       >
         <EphemeralTree key={ephemeralKey}>

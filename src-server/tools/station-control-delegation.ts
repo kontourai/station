@@ -4750,13 +4750,7 @@ export async function continueDelegatedTask(
     // need an outbound round-trip. Operator/device callers fall through
     // to the forward below. Then the sender-currency probe: a revocation
     // that landed during target resolution refuses before the POST.
-    if (
-      isInboundDelegationPeer(
-        input.principal,
-        input.clientOrigin,
-        input.inboundDeviceKind,
-      )
-    )
+    if (isInboundDelegationPeer(input.inboundDeviceKind))
       throw new ReceiverExecutionRefusal(
         'receiver_execution_forwarding_refused',
         RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_forwarding_refused,
@@ -4888,13 +4882,7 @@ export async function respondToDelegatedTaskRequest(
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     // Same no-onward-hop + sender-currency guards as the continue path.
-    if (
-      isInboundDelegationPeer(
-        input.principal,
-        input.clientOrigin,
-        input.inboundDeviceKind,
-      )
-    )
+    if (isInboundDelegationPeer(input.inboundDeviceKind))
       throw new ReceiverExecutionRefusal(
         'receiver_execution_forwarding_refused',
         RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_forwarding_refused,
@@ -5165,14 +5153,11 @@ export async function interruptDelegatedTask(
  * device-credential authority, so production composition resolves its kind
  * to `undefined` (never a peer); an ordinary personal device resolves
  * `device` and may still select a saved peer as its controller. The
- * `principal`/`clientOrigin` parameters are retained so call sites keep
- * passing the verified caller facts (and the derivation stays reviewable
- * next to them), but they do not participate in the verdict. Exported for
- * unit coverage of the derivation without a runtime.
+ * predicate therefore takes only the verified device kind, so a caller
+ * cannot hand it a display identity to weigh. Exported for unit coverage of
+ * the derivation without a runtime.
  */
 export function isInboundDelegationPeer(
-  _principal: PrincipalRef | undefined,
-  _clientOrigin: ClientOrigin | undefined,
   inboundDeviceKind: 'device' | 'delegation' | undefined,
 ): boolean {
   return inboundDeviceKind === 'delegation';
@@ -5215,12 +5200,7 @@ export async function delegateTask(
   // #484 no-onward-hop, derived BEFORE any effect from the verified caller
   // facts only (never body/userId/metadata) — see isInboundDelegationPeer.
   const inboundPeer =
-    portableIntent === true &&
-    isInboundDelegationPeer(
-      input.principal,
-      input.clientOrigin,
-      input.inboundDeviceKind,
-    );
+    portableIntent === true && isInboundDelegationPeer(input.inboundDeviceKind);
   // The ONE environment resolution for this dispatch: the route never
   // resolves, so there is no second resolution to race these endpoints.
   const selectedTarget = await resolveTarget(
@@ -6532,7 +6512,7 @@ export async function executeExecutionTargetMessage(
         readAuthority,
       );
       const metadata = sessionBinding(rootDetail);
-      // #764 (review round 2): same reserved-but-unstarted plain-continuation
+      // #764: same reserved-but-unstarted plain-continuation
       // tail as continueExecutionTargetMessage — fall back to the
       // lineage-aware read so the predecessor's binding governs instead of
       // dead-ending on the execution-binding error below.
@@ -7271,7 +7251,7 @@ export async function continueExecutionTargetMessage(
     readAuthority,
   );
   const metadata = sessionBinding(rootDetail);
-  // #764 (review round 2): when the lineage tail is a reserved-but-unstarted
+  // #764: when the lineage tail is a reserved-but-unstarted
   // plain continuation (no Session record, no handoff marker), the raw child
   // read is null. The lineage-aware read resolves that exact tail back to its
   // authorized predecessor, whose binding still governs the conversation —

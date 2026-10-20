@@ -1,5 +1,11 @@
 import { join } from 'node:path';
-import { encodeTaskToolResultReference } from '@kontourai/station-contracts';
+import {
+  encodeTaskToolResultReference,
+  encodeTaskTurnReference,
+  encodeTaskUserInputReference,
+  type RelationGraphLink,
+  type TaskOutputRecord,
+} from '@kontourai/station-contracts';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { commandHelpText } from '../help.js';
@@ -71,13 +77,66 @@ function refusal(status: number, error: string): Response {
   });
 }
 
-const OUTPUT = {
+/**
+ * The record the output routes send: values nest under `source` and
+ * `materialization`. Typed against the contract so a field the contract
+ * adds, renames or drops fails typecheck here instead of drifting.
+ */
+const OUTPUT: TaskOutputRecord = {
+  schemaVersion: 1,
   id: 'output-1',
   taskId: 'task-1',
+  projectId: 'project-1',
   title: 'Report',
-  relativePath: 'dist/report.json',
-  mediaType: 'application/json',
+  source: { kind: 'workspace-file', relativePath: 'dist/report.json' },
+  materialization: {
+    kind: 'snapshot',
+    fileName: 'report.json',
+    mediaType: 'application/json',
+    byteLength: 2,
+    digest: `sha256:${'0'.repeat(64)}`,
+    contentAvailable: true,
+  },
+  createdAt: ISO,
 };
+
+/**
+ * The link `POST /references` stores for each attach kind: the entity type
+ * uses underscores (`user_input`, `tool_result`) while the request `kind`
+ * uses hyphens, and the target id is the contract's canonical encoding.
+ */
+function referenceLink(kind: string | undefined): RelationGraphLink {
+  const base = {
+    id: 'link-1',
+    sourceType: 'task',
+    sourceId: 'task-1',
+    confidence: 1,
+    createdAt: ISO,
+    source: 'user',
+  } as const;
+  if (kind === 'turn')
+    return {
+      ...base,
+      targetType: 'turn',
+      targetId: encodeTaskTurnReference('session-1', 'turn-1'),
+      relationType: 'references_turn',
+    };
+  if (kind === 'tool-result')
+    return {
+      ...base,
+      targetType: 'tool_result',
+      targetId: encodeTaskToolResultReference('session-1', 'event-1'),
+      relationType: 'references_tool_result',
+    };
+  if (kind === 'user-input')
+    return {
+      ...base,
+      targetType: 'user_input',
+      targetId: encodeTaskUserInputReference('session-1', 'event-1'),
+      relationType: 'references_user_input',
+    };
+  throw new Error(`no reference fixture for kind ${kind}`);
+}
 
 /**
  * The valid answer for each route the tasks actions call. A route with no
@@ -125,22 +184,7 @@ function answerFor(method: string, path: string, body: unknown): Response {
   }
   if (method === 'POST' && route === '/references') {
     const kind = (body as { kind?: string } | undefined)?.kind;
-    const toolResult = kind === 'tool-result';
-    return envelope({
-      id: 'link-1',
-      sourceType: 'task',
-      sourceId: 'task-1',
-      targetType: toolResult ? 'tool_result' : kind,
-      targetId: toolResult
-        ? encodeTaskToolResultReference('session-1', 'event-1')
-        : 'session-1/event-1',
-      relationType: toolResult
-        ? 'references_tool_result'
-        : `references_${kind}`,
-      confidence: 1,
-      createdAt: ISO,
-      source: 'user',
-    });
+    return envelope(referenceLink(kind));
   }
   if (route === '/outputs') {
     if (method === 'GET') return envelope([OUTPUT]);

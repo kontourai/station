@@ -90,7 +90,9 @@ For Windows PowerShell, updates, and connection help, follow
 ### On your phone
 
 Connect to a Station running on a computer. The phone uses that computer’s
-agents and files; it does not need Node.js or coding tools. Follow
+agents and files; it does not need Node.js or coding tools. The phone apps are
+in internal testing (Google Play internal testing and TestFlight), so most
+people open the Station's address in the phone's browser. Follow
 [Connect your phone](docs/user/getting-started.md#connect-your-phone).
 
 <a id="run-from-source-macos-linux"></a>
@@ -112,69 +114,38 @@ Open the UI address the command prints, then follow
 [First steps](#first-steps). The [developer guide](docs/guides/development.md)
 covers instances, ports, temporary homes, and the desktop app build.
 
-### Verified installer (when a stable release is published)
+### Other ways to run Station
 
-Stable and beta portable releases use signed GitHub release rings. Check the
-[release list](https://github.com/kontourai/station/releases) and
-[release-ring guide](docs/guides/release-rings.md) for current availability;
-desktop updater channel tags are not portable release rings. For an available
-ring, the bootstrap below verifies the release's
-GitHub OIDC attestation and SHA-256 receipt before installing under
-`~/.station/installs/stable`, linking `station` into `~/.local/bin`, and
-opening the UI at `http://localhost:18000`. It requires Node.js 24.x, npm 10
-or newer, curl, tar, and [GitHub CLI](https://cli.github.com/) with attestation
-verification support. The command below supplies a token from your authenticated
-GitHub CLI session to the installer's isolated verification environment.
+[Getting started](docs/user/getting-started.md) is the single owner of the install
+steps. Use it for:
 
-```bash
-sh -c 'set -eu; file=$(mktemp "${TMPDIR:-/tmp}/station-install.XXXXXX"); trap '\''rm -f "$file"'\'' EXIT HUP INT TERM; curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh >"$file"; chmod 600 "$file"; GH_TOKEN=$(gh auth token) sh "$file"'
-```
+- the Windows PowerShell Nightly install, updates and uninstall;
+- the [verified installer](docs/user/getting-started.md#install-or-upgrade)
+  for a published stable or beta release ring, and the signed
+  prebuilt-archive path;
+- [the release list](https://github.com/kontourai/station/releases) and
+  [release rings](docs/guides/release-rings.md) for what is currently published.
 
-Run the command again to install the selected release. The installer stages it
-before switching the current link.
-Set `STATION_CHANNEL=beta`
-for the beta ring, which uses `station-beta` and `http://localhost:28000`.
-[Getting started](docs/user/getting-started.md) covers channels, updates, and
-uninstall.
-
-The separate [signed prebuilt-archive path](docs/guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
-uses an explicit public manifest URL and bundled Node.js on macOS/Linux,
-without a host build. It may download a pinned Node.js for initial verification;
-installer support does not establish availability of a published manifest.
-
-### Self-host with Docker
-
-The Dockerfile's foreground `service run` supervisor atomically claims a fresh
-home without requiring `service install`. While another live owner holds the
-home, it waits without running Station and starts after that owner is gone.
-See the [deployment guide](docs/guides/deployment.md) for this cooperative fence;
-direct server entrypoints do not claim it.
-
-The repository ships a `Dockerfile` and `docker-compose.yml`. The UI, HTTP API,
-and event streams share the exposed origin on port 3000; the home persists in a
-named volume. Voice has a separate WebSocket listener and is not exposed by
-that single-port mapping. You can build the image from this checkout and select it
-with `STATION_IMAGE`; Compose otherwise names `ghcr.io/kontourai/station:latest`.
-The existence of that default does not establish registry availability. The
-[deployment guide](docs/guides/deployment.md) covers the source build, binding
-a workspace directory, and running it behind your own authenticated ingress.
+To self-host on a server with Docker or Compose, follow the
+[deployment guide](docs/guides/deployment.md). It covers building the image,
+home ownership, binding a workspace, and putting Station behind your own
+authenticated ingress.
 
 ## First steps
 
 1. Open **Customize → Connections** and choose **Add model connection** (a local or
    hosted model service) or **Add engine** (an installed agent CLI). Startup
    can register supported native CLIs and their default Agents; check their
-   readiness before starting work. The [Connections guide](docs/guides/connections.md)
-   lists the engines and adoption rules.
+   readiness before starting work. The
+   [Connections guide](docs/guides/connections.md#add-an-engine) lists the
+   engines Station knows by name and how startup adopts them.
 2. Open a local project.
 3. Start a chat for ordinary work. Chats retain their history. Create a Task
    when you need a tracked deliverable or workflow.
 4. Follow the Task's execution and inspect the evidence its workflow records.
 
 If something is not ready, Station keeps the setup action visible. Run
-`station doctor` for a local diagnosis. The
-[Connections guide](docs/guides/connections.md) lists the current model
-services and agent engines with their exact setup steps.
+`station doctor` for a local diagnosis.
 
 ## For developers
 

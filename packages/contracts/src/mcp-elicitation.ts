@@ -1,17 +1,10 @@
 /**
- * A form-mode MCP elicitation (`elicitation/create`) a tool server sent while a
- * Station turn was running, normalized to the field subset Station renders.
- *
- * The MCP schema is deliberately restricted to a flat object of primitive
- * fields; Station supports exactly that subset and refuses anything else
- * rather than rendering part of a form.
+ * Fields of a form-mode MCP elicitation (`elicitation/create`) a tool server
+ * sent while a Station turn was running, normalized to the subset Station
+ * renders. The MCP schema is deliberately restricted to a flat object of
+ * primitive fields; Station supports exactly that subset and refuses anything
+ * else rather than rendering part of a form.
  */
-export interface McpElicitationForm {
-  /** The tool server that asked. */
-  serverId: string;
-  message: string;
-  fields: McpElicitationField[];
-}
 
 interface McpElicitationFieldBase {
   name: string;

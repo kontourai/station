@@ -172,7 +172,7 @@ const OWN_PROCESS_GROUP = process.platform !== 'win32';
 
 /**
  * Signals `child`'s whole process group: git and everything under it
- * (#2363 review round 3). Signalling the child alone stops git itself but
+ * (#2363). Signalling the child alone stops git itself but
  * orphans what git started: a hook's shell and its children, a filter, the
  * processes a tool such as gh runs. (Checked on macOS: `/usr/bin/git`'s
  * xcrun shim EXECs the real git, so the pid is git's; the orphans are

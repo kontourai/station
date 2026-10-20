@@ -7,7 +7,7 @@
  * Claude Code's native skill loader discovers them without any Station
  * involvement at chat time.
  *
- * SECURITY REDESIGN (review round, post-79ec2be4): this module writes into
+ * SECURITY DESIGN: this module writes into
  * the user's working tree and then, later, deletes things from it — the two
  * operations a "safety core" for this feature must get right are (a) never
  * acting on a path that isn't provably inside `<cwd>/.claude/skills/`, and
@@ -483,7 +483,7 @@ async function writeManifest(
  * differently-scoped `CLAUDE_CONFIG_DIR` must not let a session cwd land
  * inside the OTHER (default) global config dir either.
  *
- * MED-1 (security review): a RELATIVE `CLAUDE_CONFIG_DIR` value is resolved
+ * A RELATIVE `CLAUDE_CONFIG_DIR` value is resolved
  * against `sessionCwd` — the same directory the spawned Claude Code child
  * actually runs in (`Options.cwd`, per `claude-adapter.ts`'s `buildOptions`)
  * and therefore the directory a relative env var value would be interpreted
@@ -526,7 +526,7 @@ const DEFAULT_CASE_INSENSITIVE_PLATFORM = (): boolean =>
  * path components (not string prefix — avoids `/foo-bar` falsely matching
  * parent `/foo`).
  *
- * MED-1 (security review): `realpath`'s OS-level case canonicalization only
+ * `realpath`'s OS-level case canonicalization only
  * applies to path components that ALREADY EXIST on disk — a not-yet-created
  * `.claude` (the exact common case here, since this guard runs BEFORE
  * `ensureContainmentAncestors` creates anything) never gets that

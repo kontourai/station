@@ -313,7 +313,7 @@ describe('compareCwdShadow — the agreement rules', () => {
     // the baseline seam ever made. Calling it a divergence would fabricate a
     // record that reads as "do not flip" — the mirror of the emptiness trap.
     //
-    // `stale` and `drifted` get DIFFERENT outcome names (review round 1):
+    // `stale` and `drifted` get DIFFERENT outcome names:
     // folded together, a `drifted` sample could satisfy archive#1501's gate clause
     // written for the `stale` leg, and the gate would read as covered by a
     // population it never observed.
@@ -340,12 +340,12 @@ describe('compareCwdShadow — the agreement rules', () => {
   });
 
   test('station#1594: baseline `no-directory` AGREES only with `unbound` — the one state the flip sends to $HOME', () => {
-    // Review round 1, MEDIUM: this branch used to fold on "did the resolver
+    // This branch used to fold on "did the resolver
     // name a directory", which is the wrong axis now that the flip mapping is
     // per state. Baseline `no-directory` defaults to $HOME; shadow `missing`
     // would THROW naming project + declaredPath. Recording that as `agree`
     // empties the record for a population whose flip behaviour changes — the
-    // emptiness trap the 3a review caught, mirrored.
+    // emptiness trap found during slice 3a, mirrored.
     expect(
       compareCwdShadow(sample({ baseline: { kind: 'no-directory' } }), {
         ok: true,
@@ -611,7 +611,7 @@ describe('observeCwdShadow — reporting, containment, and the kill switch', () 
   });
 
   test('station#1594: `agree-unverified` and `agree-drifted` are COUNTED but NOT LOGGED', async () => {
-    // Verifier round 1 caught this gap by fault injection: dropping
+    // Fault injection caught this gap: dropping
     // `agree-unverified` from the non-divergent outcome list passed all 40 shadow
     // tests, while in production it would emit a warn line for EVERY
     // manifested-git project that is stale or drifted — precisely the
@@ -861,7 +861,7 @@ describe('observeCwdShadow against the real resolver — transitions, not snapsh
   }
 
   test('PINNED: a whitespace-only workingDirectory trips `conflated-unbound` — a real fail-open hazard for the flip, not tripwire noise', async () => {
-    // Found by review round 1. The seam does
+    // The seam does
     // `resolve(expandTilde(project.workingDirectory))` with NO trim
     // (`orchestration-service.ts`), the resolver does
     // `project.workingDirectory?.trim()`, and the route schema accepts an
@@ -873,7 +873,7 @@ describe('observeCwdShadow against the real resolver — transitions, not snapsh
     // trim (slice 2 behaviour) or the seam itself (slice 3c's surface), and
     // both are somebody else's slice to review.
     //
-    // DISCLOSED TEST-POWER GAP (delta review): this pins the RESOLVER leg —
+    // DISCLOSED TEST-POWER GAP: this pins the RESOLVER leg —
     // removing `project.workingDirectory?.trim()` reds it — but the seam leg
     // is REPRODUCED here, not executed. `resolveStartSessionCwd` is not
     // exported, so a future change that adds `?.trim()` there would silently

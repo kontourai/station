@@ -26,8 +26,6 @@
 
     "docs/guides/deployment.md",
 
-    "monitoring/grafana/dashboards/station.json",
-
     "packages/telemetry-broker/README.md",
 
     "packages/telemetry-broker/build.mjs",
@@ -46,7 +44,13 @@
 
     "deployment/telemetry/cloudflared.example.yaml",
 
-    "packages/telemetry-broker/src/client-address.ts"
+    "packages/telemetry-broker/src/client-address.ts",
+
+    "deployment/telemetry/dashboards/station.json",
+
+    "deployment/telemetry/compose.diagnostics.yaml",
+
+    "deployment/telemetry/compose.dev.yaml"
   ],
 
   "checks": [

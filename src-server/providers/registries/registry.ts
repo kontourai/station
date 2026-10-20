@@ -41,7 +41,6 @@ import type {
   IPluginRegistryProvider,
   IProviderAdapterRegistry,
   IPullRequestProvider,
-  ISettingsProvider,
   ISkillRegistryProvider,
   IUserDirectoryProvider,
   IUserIdentityProvider,
@@ -1040,12 +1039,6 @@ export function getBrandingProvider(): IBrandingProvider {
   return (
     getProvider<IBrandingProvider>('branding') ?? new DefaultBrandingProvider()
   );
-}
-
-// ── Settings ───────────────────────────────────────────
-
-export function registerSettingsProvider(provider: ISettingsProvider) {
-  registerProvider('settings', provider);
 }
 
 // ── Notification ────────────────────────────────────────

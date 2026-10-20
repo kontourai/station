@@ -39,7 +39,7 @@ function runCrashScriptInChild(
   // Imports the REAL seam/store/crash-handlers modules through `tsx` —
   // not a hand-written replica of index.ts's wiring — so this proves the
   // actual `installCrashHandlers` + `logFatalAndFlush` code path survives
-  // a real uncaught exception, matching archive#1895 review round 2.
+  // a real uncaught exception (archive#1895).
   const loggerUrl = new URL('../../../utils/logger.ts', import.meta.url).href;
   const storeUrl = new URL('../server-log-store.ts', import.meta.url).href;
   const crashHandlersUrl = new URL(

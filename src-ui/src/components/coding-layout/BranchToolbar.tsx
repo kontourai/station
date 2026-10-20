@@ -324,9 +324,8 @@ export function BranchToolbar({
   // status phrase inside a horizontal toolbar row, not a list/card placeholder,
   // so this deliberately stays a plain inline span rather than adopting the
   // canonical `Empty` component (which renders a framed, centered card even
-  // in its `compact` variant — a poor visual fit for a toolbar strip). See
-  // the state-primitives (#192) plan's Wave 2 "Workflow & connection-surface
-  // convergence" task.
+  // in its `compact` variant — a poor visual fit for a toolbar strip; see the
+  // state-primitives work, archive#192).
   // archive#771: an errored discovery query also settles with `repos = []`
   // (the `dataonly` fallback below), which used to read identically to
   // "no repository here" — a real read failure with no trace, and no way to
