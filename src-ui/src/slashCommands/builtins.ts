@@ -228,7 +228,7 @@ registerCommand(
           <div style="padding: 12px 8px;">
             <span style="color: var(--text-muted);">${stats.contextTokens?.toLocaleString() || 0} tokens (all messages + system prompt + tools)</span><br/>
             <div style="background: var(--bg-tertiary); height: 8px; border-radius: 4px; margin-top: 8px; overflow: hidden;">
-              <div style="background: #10b981; height: 100%; width: ${stats.contextWindowPercentage}%;"></div>
+              <div style="background: var(--meter-low); height: 100%; width: ${stats.contextWindowPercentage}%;"></div>
             </div>
             <span style="font-weight: 600; margin-top: 4px; display: inline-block;">${stats.contextWindowPercentage.toFixed(1)}%</span>
           </div>

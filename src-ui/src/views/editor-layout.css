@@ -266,7 +266,7 @@
 
 .editor__tag-remove:hover {
   color: var(--error-text);
-  background: rgba(255, 59, 48, 0.1);
+  background: color-mix(in srgb, var(--error-text) 10%, transparent);
 }
 
 /* ── Footer ── */
@@ -382,7 +382,8 @@
 .editor select:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.1);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--accent-primary) 10%, transparent);
   transform: translateY(-1px);
 }
 
@@ -406,7 +407,8 @@
 .editor textarea:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.1);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--accent-primary) 10%, transparent);
 }
 
 /* ── Button Variants ── */
@@ -1089,7 +1091,7 @@
   font-size: var(--text-base);
   color: var(--error-text, #ef4444);
   padding: 6px 10px;
-  background: rgba(239, 68, 68, 0.08);
+  background: color-mix(in srgb, var(--error-text) 8%, transparent);
   border-radius: 4px;
   border-left: 2px solid var(--error-text, #ef4444);
 }
@@ -1391,7 +1393,7 @@
 }
 
 .editor__tool-badge--add {
-  background: rgba(74, 158, 255, 0.1);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
   color: var(--accent-primary);
 }
 

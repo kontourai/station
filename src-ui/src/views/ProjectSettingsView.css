@@ -153,7 +153,7 @@
     ),
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--bg-secondary) 92%, white 8%),
+      color-mix(in srgb, var(--bg-secondary) 92%, var(--surface-lift) 8%),
       var(--bg-secondary)
     );
 }
@@ -163,7 +163,7 @@
 .project-settings__field--featured {
   margin-bottom: 0;
   padding: 1rem;
-  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border: 1px solid var(--border-secondary);
   border-radius: 10px;
   background: var(--bg-primary);
 }
@@ -192,7 +192,11 @@
   padding: 0.35rem 0.65rem;
   border-radius: var(--k-radius-md);
   white-space: nowrap;
-  background: color-mix(in srgb, var(--bg-secondary) 86%, white 14%);
+  background: color-mix(
+    in srgb,
+    var(--bg-secondary) 86%,
+    var(--surface-lift) 14%
+  );
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
@@ -234,7 +238,11 @@
   width: 2.9rem;
   height: 2.9rem;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--bg-primary) 82%, white 18%);
+  background: color-mix(
+    in srgb,
+    var(--bg-primary) 82%,
+    var(--surface-lift) 18%
+  );
   font-size: 1.3rem;
 }
 .project-settings__identity-name {
@@ -273,9 +281,13 @@
 }
 .project-settings__identity-card {
   padding: 1rem;
-  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border: 1px solid var(--border-secondary);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--bg-primary) 82%, white 18%);
+  background: color-mix(
+    in srgb,
+    var(--bg-primary) 82%,
+    var(--surface-lift) 18%
+  );
 }
 .project-settings__identity-card-label {
   margin-bottom: 0.6rem;

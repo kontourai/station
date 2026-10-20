@@ -7,8 +7,8 @@
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: var(--bg-primary, #0a0a0a);
-  color: var(--text-secondary, #999);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
   font-family: var(--font-sans);
   position: relative;
   overflow: hidden;
@@ -21,12 +21,12 @@
   background:
     radial-gradient(
       ellipse 60% 40% at 50% 40%,
-      rgba(74, 158, 255, 0.05),
+      color-mix(in srgb, var(--accent-primary) 5%, transparent),
       transparent 70%
     ),
     radial-gradient(
       ellipse 40% 30% at 70% 60%,
-      rgba(167, 139, 250, 0.03),
+      color-mix(in srgb, var(--k-brand) 3%, transparent),
       transparent 60%
     );
   pointer-events: none;
@@ -62,7 +62,9 @@
   height: 56px;
   position: relative;
   z-index: 1;
-  filter: drop-shadow(0 0 20px rgba(74, 158, 255, 0.15));
+  filter: drop-shadow(
+    0 0 20px color-mix(in srgb, var(--accent-primary) 15%, transparent)
+  );
 }
 
 .onboarding-loading__logo-ring {
@@ -87,7 +89,7 @@
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(74, 158, 255, 0.08) 0%,
+    color-mix(in srgb, var(--accent-primary) 8%, transparent) 0%,
     transparent 70%
   );
   animation: onboarding-pulse var(--motion-status-pulse) var(--ease-standard)
@@ -113,13 +115,13 @@
   font-weight: 500;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: var(--text-muted, #666);
+  color: var(--text-muted);
   margin-bottom: 0.5rem;
 }
 
 .onboarding-loading__status {
   font-size: 0.9rem;
-  color: var(--text-secondary, #999);
+  color: var(--text-secondary);
   letter-spacing: -0.01em;
 }
 
@@ -149,6 +151,30 @@
   }
 }
 
+/* The setup surfaces were a fixed navy slab with pale-blue text, so under the
+   light theme (or any palette) they stayed dark. They keep their brand-tinted
+   lift by deriving it from the active palette instead. */
+.onboarding-setup-banner,
+.onboarding-setup-launcher__panel {
+  --onboarding-panel-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--k-brand) 8%, var(--k-panel-raised)),
+    var(--k-panel-raised)
+  );
+  --onboarding-panel-border: color-mix(
+    in srgb,
+    var(--k-brand) 28%,
+    transparent
+  );
+  /* Brand-hued text that keeps contrast in both modes: pulling the brand
+     toward --k-text lightens it on dark and darkens it on light. */
+  --onboarding-accent-text: color-mix(
+    in srgb,
+    var(--k-brand) 60%,
+    var(--k-text)
+  );
+}
+
 .onboarding-setup-banner {
   position: fixed;
   right: 20px;
@@ -156,14 +182,10 @@
   z-index: var(--layer-notice);
   width: min(420px, calc(100vw - 32px));
   border-radius: 14px;
-  border: 1px solid rgba(59, 130, 246, 0.22);
-  background: linear-gradient(
-    180deg,
-    rgba(10, 18, 34, 0.97),
-    rgba(9, 13, 24, 0.97)
-  );
-  color: #e5eefc;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--onboarding-panel-border);
+  background: var(--onboarding-panel-bg);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
   padding: 16px;
 }
 
@@ -183,13 +205,13 @@
 .onboarding-setup-banner__description {
   font-size: var(--text-md);
   line-height: 1.5;
-  color: rgba(229, 238, 252, 0.78);
+  color: var(--text-secondary);
 }
 
 .onboarding-setup-banner__dismiss {
   border: none;
   background: transparent;
-  color: rgba(229, 238, 252, 0.7);
+  color: var(--text-tertiary);
   cursor: pointer;
   font-size: var(--text-2xl);
   line-height: 1;
@@ -204,10 +226,10 @@
 }
 
 .onboarding-setup-banner__badge {
-  border: 1px solid rgba(147, 197, 253, 0.22);
+  border: 1px solid var(--onboarding-panel-border);
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.14);
-  color: #bfdbfe;
+  background: color-mix(in srgb, var(--k-brand) 14%, transparent);
+  color: var(--onboarding-accent-text);
   font-size: var(--text-sm);
   font-weight: 600;
   padding: 4px 8px;
@@ -236,14 +258,10 @@
 .onboarding-setup-launcher__panel {
   pointer-events: auto;
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(96, 165, 250, 0.22);
-  background: linear-gradient(
-    180deg,
-    rgba(12, 18, 30, 0.98),
-    rgba(9, 13, 22, 0.98)
-  );
-  color: #e5eefc;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--onboarding-panel-border);
+  background: var(--onboarding-panel-bg);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
   padding: var(--space-4);
 }
 
@@ -252,7 +270,7 @@
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #93c5fd;
+  color: var(--onboarding-accent-text);
   margin-bottom: 12px;
 }
 
@@ -273,7 +291,7 @@
 .onboarding-setup-launcher__description {
   font-size: var(--text-md);
   line-height: 1.5;
-  color: rgba(229, 238, 252, 0.82);
+  color: var(--text-secondary);
   max-width: 52ch;
 }
 
@@ -289,7 +307,7 @@
   border: none;
   border-radius: var(--radius-pill);
   background: transparent;
-  color: rgba(229, 238, 252, 0.72);
+  color: var(--text-tertiary);
   cursor: pointer;
   font-size: var(--text-4xl);
   line-height: 1;
@@ -298,7 +316,7 @@
 
 .onboarding-setup-launcher__dismiss:hover,
 .onboarding-setup-launcher__dismiss:focus-visible {
-  background: rgba(229, 238, 252, 0.12);
+  background: var(--bg-hover-panel);
 }
 
 .onboarding-setup-launcher__badges {
@@ -309,10 +327,10 @@
 }
 
 .onboarding-setup-launcher__badge {
-  border: 1px solid rgba(147, 197, 253, 0.22);
+  border: 1px solid var(--onboarding-panel-border);
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.14);
-  color: #bfdbfe;
+  background: color-mix(in srgb, var(--k-brand) 14%, transparent);
+  color: var(--onboarding-accent-text);
   font-size: var(--text-sm);
   font-weight: 600;
   padding: 4px 8px;
@@ -328,8 +346,8 @@
   align-items: flex-start;
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--k-text) 4%, transparent);
+  border: 1px solid var(--border-primary);
 }
 
 .onboarding-setup-launcher__step-index {
@@ -339,8 +357,8 @@
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.18);
-  color: #bfdbfe;
+  background: color-mix(in srgb, var(--k-brand) 18%, transparent);
+  color: var(--onboarding-accent-text);
   font-size: var(--text-base);
   font-weight: 700;
   flex-shrink: 0;
@@ -355,7 +373,7 @@
 .onboarding-setup-launcher__step-desc {
   font-size: var(--text-md);
   line-height: 1.5;
-  color: rgba(229, 238, 252, 0.72);
+  color: var(--text-tertiary);
 }
 
 /* Layout only. The colour, radius, weight and disabled treatment are the

@@ -248,10 +248,10 @@ export function SessionConversationItem({
                   width: `${Math.min(contextPct, 100)}%`,
                   background:
                     contextPct > 80
-                      ? '#ef4444'
+                      ? 'var(--meter-high)'
                       : contextPct > 50
-                        ? '#f59e0b'
-                        : '#10b981',
+                        ? 'var(--meter-mid)'
+                        : 'var(--meter-low)',
                 }}
               />
             </div>

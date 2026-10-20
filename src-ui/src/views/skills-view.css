@@ -109,15 +109,17 @@
 }
 
 .skill-detail__badge--registry {
-  background: rgba(74, 158, 255, 0.1);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
   color: var(--accent-primary);
-  border: 1px solid rgba(74, 158, 255, 0.15);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 15%, transparent);
 }
 
 .skill-detail__badge--local {
-  background: rgba(201, 168, 84, 0.1);
-  color: var(--accent-yellow);
-  border: 1px solid rgba(201, 168, 84, 0.15);
+  background: color-mix(in srgb, var(--accent-yellow) 10%, transparent);
+  /* --accent-yellow-text, not --accent-yellow: the light yellow cannot carry
+     text on its own tint (see the token's note in index.css). */
+  color: var(--accent-yellow-text);
+  border: 1px solid color-mix(in srgb, var(--accent-yellow) 15%, transparent);
 }
 
 /* Actions */
@@ -217,7 +219,7 @@
   color: var(--text-muted);
   padding: 12px 16px;
   border-left: 2px solid var(--accent-primary);
-  background: rgba(74, 158, 255, 0.04);
+  background: color-mix(in srgb, var(--accent-primary) 4%, transparent);
   border-radius: 0 6px 6px 0;
 }
 
@@ -242,9 +244,9 @@
 
 /* Version badge */
 .skill-detail__badge--version {
-  background: rgba(168, 85, 247, 0.1);
-  color: #a855f7;
-  border: 1px solid rgba(168, 85, 247, 0.15);
+  background: color-mix(in srgb, var(--series-1) 10%, transparent);
+  color: var(--series-1);
+  border: 1px solid color-mix(in srgb, var(--series-1) 15%, transparent);
 }
 
 /* SKILL.md body */
