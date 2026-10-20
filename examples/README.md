@@ -17,6 +17,7 @@ prove.
 | [Getting Started Starter](getting-started-starter/README.md) | Registry-installed first extension |
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |
 | [Minimal Workspace](minimal-layout/README.md) | Small Workspace Pane and SDK basics |
+| [Related Reports](related-reports/README.md) | A Pane that opens related panes beside it, direct and framed |
 | [Demo Layout](demo-layout/README.md) | Local layout installation and registry fixture |
 | [Documentation Snippets](docs-snippets/README.md) | Compile-checked copies of guide code blocks; not a plugin |
 
