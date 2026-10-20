@@ -10,7 +10,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, StrictMode } from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -846,4 +846,40 @@ test('the collapsed footer keeps utilities reachable and Customize returns to Mo
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+/**
+ * The app renders under StrictMode, which replays a component's effects once
+ * when it mounts. The account menu's chunk loads on demand, so it mounts
+ * already open: a replayed focus entry restored focus to the trigger while
+ * its focusout dismissal still listened, and the menu closed in the same task
+ * it opened (found in the running app, phone drawer and desktop alike).
+ */
+describe('the account menu under StrictMode', () => {
+  for (const isMobile of [true, false])
+    test(`${isMobile ? 'phone drawer' : 'desktop rail'}: it opens and stays open`, async () => {
+      render(
+        <StrictMode>
+          <ProjectSidebarFooter
+            activePath="/"
+            isMobile={isMobile}
+            navigate={vi.fn()}
+          />
+        </StrictMode>,
+      );
+      const trigger = screen.getByRole('button', {
+        name: 'Profile and settings',
+      });
+      trigger.focus();
+      fireEvent.click(trigger);
+      const menu = await screen.findByRole('menu', {
+        name: 'Profile and settings',
+      });
+      // Past the chunk load and every replayed effect: still open, and focus
+      // went into the menu rather than back to the trigger.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+      expect(menu.isConnected).toBe(true);
+      expect(menu.contains(document.activeElement)).toBe(true);
+    });
 });
