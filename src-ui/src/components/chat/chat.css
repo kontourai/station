@@ -1731,7 +1731,7 @@
   /* The footer is a column now, so the narrow-screen decision that these
      controls sit at the reading edge is expressed on the cross axis. It was
      `justify-content: flex-start` while the footer was a row. */
-  .turn-footer .turn-footer__actions {
+  .turn-footer .turn-footer__bar {
     align-self: flex-start;
   }
 }
@@ -2160,6 +2160,50 @@
   min-height: 44px;
 }
 
+/* The settled answer's footer bar: the Basis chip, always visible (#926
+   amendment, owner 2026-10), then the hover-revealed action row. */
+.turn-footer__bar {
+  display: flex;
+  align-items: center;
+  align-self: flex-end;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+/* The answer's Basis chip: the one labelled control in the answer's action
+   row, sized with the copy and ⋯ chip family (28px on a pointer) but quieter
+   at rest: no fill, a hairline outline, secondary text. Touch gets the 44px
+   floor here and in the phone's meta row. Styled from the entry sheet so the
+   chip's own unavailable state is styled when its chunk is not. */
+.answer-basis-chip {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 0 var(--k-space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--k-text-xs);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.answer-basis-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.answer-basis-chip:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.turn-footer__bar .answer-basis-chip,
+.message-meta .answer-basis-chip {
+  min-height: 44px;
+}
+
 @media (hover: hover) {
   .turn-footer__actions {
     opacity: 0;
@@ -2169,6 +2213,10 @@
 
   .turn-footer__actions .message__rating {
     min-height: 0;
+  }
+
+  .turn-footer__bar .answer-basis-chip {
+    min-height: 28px;
   }
 
   .message:is(:hover, :focus-within) .turn-footer__actions {

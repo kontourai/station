@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => ({
     'X-Station-Account-Continuation': 'continuation-header',
     'X-Station-Account-Proof': 'fresh-proof',
   })),
-  cookieAdopt: vi.fn(),
 }));
 
 vi.mock(
@@ -24,7 +23,6 @@ vi.mock(
       ...actual,
       ApplicationSessionClient: class {
         headers = mocks.proof;
-        adoptCookies = mocks.cookieAdopt;
       },
     };
   },
@@ -36,7 +34,6 @@ import {
   getBrowserRelayAccountScope,
 } from '../browserRelayAccountScope';
 import {
-  adoptBrowserRelayCookies,
   type BrowserRelayAuthorityStorage,
   createBrowserRelayApplicationCredential,
   hydrateBrowserRelayApplicationAuthorityScope,
@@ -239,7 +236,6 @@ describe('browser relay application authority', () => {
   afterEach(() => {
     retireBrowserRelayRoute();
     mocks.proof.mockClear();
-    mocks.cookieAdopt.mockReset();
   });
 
   it('stores a route-bound Device credential and adds a fresh SDK proof inside the encrypted transport', async () => {
@@ -1237,17 +1233,5 @@ describe('browser relay application authority', () => {
     const removed = storage.values.get(storageKey()) as Record<string, unknown>;
     expect(removed.status).toBe('empty');
     expect(removed.bearer).toBeUndefined();
-  });
-
-  it('does not attempt relay cookie adoption from a cross-origin browser', async () => {
-    await expect(
-      adoptBrowserRelayCookies({
-        connectionId: 'connection-1',
-        applicationOrigin,
-        route,
-        storage: new MemoryStorage(),
-      }),
-    ).rejects.toThrow('browser to be on the Station HTTPS origin');
-    expect(mocks.cookieAdopt).not.toHaveBeenCalled();
   });
 });

@@ -632,6 +632,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'git ls-files inside the temporary repository its helper creates',
   'tests/learning-source.spec.ts':
     'a Playwright spec; Vitest cannot schedule it (#1817)',
+  'tests/message-delivery-recovery.spec.ts':
+    'a Playwright spec; reads the instance registry to pair a second browser with its exact runner-owned Station home, not to scan repository source',
   'src-ui/src/__tests__/station-vocabulary.test.ts':
     'walks src-ui/src only; its src-ui/src/** edge selects it on every change there',
   'src-ui/src/__tests__/session-state-word-consistency.test.ts':

@@ -1,5 +1,14 @@
 # Native relay enrollment
 
+> **Reading status: current contract record for a pilot-gated feature
+> (last changed 2026-10-07).** The
+> [native contract](../../packages/contracts/src/native-relay-enrollment.ts) and
+> the server composition in
+> [`station-runtime.ts`](../../src-server/runtime/bootstrap/station-runtime.ts)
+> own the behaviour; operator setup is in the
+> [self-hosted broker guide](../guides/self-hosted-broker.md). Physical iOS
+> lifecycle and the ordinary UI journey are not qualified (see below).
+
 This page records the native enrollment ceremony and its evidence boundaries.
 Server routes are composed only with `STATION_NATIVE_ENROLLMENT_PILOT=1`, the
 existing native Device-proof pilot, a configured relay and a supported pending

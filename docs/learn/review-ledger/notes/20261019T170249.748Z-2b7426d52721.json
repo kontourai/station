@@ -1,0 +1,7 @@
+{
+  "revision": "764b270379659c09cba29775a5eb939e489eae8f",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed against chat.css (.answer-basis-chip rules only): the guide's chat inventory and compact footer claims refer to the inbox and app footer, not the answer action row; no prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

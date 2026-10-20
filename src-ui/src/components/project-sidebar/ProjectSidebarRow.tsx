@@ -253,10 +253,10 @@ export function ProjectSidebarRow({
           )}
           {/* SEAM — per-project attention count (#2064, design record D4).
               It belongs HERE, after the live-work count, as the "1 needs you"
-              half of the row the record draws. #2064 owns the hook and the
-              query; this slice deliberately renders nothing, because a count
-              with no derivation behind it is a number that means whatever the
-              reader assumes.
+              half of the row the record draws. #2064 closed without wiring
+              one (its unused hook was deleted), so nothing renders here: a
+              count with no derivation behind it is a number that means
+              whatever the reader assumes.
 
               SEAM — member avatars (#2066, design record D5). The record
               draws "[J][M]" here, but presence is what it draws: the avatars

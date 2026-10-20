@@ -1,8 +1,8 @@
 # Shared Task channels
 
 Status: owner-directed delivery program, 2026-09-30. The intended experience
-below is a target, not a release claim. [The delivery ledger](../plans/shared-work-delivery.md)
-records implemented slices and missing evidence.
+below is a target, not a release claim. [The delivery plan](../plans/shared-work-delivery.md)
+lists the program's tracks and acceptance; #3034 tracks their state.
 Program owner: [#3034](https://github.com/kontourai/station/issues/3034).
 
 ## Purpose
