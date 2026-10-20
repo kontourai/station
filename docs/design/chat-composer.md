@@ -301,14 +301,16 @@ tool rows and batches show a subtle reflection sweeping left to right; settled
 calls and approval requests stay still. Reduced motion disables the reflection
 and makes pill size changes immediate.
 
-On a phone, a settled answer shows its tool work as one row. Every call from
+On a phone, a settled answer without anchored child work shows its tool work as one row. Every call from
 the first to the last, and the narration between them, folds into a single
 summary where the first call was. The intent before it and the outcome after it
 stay visible. Opening the row lists the calls with that narration in its
 original order. Files, UI blocks, MCP app preview candidates, runtime errors
 and calls still waiting on a grant stay outside the fold, and so does the last narration when no text
 follows the last call. While the turn is live it keeps the shape it streamed
-with. In the summary, a failure is counted as **retried** rather than
+with. Messages with anchored subagents keep their original tool runs at every
+width, preserving each child card's expansion and keyboard focus during resizing.
+In the summary, a failure is counted as **retried** rather than
 **failed** when a later call in the same summary ran the same tool with
 identical, recorded arguments and succeeded. A steer inside a turn does not
 start a new exchange. Under each settled answer, a muted time beside the copy

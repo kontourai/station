@@ -184,6 +184,14 @@ test.describe('subagent transcript cards', () => {
       page,
     }, testInfo) => {
       await page.setViewportSize({ width: 1280, height: 1100 });
+      await page.route(/\/api\/me\/preferences(?:\?.*)?$/, (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: { schemaVersion: 1, values: { theme } },
+          },
+        }),
+      );
       await page.addInitScript((theme) => {
         localStorage.setItem(
           'station-device-settings-v1',

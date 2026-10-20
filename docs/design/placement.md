@@ -838,6 +838,8 @@ identity and remain visible only when no inline card represents that child.
 Children anchored to the same tool-call run share a collapsed roster with counts
 for each reported status. Expanding the roster reveals the children in call order;
 children at separate prose or standalone spawn anchors keep their original positions.
+Settled phone tool folding leaves child-bearing messages in their original runs,
+so resizing cannot reparent a child and discard its expansion or keyboard focus.
 A collapsed card shows title, status, elapsed time and a progress or result preview.
 Its expansion reveals model provenance and the full result without repeating that
 preview; usage and transcript access share a wrapping footer. The Agents pane keeps

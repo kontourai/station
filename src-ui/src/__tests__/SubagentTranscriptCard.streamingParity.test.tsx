@@ -187,7 +187,7 @@ describe('subagent card streaming parity', () => {
       title: 'Second review',
       parent: { toolCallId: 'toolu_second', turnId: 'turn-1' },
     };
-    render(
+    const tree = (foldWork: boolean) => (
       <TranscriptChildrenContext.Provider
         value={
           new Map(
@@ -213,10 +213,20 @@ describe('subagent card streaming parity', () => {
           showReasoning={false}
           showToolDetails={false}
           isStreamingMessage={false}
-          foldWork
+          foldWork={foldWork}
         />
-      </TranscriptChildrenContext.Provider>,
+      </TranscriptChildrenContext.Provider>
     );
+    const view = render(tree(false));
+    const second = within(screen.getAllByTestId('subagent-card')[1]).getByRole(
+      'button',
+      { expanded: false },
+    );
+    second.focus();
+    fireEvent.click(second);
+    view.rerender(tree(true));
+    expect(document.activeElement).toBe(second);
+    expect(second.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getAllByTestId('subagent-card')).toHaveLength(2);
     expect(screen.queryByText('2 subagents')).toBeNull();
   });
