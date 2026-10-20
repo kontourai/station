@@ -1,0 +1,7 @@
+{
+  "revision": "5ac22350a2d8580f2251f625471636b15983c7d2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest.mjs now compacts ordinary-group exclusions per directory and checks the Windows command-line limit; the guide's claims (exact disjoint ownership validated before a run, seven groups and their worker counts) still hold because discovery compares the compact projection against the exact partition.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

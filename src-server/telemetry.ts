@@ -23,6 +23,10 @@ import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { observeOtelBootstrapConfig } from './domain/telemetry-bootstrap-config.js';
 import { resolveOtelTelemetryConfiguration } from './domain/telemetry-configuration.js';
 import { assertHostedPersistenceBeforeSchemaSync } from './runtime/bootstrap/hosted-persistence-boundary.js';
+import {
+  isSupervisedEnvironment,
+  whenHomeAccessAllowed,
+} from './runtime/bootstrap/supervisor-link.js';
 import { persistedRandomIdentifierHash } from './services/persisted-random-identifier.js';
 import { TelemetryRequestError } from './services/telemetry-response.js';
 import {
@@ -49,6 +53,13 @@ export interface InitializeTelemetryOptions {
     endpoint: string,
   ) => TelemetrySdk;
   log?: (message: string) => void;
+  /**
+   * Holds the home writes (schema gate, installation identity) until this
+   * settles; providers still register synchronously. A supervised generation
+   * passes its promotion, since it loads while another generation owns the
+   * home.
+   */
+  homeWritesAllowed?: Promise<void>;
 }
 
 function createSdk(
@@ -255,18 +266,27 @@ export async function initializeTelemetry(
       throw new TelemetryRequestError('credential_unavailable');
     }
   };
-  try {
-    assertHostedPersistenceBeforeSchemaSync(homeDir, env);
-    ensureStationHomeSchemaSync(homeDir);
-  } catch (error) {
-    delivery.status.phase = 'failed';
-    delivery.status.identity = 'failed';
-    throw error;
+  const admitHome = () => {
+    try {
+      assertHostedPersistenceBeforeSchemaSync(homeDir, env);
+      ensureStationHomeSchemaSync(homeDir);
+    } catch (error) {
+      delivery.status.phase = 'failed';
+      delivery.status.identity = 'failed';
+      throw error;
+    }
+  };
+  // Exports already wait for the identity, so holding it holds every export.
+  let identity: Promise<string>;
+  if (options.homeWritesAllowed) {
+    identity = options.homeWritesAllowed.then(() => {
+      admitHome();
+      return persistedRandomIdentifierHash(homeDir, 'otel-installation-id');
+    });
+  } else {
+    admitHome();
+    identity = persistedRandomIdentifierHash(homeDir, 'otel-installation-id');
   }
-  const identity = persistedRandomIdentifierHash(
-    homeDir,
-    'otel-installation-id',
-  );
   // Handle rejection even if SDK construction/start fails before the await.
   void identity.then(
     () => {
@@ -362,7 +382,17 @@ export function configuredTelemetryShutdownTask():
 // a swallowed failure makes a broken exporter configuration indistinguishable
 // from an unconfigured one, and an operator who set OTEL_EXPORTER_OTLP_ENDPOINT
 // deliberately deserves to know it did not take.
-void initializeTelemetry().catch((error) => {
+//
+// A supervised generation is loaded while the previous one still owns the
+// home, so its home writes wait for promotion. Registration does not: it
+// stays synchronous with this module's evaluation in every mode, so the
+// providers exist before the modules imported after this one create
+// instruments.
+void initializeTelemetry(
+  isSupervisedEnvironment()
+    ? { homeWritesAllowed: whenHomeAccessAllowed() }
+    : {},
+).catch((error) => {
   console.warn(
     '[telemetry] OTel did not start; Station continues without it:',
     error instanceof Error ? error.message : String(error),

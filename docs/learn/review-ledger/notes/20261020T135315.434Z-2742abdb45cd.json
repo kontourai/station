@@ -1,0 +1,25 @@
+{
+  "revision": "7b1b7cc3cd12923953dd2b0f9b7b91bd86c28417",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read the AccountPreferences and ColorThemes sections. device-settings-store now marks a live account binding released on a definite no-person answer, so its unmount (and a same-task re-bind) holds nothing; envelope, migration and region records are unchanged; color-theme-apply re-stamps theme-color for the mode while a family sheet is pending. The sections' claims still hold. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Re-read the device-envelope claims. device-settings-store now marks a live account binding released on a definite no-person answer, so its unmount (and a same-task re-bind) holds nothing; envelope, migration and region records are unchanged. No prose change.","inputs":["docs/design/placement.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Re-read the account-preferences section, including the held-appearance sentence. device-settings-store now marks a live account binding released on a definite no-person answer, so its unmount (and a same-task re-bind) holds nothing; envelope, migration and region records are unchanged; the sentence (held until the account answers, another binds, or a definite no-person answer) still holds. No prose change.","inputs":["docs/design/settings-architecture.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Re-read the envelope claims. device-settings-store now marks a live account binding released on a definite no-person answer, so its unmount (and a same-task re-bind) holds nothing; envelope, migration and region records are unchanged. No prose change.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Re-read the account and retirement claims; the RelayRouteProfiles test now asserts the resolved appearance after the account boundary unmounts instead of counting release calls. No prose change.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Re-read the device-store claims. device-settings-store now marks a live account binding released on a definite no-person answer, so its unmount (and a same-task re-bind) holds nothing; envelope, migration and region records are unchanged. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-read the personal preference and named color theme sections. device-settings-store now marks a live account binding released on a definite no-person answer, so its unmount (and a same-task re-bind) holds nothing; envelope, migration and region records are unchanged; color-theme-apply re-stamps theme-color for the mode while a family sheet is pending; both are owned by the decision record the guide routes to. No prose change.","inputs":["docs/guides/theming.md","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Re-read the composition table; nothing concerns the UI store. No prose change.","inputs":["docs/patterns/backend.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Re-read the token and theming pointer. device-settings-store now marks a live account binding released on a definite no-person answer, so its unmount (and a same-task re-bind) holds nothing; envelope, migration and region records are unchanged. No prose change.","inputs":["docs/patterns/frontend.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Re-read the claims tied to the RelayRouteProfiles test; it changed only its appearance assertions. No prose change.","inputs":["docs/reference/connect.md","src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx"]}
+  ]
+}

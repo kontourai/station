@@ -243,7 +243,7 @@ function createHarness(): Harness {
 }
 
 function Probe() {
-  const { status, namespace } = useAuthorityPersistence();
+  const { status, namespace, refused } = useAuthorityPersistence();
   const client = useQueryClient();
   const harness = (Probe as unknown as { harness: Harness }).harness;
   harness.activeClient = client;
@@ -287,6 +287,7 @@ function Probe() {
     <div
       data-testid="probe"
       data-status={status}
+      data-refused={String(refused === true)}
       data-namespace={namespace ?? ''}
       data-projects={
         projects.data ? JSON.stringify(projects.data) : projects.status
@@ -1225,6 +1226,9 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       await waitFor(() =>
         expect(probe().getAttribute('data-status')).toBe('unavailable'),
       );
+      // A refusal, as distinct from the 'unavailable' of a pending scope
+      // (the account-appearance release keys on this).
+      expect(probe().getAttribute('data-refused')).toBe('true');
       expect(harness.observationCalls.length).toBeGreaterThan(
         observationCallsBefore,
       );
@@ -1278,6 +1282,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('unverified'),
     );
+    // Observation loss is not a refusal.
+    expect(probe().getAttribute('data-refused')).toBe('false');
     expect(probe().getAttribute('data-namespace')).toBe('');
     // The read fails honestly (no silent stale rows)…
     await waitFor(() =>

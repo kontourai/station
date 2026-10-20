@@ -100,11 +100,22 @@ interface Generation {
   expectingExit: boolean;
   /** Set when the generation broke the protocol and is being killed. */
   failed: boolean;
+  /** It reported `drained`: it shut down on purpose, not in a crash. */
+  drained: boolean;
+  /** Exit code, once exited. */
+  exitCode: number | null;
   notify: Set<() => void>;
   exited: Promise<void>;
 }
 
 type WaitResult = 'ok' | 'exit' | 'timeout';
+
+/**
+ * After a failed trial's drain deadline, how long SIGTERM gets before
+ * SIGKILL. Short: the trial already ignored a drain, and the previous entry
+ * cannot start until it is gone.
+ */
+export const FAILED_TRIAL_TERM_GRACE_MS = 250;
 
 function hasExited(gen: Generation): boolean {
   return gen.state === 'exited';
@@ -290,7 +301,7 @@ export class GenerationManager {
       readinessTimeoutMs,
     );
     if (ready !== 'ok' || this.stopping) {
-      await this.terminate(trial);
+      await this.retire(trial, this.failedDrainMs(drainDeadlineMs));
       this.trial = null;
       const reason = this.stopping
         ? 'stopping'
@@ -305,7 +316,7 @@ export class GenerationManager {
       (await this.waitForExit(trial, this.handoffConfig.commitGraceMs)) ||
       this.stopping
     ) {
-      await this.terminate(trial);
+      await this.retire(trial, this.failedDrainMs(drainDeadlineMs));
       this.trial = null;
       const reason = this.stopping ? 'stopping' : 'trial-exited-at-commit';
       return this.finishRollback(null, previousEntry, reason, progress);
@@ -334,10 +345,17 @@ export class GenerationManager {
     this.clearStableTimer();
     this.stopped = (async () => {
       const work: Promise<void>[] = [];
-      if (this.trial) work.push(this.terminate(this.trial));
       // A stop must finish inside a service manager's stop timeout, so its
       // drain, voice sessions included, is capped well below the handoff cap.
       const cap = this.handoffConfig.stopDrainCapMs;
+      if (this.trial) {
+        work.push(
+          this.retire(
+            this.trial,
+            this.failedDrainMs(Math.min(drainDeadlineMs, cap)),
+          ),
+        );
+      }
       if (this.active) {
         work.push(this.drain(this.active, Math.min(drainDeadlineMs, cap), cap));
       }
@@ -414,6 +432,8 @@ export class GenerationManager {
       voiceSessions: 0,
       expectingExit: false,
       failed: false,
+      drained: false,
+      exitCode: null,
       notify: new Set(),
       exited: new Promise<void>((resolve) => {
         resolveExited = resolve;
@@ -427,6 +447,7 @@ export class GenerationManager {
     );
     proc.onExit((code, signal) => {
       this.log(`generation ${id} exited code=${code} signal=${signal}`);
+      gen.exitCode = code;
       this.setGenerationState(gen, 'exited');
       resolveExited();
       this.onGenerationExit(gen);
@@ -504,6 +525,7 @@ export class GenerationManager {
         }
         return;
       case 'drained':
+        gen.drained = true;
         return;
       case 'handoff.request': {
         const requestId =
@@ -546,15 +568,28 @@ export class GenerationManager {
 
   private onGenerationExit(gen: Generation): void {
     if (gen !== this.active || gen.expectingExit) return;
+    // A generation that drained and exited cleanly without being asked (an
+    // operator's SIGTERM, say) is restarted, but it did not crash: once it had
+    // served stably (stableAfterMs), it does not count toward giving up and
+    // restarts without a backoff. One that drains before then counts like a
+    // crash, so a generation that drains right after serving, or repeated
+    // signals, cannot restart it in an unbounded loop.
+    const stable = this.stableTimer === null;
+    const crashed = !(gen.drained && gen.exitCode === 0 && stable);
     if (this.state === 'handoff') {
-      // The handoff carries on without it, but the crash still counts.
-      this.noteFailure();
+      // The handoff carries on without it, but a crash still counts.
+      if (crashed) this.noteFailure();
       return;
     }
     if (this.state !== 'serving') return; // A restart owns this generation.
     this.clearStableTimer();
     this.active = null;
-    void this.bringUp('restarting', true);
+    if (!crashed) {
+      this.log(
+        `generation ${gen.id} drained and exited on its own; restarting it`,
+      );
+    }
+    void this.bringUp('restarting', crashed);
   }
 
   private promote(gen: Generation): void {
@@ -609,7 +644,10 @@ export class GenerationManager {
         return gen;
       }
     }
-    await this.terminate(gen);
+    await this.retire(
+      gen,
+      this.failedDrainMs(this.handoffConfig.drainDeadlineMs),
+    );
     this.trial = null;
     return null;
   }
@@ -721,6 +759,8 @@ export class GenerationManager {
     gen: Generation,
     deadlineMs: number,
     capMs: number = this.handoffConfig.voiceDrainCapMs,
+    /** After the deadline: SIGTERM then SIGKILL, or SIGKILL at once. */
+    escalation: 'terminate' | 'kill' = 'terminate',
   ): Promise<void> {
     if (gen.state === 'exited') return;
     gen.expectingExit = true;
@@ -738,6 +778,45 @@ export class GenerationManager {
       break;
     }
     this.log(`generation ${gen.id} missed its drain deadline`);
+    if (escalation === 'kill') {
+      // SIGTERM first, so the generation's process group can clean up, but
+      // only briefly: it already ignored a drain, and the rollback waits.
+      gen.proc.kill('SIGTERM');
+      if (await this.waitForExit(gen, FAILED_TRIAL_TERM_GRACE_MS)) return;
+      gen.proc.kill('SIGKILL');
+      await gen.exited;
+      return;
+    }
+    await this.terminate(gen);
+  }
+
+  /**
+   * How long a failed or abandoned trial drains. It may be frozen, and the
+   * previous entry cannot start until it is gone, so it gets no longer than
+   * the kill grace; the committed handoff's old generation drains in full.
+   */
+  private failedDrainMs(deadlineMs: number): number {
+    return Math.min(deadlineMs, this.handoffConfig.killGraceMs);
+  }
+
+  /**
+   * Ends a generation that failed or is being abandoned. One that was
+   * promoted may already serve the held listeners, and a signal would make it
+   * drop its clients' connections, so it is drained first (no voice
+   * extension) and signalled only after the deadline. One that never left
+   * `parked` holds no connections and is signalled at once.
+   */
+  private async retire(gen: Generation, deadlineMs: number): Promise<void> {
+    if (gen.state === 'exited') return;
+    // Already draining: that drain signals it after its own deadline.
+    if (gen.state === 'draining') return gen.exited;
+    if (gen.state === 'promoted' || gen.state === 'serving') {
+      // It has had its drain; a full SIGTERM grace on top would only delay
+      // the rollback, so a trial still running at the deadline gets a short
+      // one (FAILED_TRIAL_TERM_GRACE_MS) before SIGKILL.
+      await this.drain(gen, deadlineMs, deadlineMs, 'kill');
+      return;
+    }
     await this.terminate(gen);
   }
 

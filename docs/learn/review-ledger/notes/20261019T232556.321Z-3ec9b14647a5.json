@@ -1,0 +1,13 @@
+{
+  "revision": "5876b3bfe5c4232abceb603d28022be08c05f46c",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"lifecycle-events.ts: a non-zero exit after a supervisor_drain shutdown now classifies as crash; this document makes no claim about exit classifications.","inputs":["docs/design/instance-registry.md","packages/shared/src/lifecycle-events.ts"]},
+
+    {"path":"docs/design/station-instance-reconciler.md","note":"lifecycle-events.ts: a non-zero exit after a supervisor_drain shutdown now classifies as crash; this document makes no claim about exit classifications.","inputs":["docs/design/station-instance-reconciler.md","packages/shared/src/lifecycle-events.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest.mjs: names holding `..` stay out of brace groups, and the Windows command-line check measures the arguments buildVitestCommand builds; group membership and the exact-partition verification are unchanged, and no claim here names either.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs: names holding `..` stay out of brace groups, and the Windows command-line check measures the arguments buildVitestCommand builds; resource classification rules are unchanged.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

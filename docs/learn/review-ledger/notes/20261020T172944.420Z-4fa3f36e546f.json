@@ -1,0 +1,7 @@
+{
+  "revision": "47e809c1097960d27776558a9ceaa70e7e2de59f",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Read the whole page (feature previews, developer tools, shared answers, device hosts, setting links) against packages/contracts/src/device-settings.ts on this branch. This branch only adds the colorTheme, colorThemeFlavor and colorThemeAccent account settings there; the four sections, their pages and their saved scopes are unchanged, and the page makes no claim about appearance settings.","inputs":["docs/user/settings.md","packages/contracts/src/device-settings.ts"]}
+  ]
+}
