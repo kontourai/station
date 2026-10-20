@@ -405,11 +405,13 @@ function validateImportedValue<K extends keyof DeviceSettings>(
         : { valid: false };
     case 'string':
       if (candidate === null) {
-        // `accentColor` and `chatDockProjectSlug` are the nullable
-        // string-kind device settings — `null` is each one's legitimate
-        // "no override"/"no project bound" value (archive#4525).
-        return definition.key === 'accentColor' ||
-          definition.key === 'chatDockProjectSlug'
+        // A string-kind setting whose default is `null` is nullable, and
+        // `null` is its legitimate unset value: `accentColor` ("no
+        // override"), `chatDockProjectSlug` ("no project bound",
+        // archive#4525), and the color-theme flavor and accent ("the
+        // family default"). Derived from the registry rather than listed
+        // here, so a new nullable setting cannot be forgotten.
+        return definition.defaultValue === null
           ? { valid: true, value: null as DeviceSettings[K] }
           : { valid: false };
       }

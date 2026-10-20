@@ -250,9 +250,44 @@ export const DEFAULT_REGION_ARRANGEMENT_RECORD: RegionArrangementRecord = {
   },
 };
 
+/**
+ * Named color-theme families (docs/decisions/user-color-themes.md). `station`
+ * is today's look and sets nothing; every other id is a family in the UI's
+ * catalog (`src-ui/src/lib/color-themes/catalog.ts`), which owns flavors,
+ * accents and every color value.
+ */
+export const COLOR_THEME_IDS = [
+  'station',
+  'catppuccin',
+  'rose-pine',
+  'gruvbox',
+  'nord',
+  'tokyo-night',
+] as const;
+
+export type ColorThemeId = (typeof COLOR_THEME_IDS)[number];
+
 export interface DeviceSettings {
   theme: 'light' | 'dark';
   accentColor: string | null;
+  /**
+   * The color-theme family. Values arrive from storage, imports and the
+   * account server, which may be newer or older than this client, so readers
+   * resolve them through the UI's `resolveColorThemeSelection` rather than
+   * trusting this type: an unknown family resolves to `station`.
+   */
+  colorTheme: ColorThemeId;
+  /**
+   * The family's DARK flavor (light mode always uses the family's single
+   * light flavor). `null` is the family default; an id the family does not
+   * have resolves to that default too.
+   */
+  colorThemeFlavor: string | null;
+  /**
+   * A named accent from the family's list. `null` is the family default.
+   * A custom `accentColor` still wins over it on Station's accent.
+   */
+  colorThemeAccent: string | null;
   featureSettings: FeatureSettings;
   sttProvider: string;
   ttsProvider: string;
@@ -665,6 +700,38 @@ export const DEVICE_SETTINGS_REGISTRY = [
     help: 'Accent-colored interface elements use this color in your interface instead of the theme’s own.',
     description: 'Custom UI accent color (hex). Unset uses the theme default.',
     priorStorageKey: 'station-accent-color',
+    defaultValue: null,
+  }),
+  // No prior storage keys: color themes are new. `station` renders exactly
+  // what Station rendered before they existed.
+  defineDeviceSetting({
+    key: 'colorTheme',
+    scope: 'account',
+    descriptor: { kind: 'enum', values: COLOR_THEME_IDS },
+    label: 'Color theme',
+    help: 'The interface uses this named palette in light and dark mode instead of Station’s own colors.',
+    description:
+      'Named color theme family. Station keeps the default look; the others apply their own palette.',
+    defaultValue: 'station',
+  }),
+  defineDeviceSetting({
+    key: 'colorThemeFlavor',
+    scope: 'account',
+    descriptor: { kind: 'string', maxLength: 64 },
+    label: 'Color theme dark flavor',
+    help: 'Dark mode uses this variant of the color theme; light mode always uses the theme’s light variant.',
+    description:
+      'Dark-mode variant of the color theme. Unset uses the theme’s default variant.',
+    defaultValue: null,
+  }),
+  defineDeviceSetting({
+    key: 'colorThemeAccent',
+    scope: 'account',
+    descriptor: { kind: 'string', maxLength: 64 },
+    label: 'Color theme accent',
+    help: 'Buttons, links and focus rings use this color from the color theme’s palette, unless a custom accent color is set.',
+    description:
+      'Named accent from the color theme’s palette. Unset uses the theme’s default accent.',
     defaultValue: null,
   }),
   defineDeviceSetting({
@@ -1109,6 +1176,9 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
 export const PREFERENCE_DEVICE_KEYS = [
   'theme',
   'accentColor',
+  'colorTheme',
+  'colorThemeFlavor',
+  'colorThemeAccent',
   'featureSettings',
   'sttProvider',
   'ttsProvider',

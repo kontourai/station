@@ -176,6 +176,41 @@ describe('account preference HTTP persistence', () => {
     });
   });
 
+  test('color-theme ids round-trip as ids, including a family this server has never heard of', async () => {
+    const f = await fixture();
+    // A newer client may name a family the UI catalog here does not have; the
+    // server keeps the id (the UI resolves an unknown one to Station) instead
+    // of refusing the whole patch.
+    expect(
+      (
+        await f.call({
+          colorTheme: 'some-future-family',
+          colorThemeFlavor: 'mocha',
+          colorThemeAccent: 'mauve',
+        })
+      ).status,
+    ).toBe(200);
+    expect(await (await f.call()).json()).toMatchObject({
+      data: {
+        values: {
+          colorTheme: 'some-future-family',
+          colorThemeFlavor: 'mocha',
+          colorThemeAccent: 'mauve',
+        },
+      },
+    });
+    // Null resets to the family default, as for every account preference.
+    expect((await f.call({ colorThemeFlavor: null })).status).toBe(200);
+    const after = (await (await f.call()).json()) as {
+      data: { values: Record<string, unknown> };
+    };
+    expect(after.data.values).not.toHaveProperty('colorThemeFlavor');
+    // An id is still parsed: not text, markup or an unbounded string.
+    for (const colorTheme of ['Catppuccin', '<style>', '', 'a'.repeat(49), 42])
+      expect((await f.call({ colorTheme })).status).toBe(400);
+    expect((await f.call({ colorThemeAccent: 'x y' })).status).toBe(400);
+  });
+
   test('a corrupt saved record is reported rather than replaced by defaults or a later patch', async () => {
     const f = await fixture();
     await f.call({ theme: 'light' });

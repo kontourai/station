@@ -12,9 +12,20 @@ import { z } from 'zod/v3';
 
 const list = z.array(z.string().min(1).max(1024)).max(512);
 const mode = z.enum(['ask', 'auto', 'never']);
+/**
+ * Color-theme family, flavor and accent ids are parsed as ids, not checked
+ * against today's catalog: the catalog lives in the UI, and a client newer
+ * than this server may name a family this server has never heard of. The UI
+ * resolves an unknown id to its default (`resolveColorThemeSelection`), so
+ * storing it is harmless, and refusing it would fail the whole patch.
+ */
+const colorThemeId = z.string().regex(/^[a-z][a-z0-9-]{0,47}$/);
 const fields = {
   theme: z.enum(['light', 'dark']),
   accentColor: z.string().max(128).nullable(),
+  colorTheme: colorThemeId,
+  colorThemeFlavor: colorThemeId.nullable(),
+  colorThemeAccent: colorThemeId.nullable(),
   diffStyle: z.enum(['unified', 'split']),
   diffWrap: z.boolean(),
   chatShowReasoning: z.boolean(),
@@ -52,6 +63,9 @@ const patchSchema = z
   .object({
     theme: fields.theme.nullable().optional(),
     accentColor: fields.accentColor.nullable().optional(),
+    colorTheme: fields.colorTheme.nullable().optional(),
+    colorThemeFlavor: fields.colorThemeFlavor.nullable().optional(),
+    colorThemeAccent: fields.colorThemeAccent.nullable().optional(),
     diffStyle: fields.diffStyle.nullable().optional(),
     diffWrap: fields.diffWrap.nullable().optional(),
     chatShowReasoning: fields.chatShowReasoning.nullable().optional(),
