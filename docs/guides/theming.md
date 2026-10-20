@@ -121,6 +121,26 @@ preference must clear its companion overrides too. It refuses a value that is
 not `#rgb`/`#rrggbb` and clears the override instead. Do not infer legibility
 for every tinted background from a foreground-on-solid-accent calculation.
 
+## Named color themes
+
+A person can choose a named palette (Catppuccin, Rosé Pine, Gruvbox, Nord,
+Tokyo Night) on top of light and dark; the default `station` sets nothing and
+renders as above. The [decision record](../decisions/user-color-themes.md)
+owns the settings, compatibility and precedence. The
+[catalog](../../src-ui/src/lib/color-theme-catalog.ts) is the single source
+of every value. After changing it, run `npm run gen:color-themes`: it
+regenerates `src-ui/src/color-themes.generated.css`, the splash subset and the
+index in [startup-theme.js](../../src-ui/public/startup-theme.js), and
+[color-theme-artifacts.test.ts](../../src-ui/src/__tests__/color-theme-artifacts.test.ts)
+fails until you do. [color-theme-contrast.test.ts](../../src-ui/src/__tests__/color-theme-contrast.test.ts)
+rates every family, flavor and accent;
+[color-theme-cascade.test.ts](../../src-ui/src/__tests__/color-theme-cascade.test.ts)
+measures the startup path, the live applier, Station's unchanged default and
+the precedence against channels, branding, a custom accent and islands in
+Chromium. A picker lists `COLOR_THEME_OPTIONS` from
+[color-themes.ts](../../src-ui/src/lib/color-themes.ts) and writes the
+`colorTheme`, `colorThemeFlavor` and `colorThemeAccent` device settings.
+
 ## White-label branding theme
 
 A branding provider's `getTheme()` answer is applied by
