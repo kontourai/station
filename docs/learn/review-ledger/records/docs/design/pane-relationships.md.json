@@ -54,7 +54,19 @@
 
     "src-ui/src/app-shell/ActivityRegionShell.tsx",
 
-    "src-ui/src/workspace-panes/RegionPaneHost.tsx"
+    "src-ui/src/workspace-panes/RegionPaneHost.tsx",
+
+    "src-ui/src/components/chat-dock/ImportedConversationPane.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/contexts/open-chats-store.ts",
+
+    "src-ui/src/lib/attached-continuation-handoff.ts",
+
+    "src-ui/src/__tests__/ActivityReview.lifecycle.test.tsx",
+
+    "src-ui/src/__tests__/ActivityReview.chatExit.test.tsx"
   ],
 
   "checks": []
