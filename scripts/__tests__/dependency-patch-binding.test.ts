@@ -809,6 +809,29 @@ describe('binding schema validation', () => {
       /invalid or duplicate entrypoint evidence/,
     ],
     [
+      'a null evidence entry',
+      (r: ReturnType<typeof record>) => {
+        Object.assign(r.patchBinding, { installedEntrypoints: [null] });
+      },
+      /invalid or duplicate entrypoint evidence/,
+    ],
+    [
+      'a non-object evidence entry',
+      (r: ReturnType<typeof record>) => {
+        Object.assign(r.patchBinding, {
+          installedEntrypoints: ['node_modules/node-forge/lib/index.js'],
+        });
+      },
+      /invalid or duplicate entrypoint evidence/,
+    ],
+    [
+      'a list as an evidence entry',
+      (r: ReturnType<typeof record>) => {
+        Object.assign(r.patchBinding, { installedEntrypoints: [[]] });
+      },
+      /invalid or duplicate entrypoint evidence/,
+    ],
+    [
       'a duplicated evidence path',
       (r: ReturnType<typeof record>) => {
         r.patchBinding.installedEntrypoints.push({
