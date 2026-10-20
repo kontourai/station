@@ -257,24 +257,48 @@ function hashComment(raw, yaml) {
 }
 
 /**
- * A YAML block scalar header (`key: |`, `- >-`, `run: |2 # note`): the
- * key, if any, and the header line's indentation.
+ * A YAML block scalar header (`key: |`, `"key": >-`, `- >-`, `run: |2 # note`):
+ * the header's indentation, a `- ` entry prefix if any, the key (quoted or
+ * plain) if any, and an explicit indentation indicator if any.
  */
 const BLOCK_SCALAR_HEADER =
-  /^(\s*)(?:-\s+)?(?:([^\s#'"][^:#]*?)\s*:\s+)?[|>][+-]?\d*[+-]?\s*(?:#.*)?$/;
+  /^(\s*)(-\s+)?(?:("[^"]*"|'[^']*'|[^\s#'"][^:#]*?)\s*:\s+)?[|>][+-]?(\d)?[+-]?\s*(?:#.*)?$/;
 /** Block scalars that hold shell scripts, whose `#` lines are comments. */
 const SCRIPT_KEYS = new Set(['run', 'script']);
 
+function blockScalarFor(header) {
+  const [, indent, entry = '', key = '', indicator] = header;
+  // The node that owns the scalar starts after a `- ` entry prefix, so an
+  // explicit indicator and the "indented past the parent" rule both count
+  // from the key's column, not from the physical start of the line.
+  const parentIndent = indent.length + entry.length;
+  return {
+    parentIndent,
+    // An explicit indicator fixes the content indentation; otherwise the
+    // first non-empty line does.
+    contentIndent: indicator ? parentIndent + Number(indicator) : null,
+    script: SCRIPT_KEYS.has(key.replace(/^(["'])(.*)\1$/, '$2')),
+  };
+}
+
 function hashComments(text, { yaml = false } = {}) {
   const out = [];
-  // Inside a YAML block scalar, lines indented past the header are content,
-  // not YAML. Content of a `run:`/`script:` block is a shell script and is
-  // read with shell quoting; any other block scalar is prose and is skipped.
+  // Inside a YAML block scalar, lines indented to the block's content
+  // indentation are content, not YAML. The block ends at the first non-empty
+  // line indented less than that, comment lines included. Content of a
+  // `run:`/`script:` block is a shell script and is read with shell quoting;
+  // any other block scalar is prose and is skipped.
   let block = null;
   for (const [index, raw] of text.split('\n').entries()) {
     if (block) {
       const indent = raw.length - raw.trimStart().length;
-      if (!raw.trim() || indent > block.indent) {
+      if (!raw.trim()) continue;
+      // A block with no explicit indicator takes its content indentation
+      // from its first non-empty line, which must sit past the parent; if it
+      // does not, the block is empty and this line is ordinary YAML.
+      if (block.contentIndent === null && indent > block.parentIndent)
+        block.contentIndent = indent;
+      if (block.contentIndent !== null && indent >= block.contentIndent) {
         const comment = block.script ? hashComment(raw, false) : null;
         if (comment?.trim()) out.push({ line: index + 1, text: comment });
         continue;
@@ -284,11 +308,7 @@ function hashComments(text, { yaml = false } = {}) {
     const comment = hashComment(raw, yaml);
     if (comment?.trim()) out.push({ line: index + 1, text: comment });
     const header = yaml ? BLOCK_SCALAR_HEADER.exec(raw) : null;
-    if (header)
-      block = {
-        indent: header[1].length,
-        script: SCRIPT_KEYS.has(header[2] ?? ''),
-      };
+    if (header) block = blockScalarFor(header);
   }
   return out;
 }

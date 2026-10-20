@@ -348,6 +348,49 @@ describe('hygiene comment scanner edge cases', () => {
   });
 });
 
+describe('hygiene YAML block scalar extent', () => {
+  // A block scalar ends at the first non-empty line indented less than its
+  // content, counted from the owning key (not the line start), and a dedented
+  // comment line ends it too. Each file puts one real marker after the block.
+  const root = makeRepo({
+    // The header sits after a `- ` entry, so the sibling key `next:` is at
+    // column 2 while the header line starts at column 0.
+    'ci/sequence-entry.yml': [
+      '- key: |2-',
+      '      indented body',
+      '  next: x # TODO(#200): real, a sibling of the scalar key',
+      '',
+    ].join('\n'),
+    // The comment is dedented below the content (2) but above the header (0).
+    'ci/dedented-comment.yml': [
+      'parent:',
+      '  key: |',
+      '      prose',
+      '    # TODO(#200): real, dedented below the content',
+      '',
+    ].join('\n'),
+    // Quoted keys open block scalars too: the first line is scalar text, and
+    // the shell script of a quoted `run` key is still a script.
+    'ci/quoted-key.yml': [
+      '"key": |',
+      '  # TODO(#200): prose in a quoted-key scalar',
+      "'run': |",
+      '  # TODO(#200): a shell comment in a quoted run key',
+      '',
+    ].join('\n'),
+  });
+
+  it('ends a scalar by its content indentation and reads quoted keys', () => {
+    const { status, result } = runJson(root, 'markers');
+    expect(status).toBe(0);
+    expect(located(result.findings)).toEqual([
+      'closed-issue:ci/dedented-comment.yml:4',
+      'closed-issue:ci/quoted-key.yml:4',
+      'closed-issue:ci/sequence-entry.yml:3',
+    ]);
+  });
+});
+
 describe('hygiene feature flag shapes', () => {
   // Shapes the derivation does not follow must not read as zero flags.
   it.each([
