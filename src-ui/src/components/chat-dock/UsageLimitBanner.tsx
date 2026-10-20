@@ -7,6 +7,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useUsageLimitRecovery } from '../../hooks/useUsageLimitRecovery';
 import type { ChatSession } from '../../types';
+import { clearSnooze, writeSnooze } from '../../utils/activity-snooze-store';
 import { clockTime } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import './UsageLimitBanner.css';
@@ -92,6 +93,7 @@ export function UsageLimitBanner({
       apiBase={apiBase}
       scope={scope}
       threadId={threadId}
+      snoozeId={session.conversationId || session.id}
       active={active}
       refreshKey={refreshKey}
     />
@@ -102,12 +104,15 @@ function UsageLimitBannerFor({
   apiBase,
   scope,
   threadId,
+  snoozeId,
   active,
   refreshKey,
 }: {
   apiBase: string;
   scope: ApiRequestScope | undefined;
   threadId: string;
+  /** The chat's inbox item id: "Resume at <reset>" snoozes it until then. */
+  snoozeId: string;
   active: boolean;
   refreshKey: string;
 }) {
@@ -116,12 +121,13 @@ function UsageLimitBannerFor({
   // message clears the hold), so the reason it settled for can be said.
   const [engaged, setEngaged] = useState(false);
   const enabled = active || engaged;
-  const { recovery, refetch, resume, cancel } = useUsageLimitRecovery({
-    apiBase,
-    scope,
-    threadId,
-    enabled,
-  });
+  const { recovery, refetch, resume, resumeAtReset, hold } =
+    useUsageLimitRecovery({
+      apiBase,
+      scope,
+      threadId,
+      enabled,
+    });
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [notice, setNotice] = useState<string | null>(null);
   const wasEngaged = useRef(false);
@@ -228,17 +234,16 @@ function UsageLimitBannerFor({
     ? clockTime(Date.parse(recovery?.dueAt as string), nowMs)
     : undefined;
   const autoOn = recovery?.outcome === 'armed' && recovery.autoResume === true;
-  // The reset time is said once, in the title. Resume now is always offered:
-  // before the reset it may be refused again, and the wait then carries on.
+  // A stop still waiting for a known reset can be decided for this stop
+  // alone: resume at the reset, or don't, whatever the setting says.
+  const canChoose = recovery?.outcome === 'armed' && dueKnown && !resetPassed;
   const body = autoOn
-    ? 'Station will resume this conversation automatically.'
-    : dueKnown && !resetPassed
-      ? 'Auto-resume is off. You can resume now, but your limit may not have reset yet.'
-      : dueKnown
-        ? 'Auto-resume is off. Resume it yourself.'
-        : "Station can't tell when your limit resets, so it won't resume on its own. Resume it yourself when your limit is back.";
-  const failed = resume.isError || cancel.isError;
-  const busy = resume.isPending || cancel.isPending;
+    ? 'Resumes automatically.'
+    : dueKnown
+      ? null
+      : 'Reset time unknown. Resume when your limit is back.';
+  const failed = resume.isError || resumeAtReset.isError || hold.isError;
+  const busy = resume.isPending || resumeAtReset.isPending || hold.isPending;
 
   return (
     <section
@@ -256,32 +261,57 @@ function UsageLimitBannerFor({
           </>
         ) : null}
       </p>
-      <p className="usage-limit-banner__body">{body}</p>
+      {body ? <p className="usage-limit-banner__body">{body}</p> : null}
       {failed ? (
         <p className="usage-limit-banner__error" role="alert">
           That didn't go through. Try again.
         </p>
       ) : null}
       <div className="usage-limit-banner__actions">
+        {canChoose && !autoOn ? (
+          <Button
+            variant="primary"
+            size="sm"
+            pending={resumeAtReset.isPending}
+            pendingLabel="Saving…"
+            disabled={busy}
+            onClick={() =>
+              resumeAtReset.mutate(undefined, {
+                onSuccess: () => writeSnooze(snoozeId, dueMs, Date.now()),
+              })
+            }
+          >
+            Resume at {resetLabel}
+          </Button>
+        ) : null}
         <Button
-          variant="primary"
+          variant={canChoose && !autoOn ? 'secondary' : 'primary'}
           size="sm"
           pending={resume.isPending}
           pendingLabel="Resuming…"
           disabled={busy}
+          title={
+            dueKnown && !resetPassed
+              ? 'Your limit may not have reset yet.'
+              : undefined
+          }
           onClick={() => resume.mutate()}
         >
           Resume now
         </Button>
-        {autoOn ? (
+        {canChoose && autoOn ? (
           <Button
             size="sm"
-            pending={cancel.isPending}
-            pendingLabel="Canceling…"
+            pending={hold.isPending}
+            pendingLabel="Saving…"
             disabled={busy}
-            onClick={() => cancel.mutate()}
+            onClick={() =>
+              hold.mutate(undefined, {
+                onSuccess: () => clearSnooze(snoozeId, Date.now()),
+              })
+            }
           >
-            Cancel auto-resume
+            Don't resume
           </Button>
         ) : null}
       </div>

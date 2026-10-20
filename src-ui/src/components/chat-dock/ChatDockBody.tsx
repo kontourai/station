@@ -100,6 +100,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
+import { AgentScheduleNotes } from './AgentScheduleNotes';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import {
   type RetryAttachment,
@@ -1914,6 +1915,13 @@ export function ChatDockBody({
         session={activeSession}
         summary={activeOrchestrationSession}
       />
+      {/* What an agent scheduled here: check-backs and job proposals. */}
+      {activeSession.conversationId && !activeSession.replay ? (
+        <AgentScheduleNotes
+          conversationId={activeSession.conversationId}
+          refreshKey={`${activeOrchestrationSession?.eventCount ?? ''}:${activeOrchestrationSession?.updatedAt ?? ''}`}
+        />
+      ) : null}
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (
           <div

@@ -1,0 +1,129 @@
+/*
+ * The "This chat" card's Scheduled section. Rows use the card's own spacing
+ * and type scale. Each row grows from and collapses to nothing on its own
+ * grid track with a fade (the global reduced-motion rule shortens it; a
+ * hidden page pauses it). A long name truncates; the time beside it does not.
+ */
+.session-scheduled {
+  display: grid;
+  gap: var(--k-space-1);
+  padding: var(--k-space-1) var(--k-space-2) var(--k-space-2);
+}
+
+.session-scheduled__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  padding: 0 var(--k-space-2);
+}
+
+.session-scheduled__title {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+}
+
+.session-scheduled__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-scheduled__item {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows var(--motion-base) var(--ease-standard),
+    opacity var(--motion-base) var(--ease-standard);
+}
+
+@starting-style {
+  .session-scheduled__item {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.session-scheduled__item[data-leaving] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+:root[data-page-hidden] .session-scheduled__item {
+  transition: none;
+}
+
+.session-scheduled__clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.session-scheduled__row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  padding: var(--k-space-1) var(--k-space-2);
+  border-radius: var(--k-radius-md);
+}
+
+.session-scheduled__row:hover {
+  background: var(--bg-tertiary);
+}
+
+.session-scheduled__icon {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--k-text-muted);
+}
+
+/* An enabled job's live dot. */
+.session-scheduled__icon[data-live]::after {
+  position: absolute;
+  inset-block-start: -2px;
+  inset-inline-end: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--k-positive);
+  content: "";
+}
+
+.session-scheduled__glyph {
+  width: 14px;
+  height: 14px;
+}
+
+.session-scheduled__text {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.session-scheduled__name {
+  overflow: hidden;
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-scheduled__when {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.session-scheduled__actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-1);
+}
