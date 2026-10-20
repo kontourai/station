@@ -1090,6 +1090,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3290: spawns an OpenCode-shaped ACP engine through the real
   // ACPProcess, so the launch environment is the one actually delivered.
   'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
+  // #3924: runs the real `opencode` (when this host has one) with fresh XDG
+  // directories against a planted project plugin; skips loudly where no
+  // opencode binary resolves.
+  'src-server/providers/__tests__/opencode-project-config.process.test.ts',
   // Runs npm and the real lockfile gate against an isolated two-workspace
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.

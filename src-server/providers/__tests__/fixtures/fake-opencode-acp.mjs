@@ -27,7 +27,16 @@
 // `FAKE_OPENCODE_REFUSE_RESUME=1` in its environment it refuses
 // `session/resume` with a JSON-RPC error, as an engine that advertised
 // resume but cannot resume this session would.
-import { appendFileSync } from 'node:fs';
+//
+// #3924: an `edit: <path>` request carries what OpenCode sends, its
+// permission metadata (`{ filepath, diff }`, `filepath` absolute, resolved
+// against the process's directory), and an allowed edit writes the file.
+// An `always` answer is remembered for the permission, as OpenCode's edit
+// tool asks with `always: ["*"]`: later requests for it are not sent, and a
+// `{ "always": <permission> }` line is recorded. `debug agent` records a
+// `{ "debugAgent": <name> }` line.
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
 // `debug agent <name>` prints the agent's resolved rules (#3290), as
 // `opencode debug agent` does; it is not an engine launch.
@@ -36,6 +45,12 @@ const debugAgent =
     ? process.argv[4]
     : undefined;
 
+if (process.env.FAKE_OPENCODE_RECORD && debugAgent !== undefined) {
+  appendFileSync(
+    process.env.FAKE_OPENCODE_RECORD,
+    `${JSON.stringify({ debugAgent })}\n`,
+  );
+}
 if (process.env.FAKE_OPENCODE_RECORD && debugAgent === undefined) {
   appendFileSync(
     process.env.FAKE_OPENCODE_RECORD,
@@ -224,6 +239,7 @@ const ACTIONS = {
 };
 
 let callCounter = 0;
+const alwaysAllowed = new Set();
 async function prompt(sessionId, text) {
   // The action is the last `<verb>: <target>` line: Station may put its own
   // context ahead of the typed text.
@@ -237,7 +253,10 @@ async function prompt(sessionId, text) {
       ? { ...ACTIONS.mcp, permission: target, title: target }
       : ACTIONS[match[1]];
   const toolCallId = `call_fixture_${++callCounter}`;
-  const rawInput = { [action.key]: target };
+  const editPath = match[1] === 'edit' ? resolve(target) : undefined;
+  const rawInput = editPath
+    ? { filepath: editPath, diff: '' }
+    : { [action.key]: target };
   update(sessionId, {
     sessionUpdate: 'tool_call',
     toolCallId,
@@ -252,13 +271,15 @@ async function prompt(sessionId, text) {
     action.permission,
     match[1] === 'mcp' ? '*' : target,
   );
-  let allowed = verdict === 'allow';
-  if (verdict === 'ask') {
+  let allowed =
+    verdict === 'allow' ||
+    (verdict === 'ask' && alwaysAllowed.has(action.permission));
+  if (verdict === 'ask' && !allowed) {
     const response = await request('session/request_permission', {
       sessionId,
       toolCall: {
         toolCallId,
-        title: target,
+        title: editPath ?? target,
         kind: action.kind,
         status: 'pending',
         locations: [],
@@ -275,6 +296,19 @@ async function prompt(sessionId, text) {
         ? response.outcome.optionId
         : undefined;
     allowed = optionId === 'once' || optionId === 'always';
+    if (optionId === 'always') {
+      alwaysAllowed.add(action.permission);
+      if (process.env.FAKE_OPENCODE_RECORD) {
+        appendFileSync(
+          process.env.FAKE_OPENCODE_RECORD,
+          `${JSON.stringify({ always: action.permission })}\n`,
+        );
+      }
+    }
+  }
+  if (allowed && editPath) {
+    mkdirSync(dirname(editPath), { recursive: true });
+    writeFileSync(editPath, 'written by the fixture\n');
   }
   update(sessionId, {
     sessionUpdate: 'tool_call_update',

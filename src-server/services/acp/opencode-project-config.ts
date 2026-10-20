@@ -1,0 +1,284 @@
+/**
+ * #3924: OpenCode project configuration is code OpenCode runs at launch.
+ *
+ * OpenCode loads `opencode.json` / `opencode.jsonc` and `.opencode/`
+ * directories from every directory between the session's directory and the
+ * project root (the git root; with no git root, up to the filesystem root),
+ * checked against OpenCode 1.18.18. From them it imports plugins
+ * (`.opencode/plugin(s)/`, a config `plugin` list) and custom tools
+ * (`.opencode/tool(s)/`) at load, even for `opencode debug agent`, and starts
+ * local MCP servers, formatters and language servers they declare. None of
+ * that asks a person. So under Station's approval modes short of host full
+ * access:
+ *
+ * - an edit to such a path, or to anything outside the project (OpenCode's
+ *   global configuration lives there), is a person's to answer: no mode,
+ *   session grant or OpenCode "always" answers it (`openCodeEditNeedsPerson`);
+ * - a project that declares such code is not governed: Station refuses
+ *   before it launches OpenCode, the preflight included, because that code
+ *   would run outside any approval mode (`findOpenCodeProjectCode`).
+ *
+ * The user's own home directory and above are the user's scope, as are
+ * OpenCode's global configuration directories: they are not scanned.
+ */
+import { existsSync, realpathSync, statSync } from 'node:fs';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
+import { type ParseError, parse } from 'jsonc-parser';
+
+const CONFIG_FILE_NAMES = ['opencode.json', 'opencode.jsonc'] as const;
+const CODE_DIR_NAMES = ['plugin', 'plugins', 'tool', 'tools'] as const;
+/** A configuration file larger than this is not read, and is refused. */
+export const OPENCODE_CONFIG_SCAN_MAX_BYTES = 1024 * 1024;
+
+/** The real path of `path`, or of its deepest existing ancestor joined back. */
+function realish(path: string): string {
+  let existing = path;
+  const rest: string[] = [];
+  while (!existsSync(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) return path;
+    rest.unshift(basename(existing));
+    existing = parent;
+  }
+  try {
+    return join(realpathSync(existing), ...rest);
+  } catch {
+    return path;
+  }
+}
+
+/**
+ * The directory OpenCode treats as the project root for `cwd`: the nearest
+ * ancestor holding `.git` (a directory or a worktree's file), or `undefined`.
+ */
+export function openCodeGitRoot(cwd: string): string | undefined {
+  let dir = realish(resolve(cwd));
+  for (;;) {
+    if (existsSync(join(dir, '.git'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+/**
+ * Whether `path` is one OpenCode loads configuration or code from: any path
+ * through a `.opencode` directory, or a file named `opencode.json(c)`, at any
+ * depth (a session can start in a nested directory). Compared without case,
+ * as a case-insensitive file system resolves it.
+ */
+export function isOpenCodeConfigPath(path: string): boolean {
+  const parts = path.split(/[\\/]+/).map((part) => part.toLowerCase());
+  const name = parts.at(-1) ?? '';
+  return (
+    parts.includes('.opencode') ||
+    (CONFIG_FILE_NAMES as readonly string[]).includes(name)
+  );
+}
+
+/**
+ * The files an OpenCode edit permission request names, from the ACP
+ * request's `rawInput` (OpenCode sends the permission's metadata there):
+ * `filepath` (absolute) for `edit` and `write`, `files[].filePath` and
+ * `movePath` for `apply_patch` (whose `filepath` joins relative paths and is
+ * not used). `undefined` when no target can be read.
+ */
+export function openCodeEditTargets(rawInput: unknown): string[] | undefined {
+  if (!rawInput || typeof rawInput !== 'object') return undefined;
+  const input = rawInput as { filepath?: unknown; files?: unknown };
+  if (Array.isArray(input.files)) {
+    const targets: string[] = [];
+    for (const file of input.files) {
+      if (!file || typeof file !== 'object') return undefined;
+      const { filePath, movePath } = file as {
+        filePath?: unknown;
+        movePath?: unknown;
+      };
+      if (typeof filePath !== 'string' || !isAbsolute(filePath))
+        return undefined;
+      targets.push(filePath);
+      if (movePath !== undefined) {
+        if (typeof movePath !== 'string' || !isAbsolute(movePath))
+          return undefined;
+        targets.push(movePath);
+      }
+    }
+    return targets.length > 0 ? targets : undefined;
+  }
+  return typeof input.filepath === 'string' && isAbsolute(input.filepath)
+    ? [input.filepath]
+    : undefined;
+}
+
+/**
+ * Whether an ACP permission request is an OpenCode file change, or a step
+ * toward one: the `edit` tool kind, or a request whose input names a file
+ * (`edit`, `write` and `apply_patch` metadata, and `external_directory` for
+ * a file outside the project).
+ */
+export function isOpenCodeEditShaped(
+  kind: unknown,
+  rawInput: unknown,
+): boolean {
+  if (kind === 'edit') return true;
+  if (!rawInput || typeof rawInput !== 'object') return false;
+  const input = rawInput as { filepath?: unknown; files?: unknown };
+  return input.filepath !== undefined || input.files !== undefined;
+}
+
+function isInside(path: string, root: string): boolean {
+  const rel = relative(root, path);
+  return (
+    rel === '' ||
+    (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+  );
+}
+
+/**
+ * Whether an OpenCode edit request must be answered by a person: a target
+ * that cannot be read, one outside the project (the git root of `cwd`, else
+ * `cwd`), or an OpenCode configuration path. Symbolic links in existing
+ * directories are resolved first, so a link into `.opencode` is caught.
+ */
+export function openCodeEditNeedsPerson(
+  rawInput: unknown,
+  cwd: string,
+): boolean {
+  const targets = openCodeEditTargets(rawInput);
+  if (!targets) return true;
+  const root = openCodeGitRoot(cwd) ?? realish(resolve(cwd));
+  return targets.some((target) => {
+    const real = realish(resolve(target));
+    return (
+      !isInside(real, root) ||
+      isOpenCodeConfigPath(relative(root, real)) ||
+      isOpenCodeConfigPath(relative(root, resolve(target)))
+    );
+  });
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Entries of a config map (`mcp`, `formatter`, `lsp`) that run a command. */
+function commandEntries(value: unknown, key: string): string[] {
+  if (!isPlainObject(value)) return [];
+  return Object.entries(value)
+    .filter(([, entry]) => {
+      if (!isPlainObject(entry)) return false;
+      if (entry.enabled === false || entry.disabled === true) return false;
+      return (
+        entry.command !== undefined || (key === 'mcp' && entry.type === 'local')
+      );
+    })
+    .map(([name]) => `${key} "${name}"`);
+}
+
+async function configFileFindings(path: string): Promise<string[]> {
+  let size: number;
+  try {
+    size = (await stat(path)).size;
+  } catch {
+    return [];
+  }
+  if (size > OPENCODE_CONFIG_SCAN_MAX_BYTES) {
+    return [`${path} (too large for Station to check)`];
+  }
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch {
+    return [`${path} (Station could not read it)`];
+  }
+  const errors: ParseError[] = [];
+  const parsed: unknown = parse(text, errors, { allowTrailingComma: true });
+  if (errors.length > 0 || !isPlainObject(parsed)) {
+    return [`${path} (Station could not parse it)`];
+  }
+  const found = [
+    ...(Array.isArray(parsed.plugin) && parsed.plugin.length > 0
+      ? ['plugin']
+      : []),
+    ...commandEntries(parsed.mcp, 'mcp'),
+    ...commandEntries(parsed.formatter, 'formatter'),
+    ...commandEntries(parsed.lsp, 'lsp'),
+  ];
+  return found.map((what) => `${path} (${what})`);
+}
+
+async function codeDirFindings(dotDir: string): Promise<string[]> {
+  const found: string[] = [];
+  for (const name of CODE_DIR_NAMES) {
+    const dir = join(dotDir, name);
+    let entries: string[];
+    try {
+      entries = await readdir(dir);
+    } catch {
+      continue;
+    }
+    if (entries.length > 0) found.push(dir);
+  }
+  return found;
+}
+
+/**
+ * The project-scoped OpenCode configuration under `cwd` that would run code
+ * when OpenCode launches there: plugins and custom tools in `.opencode/`,
+ * and `plugin`, local `mcp`, `formatter` and `lsp` commands in
+ * `opencode.json(c)` (at each level and inside `.opencode/`). A file Station
+ * cannot read, parse or bound is listed too: it cannot be shown to be safe.
+ * Directories from `cwd` up to the git root (or the top, as OpenCode does
+ * without one) are scanned, stopping before `home`.
+ */
+export async function findOpenCodeProjectCode(
+  cwd: string,
+  home: string = homedir(),
+): Promise<string[]> {
+  const start = realish(resolve(cwd));
+  const stop = openCodeGitRoot(start);
+  const homeDir = realish(resolve(home));
+  const findings: string[] = [];
+  let dir = start;
+  for (;;) {
+    if (isInside(homeDir, dir)) break;
+    for (const name of CONFIG_FILE_NAMES) {
+      findings.push(...(await configFileFindings(join(dir, name))));
+    }
+    const dotDir = join(dir, '.opencode');
+    let isDir = false;
+    try {
+      isDir = statSync(dotDir).isDirectory();
+    } catch {}
+    if (isDir) {
+      findings.push(...(await codeDirFindings(dotDir)));
+      for (const name of CONFIG_FILE_NAMES) {
+        findings.push(...(await configFileFindings(join(dotDir, name))));
+      }
+    }
+    if (stop && dir === stop) break;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return findings;
+}
+
+/** The refusal reason for a project whose OpenCode configuration runs code. */
+export function openCodeProjectCodeRefusal(
+  findings: readonly string[],
+): string {
+  const shown = findings.slice(0, 5).join('; ');
+  const more = findings.length > 5 ? `; and ${findings.length - 5} more` : '';
+  return `this project's OpenCode configuration runs its own code when OpenCode starts, which no approval mode covers (${shown}${more})`;
+}

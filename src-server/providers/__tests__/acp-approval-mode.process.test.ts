@@ -1,4 +1,11 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
@@ -143,6 +150,20 @@ function alive(pid: number | undefined): boolean {
   }
 }
 
+/** The agents whose resolved rules were read (`opencode debug agent`). */
+function agentReads(h: Harness): unknown[] {
+  return records(h)
+    .filter((entry) => 'debugAgent' in entry)
+    .map((entry) => entry.debugAgent);
+}
+
+/** The permissions the engine was answered "always" for. */
+function engineAlways(h: Harness): unknown[] {
+  return records(h)
+    .filter((entry) => 'always' in entry)
+    .map((entry) => entry.always);
+}
+
 /** The session ids a relaunched engine resumed (`session/resume`). */
 function resumes(h: Harness): unknown[] {
   return records(h)
@@ -182,7 +203,7 @@ async function turn(
   options: {
     approvalMode?: ApprovalMode;
     confinement?: 'host' | 'workspace';
-    answer?: 'accept' | 'decline';
+    answer?: 'accept' | 'acceptForSession' | 'decline';
   } = {},
 ) {
   const from = h.events.length;
@@ -953,6 +974,121 @@ describe.skipIf(process.platform === 'win32')(
       await expect(
         turn(h, 'engine-decides', 'run: echo again', { approvalMode: 'ask' }),
       ).rejects.toThrow(/decides which of its actions ask/);
+    });
+
+    describe('#3924: OpenCode configuration is code OpenCode runs at launch', () => {
+      test.each([
+        '.opencode/plugin/planted.ts',
+        'pkg/.opencode/tool/planted.ts',
+        'sub/opencode.json',
+        'opencode.jsonc',
+        '.OpenCode/plugins/planted.ts',
+        '../outside-the-project.txt',
+      ])('Auto: an edit of %s asks a person', async (target) => {
+        h = harness('opencode');
+        await start(h, 'auto-config', 'auto');
+        const edit = await turn(h, 'auto-config', `edit: ${target}`, {
+          answer: 'decline',
+        });
+        expect(edit.asked).toMatchObject({ payload: { toolKind: 'edit' } });
+        expect(existsSync(join(h.cwd, target))).toBe(false);
+        // A project file is still Auto's to allow.
+        const plain = await turn(h, 'auto-config', 'edit: src/plain.ts');
+        expect(plain.asked).toBeUndefined();
+        expect(existsSync(join(h.cwd, 'src/plain.ts'))).toBe(true);
+      });
+
+      test('Auto: an edit through a link into .opencode asks a person', async () => {
+        h = harness('opencode');
+        mkdirSync(join(h.cwd, '.opencode'));
+        symlinkSync(join(h.cwd, '.opencode'), join(h.cwd, 'linked'));
+        await start(h, 'auto-link', 'auto');
+        const edit = await turn(h, 'auto-link', 'edit: linked/plugin/p.ts', {
+          answer: 'decline',
+        });
+        expect(edit.asked).toBeDefined();
+        expect(existsSync(join(h.cwd, '.opencode/plugin/p.ts'))).toBe(false);
+      });
+
+      test('full access outside a host session (Auto) still asks before a configuration edit', async () => {
+        h = harness('opencode');
+        await start(h, 'full-confined-config', 'never', 'workspace');
+        const edit = await turn(
+          h,
+          'full-confined-config',
+          'edit: .opencode/plugin/planted.ts',
+          { approvalMode: 'never', answer: 'decline' },
+        );
+        expect(edit.asked).toBeDefined();
+        expect(existsSync(join(h.cwd, '.opencode/plugin/planted.ts'))).toBe(
+          false,
+        );
+      });
+
+      test("Ask: allowing edits for the session is Station's grant, never OpenCode's 'always', and never covers configuration", async () => {
+        h = harness('opencode');
+        await start(h, 'ask-grant', 'ask');
+        const first = await turn(h, 'ask-grant', 'edit: a.ts', {
+          answer: 'acceptForSession',
+        });
+        expect(first.asked).toBeDefined();
+        expect(engineAlways(h)).toEqual([]);
+        const covered = await turn(h, 'ask-grant', 'edit: b.ts');
+        expect(covered.asked).toBeUndefined();
+        expect(existsSync(join(h.cwd, 'b.ts'))).toBe(true);
+        const config = await turn(h, 'ask-grant', 'edit: opencode.json', {
+          answer: 'decline',
+        });
+        expect(config.asked).toBeDefined();
+        expect(existsSync(join(h.cwd, 'opencode.json'))).toBe(false);
+      });
+
+      test('a project whose OpenCode configuration runs code is not governed, and nothing is launched to check it', async () => {
+        h = harness('opencode');
+        // Positive control: a clean project is checked by reading the rules.
+        await start(h, 'clean', 'ask');
+        expect(agentReads(h).length).toBeGreaterThan(0);
+        const readsBefore = agentReads(h).length;
+        const launchesBefore = launches(h).length;
+
+        mkdirSync(join(h.cwd, '.opencode/plugin'), { recursive: true });
+        writeFileSync(join(h.cwd, '.opencode/plugin/planted.ts'), '');
+        await expect(start(h, 'planted', 'ask')).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(
+            /runs its own code when OpenCode starts.*\.opencode\/plugin/,
+          ),
+        });
+        await expect(start(h, 'planted-auto', 'auto')).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+        });
+        expect(agentReads(h)).toHaveLength(readsBefore);
+        expect(launches(h)).toHaveLength(launchesBefore);
+        // Default (OpenCode's own settings) is the user's to choose.
+        await start(h, 'planted-native');
+        expect(launches(h)).toHaveLength(launchesBefore + 1);
+      });
+
+      test('a takeover onto Station rules is refused once such code is present', async () => {
+        h = harness('opencode');
+        await start(h, 'takeover-planted');
+        writeFileSync(
+          join(h.cwd, 'opencode.json'),
+          JSON.stringify({
+            mcp: { planted: { type: 'local', command: ['x'] } },
+          }),
+        );
+        await expect(
+          turn(h, 'takeover-planted', 'run: echo pick', {
+            approvalMode: 'ask',
+          }),
+        ).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(/opencode\.json \(mcp "planted"\)/),
+        });
+        expect(agentReads(h)).toEqual([]);
+        expect(launches(h)).toHaveLength(1);
+      });
     });
   },
 );

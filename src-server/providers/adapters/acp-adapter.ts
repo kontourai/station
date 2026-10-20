@@ -87,6 +87,12 @@ import {
   openCodeAgentReader,
   verifyOpenCodeApprovalFloor,
 } from '../../services/acp/opencode-approval-verify.js';
+import {
+  findOpenCodeProjectCode,
+  isOpenCodeEditShaped,
+  openCodeEditNeedsPerson,
+  openCodeProjectCodeRefusal,
+} from '../../services/acp/opencode-project-config.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import {
   acpPassthroughSessions,
@@ -346,6 +352,8 @@ export interface AcpAdapterOptions {
   approvalRelaunchTimeoutMs?: number;
   /** Injectable clock for the start preflight's reuse window (#3290). */
   now?: () => number;
+  /** #3924: tests replace the project scan (`opencode-project-config.ts`). */
+  findOpenCodeProjectCode?: (cwd: string) => Promise<string[]>;
   /**
    * #3290: reads OpenCode's resolved agent rules (`opencode debug agent`);
    * tests replace it. Defaults to running the connection's command.
@@ -497,6 +505,13 @@ interface AcpPendingRequest {
    * is still reviewed.
    */
   needsPerson?: true;
+  /**
+   * #3924: an edit on a Station-governed OpenCode session. A session answer
+   * to it is sent to the engine as allow-once and kept as Station's own
+   * edit grant: OpenCode's "always" covers every later edit (`always: ["*"]`),
+   * which would let one reach an OpenCode configuration path unasked.
+   */
+  governedEdit?: true;
 }
 
 export interface AcpSessionRecord {
@@ -558,6 +573,12 @@ export interface AcpSessionRecord {
    * absent when it runs on the engine's own configuration.
    */
   approvalFloor?: OpenCodeApprovalFloor;
+  /**
+   * #3924: a person allowed this session's edits (`acceptForSession` on a
+   * governed edit). Answers later edits once each, never one that
+   * `openCodeEditNeedsPerson` addresses to a person.
+   */
+  openCodeEditGrant?: boolean;
   /** #3290: launches a replacement process for this session on a floor. */
   relaunch?: (floor: OpenCodeApprovalFloor | undefined) => ACPProcess;
   /** The MCP servers the session was established with, for a relaunch. */
@@ -2310,10 +2331,16 @@ export class AcpAdapter implements ProviderAdapterShape {
       decision === 'acceptForSession' && pending.needsPerson
         ? 'accept'
         : decision;
-    if (effective === 'acceptForSession' && pending.toolName) {
+    if (effective === 'acceptForSession' && pending.governedEdit) {
+      record.openCodeEditGrant = true;
+    } else if (effective === 'acceptForSession' && pending.toolName) {
       record.approvedTools.add(pending.toolName);
     }
-    pending.resolve(effective);
+    pending.resolve(
+      effective === 'acceptForSession' && pending.governedEdit
+        ? 'accept'
+        : effective,
+    );
 
     this.publish({
       eventId: crypto.randomUUID(),
@@ -2626,10 +2653,24 @@ export class AcpAdapter implements ProviderAdapterShape {
       // answer, and a network-host ask is asked per host. Either prompts as
       // an ordinary approval rather than being accepted by a pattern or a
       // session grant.
-      const needsPerson = toolRequestNeedsPerson(
-        toolName,
-        params.toolCall?.kind,
-      );
+      // #3924: on a governed OpenCode session, an edit of OpenCode
+      // configuration, or of anything outside the project, is a person's to
+      // answer (`opencode-project-config.ts`); so is one whose target cannot
+      // be read.
+      const governedEdit =
+        record.approvalFloor === 'confined' &&
+        isOpenCodeEditShaped(params.toolCall?.kind, params.toolCall?.rawInput);
+      const needsPerson =
+        toolRequestNeedsPerson(toolName, params.toolCall?.kind) ||
+        (governedEdit &&
+          openCodeEditNeedsPerson(
+            params.toolCall?.rawInput,
+            record.session.cwd ?? context.cwd,
+          ));
+      if (governedEdit && !needsPerson && record.openCodeEditGrant) {
+        const granted = mapAcpDecisionToOutcome('accept', params.options);
+        if (granted.outcome !== 'cancelled') return { outcome: granted };
+      }
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -2776,6 +2817,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           options: params.options,
           ...(toolName ? { toolName } : {}),
           ...(needsPerson ? { needsPerson: true as const } : {}),
+          ...(governedEdit ? { governedEdit: true as const } : {}),
         });
       });
 
@@ -2984,6 +3026,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     cwd: string,
     floor: OpenCodeApprovalFloor,
   ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    // #3924: checked before anything launches, the read below included,
+    // since OpenCode imports such code as it loads its configuration.
+    if (floor === 'confined') {
+      const code = await (
+        this.options.findOpenCodeProjectCode ?? findOpenCodeProjectCode
+      )(cwd);
+      if (code.length > 0) {
+        return { ok: false, reason: openCodeProjectCodeRefusal(code) };
+      }
+    }
     let env: NodeJS.ProcessEnv;
     try {
       env = withStationOpenCodeApprovalConfig(await augmentedSpawnEnv(), floor);
