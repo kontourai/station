@@ -56,6 +56,12 @@ describe('observeRootTheme', () => {
     root.style.setProperty('--visual-viewport-bottom-inset', '312px');
     root.style.setProperty('--safe-top', '47px');
     root.style.setProperty('--titlebar-inset-left', '78px');
+    // What useMobileVisualViewport writes for a float mid keyboard animation.
+    root.style.setProperty(
+      '--visual-viewport-bottom-inset',
+      '1.1368683772161603e-13px',
+    );
+    root.style.setProperty('--visual-viewport-bottom-inset', '2E+2px');
     root.setAttribute('data-page-hidden', 'true');
     await flush();
     expect(onChange).not.toHaveBeenCalled();
@@ -81,6 +87,33 @@ describe('observeRootTheme', () => {
     await flush();
     expect(second).toHaveBeenCalledTimes(1);
   });
+});
+
+test('the last unsubscribe disconnects; a later subscriber gets a fresh observer', async () => {
+  const disconnect = vi.spyOn(MutationObserver.prototype, 'disconnect');
+  const observe = vi.spyOn(MutationObserver.prototype, 'observe');
+  try {
+    const stopFirst = observeRootTheme(() => {});
+    const stopSecond = observeRootTheme(() => {});
+    expect(observe).toHaveBeenCalledTimes(1);
+    stopFirst();
+    expect(disconnect).not.toHaveBeenCalled();
+    stopSecond();
+    // Nothing is listening: the observer must not stay attached to <html>.
+    expect(disconnect).toHaveBeenCalledTimes(1);
+
+    const later = vi.fn();
+    const stopLater = observeRootTheme(later);
+    expect(observe).toHaveBeenCalledTimes(2);
+    root.setAttribute('data-color-theme', 'nord');
+    await flush();
+    expect(later).toHaveBeenCalledTimes(1);
+    stopLater();
+    expect(disconnect).toHaveBeenCalledTimes(2);
+  } finally {
+    disconnect.mockRestore();
+    observe.mockRestore();
+  }
 });
 
 describe('useRootThemeVersion', () => {

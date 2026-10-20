@@ -35,7 +35,9 @@ export const ROOT_THEME_ATTRIBUTES = [
   'style',
 ] as const;
 
-const BARE_LENGTH = /^-?(\d+\.?\d*|\.\d+)(px)?$/;
+// Exponents included: the visual-viewport inset is written straight from a
+// float and can read `1.1368683772161603e-13px` mid keyboard animation.
+const BARE_LENGTH = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?(px)?$/;
 
 /**
  * A string that changes whenever the root's theme inputs change, and stays
