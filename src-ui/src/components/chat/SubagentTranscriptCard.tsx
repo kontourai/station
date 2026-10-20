@@ -204,6 +204,7 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               {item.transcript && (
                 <Button
                   size="sm"
+                  className="touch-target"
                   variant="ghost"
                   aria-expanded={transcriptOpen}
                   aria-controls={transcriptOpen ? transcriptId : undefined}
@@ -232,7 +233,7 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               unavailable={(retry) => (
                 <p className="subagent-card__note" role="alert">
                   Could not load the transcript viewer.{' '}
-                  <Button size="sm" onClick={retry}>
+                  <Button size="sm" className="touch-target" onClick={retry}>
                     Retry
                   </Button>
                 </p>

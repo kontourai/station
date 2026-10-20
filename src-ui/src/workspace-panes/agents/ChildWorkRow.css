@@ -199,9 +199,3 @@
 .child-work-row__provenance {
   display: block;
 }
-
-@media (pointer: coarse) {
-  .child-work-row__actions > button {
-    min-height: 44px;
-  }
-}

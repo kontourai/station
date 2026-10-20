@@ -232,6 +232,7 @@ export function ChildWorkRow({
           {(sessionHandle || transcript) && (
             <Button
               size="sm"
+              className="touch-target"
               {...(sessionHandle
                 ? {}
                 : {
@@ -254,6 +255,7 @@ export function ChildWorkRow({
           {row.stop && (
             <Button
               size="sm"
+              className="touch-target"
               variant="danger-outline"
               pending={stopRequested}
               pendingLabel="Stopping…"

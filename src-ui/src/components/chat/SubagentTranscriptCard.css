@@ -254,12 +254,6 @@
   margin: 0;
 }
 
-@media (pointer: coarse) {
-  .subagent-card__actions > button {
-    min-height: 44px;
-  }
-}
-
 .subagent-card__main[aria-expanded="true"] .subagent-card__title {
   white-space: normal;
   overflow-wrap: anywhere;
