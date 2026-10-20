@@ -108,6 +108,33 @@ test.describe('related panes from an installed plugin', () => {
     }
   });
 
+  for (const width of [1280, 390]) {
+    test(`Up returns to the exact Project Reports pane at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(reportsRoute);
+      await expect(
+        reports(page).getByRole('heading', { name: 'Reports' }),
+      ).toBeVisible({ timeout: 30_000 });
+      await openFromList(page, 'Open Weekly report');
+      await expect(
+        page.getByRole('article', { name: 'Weekly report' }),
+      ).toContainText('Seven days of work, summarised.');
+      await page
+        .getByRole('button', { name: 'Up to Reports', exact: true })
+        .click();
+      await expect(page).toHaveURL(
+        new RegExp(
+          `${reportsRoute.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\?.*)?$`,
+        ),
+      );
+      await expect(
+        reports(page).getByRole('heading', { name: 'Reports' }),
+      ).toBeVisible();
+    });
+  }
+
   test('opens, replaces, focuses, keeps and closes its own report panes, and a removed plugin’s pane runs no plugin code', async ({
     page,
   }) => {
