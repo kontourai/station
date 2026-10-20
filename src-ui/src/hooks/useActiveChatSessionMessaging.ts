@@ -4,6 +4,7 @@ import type {
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
@@ -1683,6 +1684,9 @@ export function useSendMessage(
                   foregroundIndeterminate ||
                   dispatchClaim ||
                   err.code === SESSION_START_INDETERMINATE_CODE ||
+                  // #3290: refused again until the configuration or mode
+                  // changes; the hint names that step.
+                  err.code === ACP_APPROVAL_GOVERNANCE_REFUSED_CODE ||
                   // The chips changed under the user; a blind resend would run
                   // on the new engine without them having looked.
                   err.code === EXECUTION_ENGINE_CHANGED_CODE ||

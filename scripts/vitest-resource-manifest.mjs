@@ -1051,6 +1051,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // that starts a grandchild in its group, then sweeps and terminates it.
   // Same process-tree shape as owned-process-reaping.test.ts.
   'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
+  // #3800: starts the real `codex app-server` (when this host has one) with a
+  // fresh CODEX_HOME to read the sandbox it reports over a planted workspace
+  // config; skips loudly where no codex binary resolves.
+  'src-server/providers/__tests__/codex-project-config.process.test.ts',
   // #561: runs a real Flow shell command (a stub script that leaves a
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.
@@ -1083,6 +1087,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Vitest workers or hide a leaked child behind a timing failure.
   'src-server/services/__tests__/scheduler.test.ts',
   'src-server/services/acp/__tests__/acp-process-spawn-failure.test.ts',
+  // #3290: spawns an OpenCode-shaped ACP engine through the real
+  // ACPProcess, so the launch environment is the one actually delivered.
+  'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
   // Runs npm and the real lockfile gate against an isolated two-workspace
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.

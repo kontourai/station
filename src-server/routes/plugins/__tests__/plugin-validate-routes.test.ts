@@ -52,6 +52,8 @@ const fsSpies = vi.hoisted(() => ({
   openSync: vi.fn(),
   readFileSync: vi.fn(),
   realpathSync: vi.fn(),
+  // Installed as `realpathSync.native`, which containment checks use.
+  realpathSyncNative: vi.fn(),
   existsSync: vi.fn(),
 }));
 // Every filesystem WRITE entry point, sync and promise. `validateSource`
@@ -84,7 +86,10 @@ vi.mock('node:fs', async (importOriginal) => {
   for (const [name, spy] of Object.entries({ ...fsSpies, ...fsWriteSpies })) {
     spy.mockImplementation((actual as Record<string, any>)[name]);
   }
-  return { ...actual, ...fsSpies, ...fsWriteSpies };
+  const { realpathSyncNative, ...named } = fsSpies;
+  realpathSyncNative.mockImplementation(actual.realpathSync.native);
+  Object.assign(named.realpathSync, { native: realpathSyncNative });
+  return { ...actual, ...named, ...fsWriteSpies };
 });
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
