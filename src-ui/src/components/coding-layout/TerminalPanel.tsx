@@ -15,6 +15,7 @@ import { useApiBase } from '../../contexts/ApiBaseContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { MOBILE_MEDIA_QUERY, useIsMobile } from '../../hooks/useIsMobile';
+import { copyToClipboard } from '../../lib/clipboard';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import {
   BrowserWebSocketAuthGate,
@@ -426,12 +427,11 @@ export function TerminalPanel({
   const copySelection = async () => {
     const terminalOutput = terminalRef.current?.getSelection() ?? '';
     if (!terminalOutput) return;
-    try {
-      await navigator.clipboard.writeText(terminalOutput);
-      setHandoffError(null);
-    } catch {
-      setHandoffError('Unable to copy the terminal selection.');
-    }
+    setHandoffError(
+      (await copyToClipboard(terminalOutput))
+        ? null
+        : 'Unable to copy the terminal selection.',
+    );
   };
 
   // Register as the active terminal writer only while this tab is visible, so
