@@ -174,10 +174,19 @@ settings store's boot snapshot:
    while the account is being checked, no connection yet, a native relay
    account not ready, and an unverified authority (offline, an older server).
    A 403 `insufficient_scope` from the authority observation also keeps it
-   (accepted, conservative). On the relay probe, though, `authentication-failed`
-   also covers a 403 `insufficient_scope` and an authentication rate limit
-   (429), because the probe reports a reason, not a status; those release
-   there. On release the applier rewrites the cache as device-sourced.
+   (accepted, conservative). On release the applier rewrites the cache as
+   device-sourced.
+
+   Known gaps, accepted:
+   - The relay probe reports a reason, not a status or code, and
+     `authentication-failed` covers more than a refusal of this person: a 403
+     `insufficient_scope`, a 429 authentication rate limit, and the local
+     `station_application_authority_required` / `_invalid` failures (a stale
+     or missing authority record, an expired continuation, a thumbprint
+     mismatch). All of those release on a relay route. Follow-up: expose probe
+     status.
+   - A relay authority storage read error publishes a settled scope with no
+     account, which reads as a definite no-account and releases.
 
    The same hold applies inside a session: when the account boundary unmounts
    (an authority re-check after a dropped connection, a switch, a sign-out)
@@ -186,7 +195,9 @@ settings store's boot snapshot:
    device's appearance while the account reconnects. The hold belongs to the
    account that set it: a binding for a different account releases it, and
    that account sees the device's own appearance until its preferences
-   arrive. The mode half of that blip is inherited from main, where ending
+   arrive. A definite no-person answer while the boundary is still mounted
+   (an in-app sign-out) also means its unmount holds nothing, including
+   across the boundary re-binding in the same task. The mode half of that blip is inherited from main, where ending
    the binding resolved the device's own light/dark until the preferences
    returned.
 2. Otherwise the device envelope, then the legacy `theme` key, as before. A
