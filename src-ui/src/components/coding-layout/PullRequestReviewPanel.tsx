@@ -24,7 +24,7 @@ import {
 } from '../../contexts/ActiveChatsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { useTickingNow } from '../../hooks/useTickingNow';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { PaneHeadSlotsContext } from '../../workspace-panes/PaneHeadSlots';
@@ -527,7 +527,7 @@ function ReviewHeader({
 }) {
   const state = pullRequestStateChip(pullRequest.state);
   const decision = reviewDecisionChip(pullRequest.reviewStatus);
-  const now = useTickingNow();
+  const now = useCoarseNow();
   return (
     <div className="pull-request-review__head">
       <div className="pull-request-review__meta">

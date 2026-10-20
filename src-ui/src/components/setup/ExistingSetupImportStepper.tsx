@@ -17,6 +17,7 @@ import {
 import { SETUP_IMPORT_MAX_TARGET_NAME_LENGTH } from '@kontourai/station-shared/setup-import-bounds';
 import { useEffect, useMemo, useState } from 'react';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { formatBytes } from '../../utils/formatBytes';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
@@ -36,18 +37,6 @@ function isStationSkillName(name: string): boolean {
     name !== '.' &&
     !INVALID_SKILL_NAMES.has(name)
   );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB'];
-  let value = bytes / 1024;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  return `${value.toFixed(1)} ${units[index]}`;
 }
 
 interface ExistingSetupImportStepperProps {

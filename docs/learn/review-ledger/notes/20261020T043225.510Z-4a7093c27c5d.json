@@ -1,0 +1,7 @@
+{
+  "revision": "71c7cf85d4b3d82140500913969fb3cdb870aed3",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"#3800: connections.md gained two sentences on confined sessions and folder engine config; machine-relationship direction/authority claims unaffected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

@@ -641,6 +641,48 @@ describe('executeForegroundMessage', () => {
     );
   });
 
+  test("#3290: a carried approval pick names the engine connection, which decides an ACP thread's approval control", async () => {
+    const deps = dependencies();
+    deps.getAgent = vi.fn(async (_access, id) => ({
+      slug: id,
+      available: true,
+      execution: { agentConnectionId: engineConnectionId('my-opencode') },
+    }));
+    deps.getConnection = vi.fn(async () => ({
+      id: 'my-opencode',
+      name: 'OpenCode',
+      kind: 'agent' as const,
+      type: 'acp',
+      enabled: true,
+      status: 'ready' as const,
+      capabilities: ['agent-runtime' as const, 'acp' as const],
+      config: {},
+      prerequisites: [],
+    }));
+    const recordApprovalMode = vi.fn(() => undefined);
+    await executeForegroundMessage(
+      {
+        userId: 'test-user',
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId('builder'),
+        },
+        message: 'Go',
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: null,
+      },
+      { ...deps, recordApprovalMode },
+    );
+    expect(recordApprovalMode).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        provider: 'acp',
+        connectionId: 'my-opencode',
+        approvalMode: 'ask',
+      }),
+    );
+  });
+
   test('binds the handoff digest to resolved option values, not their key order', async () => {
     const deps = dependencies();
     deps.getAgent = vi.fn(async (_access, id) => ({

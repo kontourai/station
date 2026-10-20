@@ -14,6 +14,7 @@ import {
   providerPromptCacheInclusivity,
 } from '@kontourai/station-shared/usage-semantics';
 import { type ReactNode, useId, useState } from 'react';
+import { copyToClipboard } from '../../lib/clipboard';
 import {
   exactTokenCount,
   formatTokenCount,
@@ -547,14 +548,9 @@ function TurnIdRow({ turnId }: { turnId: string }) {
   );
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(turnId);
-      setCopyState('copied');
-    } catch {
-      // Never claim a copy that failed — a browser can refuse the
-      // clipboard outright (same discipline as ShareAnswerButton).
-      setCopyState('failed');
-    }
+    // Never claim a copy that failed — a browser can refuse the clipboard
+    // outright.
+    setCopyState((await copyToClipboard(turnId)) ? 'copied' : 'failed');
   };
 
   return (
@@ -584,8 +580,6 @@ export interface TurnProvenanceCardProps {
   statedInRow?: TurnProvenanceStatedInRow;
   /** Display name of the human accountable for this Station, if available. */
   accountableHuman?: string | null;
-  /** Per-turn evidence navigation belongs inside this disclosure, not beside actions. */
-  basisContent?: ReactNode;
   /** The share entry point is part of the always-visible disclosure line. */
   shareContent?: ReactNode;
   /**
@@ -600,7 +594,6 @@ export function TurnProvenanceCard({
   provenance,
   statedInRow = NOTHING_STATED_IN_ROW,
   accountableHuman,
-  basisContent,
   shareContent,
   defaultOpen = false,
 }: TurnProvenanceCardProps) {
@@ -679,9 +672,6 @@ export function TurnProvenanceCard({
             ))}
           </dl>
 
-          {basisContent && (
-            <div className="turn-provenance__basis">{basisContent}</div>
-          )}
           {shareContent}
 
           {provenance.contextInjection?.state === 'observed' && (

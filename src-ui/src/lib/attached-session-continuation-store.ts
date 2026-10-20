@@ -6,6 +6,7 @@
  */
 
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { isPlainRecord } from '../utils/isRecord';
 
 export const ATTACHED_SESSION_CONTINUATION_STORAGE_KEY =
   'station-attached-session-continuations-v1';
@@ -88,15 +89,6 @@ function operationFor(
   return Object.hasOwn(sessions, sessionId) ? sessions[sessionId] : undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
-
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]) {
   const actual = Object.keys(value);
   return (
@@ -139,10 +131,10 @@ function parseDocument(
     return null;
   }
   if (
-    !isRecord(candidate) ||
+    !isPlainRecord(candidate) ||
     !exactKeys(candidate, ['schemaVersion', 'sessions']) ||
     candidate.schemaVersion !== SCHEMA_VERSION ||
-    !isRecord(candidate.sessions)
+    !isPlainRecord(candidate.sessions)
   ) {
     return null;
   }
@@ -153,7 +145,7 @@ function parseDocument(
   for (const [sessionId, session] of sessionEntries) {
     if (
       !validSessionId(sessionId) ||
-      !isRecord(session) ||
+      !isPlainRecord(session) ||
       !exactKeys(session, ['operationId']) ||
       !validOperationId(session.operationId)
     ) {

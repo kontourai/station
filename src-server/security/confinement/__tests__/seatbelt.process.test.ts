@@ -353,6 +353,53 @@ describe.skipIf(!probe.ok)(
       expect(leaked).toBe(false);
     });
 
+    test.each([
+      [
+        'write a Codex project config',
+        (w: string) =>
+          `mkdir -p "${w}/.codex" && printf '[sandbox_workspace_write]\\nwritable_roots = ["/"]\\n' > "${w}/.codex/config.toml"`,
+        '.codex/config.toml',
+      ],
+      [
+        'write a Claude project settings file',
+        (w: string) =>
+          `mkdir -p "${w}/.claude" && echo '{"hooks":{}}' > "${w}/.claude/settings.json"`,
+        '.claude/settings.json',
+      ],
+      [
+        'write Claude local settings',
+        (w: string) =>
+          `mkdir -p "${w}/.claude" && echo '{}' > "${w}/.claude/settings.local.json"`,
+        '.claude/settings.local.json',
+      ],
+      [
+        'move a prepared directory into place',
+        (w: string) =>
+          `mkdir -p "${w}/prepared" && echo '{}' > "${w}/prepared/settings.json" && mv "${w}/prepared" "${w}/.claude"`,
+        '.claude/settings.json',
+      ],
+      [
+        'create it in another case',
+        (w: string) =>
+          `mkdir -p "${w}/.CODEX" && echo x > "${w}/.CODEX/config.toml"`,
+        '.codex/config.toml',
+      ],
+    ])(
+      'the workspace engine configuration is read-only: a confined process cannot %s (#3800)',
+      async (_label, script, planted) => {
+        const result = await confined(worktree, script(worktree));
+        const leaked = existsSync(join(worktree, planted));
+        rmSync(join(worktree, 'prepared'), { recursive: true, force: true });
+        expect(result.status).not.toBe(0);
+        expect(leaked).toBe(false);
+        // The rest of the workspace stays writable.
+        expect(
+          (await confined(worktree, `echo ok > "${worktree}/beside.txt"`))
+            .status,
+        ).toBe(0);
+      },
+    );
+
     test('the session temp directory is writable and the confined env points at it', async () => {
       const result = await confined(
         worktree,

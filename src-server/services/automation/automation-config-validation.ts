@@ -1,4 +1,6 @@
 /**
+ * UNWIRED(#3439): only the unwired Automation store calls this; intake will.
+ *
  * Strict structural validation for the Automation configuration file.
  *
  * Every object is checked against an exact key set, so an unknown field is a

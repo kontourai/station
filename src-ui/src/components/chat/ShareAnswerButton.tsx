@@ -8,6 +8,7 @@ import {
   useMintAnswerShareMutation,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
+import { copyToClipboard } from '../../lib/clipboard';
 import { errorText } from '../../utils/errorText';
 import { deriveShareUiOrigin } from '../../utils/shareUiOrigin';
 import { LazyBoundary } from '../LazyBoundary';
@@ -109,15 +110,9 @@ export function ShareAnswerButton({
     mint.mutate(ids, {
       onSuccess: async (result) => {
         const permalink = answerSharePermalink(origin.origin, result.token);
-        let copied = false;
-        try {
-          await navigator.clipboard.writeText(permalink);
-          copied = true;
-        } catch {
-          // Reported below as "not copied", never swallowed into a claim
-          // that it was: a browser can refuse the clipboard outright.
-          copied = false;
-        }
+        // Reported as "not copied", never swallowed into a claim that it
+        // was: a browser can refuse the clipboard outright.
+        const copied = await copyToClipboard(permalink);
         setMinted({ permalink, copied });
       },
     });

@@ -20,6 +20,7 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   INTERNAL_APP_CONFIG_FIELDS,
   NULLABLE_APP_CONFIG_KEYS,
+  RETIRED_APP_CONFIG_KEYS,
 } from '@kontourai/station-contracts/settings-registry';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '@kontourai/station-shared/product-telemetry';
@@ -411,19 +412,23 @@ async function loadAppConfigFileInternal(
       shouldPersist = true;
     }
 
-    // station#settings-revamp slice-1 fix (finding 1): purge any
-    // runtime-derived field that ended up persisted in the file — e.g. a
-    // client that GETs `/config/app` (which injects `mcpUiFrameOrigin`/
-    // `managedChatOrchestration`) and PUTs the response straight back,
-    // before `sanitizeAppConfigUpdate` existed to strip them. Self-healing,
-    // same pattern as the migrations below: delete on read, persist once.
-    // Without this, a polluted file leaks a stale `managedChatOrchestration:
-    // true` back out of GET even with the live feature flag off, and the
-    // sanitizer (which now always ignores these keys on PUT) can never be
-    // used to clear it.
+    // Purge any runtime-derived or retired field that ended up persisted in
+    // the file — e.g. a client that GETs `/config/app` (which injects
+    // `mcpUiFrameOrigin`) and PUTs the response straight back, before
+    // `sanitizeAppConfigUpdate` existed to strip it. Self-healing, same
+    // pattern as the migrations below: delete on read, persist once.
+    // Without this, a polluted file leaks the stale value back out of GET,
+    // and the sanitizer (which always ignores these keys on PUT) can never
+    // be used to clear it.
     for (const internalKey of INTERNAL_APP_CONFIG_FIELDS) {
       if (data[internalKey] !== undefined) {
         delete data[internalKey];
+        shouldPersist = true;
+      }
+    }
+    for (const retiredKey of RETIRED_APP_CONFIG_KEYS) {
+      if (Object.hasOwn(data, retiredKey)) {
+        Reflect.deleteProperty(data, retiredKey);
         shouldPersist = true;
       }
     }

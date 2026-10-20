@@ -160,9 +160,6 @@ export const MoonGlyph = /* @__PURE__ */ glyph(
 export const MoneyGlyph = /* @__PURE__ */ glyph(
   'M8 2v12m3-9.5H6.5a2 2 0 0 0 0 4h3a2 2 0 0 1 0 4H5',
 );
-export const MusicGlyph = /* @__PURE__ */ glyph(
-  'M6 12V4l6-1v8M3.5 14A2.5 2.5 0 1 0 6 11.5 2.5 2.5 0 0 0 3.5 14Zm6-1A2.5 2.5 0 1 0 12 10.5 2.5 2.5 0 0 0 9.5 13Z',
-);
 /** A conversation bubble with a plus: start a new chat (not "edit"). */
 export const NewChatGlyph = /* @__PURE__ */ glyph(
   'M2.5 3.5h11v8h-6L4 14v-2.5H2.5v-8ZM8 5.5v4M6 7.5h4',
@@ -248,9 +245,6 @@ export const ThumbUpGlyph = /* @__PURE__ */ glyph(
 );
 export const TimeGlyph = /* @__PURE__ */ glyph(
   'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 5v3l2 1.5',
-);
-export const VideoGlyph = /* @__PURE__ */ glyph(
-  'M2.5 4h8v8h-8V4Zm8 2.5 3-2v7l-3-2',
 );
 export const WarningGlyph = /* @__PURE__ */ glyph(
   'M8 2 14 13H2L8 2Zm0 4v3.5m0 2h.01',
