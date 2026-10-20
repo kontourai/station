@@ -40,9 +40,14 @@ today, and states that standing only in its accessible name. A notable standing
 (policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
 **Basis · Policy met**
 ([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
-The chip reads an answer's standing only while it is on screen, cancels a read
-that scrolls off screen unanswered, does not re-read a standing it holds while it
-stays mounted, and refreshes on an assessment or narrative update. A long
+In a narrow dock or phone row, Surface's label is cut short with an ellipsis
+after a whole **Basis ·**, and the full label stays in the chip's accessible
+name and tooltip.
+The chip reads an answer's standing only after the answer has stayed on screen
+for about 150ms, so a fling through history sends no read for answers it only
+passes. It cancels a read that scrolls off screen unanswered, does not re-read a
+standing it holds while it stays mounted, and refreshes on an assessment or
+narrative update. A long
 transcript unmounts far-off answers; one that returns is read again, because the
 Basis read re-checks access for each new chip. Pending or failed, it stays
 **Basis** and still opens.
