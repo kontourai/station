@@ -281,13 +281,17 @@ describe('documentation foundations', () => {
 });
 
 describe('documentation freshness sweep contract', () => {
-  it('runs on a schedule with read-only contents and issue writes on the sweep job alone', () => {
+  it('runs on a schedule with read-only contents and issue writes on the sweep jobs alone', () => {
     const workflow = parse(
       readFileSync('.github/workflows/docs-freshness-sweep.yml', 'utf8'),
     );
     expect(Object.keys(workflow.on)).toEqual(['schedule', 'workflow_dispatch']);
     expect(workflow.permissions).toEqual({ contents: 'read' });
-    expect(Object.keys(workflow.jobs)).toEqual(['sweep']);
+    expect(Object.keys(workflow.jobs)).toEqual([
+      'sweep',
+      'hygiene',
+      'hygiene-issue',
+    ]);
     expect(workflow.jobs.sweep.if).toBeUndefined();
     expect(workflow.jobs.sweep.permissions).toEqual({
       contents: 'read',
@@ -295,8 +299,31 @@ describe('documentation freshness sweep contract', () => {
     });
     const text = JSON.stringify(workflow);
     expect(text).not.toMatch(/secrets\./);
-    expect(workflow.jobs.sweep.steps[0].with['persist-credentials']).toBe(
-      false,
+    for (const job of Object.values(workflow.jobs) as {
+      steps: { with?: Record<string, unknown> }[];
+    }[])
+      expect(job.steps[0].with?.['persist-credentials']).toBe(false);
+  });
+
+  // The hygiene job runs third-party install code; it must never hold a
+  // token that can write. The issue job writes but installs nothing.
+  it('keeps the dependency-installing hygiene job read-only', () => {
+    const workflow = parse(
+      readFileSync('.github/workflows/docs-freshness-sweep.yml', 'utf8'),
     );
+    const { hygiene, 'hygiene-issue': issue } = workflow.jobs;
+    expect(hygiene.permissions).toEqual({
+      contents: 'read',
+      issues: 'read',
+      'pull-requests': 'read',
+    });
+    expect(issue.permissions).toEqual({ contents: 'read', issues: 'write' });
+    expect(issue.needs).toBe('hygiene');
+    const runs = (job: { steps: { run?: string }[] }) =>
+      job.steps.map((step) => step.run ?? '').join('\n');
+    expect(runs(hygiene)).toContain('npm run dependencies:ci');
+    expect(runs(hygiene)).toContain('npm run hygiene:report');
+    expect(runs(issue)).not.toMatch(/dependencies:ci|npm (ci|install)|pnpm/);
+    expect(runs(issue)).toContain('scripts/hygiene-report.mjs --upsert');
   });
 });
