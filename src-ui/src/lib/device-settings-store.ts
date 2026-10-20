@@ -1000,6 +1000,17 @@ class DeviceSettingsStore {
     this.notify();
     return () => {
       if (this.account !== binding) return;
+      // The binding ends whenever the account boundary unmounts: sign-out,
+      // but also an authority re-check after a dropped connection, which
+      // remounts it moments later. Neither is a definite "no person" by
+      // itself, so the account's appearance is held, exactly like the boot
+      // cache, until the account answers again, the device's own appearance
+      // is chosen, or a definite no-person answer releases it.
+      if (binding.values) {
+        const held = {} as Record<string, unknown>;
+        for (const key of APPEARANCE_KEYS) held[key] = this.snapshot[key];
+        this.bootAppearance = held as unknown as Appearance;
+      }
       this.account = undefined;
       this.snapshot = this.resolve();
       this.notify();

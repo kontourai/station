@@ -322,6 +322,11 @@ test('personal display overrides can return to built-in defaults without changin
     ).toBeNull(),
   );
   view.unmount();
+  // The device record is untouched. (The resolved theme right after the
+  // boundary unmounts is the account's, held until a definite no-person
+  // answer; releasing it shows the device record again.)
+  expect(deviceSettingsStore.getEnvelope().values.theme).toBe('light');
+  deviceSettingsStore.releaseBootAppearance();
   expect(deviceSettingsStore.get('theme')).toBe('light');
 });
 
@@ -418,4 +423,50 @@ test("only a refused credential releases the previous account's cached appearanc
   expect(deviceSettingsStore.getAppearanceSource()).toBe('device');
   expect(screen.getByLabelText('Current theme').textContent).toBe('dark');
   view.unmount();
+});
+
+test('a dropped connection that remounts the account boundary keeps the account appearance throughout', async () => {
+  // AuthorityQueryProvider swaps its subtree for "Checking Station access"
+  // while it re-observes after a network blip, unmounting this boundary, then
+  // remounts it and the preferences refetch. Nothing in that is "no person":
+  // mode and color theme stay the account's the whole way.
+  fixture.get.mockResolvedValue({
+    schemaVersion: 1,
+    values: { theme: 'light', colorTheme: 'catppuccin' },
+  });
+  const seen = () => {
+    const { theme, colorTheme } = deviceSettingsStore.getSnapshot();
+    return { theme, colorTheme };
+  };
+  const qc = client();
+  const view = render(tree(qc));
+  await screen.findByRole('button', { name: 'Choose light' });
+  await waitFor(() =>
+    expect(seen()).toEqual({ theme: 'light', colorTheme: 'catppuccin' }),
+  );
+  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  // The blip: the boundary is gone.
+  view.unmount();
+  expect(seen()).toEqual({ theme: 'light', colorTheme: 'catppuccin' });
+  // Back, with the preferences still loading.
+  let answer: (value: AccountPreferencesView) => void = () => {};
+  fixture.get.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+  );
+  const again = render(tree(client()));
+  expect(seen()).toEqual({ theme: 'light', colorTheme: 'catppuccin' });
+  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  await act(async () =>
+    answer({
+      schemaVersion: 1,
+      values: { theme: 'light', colorTheme: 'catppuccin' },
+    }),
+  );
+  await screen.findByRole('button', { name: 'Choose light' });
+  expect(seen()).toEqual({ theme: 'light', colorTheme: 'catppuccin' });
+  again.unmount();
+  deviceSettingsStore.releaseBootAppearance();
 });
