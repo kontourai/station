@@ -1,6 +1,6 @@
 # #2675 slice W: `install.ps1` for the prebuilt Windows archive (design)
 
-> **Implemented.** Current behaviour lives in
+> **Reading status: implemented** (#2675 is closed). Current behaviour lives in
 > [`install.ps1`](../../install.ps1), its tests
 > ([`install-ps1.test.ts`](../../scripts/__tests__/install-ps1.test.ts),
 > [`install-ps1-full.test.ts`](../../scripts/__tests__/install-ps1-full.test.ts)),

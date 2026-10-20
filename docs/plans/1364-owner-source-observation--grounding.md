@@ -1,6 +1,6 @@
 # Owner-backed learning source observation — grounding proposal
 
-> **Implemented.** Current behaviour lives in the
+> **Reading status: implemented.** Current behaviour lives in the
 > [request policy](../../src-server/knowledge-store/knowledge-source-observation-policy.ts),
 > the [SDK reader](../../packages/sdk/src/client/learning-source.ts), and the SDK
 > reference section [Inspect a learning source](../reference/sdk.md#inspect-a-learning-source).
