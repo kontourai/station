@@ -2,8 +2,10 @@ import type {
   PaneRelatedPanesHost,
   RelatedPaneUnavailable,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
-import { useContext, useMemo } from 'react';
-import { SDKContext } from './providers';
+
+// React-free on purpose: the Pane subpath re-exports this module, and its
+// consumers include frame code compiled without JSX. The hook a direct
+// plugin uses is `related-panes-hook.ts`, on the root only.
 
 const UNSUPPORTED: RelatedPaneUnavailable = Object.freeze({
   status: 'unavailable',
@@ -26,42 +28,6 @@ export const UNSUPPORTED_RELATED_PANES: PaneRelatedPanesHost = Object.freeze({
 export interface RelatedPanes extends PaneRelatedPanesHost {
   /** False on a host without the capability: every request is `unsupported`. */
   supported: boolean;
-}
-
-/**
- * The related-pane capability of the pane occurrence this component renders
- * in (docs/design/pane-relationships.md): open one of this plugin's own
- * descriptors for a bounded target key, reveal or close what this pane
- * opened, and read the target this pane was itself opened for.
- *
- * ```tsx
- * const related = useRelatedPanes();
- * const outcome = await related.open({
- *   descriptorId: 'pane:plugin%3Areports:report-detail',
- *   modeId: 'project',
- *   key: report.id,
- * });
- * if (outcome.status === 'unavailable') showInline(outcome.reason);
- * ```
- *
- * The host chooses the presentation and checks ownership, context and
- * current authorization; nothing a plugin passes widens what its panes may
- * read. Inside a sandboxed frame, use `createRelatedPanesPaneHost` instead.
- */
-export function useRelatedPanes(): RelatedPanes {
-  const host = useContext(SDKContext)?.relatedPanes;
-  return useMemo(() => {
-    const supported = host?.version === 1;
-    const capability = supported ? host : UNSUPPORTED_RELATED_PANES;
-    return {
-      version: 1,
-      supported,
-      open: capability.open,
-      reveal: capability.reveal,
-      close: capability.close,
-      target: capability.target,
-    };
-  }, [host]);
 }
 
 interface PaneMessageTarget {

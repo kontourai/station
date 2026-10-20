@@ -1343,11 +1343,8 @@ export {
 // pane calls. On the root because the root is the module Station shares with
 // plugin bundles at runtime, so the hook reads the host's own SDK context; a
 // sandboxed frame uses `createRelatedPanesPaneHost` from the Pane subpath.
-export {
-  type RelatedPanes,
-  UNSUPPORTED_RELATED_PANES,
-  useRelatedPanes,
-} from './related-panes';
+export { type RelatedPanes, UNSUPPORTED_RELATED_PANES } from './related-panes';
+export { useRelatedPanes } from './related-panes-hook';
 export {
   type AttentionRequestInspection,
   type AttentionRequestReference,

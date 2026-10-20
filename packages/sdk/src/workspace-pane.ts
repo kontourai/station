@@ -132,10 +132,10 @@ export {
 // Catalog data is opt-in with the Pane contract so the root SDK namespace
 // bridge does not pull this query into every Station UI bundle.
 export { useProjectWorkspacePanesQuery } from './query-domains/workspaceProjects';
+// The hook a direct plugin uses, `useRelatedPanes`, is on the root only.
 export {
   createRelatedPanesPaneHost,
   type RelatedPanes,
   UNSUPPORTED_RELATED_PANES,
-  useRelatedPanes,
 } from './related-panes';
 export { createSkillExperiencePaneHost } from './skill-experience-pane';

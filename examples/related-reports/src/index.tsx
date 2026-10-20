@@ -199,10 +199,11 @@ export default Reports;
 
 /*
  * The sandboxed tier. A Station that runs this plugin in an isolated frame
- * shares no React or SDK with it, so the frame draws plain DOM and talks to
- * the host through the client the frame runtime injects. The frame does not
- * say which component it is: a frame opened as a related pane has a target,
- * and draws that report; otherwise it draws the list.
+ * shares no React or SDK with it, so the frame draws plain DOM, with the same
+ * landmarks as the components above, and talks to the host through the client
+ * the frame runtime injects. The frame does not say which component it is: a
+ * frame opened as a related pane has a target and draws that report or the
+ * log; otherwise it draws the list.
  */
 declare global {
   interface Window {
@@ -217,6 +218,26 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, text = '') {
   return node;
 }
 
+function landmark<K extends 'article' | 'section'>(
+  tag: K,
+  label: string,
+  ...children: HTMLElement[]
+) {
+  const node = element(tag);
+  node.setAttribute('aria-label', label);
+  node.append(...children);
+  return node;
+}
+
+function reportElement(report: Report) {
+  return landmark(
+    'article',
+    report.title,
+    element('h3', report.title),
+    element('p', report.body),
+  );
+}
+
 async function mountFrame() {
   const origin = window.__stationPaneHostOrigin;
   const createHost = window.__stationCreateRelatedPanesPaneHost;
@@ -225,9 +246,20 @@ async function mountFrame() {
   const host = createHost(window.parent, origin);
   window.addEventListener('pagehide', () => host.dispose(), { once: true });
   const target = await host.target();
+  if (target?.descriptorId === LOG_PANE) {
+    root.append(
+      landmark(
+        'section',
+        'Report log',
+        element('h2', 'Report log'),
+        element('p', 'A tool Reports opened; it stays with the Tools.'),
+      ),
+    );
+    return;
+  }
   const opened = REPORTS.find((report) => report.key === target?.key);
   if (opened) {
-    root.append(element('h2', opened.title), element('p', opened.body));
+    root.append(reportElement(opened));
     return;
   }
   const status = element('p');
@@ -235,16 +267,14 @@ async function mountFrame() {
   const body = element('div');
   const actions = reportActions(host, (next, shown) => {
     status.textContent = next;
-    body.replaceChildren(
-      ...(shown ? [element('h3', shown.title), element('p', shown.body)] : []),
-    );
+    body.replaceChildren(...(shown ? [reportElement(shown)] : []));
   });
-  root.append(element('h2', 'Reports'));
+  const list = landmark('section', 'Related reports', element('h2', 'Reports'));
   for (const report of REPORTS) {
     const button = element('button', `Open ${report.title}`);
     button.type = 'button';
     button.onclick = () => void actions.open(report);
-    root.append(button);
+    list.append(button);
   }
   for (const [label, act] of [
     ['Reveal report', actions.reveal],
@@ -254,10 +284,13 @@ async function mountFrame() {
     const button = element('button', label);
     button.type = 'button';
     button.onclick = () => void act();
-    root.append(button);
+    list.append(button);
   }
-  root.append(status, body);
+  list.append(status, body);
+  root.append(list);
 }
 
-if (typeof window !== 'undefined' && window.parent !== window)
-  void mountFrame();
+// The frame runtime's injected client is the frame tier's mark. Its scripts
+// run before the document's body exists, so the frame draws once it loads.
+if (typeof window !== 'undefined' && window.__stationCreateRelatedPanesPaneHost)
+  window.addEventListener('load', () => void mountFrame(), { once: true });

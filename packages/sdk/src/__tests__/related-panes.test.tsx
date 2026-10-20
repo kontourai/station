@@ -4,7 +4,8 @@ import { renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SDKContext, type SDKContextValue } from '../providers';
-import { createRelatedPanesPaneHost, useRelatedPanes } from '../related-panes';
+import { createRelatedPanesPaneHost } from '../related-panes';
+import { useRelatedPanes } from '../related-panes-hook';
 
 afterEach(() => {
   vi.restoreAllMocks();
