@@ -86,9 +86,15 @@ async function hoverCardFixture() {
       orchestrationThreadId: 'thread-1'};
     function App() {
       const [anchor, setAnchor] = useState(null);
+      // Hovered only once the test has sized the window, as a real hover
+      // happens in an already laid-out window; the card closes on resize.
+      const [hovered, setHovered] = useState(false);
+      useEffect(() => {
+        globalThis.__hoverRow = () => setHovered(true);
+      }, []);
       return <QueryClientProvider client={client}>
         <div ref={setAnchor} data-testid="row" style={{position: 'fixed', top: 470, left: 40, width: 280, height: 56}}>Inbox row</div>
-        {anchor && <ChatInboxHoverCard item={item} now={NOW} anchor={anchor} onClose={() => {}} id="hover-card"/>}
+        {anchor && hovered && <ChatInboxHoverCard item={item} now={NOW} anchor={anchor} onClose={() => {}} id="hover-card"/>}
       </QueryClientProvider>;
     }
     document.documentElement.dataset.theme = 'dark';
@@ -97,6 +103,16 @@ async function hoverCardFixture() {
     [stubs],
   );
   await fixture.page.setViewportSize(VIEWPORT);
+  await fixture.page.waitForFunction(
+    (height) =>
+      window.innerHeight === height &&
+      typeof (globalThis as unknown as { __hoverRow?: unknown }).__hoverRow ===
+        'function',
+    VIEWPORT.height,
+  );
+  await fixture.page.evaluate(() =>
+    (globalThis as unknown as { __hoverRow(): void }).__hoverRow(),
+  );
   return fixture;
 }
 
@@ -163,9 +179,20 @@ test('a card that grows when its Basis section arrives stays inside a short view
   try {
     const card = page.getByTestId('inbox-row-hover-card');
     await card.waitFor();
+    const row = (await page.getByTestId('row').boundingBox())!;
+    // Opened beside the row, short: the inventory has not answered yet. The
+    // first placement can settle a few pixels up before it is measured, so
+    // assert the relationship to the row rather than one exact offset.
+    await expect
+      .poll(async () => {
+        const box = (await card.boundingBox())!;
+        return box.y + box.height;
+      })
+      .toBeLessThanOrEqual(VIEWPORT.height - 8);
     const opened = (await card.boundingBox())!;
-    // Opened beside the row, short: the inventory has not answered yet.
-    expect(opened.y).toBe(470);
+    expect(opened.x).toBeGreaterThanOrEqual(row.x + row.width);
+    expect(opened.y).toBeLessThanOrEqual(row.y);
+    expect(opened.y + opened.height).toBeGreaterThan(row.y);
 
     await page.evaluate(
       (data) =>
