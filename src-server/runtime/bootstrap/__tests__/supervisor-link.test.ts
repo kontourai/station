@@ -8,6 +8,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { posix, win32 } from 'node:path';
 import {
+  MAX_LISTENER_SPARES,
   resolveControlEndpoint,
   supervisorRunDir,
 } from '@kontourai/station-supervisor/protocol';
@@ -15,6 +16,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   closeStableListener,
   DIRECT_LISTENER_LINK,
+  DRAIN_QUIET_CAP_MS,
+  DRAIN_QUIET_CLOSE_MS,
   type DrainRequest,
   drainWaitBoundMs,
   parkUnderSupervisor,
@@ -709,5 +712,212 @@ describe('the supervisor run directory', () => {
     expect(supervisorRunDir('/Users/me/.station', 'darwin')).toBe(
       '/Users/me/..station.station-supervisor',
     );
+  });
+});
+
+describe('connection catching (protocol 1.1)', () => {
+  /**
+   * A connection accepted by another listener and not read, as the
+   * supervisor holds one, with `request` already sent by its client.
+   */
+  async function heldConnection(request: string): Promise<{
+    socket: net.Socket;
+    reply: Promise<string>;
+  }> {
+    const holder = track(net.createServer({ pauseOnConnect: true }));
+    await new Promise<void>((resolve) => holder.listen(0, HOST, resolve));
+    const accepted = new Promise<net.Socket>((resolve) =>
+      holder.once('connection', resolve),
+    );
+    const client = net.connect(
+      (holder.address() as net.AddressInfo).port,
+      HOST,
+    );
+    cleanups.push(() => client.destroy());
+    let reply = '';
+    client.setEncoding('utf8');
+    client.on('data', (chunk: string) => {
+      reply += chunk;
+    });
+    client.on('error', () => {});
+    const closed = new Promise<void>((resolve) =>
+      client.once('close', () => resolve()),
+    );
+    client.write(request);
+    const socket = await accepted;
+    cleanups.push(() => socket.destroy());
+    return { socket, reply: closed.then(() => reply) };
+  }
+  const GET_CLOSE = 'GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n';
+  const spares = (channel: FakeChannel) =>
+    channel.sent.filter(({ message }) => message.type === 'listener.spare');
+
+  it('parks saying it adopts connections', async () => {
+    const channel = new FakeChannel();
+    void quietLink(channel).park();
+    expect(channel.sent.map(({ message }) => message)).toEqual([
+      { type: 'parked', adoptsConnections: true },
+    ]);
+  });
+
+  it('answers listener.spares with that many copies of the raw handle, and refuses a bad count, a listener it lacks, or a drain in progress', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel);
+    const server = okServer();
+    await link.listen('api', server, { port: 0, host: HOST });
+    const raw = (server as unknown as { _handle: unknown })._handle;
+    channel.deliver({ type: 'listener.spares', name: 'api', count: 3 });
+    expect(spares(channel)).toEqual(
+      Array.from({ length: 3 }, () => ({
+        message: { type: 'listener.spare', name: 'api' },
+        handle: raw,
+      })),
+    );
+    expect(MAX_LISTENER_SPARES).toBe(32);
+    for (const count of [0, MAX_LISTENER_SPARES + 1, 1.5, '2', undefined]) {
+      channel.deliver({ type: 'listener.spares', name: 'api', count });
+    }
+    channel.deliver({ type: 'listener.spares', name: 'voice', count: 1 });
+    channel.deliver({ type: 'listener.spares', name: 'nope', count: 1 });
+    expect(spares(channel)).toHaveLength(3);
+    channel.deliver({
+      type: 'listener.spares',
+      name: 'api',
+      count: MAX_LISTENER_SPARES,
+    });
+    expect(spares(channel)).toHaveLength(3 + MAX_LISTENER_SPARES);
+    channel.deliver({ type: 'drain', deadlineMs: 5_000 });
+    channel.deliver({ type: 'listener.spares', name: 'api', count: 1 });
+    expect(spares(channel)).toHaveLength(3 + MAX_LISTENER_SPARES);
+  });
+
+  it('serves an adopted connection on the named listener, and closes one for a listener it lacks or a message without a socket', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel);
+    await link.listen('api', okServer(), { port: 0, host: HOST });
+    const served = await heldConnection(GET_CLOSE);
+    channel.deliver({ type: 'connection.adopt', name: 'api' }, served.socket);
+    expect(await served.reply).toMatch(/^HTTP\/1\.1 200 OK/);
+    const unknown = await heldConnection(GET_CLOSE);
+    channel.deliver(
+      { type: 'connection.adopt', name: 'voice' },
+      unknown.socket,
+    );
+    expect(await unknown.reply).toBe('');
+    expect(unknown.socket.destroyed).toBe(true);
+    const notASocket = { close: vi.fn() };
+    channel.deliver({ type: 'connection.adopt', name: 'api' }, notASocket);
+    expect(notASocket.close).toHaveBeenCalled();
+  });
+
+  it('waits for an adopted connection to finish its request before a drain settles, though net.Server does not count it', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });
+    const server = track(
+      http.createServer((_req, res) => {
+        setTimeout(() => res.end('slow'), 700);
+      }),
+    );
+    await link.listen('api', server, { port: 0, host: HOST });
+    let settled: DrainRequest['connectionsSettled'] | undefined;
+    link.onDrain((request) => {
+      settled = request.connectionsSettled;
+    });
+    const held = await heldConnection(GET_CLOSE);
+    channel.deliver({ type: 'connection.adopt', name: 'api' }, held.socket);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise<void>((resolve) =>
+      server.getConnections((_error, count) => {
+        expect(count).toBe(0);
+        resolve();
+      }),
+    );
+    channel.deliver({ type: 'drain', deadlineMs: 10_000 });
+    let settledAt = 0;
+    void settled?.then(() => {
+      settledAt = Date.now();
+    });
+    const reply = await held.reply;
+    const repliedAt = Date.now();
+    expect(reply).toMatch(/^HTTP\/1\.1 200 OK[\s\S]*slow$/);
+    await expect(settled).resolves.toEqual({ lingering: 0 });
+    expect(settledAt).toBeGreaterThanOrEqual(repliedAt);
+  });
+
+  it('after sending spares, a drain keeps accepting until no connection has arrived for the quiet window', async () => {
+    expect(DRAIN_QUIET_CLOSE_MS).toBe(50);
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });
+    const server = okServer();
+    const accepts: number[] = [];
+    const { port } = await link.listen('api', server, { port: 0, host: HOST });
+    channel.deliver({ type: 'listener.spares', name: 'api', count: 1 });
+    // Drain the moment a connection is accepted, so it is not yet quiet.
+    let listeningAtDrain: boolean | undefined;
+    server.on('connection', () => {
+      accepts.push(Date.now());
+      if (listeningAtDrain !== undefined) return;
+      channel.deliver({ type: 'drain', deadlineMs: 7_000 });
+      listeningAtDrain = server.listening;
+    });
+    // Its request arrives after the drain began: answered, and told to close.
+    expect(await get(port, new http.Agent({ keepAlive: false }))).toMatchObject(
+      { status: 200, connection: 'close' },
+    );
+    expect(listeningAtDrain).toBe(true);
+    await vi.waitFor(() => expect(server.listening).toBe(false), {
+      timeout: 3_000,
+      interval: 5,
+    });
+    expect(Date.now() - Math.max(...accepts)).toBeGreaterThanOrEqual(
+      DRAIN_QUIET_CLOSE_MS - 5,
+    );
+  });
+
+  it('after sending spares, a drain under steady connections closes only after a quiet window or at the cap', async () => {
+    expect(DRAIN_QUIET_CAP_MS).toBe(1_000);
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });
+    const server = okServer();
+    const accepts: number[] = [];
+    server.on('connection', () => accepts.push(Date.now()));
+    const { port } = await link.listen('api', server, { port: 0, host: HOST });
+    channel.deliver({ type: 'listener.spares', name: 'api', count: 1 });
+    // When the link stops accepting (it calls net.Server's close directly).
+    let closedAt = 0;
+    const original = net.Server.prototype.close;
+    const close = vi
+      .spyOn(net.Server.prototype, 'close')
+      .mockImplementation(function (this: net.Server, callback) {
+        if (this === server && closedAt === 0) closedAt = Date.now();
+        return original.call(this, callback);
+      });
+    cleanups.push(() => close.mockRestore());
+    let connecting = true;
+    // A new connection each time: reusing one would not reach the listener.
+    const fresh = new http.Agent({ keepAlive: false });
+    const loops = Array.from({ length: 4 }, async () => {
+      while (connecting) {
+        await get(port, fresh).catch(() => {});
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    });
+    await vi.waitFor(() => expect(accepts.length).toBeGreaterThan(4));
+    const drainedAt = Date.now();
+    channel.deliver({ type: 'drain', deadlineMs: 7_000 });
+    await vi.waitFor(() => expect(closedAt).toBeGreaterThan(0), {
+      timeout: 5_000,
+      interval: 5,
+    });
+    connecting = false;
+    await Promise.all(loops);
+    const lastAccept = Math.max(...accepts.filter((at) => at <= closedAt));
+    const quiet = closedAt - lastAccept >= DRAIN_QUIET_CLOSE_MS - 5;
+    const capped = closedAt - drainedAt >= DRAIN_QUIET_CAP_MS - 5;
+    expect({ quiet, capped }).not.toEqual({ quiet: false, capped: false });
+    // The cap bounds it (with room for late timers on a loaded host).
+    expect(closedAt - drainedAt).toBeLessThan(DRAIN_QUIET_CAP_MS + 2_000);
+    // Accepting went on after the drain began, unless it was quiet at once.
+    expect(accepts.some((at) => at > drainedAt) || quiet).toBe(true);
   });
 });

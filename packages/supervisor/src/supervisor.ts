@@ -5,6 +5,7 @@
 import { type ChildProcess, fork, type SendHandle } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import packageJson from '../package.json' with { type: 'json' };
+import { createNetCatcher } from './catcher.ts';
 import { ControlServer } from './control-server.ts';
 import { createEntryBoundary } from './entry-boundary.ts';
 import {
@@ -64,6 +65,27 @@ export interface SupervisorOptions {
 
 /** Set by other Station supervisors (Desktop, `service run`) on their child. */
 const INHERITED_SUPERVISOR_BIRTH_ENV = 'STATION_SUPERVISOR_BIRTH';
+/**
+ * Spares per held listener the supervisor listens on during a Windows
+ * handoff. A listener received over IPC keeps a single accept posted, so each
+ * spare adds one. On a Windows host, under 16 concurrent fresh-connection
+ * clients, one spare still left a reset in a third of handoffs; eight left
+ * none in 700 handoffs.
+ */
+export const CATCH_SPARES = 8;
+
+/**
+ * Whether handoffs catch connections: on Windows only, the one platform that
+ * resets a connection completed into a closing listener's accept. Tests set
+ * STATION_SUPERVISOR_TEST_CATCH_CONNECTIONS to 1 or 0 to run the same code
+ * on any platform, or to turn it off.
+ */
+function catchesConnections(): boolean {
+  const forced = process.env.STATION_SUPERVISOR_TEST_CATCH_CONNECTIONS;
+  if (forced === '1') return true;
+  if (forced === '0') return false;
+  return process.platform === 'win32';
+}
 
 /** Signals a generation and, on POSIX, every process in its group. */
 function killTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
@@ -192,6 +214,15 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     restart: options.restart,
     log,
     resolveEntry: createEntryBoundary(options.buildRoot),
+    ...(catchesConnections()
+      ? {
+          catchConnections: {
+            spares: CATCH_SPARES,
+            createCatcher: (name, handle) =>
+              createNetCatcher(name, handle, log),
+          },
+        }
+      : {}),
     onEvent: (event) => {
       for (const subscriber of [...subscribers]) subscriber(event);
     },

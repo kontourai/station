@@ -580,14 +580,14 @@ describe('a supervised core handoff', () => {
           output,
         );
         const stats = await poller.stop();
-        // Windows resets a connection or two per handoff: libuv pre-posts
-        // AcceptEx on the listener, and closing the draining generation's
-        // copy closes every pending accept, so connections already completed
-        // into them are reset, where POSIX keeps them in the backlog. A
-        // supervisor-side fix follows (process supervisor design, Windows
-        // known gap); until then the zero-reset claim holds on POSIX only.
-        if (process.platform !== 'win32') {
-          expect(stats.errors, output()).toEqual({});
+        expect(stats.errors, output()).toEqual({});
+        // On Windows the zero-reset handoff rests on the supervisor catching
+        // connections while generation 1 drains (process supervisor design,
+        // Windows): all four listeners, eight spares each.
+        if (process.platform === 'win32') {
+          expect(output()).toContain(
+            'catching connections on 32 spare listener(s) while generation 1 drains',
+          );
         }
         // Slow-header requests were in flight across the drain and finished.
         expect(stats.trickled).toBeGreaterThanOrEqual(10);
