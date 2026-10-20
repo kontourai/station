@@ -1085,6 +1085,7 @@
     "src-ui/src/views/personal-board/PersonalBoardDashboard.tsx",
 
     "src-server/security/coding-authority.ts",
+
     "packages/telemetry-broker/src/lite-store.ts",
 
     "packages/telemetry-broker/src/lite-routes.ts",
