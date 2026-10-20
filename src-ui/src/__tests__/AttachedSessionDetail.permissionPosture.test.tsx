@@ -62,7 +62,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 import { AdoptSessionError } from '@kontourai/station-sdk';
 import { AttachedSessionDetail } from '../components/session-detail/AttachedSessionDetail';
-import { ToastProvider } from '../contexts/ToastContext';
+import { ToastProvider, toastStore } from '../contexts/ToastContext';
 import {
   handOffAttachedContinuation,
   takeAttachedContinuationHandoff,
@@ -220,6 +220,30 @@ test('reply intent offers continuation in the normal composer without changing t
   expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
   expect(screen.getByText('Sure.')).toBeTruthy();
   expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+});
+
+// On a plain http:// origin `navigator.clipboard` does not exist. The copy
+// must still report that it failed rather than throw from the click handler.
+test('copying a message where no clipboard exists says it was not copied', async () => {
+  toastStore.clear();
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: undefined,
+  });
+  try {
+    renderAttached({ presentation: 'chat' });
+    fireEvent.click(screen.getByRole('button', { name: 'Copy answer' }));
+    await waitFor(() =>
+      expect(toastStore.getSnapshot().map((toast) => toast.message)).toContain(
+        'Could not copy this message.',
+      ),
+    );
+  } finally {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+    else delete (navigator as { clipboard?: unknown }).clipboard;
+    toastStore.clear();
+  }
 });
 
 test('Enter confirms the exact draft only after consent; Shift+Enter and IME do not', async () => {
