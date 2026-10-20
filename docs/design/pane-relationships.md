@@ -62,6 +62,19 @@ close or Up additionally rechecks its Station and source. The chrome's Back
 caption uses every verified relation's captured opener label, including plugin
 openers; caption evidence does not qualify an opener's navigation route.
 
+Review Close watches new owner guards through its locked fresh-read commit;
+an old answer cannot remove a moved or disposed review. Open conversation and
+Up plan the actual reveal from the committed model and ask only owners that
+reveal hides. Phone dismissal asks the layer once. The same checks run after a
+guard delay, including Station, API, relation, source selection and new guards.
+
+An attached review hands its exact reply to Chat; it cannot adopt a Session
+itself. The Chat reader owns confirmation, adoption and canonical child opening.
+Handoff and draft keys include Station and API. That reader revokes pending
+delivery when its Station, API, thread or lifetime changes, and checks again
+after opening awaits before writing or sending a confirmed reply. An old
+response may describe completed server work; it must not retarget the UI.
+
 ## Persistence and authority
 
 The existing arrangement owns position and tab order. A bounded, versioned side

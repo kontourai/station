@@ -48,6 +48,12 @@ not yet accepted.
   pane, including a per-occurrence Station fence and cross-window locked
   writes. Other related kinds wait for their slices.
 - [ ] Quick review preserves source selection/search/scroll; Open promotes.
+  Follow-up #3986 repairs the true recipient continuation lifecycle, desktop
+  late-guard close and committed-model Chat/Up exits. The old review adoption
+  callback was dormant; baseline failures instead exercise the real Chat
+  SessionDetail recipient. Real browser journeys use canonical Chat at desktop
+  and phone widths and transfer the exact reply to its confirmation. Local
+  mutation/focused evidence is separate from independent/native/hosted acceptance.
   Implemented in #3981, stacked on #3964, awaiting independent qualification:
   the real Activity list offers Quick review in Related, reusing SessionDetail
   with an exact Session/Project identity and Station fence. Previous/Next use

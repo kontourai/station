@@ -20,6 +20,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -250,21 +251,22 @@ export function AttachedSessionDetail({
     [draftScope, session.threadId],
   );
   const confirmedDraft = useRef('');
-  const handoffIntent = useRef(0);
   const handoffIdentity = JSON.stringify([
     apiBase,
     draftScope,
     session.threadId,
   ]);
-  const handoffSource = useRef(handoffIdentity);
+  const handoff = useMemo(
+    () => ({ identity: handoffIdentity, alive: false }),
+    [handoffIdentity],
+  );
   const [handoffPending, setHandoffPending] = useState(false);
   useLayoutEffect(() => {
-    handoffSource.current = handoffIdentity;
-    handoffIntent.current += 1;
+    handoff.alive = true;
     return () => {
-      handoffIntent.current += 1;
+      handoff.alive = false;
     };
-  }, [handoffIdentity]);
+  }, [handoff]);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const transcriptBodyRef = useRef<HTMLDivElement>(null);
@@ -519,21 +521,20 @@ export function AttachedSessionDetail({
   const requestSend = async () => {
     if (!draft.trim() || composerDisabled) return;
     if (onContinueInChat) {
-      const heldIntent = handoffIntent.current;
+      const held = handoff;
       setHandoffPending(true);
       try {
         const result = onContinueInChat(draft);
         const accepted = result instanceof Promise ? await result : result;
-        if (heldIntent === handoffIntent.current && accepted !== false)
-          setDraft('');
+        if (held.alive && accepted !== false) setDraft('');
       } catch {
-        if (heldIntent === handoffIntent.current)
+        if (held.alive)
           showToast(
             'Could not open this conversation. Your message is still here.',
             session.threadId,
           );
       } finally {
-        if (heldIntent === handoffIntent.current) setHandoffPending(false);
+        if (held.alive) setHandoffPending(false);
       }
       return;
     }
