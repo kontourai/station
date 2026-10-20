@@ -443,8 +443,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
    naming its engine ("Station", "Claude Code", "OpenCode · GLM-4.7") instead of an
    External/ACP badge pair; "External" and "ACP" never render. Shipped in archive#894. The
    navigability principle (§1) and the §4 API-parity table remain binding as written.
-5. **Context meter and session chrome** move to the session header/tab area, out of the
-   input row.
+5. **Context meter and session chrome** stay out of the input row. The context meter
+   sits in the composer's meta row beside the model picker it measures (2026-10-20:
+   it had moved to the dock header, where it crowded the chat's identity); the dock
+   header holds session identity only (see placement.md, "What the dock header
+   holds").
 
 ### 3.1 Provider and model picker
 
@@ -749,9 +752,10 @@ Selecting a workspace through the sidebar also sets the default project for
 new chats after navigation guards admit the route. It preserves the active
 chat and its original project. Opening an existing conversation also preserves
 this default. Choosing a different project in the chat bar
-overrides that default until the next explicit workspace selection. Both bars
-caption this value **New chats**; desktop also names the current chat's project
-when it differs. On a phone, when a long chat title leaves the control too
+overrides that default until the next explicit workspace selection. On a phone the
+Project control captions this value **New chats**; on desktop it is the second
+half of the dock's New split button, named "New chats: <project>", and the
+current chat's own project is its session context card's Workspace row. On a phone, when a long chat title leaves the control too
 narrow for words, it shows only a folder glyph; its accessible name still
 names the project. This revises the earlier independent-sidebar/default behavior.
 
@@ -796,8 +800,8 @@ engine/model, future-chat Project and Git strip; Agent and engine/model controls
 stay beside the composer, while Project and file context remain in their owning
 surfaces. Imported conversations retain their origin. Phone Coding leaves the conversation
 title in the chat header and uses its breadcrumb for Inbox and pane navigation.
-Working chats open a keyboard-operable
-menu. On mobile, the title is one line with assistant context beneath it. The direct
+Working chats are the first rows of the dock's
+keyboard-operable More menu; their count rides the inbox toggle. On mobile, the title is one line with assistant context beneath it. The direct
 Project control retains its New chats caption: it sets future chat context,
 not the current conversation’s binding. Moving that control into Chat actions
 remains an unimplemented proposal requiring a product-contract decision.
