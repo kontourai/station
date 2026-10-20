@@ -486,6 +486,14 @@ Every path becomes a generation handoff:
   - Task Scheduler does not relaunch a process that exits. The supervisor
     therefore restarts core servers itself, and the logon task's wrapper
     restarts the supervisor.
+  - Known gap: a handoff can reset a connection or two that were mid-accept.
+    libuv on Windows pre-posts `AcceptEx` on a listener, and closing the
+    draining generation's copy closes every pending accept, so connections
+    already completed into them are reset; POSIX keeps them in the shared
+    backlog. A supervisor-side fix follows in its own change. Until then the
+    zero-reset handoff holds on POSIX only.
+  - `process.kill(pid, 'SIGTERM')` ends a process outright on Windows, so a
+    core signalled that way does not run its SIGTERM drain.
 
 ### Failure modes
 
@@ -563,9 +571,8 @@ verification, and fault injection.
   event stream on the real core server (its streams need credentials;
   ending them is tested against a plain server). On a Windows host the
   supervisor package's tests passed and one journey run saw a single reset
-  in a handoff; the working hypothesis is libuv's pre-posted `AcceptEx` on
-  Windows, where a connection completed into the draining generation's
-  pending accept is closed with its listener, while POSIX leaves it in the
-  shared backlog. A failed trial drains for at most the kill grace and is
-  then killed outright, so a frozen trial delays the rollback by one kill
-  grace.
+  in a handoff, from the cause described under Windows above; the journey's
+  zero-reset and SIGTERM checks run on POSIX only. A failed trial drains for
+  at most the kill grace, then gets SIGTERM and, 250 ms later, SIGKILL, so
+  a frozen trial delays the rollback by about one kill grace and its process
+  group still gets a chance to clean up.

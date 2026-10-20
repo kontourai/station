@@ -363,8 +363,10 @@ export interface ListenerAdoptMessage {
 
 /**
  * Stop accepting, finish in-flight work, and exit. `deadlineMs` bounds how
- * long the core waits for in-flight work; the core treats a missing,
- * non-numeric, or non-positive value as 0 and shuts down without waiting.
+ * long the core waits for in-flight HTTP connections. A missing, non-finite,
+ * or non-positive value is 0: the core does not wait for HTTP connections.
+ * Live voice calls are waited for either way; the supervisor's voice cap
+ * bounds that wait.
  */
 export interface DrainMessage {
   type: 'drain';

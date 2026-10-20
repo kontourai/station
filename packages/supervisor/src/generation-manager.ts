@@ -110,6 +110,13 @@ interface Generation {
 
 type WaitResult = 'ok' | 'exit' | 'timeout';
 
+/**
+ * After a failed trial's drain deadline, how long SIGTERM gets before
+ * SIGKILL. Short: the trial already ignored a drain, and the previous entry
+ * cannot start until it is gone.
+ */
+export const FAILED_TRIAL_TERM_GRACE_MS = 250;
+
 function hasExited(gen: Generation): boolean {
   return gen.state === 'exited';
 }
@@ -567,7 +574,7 @@ export class GenerationManager {
     // restarts without a backoff. One that drains before then counts like a
     // crash, so a generation that drains right after serving, or repeated
     // signals, cannot restart it in an unbounded loop.
-    const stable = gen === this.active && this.stableTimer === null;
+    const stable = this.stableTimer === null;
     const crashed = !(gen.drained && gen.exitCode === 0 && stable);
     if (this.state === 'handoff') {
       // The handoff carries on without it, but a crash still counts.
@@ -772,6 +779,10 @@ export class GenerationManager {
     }
     this.log(`generation ${gen.id} missed its drain deadline`);
     if (escalation === 'kill') {
+      // SIGTERM first, so the generation's process group can clean up, but
+      // only briefly: it already ignored a drain, and the rollback waits.
+      gen.proc.kill('SIGTERM');
+      if (await this.waitForExit(gen, FAILED_TRIAL_TERM_GRACE_MS)) return;
       gen.proc.kill('SIGKILL');
       await gen.exited;
       return;
@@ -800,8 +811,9 @@ export class GenerationManager {
     // Already draining: that drain signals it after its own deadline.
     if (gen.state === 'draining') return gen.exited;
     if (gen.state === 'promoted' || gen.state === 'serving') {
-      // It has had its drain; a SIGTERM grace on top would only delay the
-      // rollback, so a trial still running at the deadline is killed.
+      // It has had its drain; a full SIGTERM grace on top would only delay
+      // the rollback, so a trial still running at the deadline gets a short
+      // one (FAILED_TRIAL_TERM_GRACE_MS) before SIGKILL.
       await this.drain(gen, deadlineMs, deadlineMs, 'kill');
       return;
     }

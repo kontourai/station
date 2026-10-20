@@ -7,6 +7,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type Clock,
+  FAILED_TRIAL_TERM_GRACE_MS,
   type GenerationLauncher,
   GenerationManager,
   type GenerationProcess,
@@ -448,8 +449,8 @@ describe('GenerationManager', () => {
     await vi.advanceTimersByTimeAsync(4_999);
     expect(generations[1]?.signals).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    // Killed outright: it already ignored a drain.
-    expect(generations[1]?.signals).toEqual(['SIGKILL']);
+    // A short SIGTERM, which this trial obeys: no SIGKILL needed.
+    expect(generations[1]?.signals).toEqual(['SIGTERM']);
     expect(await settle(handoff)).toMatchObject({ outcome: 'rolled-back' });
     // The old generation of that handoff drained with the full deadline.
     expect(
@@ -460,7 +461,9 @@ describe('GenerationManager', () => {
 
   it('signals a failed promoted trial only after it ignores the drain deadline', async () => {
     const { manager, generations } = setup((_generation, entry) =>
-      entry === '/core/bad.js' ? { ready: false, exitOnDrain: false } : {},
+      entry === '/core/bad.js'
+        ? { ready: false, exitOnDrain: false, ignoreTerm: true }
+        : {},
     );
     await manager.start();
     const handoff = manager.handoff({
@@ -473,8 +476,13 @@ describe('GenerationManager', () => {
     await vi.advanceTimersByTimeAsync(3_999);
     expect(generations[1]?.signals).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    // Killed outright: it already ignored a drain.
-    expect(generations[1]?.signals).toEqual(['SIGKILL']);
+    expect(generations[1]?.signals).toEqual(['SIGTERM']);
+    // Ignoring SIGTERM too: killed after the short grace, not the kill grace.
+    await vi.advanceTimersByTimeAsync(FAILED_TRIAL_TERM_GRACE_MS - 1);
+    expect(generations[1]?.signals).toEqual(['SIGTERM']);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(FAILED_TRIAL_TERM_GRACE_MS).toBe(250);
+    expect(generations[1]?.signals).toEqual(['SIGTERM', 'SIGKILL']);
     expect(await settle(handoff)).toMatchObject({
       outcome: 'rolled-back',
       reason: 'trial-readiness-timeout',

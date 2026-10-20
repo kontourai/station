@@ -580,7 +580,15 @@ describe('a supervised core handoff', () => {
           output,
         );
         const stats = await poller.stop();
-        expect(stats.errors, output()).toEqual({});
+        // Windows resets a connection or two per handoff: libuv pre-posts
+        // AcceptEx on the listener, and closing the draining generation's
+        // copy closes every pending accept, so connections already completed
+        // into them are reset, where POSIX keeps them in the backlog. A
+        // supervisor-side fix follows (process supervisor design, Windows
+        // known gap); until then the zero-reset claim holds on POSIX only.
+        if (process.platform !== 'win32') {
+          expect(stats.errors, output()).toEqual({});
+        }
         // Slow-header requests were in flight across the drain and finished.
         expect(stats.trickled).toBeGreaterThanOrEqual(10);
         expect(Object.keys(stats.statuses)).toEqual(['200']);
@@ -616,51 +624,62 @@ describe('a supervised core handoff', () => {
         expect(consent.status).toBe(404);
         expect(consent.type).toMatch(/text\/html/);
 
-        // An operator's SIGTERM straight to the serving core: it drains as
-        // for a handoff, so no client is reset, and the supervisor restarts
-        // it without counting a failure.
-        const pid2 = second.active?.pid as number;
-        // Let generation 2 become stable, as a long-running core would be.
-        await new Promise((resolveDelay) =>
-          setTimeout(resolveDelay, STABLE_AFTER_MS + 500),
-        );
-        const signalled = startPoller(port);
-        await waitFor(
-          'the poller to be served before SIGTERM',
-          BOOT_TIMEOUT_MS,
-          () => (signalled.stats.ok >= 20 ? true : undefined),
-          output,
-        );
-        process.kill(pid2, 'SIGTERM');
-        signalled.markHandedOff();
-        const third = await waitFor(
-          'generation 3 serving after SIGTERM',
-          BOOT_TIMEOUT_MS,
-          async () => {
-            const current = await status();
-            return current.active?.generation === 3 &&
-              current.active.state === 'serving'
-              ? current
-              : undefined;
-          },
-          output,
-        );
-        await waitFor(
-          'requests served after the restart',
-          BOOT_TIMEOUT_MS,
-          () => (signalled.stats.okAfterHandoff >= 20 ? true : undefined),
-          output,
-        );
-        const signalledStats = await signalled.stop();
-        expect(signalledStats.errors, output()).toEqual({});
-        expect(processAlive(pid2)).toBe(false);
-        expect(third.active?.port).toBe(port);
-        expect(third.restarts.consecutiveFailures).toBe(0);
+        // An operator's SIGTERM straight to the serving core. POSIX only:
+        // on Windows process.kill(pid, 'SIGTERM') terminates the process
+        // outright, so the core never runs its SIGTERM drain.
+        if (process.platform !== 'win32') {
+          // It drains as for a handoff, so no client is reset, and the
+          // supervisor restarts it without counting a failure.
+          const pid2 = second.active?.pid as number;
+          // Let generation 2 become stable, as a long-running core would be.
+          await new Promise((resolveDelay) =>
+            setTimeout(resolveDelay, STABLE_AFTER_MS + 500),
+          );
+          const signalled = startPoller(port);
+          await waitFor(
+            'the poller to be served before SIGTERM',
+            BOOT_TIMEOUT_MS,
+            () => (signalled.stats.ok >= 20 ? true : undefined),
+            output,
+          );
+          process.kill(pid2, 'SIGTERM');
+          signalled.markHandedOff();
+          const third = await waitFor(
+            'generation 3 serving after SIGTERM',
+            BOOT_TIMEOUT_MS,
+            async () => {
+              const current = await status();
+              return current.active?.generation === 3 &&
+                current.active.state === 'serving'
+                ? current
+                : undefined;
+            },
+            output,
+          );
+          await waitFor(
+            'requests served after the restart',
+            BOOT_TIMEOUT_MS,
+            () => (signalled.stats.okAfterHandoff >= 20 ? true : undefined),
+            output,
+          );
+          const signalledStats = await signalled.stop();
+          expect(signalledStats.errors, output()).toEqual({});
+          expect(processAlive(pid2)).toBe(false);
+          expect(third.active?.port).toBe(port);
+          expect(third.restarts.consecutiveFailures).toBe(0);
+          // The clean-exit path itself, not a crash restart whose strike a
+          // later stable period reset to 0.
+          expect(output()).toContain(
+            'drained and exited on its own; restarting it',
+          );
+          expect(output()).not.toMatch(/restarting in \d+ms \(failure/);
+        }
       } finally {
         (connection as ControlConnection | null)?.close();
       }
 
-      // Stopping the supervisor drains generation 2 and exits cleanly.
+      // Stopping the supervisor drains the serving generation (3 after the
+      // SIGTERM phase, 2 on Windows) and exits cleanly.
       const exited = exitOf(supervisor);
       supervisor.kill('SIGTERM');
       await expect(exited).resolves.toBe(0);

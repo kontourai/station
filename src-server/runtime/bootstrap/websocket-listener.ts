@@ -9,12 +9,15 @@
 import { createServer, type Server, STATUS_CODES } from 'node:http';
 import type { Socket } from 'node:net';
 import { type ServerOptions, WebSocketServer } from 'ws';
+import { createLogger } from '../../utils/logger.js';
 import {
   closeStableListener,
   type ListenAddress,
   listenerLink,
   type SupervisorListenerName,
 } from './supervisor-link.js';
+
+const logger = createLogger({ name: 'websocket-listener' });
 
 /**
  * Closing it stops the listener at once, as `ws` does for a port it owns.
@@ -58,6 +61,14 @@ export function startWebSocketListener(
   wss.on('connection', (_ws, req) => link.upgraded(req.socket as Socket));
   // A bind failure reaches the WebSocket server's 'error' event, which `ws`
   // forwards from the HTTP server exactly as it does for a port it owns.
-  void link.listen(name, server, address).catch(() => {});
+  void link.listen(name, server, address).catch((error: unknown) => {
+    // Said here as well, so a listener that never binds is never silent
+    // until a readiness timeout.
+    logger.error('WebSocket listener failed to bind', {
+      listener: name,
+      port: address.port,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
   return wss;
 }
