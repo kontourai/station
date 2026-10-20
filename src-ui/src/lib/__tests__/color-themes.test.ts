@@ -315,15 +315,18 @@ describe('family stylesheets load on demand', () => {
     settleSheets('error');
     expect(failed()).toBe('tokyo-night');
     expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
-    // Retrying the same settings requests it again; failing again keeps it.
+    // Retrying requests it again; while that request is in flight the family
+    // is retrying, not failed. Failing again marks it again.
     retryColorTheme(root);
     expect(sheets().map((s) => s.href)).toContainEqual(
       expect.stringContaining('/tokyo-night.css'),
     );
+    expect(failed()).toBeNull();
     settleSheets('error');
     expect(failed()).toBe('tokyo-night');
     // A retry that loads clears it and claims the theme.
     retryColorTheme(root);
+    expect(failed()).toBeNull();
     settleSheets('load');
     expect(failed()).toBeNull();
     expect(root.getAttribute('data-color-theme')).toBe('tokyo-night');
@@ -356,7 +359,8 @@ describe('family stylesheets load on demand', () => {
     // It 404s while the app runs: the theme is un-claimed and re-requested.
     startup.dispatchEvent(new Event('error'));
     expect(root.hasAttribute('data-color-theme')).toBe(false);
-    expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    // The automatic retry is in flight: retrying, not failed.
+    expect(root.hasAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe(false);
     expect(document.head.querySelector('meta[name="theme-color"]')).toBeNull();
     expect(sheets()).toEqual([{ id: '', href }]);
     settleSheets('load');
@@ -371,6 +375,11 @@ describe('family stylesheets load on demand', () => {
     failed.dataset.state = 'failed';
     applyColorTheme(root, nord);
     expect(root.hasAttribute('data-color-theme')).toBe(false);
+    // If that retry fails too, the family is marked failed.
+    settleSheets('error');
+    expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    retryColorTheme(root);
+    expect(root.hasAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe(false);
     settleSheets('load');
     expect(root.getAttribute('data-color-theme')).toBe('nord');
   });

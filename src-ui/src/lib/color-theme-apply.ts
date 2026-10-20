@@ -28,9 +28,11 @@ export const COLOR_THEME_FLAVOR_ATTRIBUTE = 'data-color-theme-flavor';
 export const COLOR_THEME_ACCENT_ATTRIBUTE = 'data-color-theme-accent';
 /**
  * Set on the root to the family id when the most recent request for that
- * family's sheet failed (at startup or on a live switch); removed when a
- * later apply loads it, or the selection moves to Station or another family.
- * A picker reads it to offer `retryColorTheme` instead of waiting forever.
+ * family's sheet failed (at startup or on a live switch). Removed when a new
+ * request for it starts (it is retrying, not failed, until that settles),
+ * when a later apply loads it, or when the selection moves to Station or
+ * another family. Exposed so an Appearance page can offer `retryColorTheme`
+ * instead of waiting forever; nothing on this branch reads it yet.
  */
 export const COLOR_THEME_FAILED_ATTRIBUTE = 'data-color-theme-failed';
 
@@ -110,6 +112,10 @@ function requestSheet(root: HTMLElement, family: string, href: string): void {
   const doc = root.ownerDocument;
   if (pendingSheets.get(doc)?.getAttribute('href') === href) return;
   dropPending(doc);
+  // A request is starting: this family is retrying, not failed, until the
+  // request settles (and is marked failed again only if it fails).
+  if (root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE) === family)
+    root.removeAttribute(COLOR_THEME_FAILED_ATTRIBUTE);
   const link = doc.createElement('link');
   link.rel = 'stylesheet';
   link.href = href;
@@ -173,7 +179,6 @@ export function applyColorTheme(
     // Its sheet failed (the startup script's request, say): the page shows
     // Station's colours, so the theme is not claimed until a retry loads.
     active.remove();
-    root.setAttribute(COLOR_THEME_FAILED_ATTRIBUTE, resolved.id);
     stamp(root, { id: 'station' }, mode);
   }
   requestSheet(root, resolved.id, href);
