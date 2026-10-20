@@ -8,7 +8,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -22,8 +23,10 @@ import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 // small project, so a change in fallow's report shape or in how counts are
 // read fails here rather than reading as zero findings.
 
-const SCRIPT = resolve('scripts/fallow-ceiling.mjs');
-const BASELINE_SCRIPT = resolve('scripts/fallow-baseline.mjs');
+const SCRIPT = fileURLToPath(new URL('../fallow-ceiling.mjs', import.meta.url));
+const BASELINE_SCRIPT = fileURLToPath(
+  new URL('../fallow-baseline.mjs', import.meta.url),
+);
 const require = createRequire(import.meta.url);
 const makeTemp = trackTempDirs({ lifetime: 'test' });
 
