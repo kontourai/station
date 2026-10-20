@@ -4,11 +4,14 @@ import type {
 } from '@kontourai/station-contracts/agent-schedule';
 import { usePreviewSchedule } from '@kontourai/station-sdk';
 import { useAgentSchedule } from '../../hooks/useAgentSchedule';
+import {
+  PRESENCE_FALLBACK_MS,
+  usePresenceList,
+} from '../../hooks/usePresenceList';
 import { clockTime } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { CalendarGlyph, TimeGlyph } from '../icons/Glyph';
 import { scheduleText } from './agentScheduleText';
-import { useLeavingItems } from './useLeavingItems';
 import './AgentScheduleNotes.css';
 
 const wakeUpKey = (wakeUp: AgentWakeUp) => wakeUp.id;
@@ -29,18 +32,33 @@ export function AgentScheduleNotes({
 }) {
   const { schedule, cancelWakeUp, declineProposal, approveProposal } =
     useAgentSchedule(conversationId, refreshKey);
-  const wakeUps = useLeavingItems(schedule.wakeUps, wakeUpKey);
-  const proposals = useLeavingItems(schedule.jobProposals, proposalKey);
-  if (wakeUps.length === 0 && proposals.length === 0) return null;
+  const wakeUps = usePresenceList(
+    schedule.wakeUps,
+    wakeUpKey,
+    PRESENCE_FALLBACK_MS,
+  );
+  const proposals = usePresenceList(
+    schedule.jobProposals,
+    proposalKey,
+    PRESENCE_FALLBACK_MS,
+  );
+  if (wakeUps.list.length === 0 && proposals.list.length === 0) return null;
   const now = Date.now();
   return (
     <ul className="agent-schedule-notes" aria-label="Scheduled in this chat">
-      {proposals.map(({ item, key, leaving }) => (
+      {proposals.list.map(({ item, key, phase }) => (
         <li
           key={key}
           className="agent-schedule-notes__item"
-          data-leaving={leaving || undefined}
-          inert={leaving || undefined}
+          data-phase={phase}
+          inert={phase === 'exiting' || undefined}
+          onTransitionEnd={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              event.propertyName === 'opacity'
+            )
+              proposals.settle(key);
+          }}
         >
           <div className="agent-schedule-notes__clip">
             <JobProposalCard
@@ -67,12 +85,19 @@ export function AgentScheduleNotes({
           </div>
         </li>
       ))}
-      {wakeUps.map(({ item, key, leaving }) => (
+      {wakeUps.list.map(({ item, key, phase }) => (
         <li
           key={key}
           className="agent-schedule-notes__item"
-          data-leaving={leaving || undefined}
-          inert={leaving || undefined}
+          data-phase={phase}
+          inert={phase === 'exiting' || undefined}
+          onTransitionEnd={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              event.propertyName === 'opacity'
+            )
+              wakeUps.settle(key);
+          }}
         >
           <div className="agent-schedule-notes__clip">
             <div className="agent-schedule-notes__note" title={item.note}>

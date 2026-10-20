@@ -17,7 +17,10 @@ import { Button } from '../Button';
 import { CalendarGlyph, EditGlyph, PlayGlyph, TimeGlyph } from '../icons/Glyph';
 import { Toggle } from '../Toggle';
 import { everyText } from './agentScheduleText';
-import { useLeavingItems } from './useLeavingItems';
+import {
+  PRESENCE_FALLBACK_MS,
+  usePresenceList,
+} from '../../hooks/usePresenceList';
 import './SessionScheduledSection.css';
 
 type ScheduledRow =
@@ -74,8 +77,8 @@ export function SessionScheduledSection({
       job,
     })),
   ];
-  const shown = useLeavingItems(rows, rowKey);
-  if (shown.length === 0) return null;
+  const shown = usePresenceList(rows, rowKey, PRESENCE_FALLBACK_MS);
+  if (shown.list.length === 0) return null;
   const now = Date.now();
   return (
     <section
@@ -95,12 +98,19 @@ export function SessionScheduledSection({
         </button>
       </div>
       <ul className="session-scheduled__rows">
-        {shown.map(({ item, key, leaving }) => (
+        {shown.list.map(({ item, key, phase }) => (
           <li
             key={key}
             className="session-scheduled__item"
-            data-leaving={leaving || undefined}
-            inert={leaving || undefined}
+            data-phase={phase}
+            inert={phase === 'exiting' || undefined}
+            onTransitionEnd={(event) => {
+              if (
+                event.target === event.currentTarget &&
+                event.propertyName === 'opacity'
+              )
+                shown.settle(key);
+            }}
           >
             <div className="session-scheduled__clip">
               {item.kind === 'wake-up' ? (

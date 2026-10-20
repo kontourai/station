@@ -49,7 +49,7 @@
   }
 }
 
-.session-scheduled__item[data-leaving] {
+.session-scheduled__item[data-phase="exiting"] {
   grid-template-rows: 0fr;
   opacity: 0;
 }

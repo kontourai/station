@@ -154,6 +154,13 @@ function mount(node: ReactNode) {
 
 const posts = () => calls.filter((call) => call.method === 'POST');
 
+/** The row's own collapse finishing (React reads `propertyName` natively). */
+function finishTransition(node: Element, propertyName: string) {
+  const event = new Event('transitionend', { bubbles: true });
+  Object.assign(event, { propertyName });
+  node.dispatchEvent(event);
+}
+
 describe('in-chat notes', () => {
   test('a check-back reads as one quiet line with its local time, and Cancel cancels it on the server', async () => {
     mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
@@ -222,6 +229,33 @@ describe('in-chat notes', () => {
     expect(posts().some((call) => call.url.endsWith('/scheduler/jobs'))).toBe(
       false,
     );
+  });
+
+  test('a canceled check-back collapses in place, inert, and unmounts when its fade ends', async () => {
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    await screen.findByText(/Checking back at/);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel check-back at 4:12 PM' }),
+    );
+    const row = await waitFor(() => {
+      const item = screen
+        .getByText(/Checking back at/)
+        .closest('.agent-schedule-notes__item');
+      expect(item?.getAttribute('data-phase')).toBe('exiting');
+      return item!;
+    });
+    expect(row.hasAttribute('inert')).toBe(true);
+    // The height transition ending first does not cut the fade short.
+    finishTransition(row, 'grid-template-rows');
+    expect(screen.queryByText(/Checking back at/)).not.toBeNull();
+    finishTransition(row, 'opacity');
+    await waitFor(() =>
+      expect(screen.queryByText(/Checking back at/)).toBeNull(),
+    );
+    // The proposal card it sat beside stays put.
+    expect(
+      screen.getByRole('region', { name: 'Proposed job hourly-digest' }),
+    ).toBeTruthy();
   });
 
   test('nothing scheduled renders nothing', async () => {
@@ -300,6 +334,26 @@ describe('the "This chat" card’s Scheduled section', () => {
       expect(posts()[0]?.url).toBe(
         `${API}/api/orchestration/sessions/session-1/usage-limit/hold`,
       ),
+    );
+  });
+
+  test('a canceled row collapses in place before it unmounts', async () => {
+    schedule = { wakeUps: [wakeUp], jobProposals: [], jobs: [] };
+    mount(
+      <SessionScheduledSection conversationId={CONVERSATION} wrap={wrap} />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    const row = await waitFor(() => {
+      const item = screen
+        .getByText('check the deploy')
+        .closest('.session-scheduled__item');
+      expect(item?.getAttribute('data-phase')).toBe('exiting');
+      return item!;
+    });
+    expect(row.hasAttribute('inert')).toBe(true);
+    finishTransition(row, 'opacity');
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Scheduled' })).toBeNull(),
     );
   });
 

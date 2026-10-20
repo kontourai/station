@@ -2,7 +2,10 @@ import { CONTINUATION_WORKSPACE_REFUSAL_CODES } from '@kontourai/station-contrac
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import type { PendingMessageMetadata } from '../../contexts/active-chats-state';
-import { usePresenceList } from '../../hooks/usePresenceList';
+import {
+  PRESENCE_FALLBACK_MS,
+  usePresenceList,
+} from '../../hooks/usePresenceList';
 import { useQueuedMessages } from '../../hooks/useQueuedMessages';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { ArrowDownGlyph, EditGlyph } from '../icons/Glyph';
@@ -63,12 +66,6 @@ const HELD_STATE_LABEL: Record<ConversationInboxEntry['state'], string> = {
   sent: 'Sent',
   cancelled: 'Removed',
 };
-
-/**
- * Settles an enter or exit whose animation never ran. A little longer than
- * the `--motion-base` the CSS animates over, so a running animation ends it.
- */
-const EXIT_FALLBACK_MS = 400;
 
 interface QueueRow {
   id: number;
@@ -177,7 +174,7 @@ export function QueuedMessages({
   const rowPresence = usePresenceList(
     displayRows,
     (row) => row.key,
-    EXIT_FALLBACK_MS,
+    PRESENCE_FALLBACK_MS,
   );
 
   function renderLocalRow(row: QueueRow, idx: number) {
@@ -486,7 +483,7 @@ export function QueuedMessages({
   const surface = usePresenceList(
     visible ? [{ key: 'surface', node: panel }] : [],
     (entry) => entry.key,
-    EXIT_FALLBACK_MS,
+    PRESENCE_FALLBACK_MS,
   );
   const shown = surface.list[0];
   if (!shown) return null;

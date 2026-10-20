@@ -28,7 +28,7 @@
   }
 }
 
-.agent-schedule-notes__item[data-leaving] {
+.agent-schedule-notes__item[data-phase="exiting"] {
   grid-template-rows: 0fr;
   opacity: 0;
 }

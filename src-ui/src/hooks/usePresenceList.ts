@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
+ * Settles an enter or exit whose animation never ran. A little longer than
+ * the `--motion-base` the CSS animates over, so a running animation or
+ * transition ends it first.
+ */
+export const PRESENCE_FALLBACK_MS = 400;
+
+/**
  * One rendered item of a presence list. `entering` is set only for an item
  * that arrived after the list first rendered (items present at mount do not
  * animate in); an `exiting` item has left `items` and stays where it was,
@@ -16,7 +23,8 @@ export interface PresentItem<T> {
  * Keeps an item that left `items` rendered in place so its row can collapse
  * (height and opacity) instead of vanishing and snapping its siblings, and
  * marks a newly arrived item so its row can grow in. The caller ends either
- * transition with `settle(key)` from the row's `animationend`; `fallbackMs`
+ * transition with `settle(key)` from the row's `animationend` (or
+ * `transitionend`); `fallbackMs`
  * settles it anyway when the animation never runs (a hidden page, or a
  * stylesheet that has not loaded).
  */
