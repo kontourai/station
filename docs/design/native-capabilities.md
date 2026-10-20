@@ -32,7 +32,7 @@ host.
 | Capability | Web/PWA | Current Tauri host | Notes |
 | --- | --- | --- | --- |
 | PWA share URL intake | enabled | n/a | Preserves `share`, `text`, `url`, and `title` query parameters and removes them after delivery. |
-| Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation, bundled-server status and startup-readiness retry. |
+| Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation and bundled-server status. |
 | Native share receiver | n/a | disabled | Generic OS share intake remains off; it has a different untrusted-content boundary. |
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
@@ -43,7 +43,7 @@ host.
 
 Desktop startup readiness is also Rust-owned. A sidecar status may carry the
 secret-free exact `(generation, instanceId, bootId, apiBase)` observation that
-the renderer must match after an authenticated identity read; it is not a
+the native host must match after an authenticated identity read; it is not a
 credential and does not authorize arbitrary loopback traffic. The pure epoch
 authority has overdue-without-restart timeout, late-ticket reveal,
 stale-receipt, loss, explicit retry, activation-deferral, and dev bypass

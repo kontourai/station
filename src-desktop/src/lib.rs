@@ -79,6 +79,7 @@ use std::{
     net::{SocketAddr, TcpStream},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+#[cfg(not(mobile))]
 use tauri::Emitter;
 use tauri::{ipc::Channel, AppHandle, State};
 #[cfg(not(mobile))]
@@ -1690,13 +1691,11 @@ fn station_profile_authorize_active_internal(
         authority,
         profile_name,
     )?;
-    // The renderer may have attempted its bounded readiness proof before the
-    // active credential was available. Reuse its mounted retry subscription
-    // once the host has committed the selected profile.
+    // The native startup identity proof may have run before the active
+    // credential was available. Retry it once the host has committed the
+    // selected profile.
     #[cfg(not(mobile))]
     notify_startup_readiness_if_waiting(app);
-    #[cfg(mobile)]
-    let _ = app.emit("station://startup-readiness-retry", ());
     Ok(receipt)
 }
 
@@ -9946,11 +9945,7 @@ fn notify_startup_readiness_if_waiting(app: &AppHandle) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .phase;
     if startup_readiness_accepts_retry(phase) {
-        // Native owns the credential and identity proof. Claim it before the
-        // compatibility renderer wake so an already-mounted WebView cannot
-        // win the single-flight slot and recreate the bootstrap dependency.
         request_native_startup_commit(app);
-        let _ = app.emit("station://startup-readiness-retry", ());
     }
 }
 
@@ -11087,10 +11082,6 @@ fn observe_startup_ticket(app: &AppHandle, ticket: startup_readiness::StartupTic
         generation
     );
     request_native_startup_commit_for_ticket(app, published_ticket);
-    // A sidecar retry becomes reprobeable only after this exact new generation
-    // is running and has published its ticket; never wake the renderer against
-    // the old child during Restart.
-    let _ = app.emit("station://startup-readiness-retry", ());
 }
 
 #[cfg(not(mobile))]
@@ -11831,57 +11822,6 @@ fn native_startup_page_admitted(label: &str, event: PageLoadEvent) -> bool {
     label == "main" && event == PageLoadEvent::Started
 }
 
-#[cfg(not(mobile))]
-#[tauri::command]
-async fn commit_startup_readiness(
-    app: AppHandle,
-    ticket: startup_readiness::StartupTicket,
-) -> Result<(), String> {
-    let state = app
-        .try_state::<DesktopServerState>()
-        .ok_or("Desktop startup readiness is not initialized.")?;
-    let (phase, identity_committed, epoch) = {
-        let readiness = state
-            .readiness
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        (
-            readiness.phase,
-            readiness.identity_committed,
-            readiness.epoch,
-        )
-    };
-    if !claim_startup_commit(
-        true,
-        phase,
-        identity_committed,
-        epoch,
-        &state.startup_commit_claim,
-    ) {
-        return Err(
-            "Desktop startup identity proof is already committed or in flight.".to_string(),
-        );
-    }
-    let app_for_commit = app.clone();
-    let result = match tauri::async_runtime::spawn_blocking(move || {
-        commit_startup_readiness_blocking(app_for_commit, ticket, epoch)
-    })
-    .await
-    {
-        Ok(result) => result,
-        Err(error) => {
-            release_failed_startup_commit(&app, epoch);
-            return Err(format!("Desktop startup identity task failed: {error}"));
-        }
-    };
-    if result.is_err() {
-        release_failed_startup_commit(&app, epoch);
-    } else {
-        complete_startup_commit(&app, epoch, |app| request_native_startup_commit(app));
-    }
-    result
-}
-
 fn renderer_mount_label_admitted(label: &str) -> bool {
     label == "main"
 }
@@ -11961,20 +11901,6 @@ fn commit_renderer_mount(window: tauri::WebviewWindow, app: AppHandle) -> Result
         reveal_main_window(&app);
     }
     Ok(())
-}
-
-#[cfg(not(mobile))]
-#[tauri::command]
-fn commit_startup_recovery_ui(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), String> {
-    if !renderer_mount_label_admitted(window.label()) {
-        return Err("Startup recovery commits are accepted only from the main WebView.".into());
-    }
-    commit_startup_recovery_ui_for_app(&app)
-}
-
-#[cfg(not(mobile))]
-fn commit_startup_recovery_ui_for_app(app: &AppHandle) -> Result<(), String> {
-    commit_startup_recovery_for_app(app, startup_readiness::ReadinessInput::RecoveryUiCommitted)
 }
 
 #[cfg(not(mobile))]
@@ -13428,8 +13354,6 @@ If a stable instance is running, this launch will focus its window and exit.",
         tray::ack_pending_tray_navigation,
         restart_bundled_server,
         commit_renderer_mount,
-        commit_startup_readiness,
-        commit_startup_recovery_ui,
         startup_window_admitted,
         ssh_env_probe,
         ssh_launch_start,

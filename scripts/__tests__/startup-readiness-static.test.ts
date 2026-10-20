@@ -231,10 +231,7 @@ describe('desktop startup readiness static boundary', () => {
       renderApp.indexOf('<PlatformBootstrap>'),
     );
     expect(lib).not.toContain('clear_all_browsing_data');
-    const mountCommit = lib.slice(
-      lib.indexOf('fn commit_renderer_mount'),
-      lib.indexOf('fn commit_startup_recovery_ui'),
-    );
+    const mountCommit = rustBlock(lib, 'fn commit_renderer_mount(');
     expect(mountCommit.indexOf('renderer_mounted.store(true')).toBeLessThan(
       mountCommit.indexOf('try_state::<DesktopServerState>()'),
     );
@@ -259,25 +256,13 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).not.toContain('NATIVE_STARTUP_BOOTSTRAP_SCRIPT');
     expect(lib).not.toContain("invoke('renderer_startup_ready')");
     expect(platformBootstrap).not.toContain('startStartupReadinessProof');
-    const nativeWake = lib.slice(
-      lib.indexOf('fn notify_startup_readiness_if_waiting'),
-      lib.indexOf('struct PendingMainWindowActivation'),
-    );
+    // Native owns the identity proof: a waiting-phase wake and a newly
+    // published sidecar ticket each request the native commit.
     expect(
-      nativeWake.indexOf('request_native_startup_commit(app);'),
-    ).toBeLessThan(
-      nativeWake.indexOf('app.emit("station://startup-readiness-retry"'),
-    );
-    const ticketWake = lib.slice(
-      lib.indexOf('fn observe_startup_ticket'),
-      lib.indexOf('fn observe_startup_loss'),
-    );
-    expect(
-      ticketWake.indexOf(
-        'request_native_startup_commit_for_ticket(app, published_ticket);',
-      ),
-    ).toBeLessThan(
-      ticketWake.indexOf('app.emit("station://startup-readiness-retry"'),
+      rustBlock(lib, 'fn notify_startup_readiness_if_waiting('),
+    ).toContain('request_native_startup_commit(app);');
+    expect(rustBlock(lib, 'fn observe_startup_ticket(')).toContain(
+      'request_native_startup_commit_for_ticket(app, published_ticket);',
     );
     expect([
       ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
@@ -328,8 +313,6 @@ describe('desktop startup readiness static boundary', () => {
     const methods = {
       isStartupWindowAdmitted: 'startup_window_admitted',
       commitRendererMount: 'commit_renderer_mount',
-      commitStartupReadiness: 'commit_startup_readiness',
-      commitStartupRecoveryUi: 'commit_startup_recovery_ui',
       getBundledServerStatus: 'bundled_server_status',
     };
     for (const [method, command] of Object.entries(methods)) {
