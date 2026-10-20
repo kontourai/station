@@ -1586,7 +1586,18 @@
   line-height: 1.1;
 }
 
+/* A column flex item is sized to its content, not to the stack, so without
+   this a name wider than its shrunken chip ran on under the caret instead of
+   truncating (seen at 320px on three chips, and at 375px once ACP engines
+   gained a fourth, #3290). Bounding each line lets its ellipsis apply. */
+.chat-input__chip-stack > * {
+  max-width: 100%;
+}
+
 .chat-input__chip-caption {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 500;
@@ -3086,13 +3097,12 @@
      hand the 44px touch floor back to a 24px desktop value on a phone. */
   .chat-input__meta .chat-input__model-btn {
     flex: 0 1 auto;
-    /* 44px for the same reason as the approval chip below: this scoped rule
+    /* Pinned for the same reason as the approval chip below: this scoped rule
        (0,2,0) outranks `.chat-input button`'s (0,1,1) touch floor, so a bare
-       `min-width: 0` silently removes it. Not reachable today — the button
-       bottoms out at 120px in every measured state — but with a third chip in
-       the row it collapses to 14px, and the asymmetry of pinning one control
-       and not its neighbour is exactly how the floor was lost the first time. */
-    min-width: 44px;
+       `min-width: 0` silently removes it. #3290 raised it from 44px to keep a
+       readable model name when four chips share the rail (it shrank to 72px
+       and read "Open…"); the rail scrolls past the edge instead. */
+    min-width: 112px;
     max-width: 100%;
   }
   .chat-input__meta .chat-input__agent-btn {
@@ -3104,7 +3114,10 @@
     max-width: 40%;
   }
   .chat-input__meta .chat-input__agent-btn {
-    min-width: 44px;
+    /* #3290: 88px, not the 44px touch floor alone, keeps a readable name
+       ("OpenCo…", not "O…") once four chips share a phone rail; the rail
+       scrolls past its faded edge instead. */
+    min-width: 88px;
     min-height: 44px;
   }
   .chat-input__meta .chat-input__approval-chip {
@@ -3180,6 +3193,17 @@
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
+}
+
+/* #3290: the same scroll cue as an answer's wide table (index.css
+   `chat-markdown-table-edge`): while the chip rail can still scroll right,
+   its trailing edge fades; the fade is gone at the end of the scroll, and a
+   rail that fits has no active timeline, so it never fades. */
+@supports (animation-timeline: scroll()) {
+  .chat-input__settings {
+    animation: chat-markdown-table-edge var(--ease-linear) both;
+    animation-timeline: scroll(self inline);
+  }
 }
 
 .chat-input__activity {

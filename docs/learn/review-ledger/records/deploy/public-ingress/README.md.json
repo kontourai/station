@@ -12,8 +12,6 @@
   "sources": [
     ".dockerignore",
 
-    "deploy/gcp-dev/bootstrap.sh",
-
     "deploy/public-ingress/Caddyfile",
 
     "deploy/public-ingress/compose.yaml",
@@ -49,8 +47,6 @@
     "packages/shared/src/station-home-schema.ts",
 
     "scripts/__tests__/container-release.test.ts",
-
-    "scripts/__tests__/gcp-bootstrap.test.ts",
 
     "scripts/container-healthcheck.mjs",
 

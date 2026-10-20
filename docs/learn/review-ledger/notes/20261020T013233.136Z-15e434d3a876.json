@@ -1,0 +1,71 @@
+{
+  "revision": "e72742d2afb3ab1e66a56294b71d732db87f8e24",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Checked the claims citing the changed sources: TerminalPanel now picks its phone glyph size from MOBILE_MEDIA_QUERY (landscape phones included) and copies through copyToClipboard with the same error text. No documented claim or behaviour described here changes.","inputs":["docs/architecture.md","src-ui/src/components/coding-layout/TerminalPanel.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the claims citing the changed sources: ExistingSetupImportStepper uses the shared formatBytes (byte-identical output); device-settings-store uses the shared isRecord guard with identical semantics; SettingsView reads reduced motion through lib/reduced-motion.ts (same query); newChatIntent uses the shared isRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/architecture/module-map.md","src-ui/src/components/setup/ExistingSetupImportStepper.tsx","src-ui/src/lib/device-settings-store.ts","src-ui/src/lib/newChatIntent.ts","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Checked the claims citing the changed sources: region-arrangement-record uses the shared isPlainRecord guard with identical semantics; FilePreviewPane copies the preview link through copyToClipboard with the same notices. No documented claim or behaviour described here changes.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/regions/region-arrangement-record.ts","src-ui/src/workspace-panes/FilePreviewPane.tsx"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked the claims citing the changed sources: ShareAnswerButton copies through copyToClipboard; a refused write is still reported as not copied. No documented claim or behaviour described here changes.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/components/chat/ShareAnswerButton.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the claims citing the changed sources: AgentConnectionView uses the shared formatBytes, which now carries its TB step; rendered output is unchanged. No documented claim or behaviour described here changes.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Checked the claims citing the changed sources: RelayRouteProfiles copies the setup link through copyToClipboard with the same error. No documented claim or behaviour described here changes.","inputs":["docs/design/native-capabilities.md","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the claims citing the changed sources: device-settings-store uses the shared isRecord guard with identical semantics; region-arrangement-record uses the shared isPlainRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/design/placement.md","src-ui/src/lib/device-settings-store.ts","src-ui/src/regions/region-arrangement-record.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked the claims citing the changed sources: device-settings-store uses the shared isRecord guard with identical semantics; SettingsView reads reduced motion through lib/reduced-motion.ts (same query). No documented claim or behaviour described here changes.","inputs":["docs/design/settings-architecture.md","src-ui/src/lib/device-settings-store.ts","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked the claims citing the changed sources: chat-drafts-store uses the shared isRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/contexts/chat-drafts-store.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Checked the claims citing the changed sources: branding-theme gains only a comment on why its guard stays separate. No documented claim or behaviour described here changes.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/lib/branding-theme.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Checked the claims citing the changed sources: RelayRouteKeyApproval copies setup info through copyToClipboard with the same messages. No documented claim or behaviour described here changes.","inputs":["docs/guides/agents.md","src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the claims citing the changed sources: browserRelayEnrollmentController uses the shared isRecord guard with identical semantics; AgentConnectionView uses the shared formatBytes, which now carries its TB step; rendered output is unchanged; RelayRouteKeyApproval copies setup info through copyToClipboard with the same messages; RelayRouteProfiles copies the setup link through copyToClipboard with the same error. No documented claim or behaviour described here changes.","inputs":["docs/guides/connections.md","src-ui/src/lib/browserRelayEnrollmentController.ts","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Checked the claims citing the changed sources: device-settings-store uses the shared isRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked the claims citing the changed sources: browserRelayEnrollmentController uses the shared isRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/guides/local-collaboration-lab.md","src-ui/src/lib/browserRelayEnrollmentController.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the claims citing the changed sources: browserRelayEnrollmentController uses the shared isRecord guard with identical semantics; RelayRouteProfiles copies the setup link through copyToClipboard with the same error. No documented claim or behaviour described here changes.","inputs":["docs/guides/machine-relationships.md","src-ui/src/lib/browserRelayEnrollmentController.ts","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked the claims citing the changed sources: RelayRouteProfiles copies the setup link through copyToClipboard with the same error. No documented claim or behaviour described here changes.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the claims citing the changed sources: device-settings-store uses the shared isRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/guides/responsive-ui.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the claims citing the changed sources: RelayRouteKeyApproval copies setup info through copyToClipboard with the same messages. No documented claim or behaviour described here changes.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Checked the claims citing the changed sources: browserRelayEnrollmentController uses the shared isRecord guard with identical semantics; RelayRouteProfiles copies the setup link through copyToClipboard with the same error. No documented claim or behaviour described here changes.","inputs":["docs/guides/self-hosted-broker.md","src-ui/src/lib/browserRelayEnrollmentController.ts","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the claims citing the changed sources: starter-work-operation-store uses the shared isPlainRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/guides/starter-work.md","src-ui/src/lib/starter-work-operation-store.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the claims citing the changed sources: branding-theme gains only a comment on why its guard stays separate; device-settings-store uses the shared isRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/guides/theming.md","src-ui/src/lib/branding-theme.ts","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the claims citing the changed sources: AgentConnectionView uses the shared formatBytes, which now carries its TB step; rendered output is unchanged. No documented claim or behaviour described here changes.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the claims citing the changed sources: device-settings-store uses the shared isRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/patterns/backend.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the claims citing the changed sources: device-settings-store uses the shared isRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/patterns/frontend.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the claims citing the changed sources: AgentConnectionView uses the shared formatBytes, which now carries its TB step; rendered output is unchanged. No documented claim or behaviour described here changes.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/tools/station-control-delegation.ts","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the claims citing the changed sources: branding-theme gains only a comment on why its guard stays separate. No documented claim or behaviour described here changes.","inputs":["docs/reference/api.md","src-ui/src/lib/branding-theme.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the claims citing the changed sources: chat-drafts-store uses the shared isRecord guard with identical semantics; RelayRouteProfiles copies the setup link through copyToClipboard with the same error. No documented claim or behaviour described here changes.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/chat-drafts-store.ts","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked the claims citing the changed sources: SettingsView reads reduced motion through lib/reduced-motion.ts (same query). No documented claim or behaviour described here changes.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the claims citing the changed sources: newChatIntent uses the shared isRecord guard with identical semantics. No documented claim or behaviour described here changes.","inputs":["docs/user/getting-started.md","src-ui/src/lib/newChatIntent.ts"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Checked the claims citing the changed sources: branding-theme gains only a comment on why its guard stays separate. No documented claim or behaviour described here changes.","inputs":["examples/custom-branding/README.md","src-ui/src/lib/branding-theme.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the claims citing the changed sources: RelayRouteKeyApproval copies setup info through copyToClipboard with the same messages. No documented claim or behaviour described here changes.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Checked the capture against the change: AgentConnectionView uses the shared formatBytes, which now carries its TB step; rendered output is unchanged. Nothing visible in this capture changes, so it is not re-recorded.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Checked the capture against the change: AgentConnectionView uses the shared formatBytes, which now carries its TB step; rendered output is unchanged. Nothing visible in this capture changes, so it is not re-recorded.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx"]}
+  ]
+}

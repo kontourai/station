@@ -88,6 +88,8 @@
 
     "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
 
+    "src-ui/src/components/badges/EngineApprovalDisclosureChip.tsx",
+
     "src-ui/src/components/chat/MessageBubble.tsx",
 
     "src-ui/src/components/chat/message-bubble/MessageContent.tsx",

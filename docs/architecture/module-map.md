@@ -2498,7 +2498,7 @@ production composition. Mounted
 cover shared document delivery and recovery. `tests/project-task-room-collaboration.spec.ts`
 is the two-browser acceptance route; a unit-test run is not that acceptance run.
 
-The pure `CollaborativeEditorPaneController` that [the #2890 design](../design/collaborative-editor-pane.md) describes was deleted: no pane host, catalog entry, or route ever composed it, and its own tests were its only callers. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
+The pure `CollaborativeEditorPaneController` that [the archive#2890 design](https://github.com/kontourai/station-archive/issues/2890) describes was deleted, and its design record with it: no pane host, catalog entry, or route ever composed it, and its own tests were its only callers. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
 
 ## SharedWorkingStateEditingCapability
 

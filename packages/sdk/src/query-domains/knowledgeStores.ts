@@ -1,14 +1,12 @@
 /**
- * K4 knowledge-store-root React Query hooks (`s202-knowledge-onboarding`
- * Wave 1) — the first React hooks over the K2 store-root registry
+ * K4 knowledge-store-root React Query hooks over the K2 store-root registry
  * (`listRoots`/`createRoot`/`removeRoot`/`listAdapters`/
  * `validateRootForAdapter`, `src-server/routes/knowledge/knowledge-store-routes.ts`).
  * Mirrors `./projectData.ts`'s hook-shape conventions: `useApiQuery` for
  * reads, `useMutation` + `queryClient.invalidateQueries` on success for
- * writes. Also adds `useMigratePreIndexKnowledgeMutation`, wrapping the
- * pre-existing `migratePreIndexKnowledge` fetcher (K3 Wave 4, `../client/
- * knowledge.ts`) which shipped with no React hook of its own — Wave 2's
- * project-settings task depends on this hook living here.
+ * writes. Also holds `useMigratePreIndexKnowledgeMutation`, the hook over the
+ * K3 `migratePreIndexKnowledge` fetcher (`../client/knowledge.ts`) that project
+ * settings use.
  */
 import type {
   KitRecord,
@@ -136,8 +134,8 @@ export function useDeleteKnowledgeRootMutation() {
 }
 
 /**
- * `POST /api/knowledge/migrate` — wraps the pre-existing `migratePreIndexKnowledge`
- * fetcher (K3 Wave 4) in a hook for the first time. Non-destructive: never
+ * `POST /api/knowledge/migrate` — wraps the K3 `migratePreIndexKnowledge`
+ * fetcher. Non-destructive: never
  * deletes/mutates the pre-index source trees it migrates from. Invalidates both
  * the knowledge-store root list (migration may create a new root) and the
  * pre-index knowledge status/doc queries (`./projectData.ts`'s `['knowledge',
@@ -170,10 +168,9 @@ export function useMigratePreIndexKnowledgeMutation() {
 }
 
 /**
- * K5 knowledge-record + index-search hooks (`s203-knowledge-meeting-notes` Wave 1
- * Task 2) — thin `useApiQuery`/`useMutation` wrappers over the record-CRUD fetchers
- * and the K3 index-search fetcher added to `../client/knowledge.ts` alongside this
- * file. Mirrors this file's own `useApiQuery`-for-reads / `useMutation`-plus-
+ * K5 knowledge-record + index-search hooks: thin `useApiQuery`/`useMutation`
+ * wrappers over the record-CRUD fetchers and the K3 index-search fetcher in
+ * `../client/knowledge.ts`. Mirrors this file's own `useApiQuery`-for-reads / `useMutation`-plus-
  * `invalidateQueries`-for-writes convention.
  */
 
@@ -248,7 +245,7 @@ export function useKnowledgeGraphQuery(
 
 /**
  * `GET /api/knowledge/roots/:rootId/graph/neo4j` — bulk nodes/edges from the
- * Neo4j-backed graph view (Wave 3 cleanup, plan item 1c). Enabled by default
+ * Neo4j-backed graph view. Enabled by default
  * whenever `rootId` is set, same as `useKnowledgeGraphQuery` above — this hook
  * itself does no view-toggle gating. `GraphPane.tsx`'s actual usage gates this
  * query by conditionally MOUNTING the component that calls it (rendering
@@ -340,7 +337,7 @@ export function useSearchKnowledgeIndexMutation() {
 
 /**
  * `POST /api/knowledge/roots/:rootId/graph/neo4j-sync` — idempotent sync
- * trigger (Wave 3 cleanup, plan item 1c); refreshes the Neo4j graph-view
+ * trigger; refreshes the Neo4j graph-view
  * query for the synced root on success so the pane reflects the freshly
  * synced graph without a manual refetch.
  */

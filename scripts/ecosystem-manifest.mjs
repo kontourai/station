@@ -72,6 +72,26 @@ function readJson(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));
 }
 
+const PORTABLE_NODE_RUNTIME = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../config/portable-server-node-runtime.json',
+);
+
+/**
+ * The Node.js version the portable archive build bundles. Read here rather
+ * than through lib/portable-server-archive.mjs: this script runs from the
+ * release policy checkout against an older tag's install, and that module
+ * would pull build-time packages into the policy import graph (#2676).
+ */
+function pinnedPortableNodeVersion() {
+  const config = readJson(PORTABLE_NODE_RUNTIME);
+  if (config?.schemaVersion !== 1 || typeof config.version !== 'string')
+    throw new Error(
+      'config/portable-server-node-runtime.json must declare schemaVersion 1 and a version',
+    );
+  return config.version;
+}
+
 function validateArtifact(kind, artifact, name) {
   if (
     !hasExactKeys(artifact, ['name', 'sha256', 'url']) ||
@@ -411,16 +431,26 @@ try {
       `${JSON.stringify(envelope, null, 2)}\n`,
     );
   } else if (command === 'assemble') {
-    // TODO(#2675): once config/portable-server-node-runtime.json lands with
-    // the archive build (#2705), default --node-version from it and refuse a
-    // value that differs.
+    // The archive build bundles the Node.js pinned in
+    // config/portable-server-node-runtime.json, so the manifest states that
+    // version. --node-version stays accepted for the workflows that pass it,
+    // and is refused when it names anything else.
+    const pinnedNodeVersion = pinnedPortableNodeVersion();
+    const requestedNodeVersion = optionalOption('--node-version');
+    if (
+      requestedNodeVersion !== undefined &&
+      requestedNodeVersion !== pinnedNodeVersion
+    )
+      throw new Error(
+        `--node-version ${requestedNodeVersion} differs from the pinned ${pinnedNodeVersion} in config/portable-server-node-runtime.json`,
+      );
     const payload = assemblePayload({
       descriptorsDir: option('--descriptors'),
       version: option('--version'),
       channel: option('--channel'),
       sourceSha: option('--source-sha'),
       baseUrl: option('--base-url'),
-      nodeVersion: option('--node-version'),
+      nodeVersion: pinnedNodeVersion,
       launcherProtocolMin: parsePositiveInteger(
         '--launcher-protocol-min',
         option('--launcher-protocol-min'),

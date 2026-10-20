@@ -188,8 +188,3 @@ export function hostActionCopy(
     ? entry.paired(presentation.hostName)
     : entry.host;
 }
-
-/** Whether this affordance needs hands on the host's machine. */
-export function hostActionReach(id: HostActionId): HostActionReach {
-  return HOST_ACTION_COPY[id].reach;
-}
