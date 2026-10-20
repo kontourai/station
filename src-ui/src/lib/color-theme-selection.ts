@@ -18,13 +18,21 @@ import index from './color-theme-index.generated.json';
 
 export type ColorThemeMode = 'dark' | 'light';
 
+interface IndexedFlavor {
+  readonly id: string;
+  readonly background: string;
+  readonly panel: string;
+  readonly raised: string;
+  readonly accentContrast: string;
+  readonly channelContrast: Readonly<
+    Record<'dev' | 'beta' | 'nightly', string>
+  >;
+}
+
 interface IndexedFamily {
   readonly stylesheet: string;
-  readonly light: { readonly id: string; readonly background: string };
-  readonly dark: readonly {
-    readonly id: string;
-    readonly background: string;
-  }[];
+  readonly light: IndexedFlavor;
+  readonly dark: readonly IndexedFlavor[];
   readonly defaultDarkFlavor: string;
   readonly accents: readonly string[];
   readonly defaultAccent: string;
@@ -98,4 +106,55 @@ export function colorThemeStylesheet(
   resolved: Exclude<ResolvedColorTheme, { id: 'station' }>,
 ): string {
   return FAMILIES.get(resolved.id)!.stylesheet;
+}
+
+/** The surfaces a white-label brand renders on under a named theme. */
+export interface ColorThemeBrandSurfaces {
+  readonly family: string;
+  readonly flavor: string;
+  readonly '--k-bg': string;
+  readonly '--k-panel': string;
+  readonly '--k-panel-raised': string;
+  /** The theme's own brand-contrast text, used where a brand override leaves it. */
+  readonly brandContrast: string;
+}
+
+/**
+ * The theme's surfaces in `mode` for the selection stamped on `root`, or
+ * `null` when Station's own colours are in force. `channel` is the Dev, Beta
+ * or Nightly build the root reports, whose brand text the theme keeps.
+ */
+export function colorThemeBrandSurfaces(
+  root: Element,
+  mode: ColorThemeMode,
+): ColorThemeBrandSurfaces | null {
+  const resolved = resolveColorThemeSelection({
+    colorTheme: root.getAttribute('data-color-theme'),
+    colorThemeFlavor: root.getAttribute('data-color-theme-flavor'),
+    colorThemeAccent: root.getAttribute('data-color-theme-accent'),
+  });
+  if (resolved.id === 'station') return null;
+  const family = FAMILIES.get(resolved.id)!;
+  const entry =
+    mode === 'light'
+      ? family.light
+      : family.dark.find((f) => f.id === resolved.darkFlavor)!;
+  // index.css lets Beta and Nightly win over a dev build; so does the sheet.
+  const reported = root.getAttribute('data-app-channel');
+  const effective =
+    reported === 'beta' || reported === 'nightly'
+      ? reported
+      : root.classList.contains('is-dev-build')
+        ? 'dev'
+        : null;
+  return {
+    family: resolved.id,
+    flavor: entry.id,
+    '--k-bg': entry.background,
+    '--k-panel': entry.panel,
+    '--k-panel-raised': entry.raised,
+    brandContrast: effective
+      ? entry.channelContrast[effective]
+      : entry.accentContrast,
+  };
 }

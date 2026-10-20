@@ -224,6 +224,35 @@ function stylesheetHrefs(): Record<string, string> {
 }
 
 /** The runtime index: everything resolution and the startup script need. */
+/**
+ * A flavor's entry: its canvas (theme-color), and the surfaces and fill
+ * texts a white-label brand is re-rated against (branding-theme.ts). Every
+ * accent of a flavor shares one contrast text, which is what lets the index
+ * carry one value instead of the catalog's per-accent pairs.
+ */
+function flavorEntry(flavor: ColorThemeFlavor) {
+  const contrasts = new Set(
+    Object.values(flavor.accents).map((accent) => accent.contrast),
+  );
+  if (contrasts.size !== 1)
+    throw new Error(
+      `${flavor.id}: accents no longer share one contrast text; the runtime index needs per-accent values`,
+    );
+  return {
+    id: flavor.id,
+    background: flavor.roles['--k-bg'],
+    panel: flavor.roles['--k-panel'],
+    raised: flavor.roles['--k-panel-raised'],
+    accentContrast: [...contrasts][0]!,
+    channelContrast: Object.fromEntries(
+      COLOR_THEME_CHANNELS.map((channel) => [
+        channel,
+        flavor.channels[channel].contrast,
+      ]),
+    ),
+  };
+}
+
 function runtimeIndex() {
   const hrefs = stylesheetHrefs();
   return Object.fromEntries(
@@ -231,14 +260,30 @@ function runtimeIndex() {
       family.id,
       {
         stylesheet: hrefs[family.id],
-        light: {
-          id: family.light.id,
-          background: family.light.roles['--k-bg'],
-        },
-        dark: family.dark.map((flavor) => ({
-          id: flavor.id,
-          background: flavor.roles['--k-bg'],
-        })),
+        light: flavorEntry(family.light),
+        dark: family.dark.map(flavorEntry),
+        defaultDarkFlavor: family.defaultDarkFlavor,
+        accents: family.accents.map((accent) => accent.id),
+        defaultAccent: family.defaultAccent,
+      },
+    ]),
+  );
+}
+
+/** What the startup script needs from the index, and nothing more. */
+function startupIndex() {
+  const slim = (flavor: ColorThemeFlavor) => ({
+    id: flavor.id,
+    background: flavor.roles['--k-bg'],
+  });
+  const hrefs = stylesheetHrefs();
+  return Object.fromEntries(
+    COLOR_THEME_FAMILIES.map((family) => [
+      family.id,
+      {
+        stylesheet: hrefs[family.id],
+        light: slim(family.light),
+        dark: family.dark.map(slim),
         defaultDarkFlavor: family.defaultDarkFlavor,
         accents: family.accents.map((accent) => accent.id),
         defaultAccent: family.defaultAccent,
@@ -290,7 +335,7 @@ export function renderColorThemeStartupStylesheet(): string {
  * so the script needs no request before first paint.
  */
 export function renderColorThemeStartupIndex(): string {
-  const index = runtimeIndex();
+  const index = startupIndex();
   // Shaped the way the repository formatter leaves it (a JSON string is
   // never re-wrapped), so `lint:check` and the drift test agree.
   return [

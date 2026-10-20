@@ -690,6 +690,74 @@ describe('color theme cascade', () => {
       }
     });
 
+    test('a white-label brand that fails on a theme surface yields that slot to the theme, and is re-rated on switch', async () => {
+      // #0e7c64 passes on Station's light page (4.7:1) but not on Latte's
+      // (4.23:1) or Tokyo Night Day's (3.50:1); the focus ring (3:1) passes.
+      const brand = '#0e7c64';
+      const page = await open(
+        `<script>const r = document.documentElement; r.dataset.theme = 'light'; r.dataset.colorTheme = 'catppuccin'; r.dataset.colorThemeFlavor = 'mocha'; r.dataset.colorThemeAccent = 'mauve';</script>${COLOR_THEME_FAMILIES.map((f) => `<style>${familySheet(f.id)}</style>`).join('')}<style>${appCss}</style><script src="/harness.js"></script>`,
+      );
+      const warnings: string[] = [];
+      page.on('console', (message) => {
+        if (message.type() === 'warning') warnings.push(message.text());
+      });
+      try {
+        await page.evaluate((value) => {
+          (window as unknown as { harness: any }).harness.applyBrandingTheme(
+            document.documentElement,
+            {
+              light: {
+                '--k-brand': value,
+                '--k-brand-contrast': '#ffffff',
+                '--k-action': value,
+                '--k-action-contrast': '#ffffff',
+                '--k-focus': value,
+              },
+            },
+          );
+        }, brand);
+        let v = await read(page);
+        expect(v['--k-brand']).toBe(latte.accents.mauve.brand);
+        expect(v['--k-action']).toBe(latte.accents.mauve.brand);
+        expect(v['--k-focus']).toBe(brand);
+        expect(warnings.join('\n')).toContain(
+          '--k-brand #0e7c64 on catppuccin/latte --k-bg #e6e9ef = 4.23:1',
+        );
+        // Back to Station: the brand passes there, so all of it applies.
+        await page.evaluate(() => {
+          const r = document.documentElement;
+          r.removeAttribute('data-color-theme');
+          r.removeAttribute('data-color-theme-flavor');
+          r.removeAttribute('data-color-theme-accent');
+        });
+        v = await read(page);
+        expect(v['--k-brand']).toBe(brand);
+        expect(v['--k-action']).toBe(brand);
+        // Tokyo Night Day: rejected again on its own page.
+        await page.evaluate(() => {
+          const r = document.documentElement;
+          r.dataset.colorTheme = 'tokyo-night';
+          r.dataset.colorThemeFlavor = 'night';
+          r.dataset.colorThemeAccent = 'blue';
+        });
+        const day = family('tokyo-night').light;
+        v = await read(page);
+        expect(v['--k-brand']).toBe(day.accents.blue.brand);
+        expect(v['--k-action']).toBe(day.accents.blue.brand);
+        expect(warnings.join('\n')).toContain('on tokyo-night/day --k-bg');
+        // Dark mode: Station's dark override is absent, so nothing is inline.
+        await page.evaluate(() => {
+          document.documentElement.dataset.theme = 'dark';
+        });
+        v = await read(page);
+        expect(v['--k-brand']).toBe(
+          family('tokyo-night').dark[0]!.accents.blue.brand,
+        );
+      } finally {
+        await page.close();
+      }
+    });
+
     test('a custom accent colour still wins on Station accent', async () => {
       const page = await themed('catppuccin', 'dark', mauve);
       try {

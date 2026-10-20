@@ -4,20 +4,52 @@
       "stylesheet": "/color-themes/catppuccin.css?v=e4a47673",
       "light": {
         "id": "latte",
-        "background": "#e6e9ef"
+        "background": "#e6e9ef",
+        "panel": "#eff1f5",
+        "raised": "#dce0e8",
+        "accentContrast": "#eff1f5",
+        "channelContrast": {
+          "dev": "#ffffff",
+          "beta": "#ffffff",
+          "nightly": "#ffffff"
+        }
       },
       "dark": [
         {
           "id": "frappe",
-          "background": "#292c3c"
+          "background": "#292c3c",
+          "panel": "#303446",
+          "raised": "#414559",
+          "accentContrast": "#232634",
+          "channelContrast": {
+            "dev": "#1b1205",
+            "beta": "#06080b",
+            "nightly": "#06080b"
+          }
         },
         {
           "id": "macchiato",
-          "background": "#1e2030"
+          "background": "#1e2030",
+          "panel": "#24273a",
+          "raised": "#363a4f",
+          "accentContrast": "#181926",
+          "channelContrast": {
+            "dev": "#1b1205",
+            "beta": "#06080b",
+            "nightly": "#06080b"
+          }
         },
         {
           "id": "mocha",
-          "background": "#181825"
+          "background": "#181825",
+          "panel": "#1e1e2e",
+          "raised": "#313244",
+          "accentContrast": "#11111b",
+          "channelContrast": {
+            "dev": "#1b1205",
+            "beta": "#06080b",
+            "nightly": "#06080b"
+          }
         }
       ],
       "defaultDarkFlavor": "mocha",
@@ -43,16 +75,40 @@
       "stylesheet": "/color-themes/rose-pine.css?v=14c139cf",
       "light": {
         "id": "dawn",
-        "background": "#faf4ed"
+        "background": "#faf4ed",
+        "panel": "#fffaf3",
+        "raised": "#f2e9e1",
+        "accentContrast": "#fffaf3",
+        "channelContrast": {
+          "dev": "#ffffff",
+          "beta": "#ffffff",
+          "nightly": "#ffffff"
+        }
       },
       "dark": [
         {
           "id": "main",
-          "background": "#191724"
+          "background": "#191724",
+          "panel": "#1f1d2e",
+          "raised": "#26233a",
+          "accentContrast": "#191724",
+          "channelContrast": {
+            "dev": "#1b1205",
+            "beta": "#06080b",
+            "nightly": "#06080b"
+          }
         },
         {
           "id": "moon",
-          "background": "#232136"
+          "background": "#232136",
+          "panel": "#2a273f",
+          "raised": "#393552",
+          "accentContrast": "#232136",
+          "channelContrast": {
+            "dev": "#1b1205",
+            "beta": "#06080b",
+            "nightly": "#06080b"
+          }
         }
       ],
       "defaultDarkFlavor": "main",
@@ -70,12 +126,28 @@
       "stylesheet": "/color-themes/gruvbox.css?v=c5736a71",
       "light": {
         "id": "light",
-        "background": "#f2e5bc"
+        "background": "#f2e5bc",
+        "panel": "#fbf1c7",
+        "raised": "#ebdbb2",
+        "accentContrast": "#fbf1c7",
+        "channelContrast": {
+          "dev": "#ffffff",
+          "beta": "#ffffff",
+          "nightly": "#ffffff"
+        }
       },
       "dark": [
         {
           "id": "dark",
-          "background": "#1d2021"
+          "background": "#1d2021",
+          "panel": "#282828",
+          "raised": "#3c3836",
+          "accentContrast": "#1d2021",
+          "channelContrast": {
+            "dev": "#1b1205",
+            "beta": "#06080b",
+            "nightly": "#06080b"
+          }
         }
       ],
       "defaultDarkFlavor": "dark",
@@ -94,12 +166,28 @@
       "stylesheet": "/color-themes/nord.css?v=af91296a",
       "light": {
         "id": "snow-storm",
-        "background": "#e5e9f0"
+        "background": "#e5e9f0",
+        "panel": "#eceff4",
+        "raised": "#d8dee9",
+        "accentContrast": "#eceff4",
+        "channelContrast": {
+          "dev": "#ffffff",
+          "beta": "#ffffff",
+          "nightly": "#ffffff"
+        }
       },
       "dark": [
         {
           "id": "polar-night",
-          "background": "#2e3440"
+          "background": "#2e3440",
+          "panel": "#3b4252",
+          "raised": "#434c5e",
+          "accentContrast": "#2e3440",
+          "channelContrast": {
+            "dev": "#1b1205",
+            "beta": "#06080b",
+            "nightly": "#06080b"
+          }
         }
       ],
       "defaultDarkFlavor": "polar-night",
@@ -120,16 +208,40 @@
       "stylesheet": "/color-themes/tokyo-night.css?v=cceca5b5",
       "light": {
         "id": "day",
-        "background": "#d0d5e3"
+        "background": "#d0d5e3",
+        "panel": "#e1e2e7",
+        "raised": "#c4c8da",
+        "accentContrast": "#e1e2e7",
+        "channelContrast": {
+          "dev": "#ffffff",
+          "beta": "#ffffff",
+          "nightly": "#ffffff"
+        }
       },
       "dark": [
         {
           "id": "night",
-          "background": "#16161e"
+          "background": "#16161e",
+          "panel": "#1a1b26",
+          "raised": "#292e42",
+          "accentContrast": "#16161e",
+          "channelContrast": {
+            "dev": "#1b1205",
+            "beta": "#06080b",
+            "nightly": "#06080b"
+          }
         },
         {
           "id": "storm",
-          "background": "#1f2335"
+          "background": "#1f2335",
+          "panel": "#24283b",
+          "raised": "#292e42",
+          "accentContrast": "#1f2335",
+          "channelContrast": {
+            "dev": "#1b1205",
+            "beta": "#06080b",
+            "nightly": "#06080b"
+          }
         }
       ],
       "defaultDarkFlavor": "night",

@@ -3,13 +3,17 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { colorThemeSurfaceViolations } from '../branding-theme';
 import {
   applyColorTheme,
   COLOR_THEME_STYLESHEET_ID,
   whenColorThemeStylesheetSettled,
 } from '../color-theme-apply';
 import { COLOR_THEME_FAMILIES } from '../color-theme-catalog';
-import { resolveColorThemeSelection } from '../color-theme-selection';
+import {
+  colorThemeBrandSurfaces,
+  resolveColorThemeSelection,
+} from '../color-theme-selection';
 import { COLOR_THEME_OPTIONS } from '../color-themes';
 import { deviceSettingsStore } from '../device-settings-store';
 
@@ -310,6 +314,79 @@ describe('family stylesheets load on demand', () => {
     expect(settled).toBe(true);
     link.dataset.state = 'loaded';
     expect(whenColorThemeStylesheetSettled(document)).toBeNull();
+  });
+});
+
+describe('a white-label brand under every light flavor', () => {
+  // Station's own light brand: accepted on Station's page, rated again here.
+  const shipped = {
+    '--k-brand': '#0e7c64',
+    '--k-brand-contrast': '#ffffff',
+    '--k-action': '#0e7c64',
+    '--k-action-contrast': '#ffffff',
+    '--k-focus': '#0e7c64',
+  };
+  const flavors = COLOR_THEME_FAMILIES.map((f) => [f.id, f] as const);
+  test.each(flavors)(
+    '%s: each slot is rated on its light surfaces',
+    (id, f) => {
+      const root = document.createElement('div');
+      root.dataset.colorTheme = id;
+      root.dataset.colorThemeFlavor = f.defaultDarkFlavor;
+      const surfaces = colorThemeBrandSurfaces(root, 'light')!;
+      expect(surfaces.flavor).toBe(f.light.id);
+      expect(surfaces['--k-bg']).toBe(f.light.roles['--k-bg']);
+      const failing = new Set(
+        colorThemeSurfaceViolations('light', shipped, surfaces).map(
+          (v) => v.property,
+        ),
+      );
+      // Whatever fails must really be under its threshold on that page.
+      const page = f.light.roles['--k-bg'];
+      const ratio = (a: string, b: string) => {
+        const l = (hex: string) =>
+          [1, 3, 5]
+            .map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255)
+            .map((c) =>
+              c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
+            )
+            .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
+        const [x, y] = [l(a), l(b)].sort((p, q) => q - p);
+        return (x! + 0.05) / (y! + 0.05);
+      };
+      expect(failing.has('--k-brand')).toBe(
+        ratio('#0e7c64', page) < 4.5 ||
+          ratio('#0e7c64', f.light.roles['--k-panel']) < 4.5 ||
+          ratio('#0e7c64', f.light.roles['--k-panel-raised']) < 4.5,
+      );
+      // A brand dark enough for every light surface is kept whole.
+      expect(
+        colorThemeSurfaceViolations(
+          'light',
+          { '--k-brand': '#0b3d32', '--k-brand-contrast': '#ffffff' },
+          surfaces,
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  test('a brand that fails on Latte names the slot, surface and ratio', () => {
+    const root = document.createElement('div');
+    root.dataset.colorTheme = 'catppuccin';
+    const [first] = colorThemeSurfaceViolations(
+      'light',
+      shipped,
+      colorThemeBrandSurfaces(root, 'light')!,
+    );
+    expect(first?.message).toBe(
+      "light: --k-brand #0e7c64 on catppuccin/latte --k-bg #e6e9ef = 4.23:1 (needs 4.5:1); the color theme's value is used",
+    );
+  });
+
+  test('Station has no theme surfaces to re-rate against', () => {
+    expect(
+      colorThemeBrandSurfaces(document.createElement('div'), 'light'),
+    ).toBeNull();
   });
 });
 

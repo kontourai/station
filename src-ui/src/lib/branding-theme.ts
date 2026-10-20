@@ -40,6 +40,10 @@ import {
   type SurfaceProperty,
   validateBrandOverride,
 } from '@kontourai/ui/contrast';
+import {
+  type ColorThemeBrandSurfaces,
+  colorThemeBrandSurfaces,
+} from './color-theme-selection';
 
 /** The only properties a branding theme may set. Order is apply order. */
 export const BRANDING_THEME_PROPERTIES = BRAND_SLOT_PROPERTIES;
@@ -292,6 +296,8 @@ function currentThemeMode(root: HTMLElement): BrandingThemeMode {
 interface RootState {
   overrides: Readonly<BrandingThemeOverrides>;
   observer: MutationObserver | null;
+  /** The last color-theme rejection logged, so a re-rate does not repeat it. */
+  reported?: string;
 }
 
 const rootState = new WeakMap<HTMLElement, RootState>();
@@ -318,15 +324,130 @@ function snapshot(
   return Object.freeze(copy);
 }
 
+/**
+ * The slots that move together when a theme surface rejects one of them:
+ * a fill and the text on it are one decision, and focus stands alone.
+ */
+const SLOT_GROUPS: readonly (readonly BrandingThemeProperty[])[] = [
+  ['--k-brand', '--k-brand-contrast'],
+  ['--k-action', '--k-action-contrast'],
+  ['--k-focus'],
+];
+
+/** A brand slot that fails on the active color theme's own surfaces. */
+export interface ColorThemeSurfaceViolation {
+  kind: 'color-theme-surface';
+  mode: BrandingThemeMode;
+  property: BrandingThemeProperty;
+  surface: string;
+  ratio: number;
+  minimum: number;
+  message: string;
+}
+
+/**
+ * Re-rate a validated override against the selected color theme's surfaces
+ * (docs/decisions/user-color-themes.md). The override was accepted against
+ * Station's own surfaces, and a theme's page can be lighter or darker: brand
+ * `#0e7c64` is 4.23:1 on Catppuccin Latte's page. The thresholds are the
+ * ones the override already passed (validateBrandOverride's pairs plus
+ * STATION_SURFACE_TEXT_RULES). A failing group is left to the theme, which
+ * was rated on these surfaces itself; the rest of the override still applies.
+ */
+export function colorThemeSurfaceViolations(
+  mode: BrandingThemeMode,
+  values: BrandingModeOverrides,
+  surfaces: ColorThemeBrandSurfaces,
+): ColorThemeSurfaceViolation[] {
+  const violations: ColorThemeSurfaceViolation[] = [];
+  const rate = (
+    property: BrandingThemeProperty,
+    value: string | undefined,
+    against: Record<string, string | undefined>,
+    minimum: number,
+  ) => {
+    if (!isHexColor(value)) return;
+    for (const [surface, background] of Object.entries(against)) {
+      if (!isHexColor(background)) continue;
+      const ratio = contrastRatio(value, background);
+      if (ratio < minimum)
+        violations.push({
+          kind: 'color-theme-surface',
+          mode,
+          property,
+          surface,
+          ratio,
+          minimum,
+          message: `${mode}: ${property} ${value} on ${surfaces.family}/${surfaces.flavor} ${surface} ${background} = ${ratio.toFixed(2)}:1 (needs ${minimum}:1); the color theme's value is used`,
+        });
+    }
+  };
+  const page = {
+    '--k-bg': surfaces['--k-bg'],
+    '--k-panel': surfaces['--k-panel'],
+  };
+  const all = { ...page, '--k-panel-raised': surfaces['--k-panel-raised'] };
+  rate('--k-brand', values['--k-brand'], all, 4.5);
+  if (
+    values['--k-brand'] !== undefined ||
+    values['--k-brand-contrast'] !== undefined
+  ) {
+    // The text on the brand: the override's, else the theme's own.
+    if (values['--k-brand'] === undefined)
+      violations.push({
+        kind: 'color-theme-surface',
+        mode,
+        property: '--k-brand-contrast',
+        surface: '--k-brand',
+        ratio: 0,
+        minimum: 4.5,
+        message: `${mode}: --k-brand-contrast without --k-brand cannot be rated against ${surfaces.family}/${surfaces.flavor}'s brand; the color theme's value is used`,
+      });
+    else
+      rate(
+        '--k-brand-contrast',
+        values['--k-brand-contrast'] ?? surfaces.brandContrast,
+        { '--k-brand': values['--k-brand'] },
+        4.5,
+      );
+  }
+  rate('--k-action', values['--k-action'], page, 4.5);
+  rate('--k-focus', values['--k-focus'], page, 3);
+  return violations;
+}
+
 function writeMode(
   root: HTMLElement,
   overrides: Readonly<BrandingThemeOverrides>,
 ) {
-  const values = overrides[currentThemeMode(root)] ?? {};
+  const mode = currentThemeMode(root);
+  const values = overrides[mode] ?? {};
+  // Under a named color theme, a slot group that fails on its surfaces is
+  // not written, so the theme's value shows; it is reported like any other
+  // rejection, once per change of what was rejected.
+  const surfaces = colorThemeBrandSurfaces(root, mode);
+  const skipped = new Set<BrandingThemeProperty>();
+  if (surfaces) {
+    const violations = colorThemeSurfaceViolations(mode, values, surfaces);
+    for (const violation of violations)
+      for (const group of SLOT_GROUPS)
+        if (group.includes(violation.property))
+          for (const property of group) skipped.add(property);
+    const report = violations.map((v) => v.message).join('\n');
+    if (report && rootState.get(root)?.reported !== report) {
+      console.warn(
+        `[branding-theme] ${violations.length} slot(s) fail on the ${surfaces.family} color theme; using the theme's colours for them.`,
+      );
+      for (const v of violations.slice(0, MAX_LOGGED_VIOLATIONS))
+        console.warn(`[branding-theme] rejected (${v.kind}) ${v.message}`);
+    }
+    const state = rootState.get(root);
+    if (state) state.reported = report;
+  }
   for (const property of BRANDING_THEME_PROPERTIES) {
     // Re-checked at the write itself: nothing but an allowlisted property with
     // a hex value can reach setProperty, whatever produced `overrides`.
-    const value = values[property];
+    const value = skipped.has(property) ? undefined : values[property];
     if (isHexColor(value))
       root.style.setProperty(property, value.toLowerCase());
     else root.style.removeProperty(property);
@@ -386,9 +507,18 @@ export function applyBrandingTheme(
       const live = rootState.get(root);
       if (live) writeMode(root, live.overrides);
     });
+    // Re-rated whenever the surfaces it is drawn on can change: the mode,
+    // the color theme, and the channel whose brand text the theme keeps.
     next.observer.observe(root, {
       attributes: true,
-      attributeFilter: ['data-theme'],
+      attributeFilter: [
+        'data-theme',
+        'data-color-theme',
+        'data-color-theme-flavor',
+        'data-color-theme-accent',
+        'data-app-channel',
+        'class',
+      ],
     });
   }
   rootState.set(root, next);
