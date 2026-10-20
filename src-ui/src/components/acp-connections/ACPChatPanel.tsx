@@ -30,7 +30,10 @@ import { useChatInput } from '../../hooks/useChatInput';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
-import { sessionApprovalOverride } from '../../utils/approvalMode';
+import {
+  acpApprovalFor,
+  sessionApprovalOverride,
+} from '../../utils/approvalMode';
 import { sessionAdapterSupportsSteering } from '../../utils/execution';
 import {
   accountableHumanFromUser,
@@ -209,14 +212,21 @@ export function ACPChatPanel({
   // #2144 slice 6: the Station-scope layer below that Agent default.
   const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
   const { data: acpConnections = [] } = useACPConnections();
-  const advertisedAcpSession = useMemo(
+  const activeAcpConnection = useMemo(
     () =>
-      advertisedAcpSessionModesFromConnection(
-        acpConnections.find(
-          (connection) => connection.id === activeSession?.agentConnectionId,
-        ),
+      acpConnections.find(
+        (connection) => connection.id === activeSession?.agentConnectionId,
       ),
     [acpConnections, activeSession?.agentConnectionId],
+  );
+  const advertisedAcpSession = useMemo(
+    () => advertisedAcpSessionModesFromConnection(activeAcpConnection),
+    [activeAcpConnection],
+  );
+  // #3290: who decides which of this ACP engine's actions ask.
+  const acpApproval = useMemo(
+    () => acpApprovalFor(activeAcpConnection),
+    [activeAcpConnection],
   );
 
   // A panel's Project is a default for its fresh tab only. A restored or
@@ -369,6 +379,7 @@ export function ACPChatPanel({
         lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
         approvalModeOverride={sessionApprovalOverride(activeSession)}
         acpSessionModes={advertisedAcpSession.modes}
+        acpApproval={acpApproval}
         acpCurrentModeId={
           activeSession.currentModeId ?? advertisedAcpSession.currentModeId
         }

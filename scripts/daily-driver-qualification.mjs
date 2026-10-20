@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// UNWIRED(#419): no lane runs the daily-driver qualification; #419's automated turn-2 qualification is the intended caller. See docs/strategy/daily-driver-qualification.md.
 
 import Ajv2020 from 'ajv/dist/2020.js';
 import schema from '../schemas/daily-driver-qualification.schema.json' with {

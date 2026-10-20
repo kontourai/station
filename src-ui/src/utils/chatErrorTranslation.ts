@@ -5,6 +5,7 @@ import {
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
+  ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
@@ -382,6 +383,25 @@ export function translateChatError(
       title: "This engine can't take these attachments",
       body: `${text || 'This engine cannot take the attached files.'} Nothing was sent.`,
       hint: 'Remove the attachments to send your text, or switch to an engine or model that accepts them.',
+      retryable: false,
+    };
+  }
+
+  // #3290: Station could not apply its approval mode to OpenCode (the
+  // user's or an organisation's configuration overrides it, or the chat runs
+  // an agent Station does not govern). The server's sentence names the
+  // setting; sending again is refused again until it changes, so this
+  // carries no "temporary" hint and callers withhold Retry.
+  if (code === ACP_APPROVAL_GOVERNANCE_REFUSED_CODE) {
+    return {
+      title: "Station's approval mode wasn't applied",
+      body: /not (sent|started)/.test(text)
+        ? text
+        : `${text || "Station couldn't apply its approval mode to this engine."} Nothing was sent.`,
+      // What Default would do depends on the chat (a configured default,
+      // or Station's earlier takeover, makes Default apply a mode too), so
+      // the server's sentence says it; this hint claims nothing about it.
+      hint: 'Change the OpenCode setting or mode named above.',
       retryable: false,
     };
   }

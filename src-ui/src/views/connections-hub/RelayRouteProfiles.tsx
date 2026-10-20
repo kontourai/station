@@ -23,6 +23,7 @@ import {
   useHostRequestAuthorityScope,
   useNativeRelayAccountSession,
 } from '../../contexts/ApiBaseContext';
+import { copyToClipboard } from '../../lib/clipboard';
 import {
   type NativeRelayGrantRedemptionFailureCode,
   type NativeRelayGrantState,
@@ -887,7 +888,8 @@ export function RelayRouteProfiles({
           ),
         },
       );
-      await navigator.clipboard.writeText(link);
+      if (!(await copyToClipboard(link)))
+        setError('Station could not copy the setup link.');
     } catch {
       setError('Station could not copy the setup link.');
     }

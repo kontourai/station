@@ -1,0 +1,13 @@
+{
+  "revision": "baf2a04614eb615d6625097eb68ce7bc899796e9",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Delta is three tasks usage lines in help.ts: --format=summary|json (the parser only reads --flag=value), get-output with a required <outputId>, and keep-output's [--media=<mediaType>] (#2722). This page's tasks section on main does not yet list basis/get-output/keep-output; #3891 adds them with the same forms (--format=, required output id, --media). Nothing here contradicts the corrected help. docs:cli-parity:check passes.","inputs":["docs/reference/cli.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Delta is three tasks usage lines in packages/cli/src/help.ts (#2722). This ADR cites help.ts for skill/playbook commands only; no tasks claim. No prose change.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Delta is three tasks usage lines in packages/cli/src/help.ts (#2722). This guide cites help.ts for skill experience commands only. No prose change.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/help.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Delta is three tasks usage lines in help.ts (#2722). The README mentions tasks only as a managed resource and points at --help; still accurate. No prose change.","inputs":["packages/cli/README.md","packages/cli/src/help.ts"]}
+  ]
+}
