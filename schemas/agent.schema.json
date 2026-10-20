@@ -254,19 +254,20 @@
     },
     "streaming": {
       "type": ["object", "null"],
-      "description": "Streaming pipeline configuration",
+      "deprecated": true,
+      "description": "Deprecated and ignored: Station reads none of these fields. Accepted so existing agent files still load. SUNSET(#3879).",
       "properties": {
         "useNewPipeline": {
           "type": "boolean",
-          "description": "Enable new streaming architecture (default: false)"
+          "deprecated": true
         },
         "enableThinking": {
           "type": "boolean",
-          "description": "Send thinking blocks to client (default: true)"
+          "deprecated": true
         },
         "debugStreaming": {
           "type": "boolean",
-          "description": "Enable debug logging (default: false)"
+          "deprecated": true
         }
       },
       "additionalProperties": false
