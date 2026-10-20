@@ -20,6 +20,11 @@ import {
 } from '../../../core/remotePluginBundleConsent';
 import { StationExtensionsAccess } from '../StationExtensionsAccess';
 
+const platform = vi.hoisted(() => ({ isTauri: true }));
+vi.mock('../../../platform/PlatformProfileContext', () => ({
+  usePlatformProfile: () => platform,
+}));
+
 const loadStatus = {
   state: 'degraded',
   failure: 'remote-isolation',
@@ -67,6 +72,7 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.restoreAllMocks();
+  platform.isTauri = true;
 });
 
 describe('Station extension access at the user decision', () => {
@@ -129,6 +135,17 @@ describe('Station extension access at the user decision', () => {
       screen.getByRole('dialog', { name: 'Allow extensions from Studio?' }),
     ).toBeTruthy();
     expect(remotePluginBundlesAllowed(a.id, a.url)).toBe(false);
+  });
+
+  test('a browser ignores legacy loading consent instead of promising a false revoke', () => {
+    platform.isTauri = false;
+    const { a } = mount();
+    act(() => {
+      setRemotePluginBundlesAllowed(a.id, a.url, true);
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Turn off extensions' }),
+    ).toBeNull();
   });
 
   test('turning off verifies removal before reloading', () => {

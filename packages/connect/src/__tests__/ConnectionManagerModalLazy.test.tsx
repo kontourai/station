@@ -147,3 +147,45 @@ it('the primary Add action delegates to the host setup without opening a competi
   expect(screen.queryByLabelText('Station address')).toBeNull();
   expect(screen.getByText('Remote Station')).toBeTruthy();
 });
+
+it('forwards host details through the lazy modal to the expanded current Station row', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ requests: [] })),
+  );
+  await import('../react/ConnectionManagerModalContent');
+  const store = new ConnectionStore({ storage: memoryAdapter() });
+  const current = store.add('Current Station', 'https://current.example.test');
+  store.add('Other Station', 'https://other.example.test');
+  store.setActive(current.id);
+  render(
+    <ConnectionsProvider store={store}>
+      <ConnectionManagerModal
+        isOpen
+        onClose={vi.fn()}
+        checkHealth={vi.fn(async () => false)}
+        renderConnectionDetails={(connection) =>
+          connection.id === current.id ? (
+            <button type="button">Manage current extensions</button>
+          ) : null
+        }
+      />
+    </ConnectionsProvider>,
+  );
+  await screen.findByText('Current Station');
+  expect(
+    screen.queryByRole('button', { name: 'Manage current extensions' }),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'View details for Other Station' }),
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Manage current extensions' }),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'View details for Current Station' }),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Manage current extensions' }),
+  ).toBeTruthy();
+});

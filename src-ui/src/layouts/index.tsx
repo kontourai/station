@@ -14,7 +14,6 @@ import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import { MCPToolUIFrame } from '../components/mcp-ui/MCPToolUIFrame';
 import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import { Empty, SkeletonBlock } from '../components/state';
-import { useNavigationOptional } from '../contexts/NavigationContext';
 import { pluginRegistry } from '../core/PluginRegistry';
 import type { AgentSummary, LayoutDefinition, LayoutTab } from '../types';
 import { log } from '../utils/logger';
@@ -132,7 +131,6 @@ const UnavailableLayoutTab: AgentLayoutComponent = () => (
 );
 
 const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
-  const navigation = useNavigationOptional();
   const loadStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
@@ -163,9 +161,7 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
           variant="prominent"
           label="Extensions are off on this device"
           description="This view needs extension code from the selected Station."
-          action={
-            navigation ? <StationExtensionsAccess onlyWhenOff /> : undefined
-          }
+          action={<StationExtensionsAccess onlyWhenOff />}
         />
       </div>
     );
@@ -321,32 +317,6 @@ builtinRegistry['flow-run-console'] = ({ boundProjectSlug }) => (
   <FlowRunConsole projectSlug={boundProjectSlug} />
 );
 builtinRegistry['kit-standard-view'] = KitStandardViewLayout;
-
-/**
- * Reports only whether this UI build has a renderer dispatch branch for a
- * declared component. MCP host support is distinct from a tool's permission
- * or health, which remain resolver-owned facts.
- */
-export function clientLayoutRendererPresence(
-  component: string | LayoutComponentRef,
-): 'present' | 'missing' {
-  let normalized: LayoutComponentRef;
-  try {
-    normalized = normalizeLayoutComponentRef(component);
-  } catch {
-    return 'missing';
-  }
-  switch (normalized.kind) {
-    case 'builtin-component':
-      return builtinRegistry[normalized.name] ? 'present' : 'missing';
-    case 'plugin-component':
-      return pluginRegistry.getLayout(normalized.name) ? 'present' : 'missing';
-    case 'mcp-tool-ui':
-      // MCPToolUILayout is an explicit host branch; this says nothing about
-      // the MCP tool's own permission or availability.
-      return 'present';
-  }
-}
 
 function resolvePluginLayoutComponent(
   componentId: string,

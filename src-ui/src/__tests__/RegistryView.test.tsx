@@ -351,6 +351,7 @@ vi.mock('../core/PermissionManager', () => ({
 import { RegistryView } from '../views/RegistryView';
 
 afterEach(() => {
+  localStorage.clear();
   for (const installedItems of Object.values(installedByTab)) {
     installedItems.clear();
   }
@@ -523,7 +524,9 @@ describe('RegistryView', () => {
     });
 
     expect(
-      screen.getByText(/Extensions from this Station are off on this device/),
+      screen.getByText(
+        /Extensions from http:\/\/127.0.0.1:3141 are off on this device/,
+      ),
     ).toBeTruthy();
   });
 
@@ -601,6 +604,7 @@ describe('RegistryView', () => {
   });
 
   test('granted consent with a stale refusal keeps the override row below the catalog', () => {
+    platformProfile.isTauri = true;
     // Right after consent is granted, the 'remote-isolation' status lingers
     // until the reload completes; the enabled row must not jump above the
     // catalog during that window (archive#2539).
@@ -631,6 +635,7 @@ describe('RegistryView', () => {
   });
 
   test('keeps remote extensions enabled and shows an error when revocation cannot be verified', () => {
+    platformProfile.isTauri = true;
     const apiBase = 'http://127.0.0.1:3141';
     remotePluginBundleConsent.setRemotePluginBundlesAllowed(
       'local-station',
@@ -662,7 +667,7 @@ describe('RegistryView', () => {
       ).toBeTruthy();
       expect(
         screen.getByRole('dialog', {
-          name: 'Turn off extensions from this Station?',
+          name: 'Turn off extensions from http://127.0.0.1:3141?',
         }),
       ).toBeTruthy();
     } finally {
@@ -672,6 +677,7 @@ describe('RegistryView', () => {
   });
 
   test('reloads only after remote extension revocation is verified', () => {
+    platformProfile.isTauri = true;
     const apiBase = 'http://127.0.0.1:3141';
     remotePluginBundleConsent.setRemotePluginBundlesAllowed(
       'local-station',
@@ -952,13 +958,44 @@ describe('RegistryView', () => {
     ).toBe(true);
   });
 
+  test('a built-in-only layout preview does not ask for app-wide extension access', () => {
+    platformProfile.isTauri = true;
+    pluginRegistryStatus = {
+      state: 'degraded',
+      failedPluginNames: [],
+      failure: 'remote-isolation',
+    };
+    previewResults.set('demo-layout', {
+      ...validDemoPreview(),
+      hasBundle: false,
+    });
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    const preview = screen.getByRole('dialog', { name: 'Install Preview' });
+    expect(
+      within(preview).queryByRole('button', { name: 'Review and enable' }),
+    ).toBeNull();
+    fireEvent.click(
+      within(preview).getByRole('button', { name: 'Confirm Install' }),
+    );
+    expect(mutationCalls).toHaveLength(1);
+  });
+
   test('reviews extension access inside install preview without installing or leaving the preview', () => {
     pluginRegistryStatus = {
       state: 'degraded',
       failedPluginNames: [],
       failure: 'remote-isolation',
     };
-    previewResults.set('demo-layout', validDemoPreview());
+    platformProfile.isTauri = true;
+    previewResults.set('demo-layout', {
+      ...validDemoPreview(),
+      hasBundle: true,
+    });
     render(<RegistryView initialTab="plugins" />);
     fireEvent.click(
       within(screen.getByTestId('registry-detail')).getByRole('button', {
@@ -967,7 +1004,7 @@ describe('RegistryView', () => {
     );
     expect(
       screen.getByText(
-        /You can install this plugin, but its panes and layouts will stay off/,
+        /You can install this plugin now. Its custom extension code stays off/,
       ),
     ).toBeTruthy();
     const preview = screen.getByRole('dialog', { name: 'Install Preview' });

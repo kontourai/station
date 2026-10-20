@@ -1,8 +1,9 @@
+import { ConnectionsProvider } from '@kontourai/station-connect';
 /**
  * @vitest-environment jsdom
  */
 
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { JSX } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { LayoutDefinition } from '../types';
@@ -115,11 +116,13 @@ function renderSingleTab(
   };
 
   render(
-    <LayoutRenderer
-      layout={layout}
-      activeTab={layout.tabs[0]}
-      activeTabId="main"
-    />,
+    <ConnectionsProvider>
+      <LayoutRenderer
+        layout={layout}
+        activeTab={layout.tabs[0]}
+        activeTabId="main"
+      />
+    </ConnectionsProvider>,
   );
 }
 
@@ -184,7 +187,7 @@ describe('LayoutRenderer component dispatch', () => {
   test('names the remote-isolation refusal for a plugin view instead of claiming it is uninstalled', () => {
     // The plugin IS installed server-side; its bundle was refused by policy.
     // The slot must say so (archive#2539 phone report) — and render without a
-    // NavigationProvider (the action is simply absent then).
+    // the normal selected-Station provider.
     registryLoadStatus = {
       state: 'degraded',
       failedPluginNames: [],
@@ -201,9 +204,16 @@ describe('LayoutRenderer component dispatch', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/not installed or registered/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
     expect(
-      screen.queryByRole('button', { name: 'Review in Registry' }),
-    ).toBeNull();
+      screen.getByRole('dialog', { name: /Allow extensions from/ }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(
+      screen.getByText(
+        'This view needs extension code from the selected Station.',
+      ),
+    ).toBeTruthy();
   });
 
   test('keeps the uninstalled wording when the registry loaded without refusal', () => {

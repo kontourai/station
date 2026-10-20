@@ -1,0 +1,17 @@
+.station-extensions-access {
+  display: grid;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  overflow-wrap: anywhere;
+}
+
+.station-extensions-access p {
+  margin: 0;
+}
+
+.station-extensions-access > .button {
+  justify-self: start;
+  min-height: 44px;
+}

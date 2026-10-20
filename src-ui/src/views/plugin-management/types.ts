@@ -4,6 +4,7 @@ import type {
   PluginComponent,
   PluginInstallationReadiness,
   PluginInstallationRevision,
+  PluginManifest,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
 
@@ -84,7 +85,9 @@ export interface PreviewData {
   existingDataScope?: boolean;
   valid: boolean;
   error?: string;
-  manifest?: ReadyPlugin;
+  manifest?: PluginManifest;
+  /** Whether the staged source already contains a client bundle. */
+  hasBundle?: boolean;
   components: PreviewComponent[];
   conflicts: ConflictInfo[];
   /**

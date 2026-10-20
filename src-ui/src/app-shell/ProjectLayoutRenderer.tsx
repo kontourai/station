@@ -67,8 +67,8 @@ import {
   useCodingStackSelection,
 } from '../components/coding-layout/codingStackPage';
 import { LazyBoundary } from '../components/LazyBoundary';
+import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import { Empty, ErrorState, SkeletonList } from '../components/state';
-import { useNavigationActions } from '../contexts/NavigationContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
 import {
@@ -455,7 +455,6 @@ function BuiltinCodingLayoutHost({
   if (!workspacePaneRuntime.current)
     workspacePaneRuntime.current = new WorkspacePaneHostRuntime();
   const catalog = useResolvedWorkspacePaneCatalog(projectSlug);
-  const { navigate } = useNavigationActions();
   const projectId = catalog.projectId;
   const compact = useIsMobile();
   const popOut = useBuiltinCodingPanePopOut({
@@ -999,10 +998,8 @@ function BuiltinCodingLayoutHost({
           'Station could not find an available Coding pane for this Project.'
         }
         action={
-          unavailablePresentation?.reviewInRegistry ? (
-            <button type="button" onClick={() => navigate('/registry')}>
-              Review in Registry
-            </button>
+          unavailablePresentation?.reviewExtensions ? (
+            <StationExtensionsAccess onlyWhenOff />
           ) : (
             <button type="button" onClick={() => void catalog.refetch()}>
               Retry
@@ -1366,6 +1363,11 @@ function BuiltinCodingLayoutHost({
         <Empty
           label={`${paneEntry.descriptor.name} unavailable`}
           description={`${presentation.reasonLabel}${presentation.actionLabel ? ` Next: ${presentation.actionLabel}.` : ''}`}
+          action={
+            presentation.reviewExtensions ? (
+              <StationExtensionsAccess onlyWhenOff />
+            ) : undefined
+          }
         />
       );
     }

@@ -2,6 +2,7 @@ import type { WorkspaceHomeRoleGrant } from '@kontourai/station-contracts/worksp
 import { workspaceHomeRoleGrantCoversProjection } from '@kontourai/station-contracts/workspace-home-role';
 import { Component, type ReactNode, useSyncExternalStore } from 'react';
 import { Button } from '../../components/Button';
+import { StationExtensionsAccess } from '../../components/registry/StationExtensionsAccess';
 import { pluginRegistry } from '../../core/PluginRegistry';
 import { WorkspacePaneStandardDataView } from '../../workspace-panes/WorkspacePaneStandardDataView';
 import {
@@ -111,8 +112,10 @@ function HomeRoleFallback({
   onRetry,
   onRevoke,
   builtinHome,
+  extensionBlocked = false,
 }: {
   grant: WorkspaceHomeRoleGrant;
+  extensionBlocked?: boolean;
   reason: string;
   onRetry?: () => void;
   onRevoke: () => void;
@@ -126,6 +129,7 @@ function HomeRoleFallback({
           {grant.descriptor.name}” from plugin{' '}
           {grant.descriptor.provenance.pluginId} could not render: {reason}
         </p>
+        {extensionBlocked && <StationExtensionsAccess onlyWhenOff />}
         <div className="home-role-fallback__actions">
           {onRetry && <Button onClick={onRetry}>Try again</Button>}
           <Button onClick={onRevoke}>Keep the built-in Home</Button>
@@ -192,6 +196,7 @@ function GrantedHomeSelection({
       <HomeRoleFallback
         grant={grant}
         reason={unavailableReason(grant, loadStatus)}
+        extensionBlocked={loadStatus.failure === 'remote-isolation'}
         onRevoke={onRevoke}
         builtinHome={builtinHome}
       />
@@ -233,6 +238,7 @@ function GrantedHomeSelection({
         <HomeRoleFallback
           grant={grant}
           reason={unavailableReason(grant, loadStatus)}
+          extensionBlocked={loadStatus.failure === 'remote-isolation'}
           onRevoke={onRevoke}
           builtinHome={builtinHome}
         />
@@ -344,7 +350,7 @@ function unavailableReason(
 ): string {
   const pluginId = grant.descriptor.provenance.pluginId;
   if (loadStatus.failure === 'remote-isolation') {
-    return 'Extensions from this remote Station are disabled, so its code is not loaded.';
+    return 'Extensions from this Station are off on this device.';
   }
   if (loadStatus.failure === 'registry-unavailable') {
     return 'Station could not read the installed plugin inventory.';

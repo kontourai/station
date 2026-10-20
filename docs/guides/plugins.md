@@ -1789,9 +1789,11 @@ activation, each component, and real action execution must be verified together.
 ## Extension loading and recovery in the client
 
 Native clients leave a saved Station's extensions off until this device explicitly
-allows them. A blocked pane or layout offers **Review and enable** in place;
-plugin install previews explain that installation can proceed while its panes
-and layouts stay off on this device. The review names the Station and explains
+allows them. A blocked pane or layout offers **Review and enable** in place.
+Plugin previews with a client bundle or declared entrypoint explain that installation
+can proceed while custom code stays off; built-in views still work. The staged
+preview reports bundle presence separately from its manifest. The review names
+the Station and its origin, and explains
 that extension code can access other Stations' data and available credentials,
 including the native bridge and paired credentials in a native app.
 

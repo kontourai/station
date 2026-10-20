@@ -824,7 +824,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
   // (`WorkspacePaneAvailabilityList.tsx` `actionPresentation`), so the remedy
   // the copy promises has no affordance. The gate here is derived, not stated:
   // a plugin-hosted descriptor plus a remote-isolation registry load failure is
-  // what makes `reviewInRegistry` true.
+  // what makes `reviewExtensions` true.
   test('the picker reviews extension access without leaving the Project', async () => {
     pluginRegistryState.loadStatus = { failure: 'remote-isolation' };
     const contributed = paneAdaptationFromLayoutTab(

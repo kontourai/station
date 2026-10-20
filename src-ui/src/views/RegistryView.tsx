@@ -35,6 +35,7 @@ import { useShowSurface } from '../contexts/useShowSurface';
 import { usePermissions } from '../core/PermissionManager';
 import { pluginRegistry } from '../core/PluginRegistry';
 import { AgentToolCatalog } from './agent-editor/AgentToolCatalog';
+import { InstallPreviewExtensionAccess } from './plugin-management/InstallPreviewExtensionAccess';
 import { InstallPreviewModal } from './plugin-management/InstallPreviewModal';
 import {
   installedDependencyPermissions,
@@ -638,13 +639,9 @@ export function RegistryView({
         <InstallPreviewModal
           previewData={pluginInstallPreview.data}
           extensionAccess={
-            pluginInstallPreview.data.manifest?.hasBundle ||
-            pluginInstallPreview.data.manifest?.workspacePanes?.length ||
-            pluginInstallPreview.data.components.some(
-              (component) => component.type === 'layout',
-            ) ? (
-              <StationExtensionsAccess onlyWhenOff installation />
-            ) : undefined
+            <InstallPreviewExtensionAccess
+              preview={pluginInstallPreview.data}
+            />
           }
           previewSkips={previewSkips}
           installPending={agentMutation.isPending || pluginMutation.isPending}

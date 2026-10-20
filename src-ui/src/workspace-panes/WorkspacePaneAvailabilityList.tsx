@@ -1,6 +1,7 @@
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
 import { type CSSProperties, useId, useState } from 'react';
 import { PlugGlyph } from '../components/icons/Glyph';
+import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import {
   presentWorkspacePaneAvailability,
   type WorkspacePaneAvailabilityCatalogEntry,
@@ -85,15 +86,7 @@ function WorkspacePaneAvailabilityCard({
     entry.rendererGate,
     entry.rendererResolution,
   );
-  // A direct route has no Registry navigation callback. Keep the gate's
-  // truthful explanation there, but retain the ordinary bounded action so a
-  // card never advertises remediation with no reachable affordance.
-  const actionPresentation =
-    presentation.reviewInRegistry && !onReviewExtensions
-      ? presentWorkspacePaneAvailability(entry.availability)
-      : presentation;
-  const reviewActionAvailable =
-    presentation.reviewInRegistry && onReviewExtensions !== undefined;
+  const reviewActionAvailable = presentation.reviewExtensions;
   const isAvailable =
     presentation.state === 'available' && entry.instance !== undefined && !open;
   const stateLabel = open ? 'Open in this workspace' : presentation.stateLabel;
@@ -108,15 +101,15 @@ function WorkspacePaneAvailabilityCard({
   const hasDescription = Boolean(entry.descriptor.description);
 
   const activateAction = () => {
-    if (!actionPresentation.action || !onAction) return;
-    setActionNotice(onAction(entry, actionPresentation.action));
+    if (!presentation.action || !onAction) return;
+    setActionNotice(onAction(entry, presentation.action));
   };
 
   const executableAction =
     !reviewActionAvailable &&
-    actionPresentation.action !== undefined &&
-    actionPresentation.actionLabel !== undefined &&
-    canExecuteAction?.(entry, actionPresentation.action) === true;
+    presentation.action !== undefined &&
+    presentation.actionLabel !== undefined &&
+    canExecuteAction?.(entry, presentation.action) === true;
 
   return (
     <li
@@ -239,16 +232,20 @@ function WorkspacePaneAvailabilityCard({
                 <span id={openLabelId}>Open</span>
               </button>
             )}
-            {!isAvailable && reviewActionAvailable && (
-              <button
-                type="button"
-                className="workspace-pane-availability-list__remedy"
-                onClick={() => onReviewExtensions?.()}
-                disabled={pending}
-              >
-                Review and enable
-              </button>
-            )}
+            {!isAvailable &&
+              reviewActionAvailable &&
+              (onReviewExtensions ? (
+                <button
+                  type="button"
+                  className="workspace-pane-availability-list__remedy"
+                  onClick={() => onReviewExtensions?.()}
+                  disabled={pending}
+                >
+                  Review and enable
+                </button>
+              ) : (
+                <StationExtensionsAccess onlyWhenOff />
+              ))}
             {!isAvailable && executableAction && (
               <button
                 type="button"
@@ -256,7 +253,7 @@ function WorkspacePaneAvailabilityCard({
                 onClick={activateAction}
                 disabled={pending}
               >
-                {actionPresentation.actionLabel}
+                {presentation.actionLabel}
               </button>
             )}
           </div>
@@ -269,12 +266,11 @@ function WorkspacePaneAvailabilityCard({
           >
             <p>{reasonLabel}</p>
             {!reviewActionAvailable &&
-              actionPresentation.action &&
-              actionPresentation.actionLabel &&
+              presentation.action &&
+              presentation.actionLabel &&
               !executableAction && (
                 <p>
-                  {actionPresentation.actionLabel} is not available from this
-                  screen.
+                  {presentation.actionLabel} is not available from this screen.
                 </p>
               )}
             {actionNotice && <p role="status">{actionNotice}</p>}
