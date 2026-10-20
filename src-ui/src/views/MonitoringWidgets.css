@@ -1632,8 +1632,8 @@
    all (station#3157), so it rendered as raw <section>/<h3>/<ol>/<li> —
    default heading sizes, list bullets, no surface — inside this dashboard,
    where MonitoringView mounts it unconditionally.
-   Its rules live here, in the view's own stylesheet, and reuse the
-   .metrics-panel / .metrics-header idioms above rather than restating them. */
+   Its rules live here, in the view's own stylesheet, and are standalone:
+   they depend on no other panel or header rule. */
 .fleet-routing {
   padding: 1rem;
   background: var(--bg-secondary);

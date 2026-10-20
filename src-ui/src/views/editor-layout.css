@@ -75,10 +75,10 @@
 }
 
 /*
- * An action row. Distinct from `.editor__row` above, which adds a trailing
- * margin that would double the parent stack's gap -- and which does not wrap.
- * Wrapping is load-bearing here: these rows hold the page's buttons, and at a
- * phone width a non-wrapping row pushes the last control off-screen.
+ * An action row. It adds no trailing margin, which would double the parent
+ * stack's gap, and it wraps. Wrapping is load-bearing here: these rows hold
+ * the page's buttons, and at a phone width a non-wrapping row pushes the last
+ * control off-screen.
  */
 .editor-row {
   display: flex;
