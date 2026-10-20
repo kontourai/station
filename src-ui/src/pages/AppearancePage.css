@@ -96,6 +96,11 @@
   inset: -6px 0;
 }
 
+/* Measured from inside the 1px border, so one more pixel each way. */
+.appearance-choice::before {
+  inset: -7px -1px;
+}
+
 .appearance-mode__option:hover {
   color: var(--k-text);
 }
