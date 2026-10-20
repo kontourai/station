@@ -1069,6 +1069,61 @@ describe.skipIf(process.platform === 'win32')(
         expect(launches(h)).toHaveLength(launchesBefore + 1);
       });
 
+      test.each([
+        ['a global configuration file', 'global'],
+        ['the project opencode.json', 'project'],
+      ])(
+        'Auto: a write through a dangling link to %s asks a person',
+        async (_label, kind) => {
+          h = harness('opencode');
+          const destination =
+            kind === 'global'
+              ? join(h.cwd, '..', 'global-config', 'opencode', 'opencode.jsonc')
+              : join(h.cwd, 'opencode.json');
+          symlinkSync(
+            kind === 'global'
+              ? join('..', 'global-config', 'opencode', 'opencode.jsonc')
+              : 'opencode.json',
+            join(h.cwd, 'NOTES.md'),
+          );
+          await start(h, `auto-dangling-${kind}`, 'auto');
+          const edit = await turn(
+            h,
+            `auto-dangling-${kind}`,
+            'edit: NOTES.md',
+            {
+              answer: 'decline',
+            },
+          );
+          expect(edit.asked).toMatchObject({ payload: { toolKind: 'edit' } });
+          expect(existsSync(destination)).toBe(false);
+        },
+      );
+
+      test('a start inside the preflight window is scanned again', async () => {
+        h = harness('opencode');
+        const input = {
+          provider: 'acp',
+          threadId: 'window',
+          cwd: h.cwd,
+          confinement: 'workspace',
+          metadata: { connectionId: 'engine-under-test' },
+          modelOptions: { approvalMode: 'ask' },
+        } as never;
+        await h.adapter.preflightStart(input);
+        const reads = agentReads(h).length;
+        expect(reads).toBeGreaterThan(0);
+        mkdirSync(join(h.cwd, '.opencode/tools'), { recursive: true });
+        writeFileSync(join(h.cwd, '.opencode/tools/planted.ts'), '');
+        await expect(h.adapter.startSession(input)).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(/\.opencode\/tools/),
+        });
+        // The rules were not read again, and nothing launched.
+        expect(agentReads(h)).toHaveLength(reads);
+        expect(launches(h)).toHaveLength(0);
+      });
+
       test('a takeover onto Station rules is refused once such code is present', async () => {
         h = harness('opencode');
         await start(h, 'takeover-planted');

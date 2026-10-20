@@ -121,6 +121,109 @@ describe('#3924 openCodeEditNeedsPerson', () => {
   });
 });
 
+describe('#3924 openCodeEditNeedsPerson: symbolic links and global configuration', () => {
+  const env = {} as NodeJS.ProcessEnv;
+
+  test.each([
+    ['an absolute dangling link to the global configuration', 'abs-global'],
+    ['a relative dangling link to the global configuration', 'rel-global'],
+    ['a dangling link to the project opencode.json', 'project'],
+    ['a dangling link to a .opencode configuration', 'dotdir'],
+    ['a link to an ordinary project file', 'ordinary'],
+  ])('a write through %s asks', (_label, kind) => {
+    const { root, repo, cwd } = project();
+    const home = join(root, 'home');
+    const globalConfig = join(home, '.config', 'opencode', 'opencode.jsonc');
+    const target = {
+      'abs-global': globalConfig,
+      'rel-global': join('..', 'home', '.config', 'opencode', 'opencode.jsonc'),
+      project: 'opencode.json',
+      dotdir: join('.opencode', 'opencode.jsonc'),
+      ordinary: 'README.md',
+    }[kind] as string;
+    if (kind === 'ordinary') put(join(repo, 'README.md'), 'x');
+    symlinkSync(target, join(repo, 'NOTES.md'));
+    expect(
+      openCodeEditNeedsPerson(
+        { filepath: join(repo, 'NOTES.md') },
+        cwd,
+        env,
+        home,
+      ),
+    ).toBe(true);
+  });
+
+  test('a dangling link directory on the way asks', () => {
+    const { root, repo, cwd } = project();
+    symlinkSync(join(root, 'home', '.config', 'opencode'), join(repo, 'docs'));
+    expect(
+      openCodeEditNeedsPerson(
+        { filepath: join(repo, 'docs', 'plugin', 'p.ts') },
+        cwd,
+        env,
+        root,
+      ),
+    ).toBe(true);
+  });
+
+  test('a link above the project is resolved, so ordinary edits stay ordinary', () => {
+    const { root, repo } = project();
+    const linked = join(root, 'linked-repo');
+    symlinkSync(repo, linked);
+    const cwd = join(linked, 'packages', 'app');
+    expect(
+      openCodeEditNeedsPerson(
+        { filepath: join(linked, 'src', 'a.ts') },
+        cwd,
+        env,
+        root,
+      ),
+    ).toBe(false);
+  });
+
+  test.each([
+    [
+      'the default global directory',
+      {},
+      ['.config', 'opencode', 'plugin', 'p.ts'],
+    ],
+    [
+      'XDG_CONFIG_HOME',
+      { XDG_CONFIG_HOME: 'xdg' },
+      ['xdg', 'opencode', 'plugin', 'p.ts'],
+    ],
+    ['OPENCODE_CONFIG_DIR', { OPENCODE_CONFIG_DIR: 'cfg' }, ['cfg', 'p.ts']],
+    ['OPENCODE_CONFIG', { OPENCODE_CONFIG: 'my.json' }, ['my.json']],
+  ])(
+    'global configuration inside the project (%s) asks',
+    (_label, vars, parts) => {
+      const root = realpathSync(makeTempDir('opencode-project-config-home-'));
+      const home = join(root, 'home');
+      mkdirSync(home, { recursive: true });
+      const resolved = Object.fromEntries(
+        Object.entries(vars).map(([key, value]) => [key, join(home, value)]),
+      );
+      expect(
+        openCodeEditNeedsPerson(
+          { filepath: join(home, ...parts) },
+          home,
+          resolved as NodeJS.ProcessEnv,
+          home,
+        ),
+      ).toBe(true);
+      // An ordinary file in that project does not.
+      expect(
+        openCodeEditNeedsPerson(
+          { filepath: join(home, 'notes.txt') },
+          home,
+          resolved as NodeJS.ProcessEnv,
+          home,
+        ),
+      ).toBe(false);
+    },
+  );
+});
+
 describe('#3924 findOpenCodeProjectCode', () => {
   test('a clean project has none', async () => {
     const { cwd, repo, home } = project();

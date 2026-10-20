@@ -1103,6 +1103,15 @@ export class AcpAdapter implements ProviderAdapterShape {
           cwd,
           startApprovalFloor,
         );
+      } else {
+        // #3924: the rule read is reused; the project scan is not, since
+        // code could have been added since the preflight.
+        const refusal = await this.projectCodeRefusal(cwd, startApprovalFloor);
+        if (refusal) {
+          throw new ApprovalGovernanceRefusedError(
+            `Station can't apply its approval mode to OpenCode, so the chat was not started: ${refusal}.`,
+          );
+        }
       }
     }
     const preToolPolicy = await this.resolvePreToolPolicy(input);
@@ -3021,6 +3030,21 @@ export class AcpAdapter implements ProviderAdapterShape {
    * command in `cwd`, read from the engine itself before Station claims to
    * govern (`opencode-approval-verify.ts`).
    */
+  /**
+   * #3924: why a project's OpenCode configuration keeps Station from
+   * governing it below full access (`opencode-project-config.ts`).
+   */
+  private async projectCodeRefusal(
+    cwd: string,
+    floor: OpenCodeApprovalFloor,
+  ): Promise<string | undefined> {
+    if (floor !== 'confined') return undefined;
+    const code = await (
+      this.options.findOpenCodeProjectCode ?? findOpenCodeProjectCode
+    )(cwd);
+    return code.length > 0 ? openCodeProjectCodeRefusal(code) : undefined;
+  }
+
   private async verifyApprovalFloor(
     command: string,
     cwd: string,
@@ -3028,14 +3052,8 @@ export class AcpAdapter implements ProviderAdapterShape {
   ): Promise<{ ok: true } | { ok: false; reason: string }> {
     // #3924: checked before anything launches, the read below included,
     // since OpenCode imports such code as it loads its configuration.
-    if (floor === 'confined') {
-      const code = await (
-        this.options.findOpenCodeProjectCode ?? findOpenCodeProjectCode
-      )(cwd);
-      if (code.length > 0) {
-        return { ok: false, reason: openCodeProjectCodeRefusal(code) };
-      }
-    }
+    const refusal = await this.projectCodeRefusal(cwd, floor);
+    if (refusal) return { ok: false, reason: refusal };
     let env: NodeJS.ProcessEnv;
     try {
       env = withStationOpenCodeApprovalConfig(await augmentedSpawnEnv(), floor);

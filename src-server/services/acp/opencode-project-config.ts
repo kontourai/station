@@ -21,7 +21,7 @@
  * The user's own home directory and above are the user's scope, as are
  * OpenCode's global configuration directories: they are not scanned.
  */
-import { existsSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import {
@@ -29,6 +29,7 @@ import {
   dirname,
   isAbsolute,
   join,
+  parse as parsePath,
   relative,
   resolve,
   sep,
@@ -145,24 +146,85 @@ function isInside(path: string, root: string): boolean {
 }
 
 /**
+ * Where a write to `target` lands, walked one component at a time with
+ * `lstat`, or `undefined` when a person must decide. A symbolic link at or
+ * below the project `root` is project content the agent could have written,
+ * so it is not followed: a write through it, dangling or not, can land
+ * anywhere (#3924). A link above the project (such as `/var` on macOS) is
+ * resolved; one that cannot be resolved is refused. Components that do not
+ * exist yet are taken as written: nothing beneath them can be a link.
+ */
+function writeDestination(target: string, root: string): string | undefined {
+  const absolute = resolve(target);
+  const parts = absolute.split(sep).filter(Boolean);
+  let current = parsePath(absolute).root;
+  for (const [index, part] of parts.entries()) {
+    const candidate = join(current, part);
+    let isLink: boolean;
+    try {
+      isLink = lstatSync(candidate).isSymbolicLink();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined;
+      return join(candidate, ...parts.slice(index + 1));
+    }
+    if (!isLink) {
+      current = candidate;
+      continue;
+    }
+    if (isInside(candidate, root)) return undefined;
+    try {
+      current = realpathSync(candidate);
+    } catch {
+      return undefined;
+    }
+  }
+  return current;
+}
+
+/**
+ * OpenCode's global configuration locations, from the environment Station
+ * launches it with: `$XDG_CONFIG_HOME/opencode` (else `~/.config/opencode`),
+ * `OPENCODE_CONFIG_DIR` and the `OPENCODE_CONFIG` file. Usually outside the
+ * project already; listed for a project that contains them (a session
+ * started in the home directory).
+ */
+function openCodeGlobalConfigPaths(
+  env: NodeJS.ProcessEnv,
+  home: string,
+): string[] {
+  return [
+    join(env.XDG_CONFIG_HOME || join(home, '.config'), 'opencode'),
+    env.OPENCODE_CONFIG_DIR,
+    env.OPENCODE_CONFIG,
+  ]
+    .filter((path): path is string => !!path)
+    .map((path) => realish(resolve(path)));
+}
+
+/**
  * Whether an OpenCode edit request must be answered by a person: a target
- * that cannot be read, one outside the project (the git root of `cwd`, else
- * `cwd`), or an OpenCode configuration path. Symbolic links in existing
- * directories are resolved first, so a link into `.opencode` is caught.
+ * that cannot be read, one written through a symbolic link in the project,
+ * one outside the project (the git root of `cwd`, else `cwd`), or an
+ * OpenCode configuration path (project or global).
  */
 export function openCodeEditNeedsPerson(
   rawInput: unknown,
   cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
 ): boolean {
   const targets = openCodeEditTargets(rawInput);
   if (!targets) return true;
   const root = openCodeGitRoot(cwd) ?? realish(resolve(cwd));
+  const global = openCodeGlobalConfigPaths(env, home);
   return targets.some((target) => {
-    const real = realish(resolve(target));
+    const real = writeDestination(target, root);
     return (
+      real === undefined ||
       !isInside(real, root) ||
       isOpenCodeConfigPath(relative(root, real)) ||
-      isOpenCodeConfigPath(relative(root, resolve(target)))
+      isOpenCodeConfigPath(relative(root, resolve(target))) ||
+      global.some((path) => isInside(real, path))
     );
   });
 }
