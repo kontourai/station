@@ -1,0 +1,7 @@
+{
+  "revision": "764b270379659c09cba29775a5eb939e489eae8f",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed against the Basis chip: it is one labelled action in the answer action row (copy and the overflow are icon-only), within the two-labelled-action cap; it uses an explicit 44px floor under (hover: none) and in the phone meta row as the guide requires for nested controls; the inventory entry was extended under MessageBubble.tsx. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/chat/chat.css"]}
+  ]
+}

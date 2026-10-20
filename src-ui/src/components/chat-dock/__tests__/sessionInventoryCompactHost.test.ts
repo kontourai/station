@@ -71,7 +71,7 @@ function buildBasisFallbackHtml(): string {
 <style>${buildFixtureCss()}</style></head>
 <body style="margin:0"><header id="app-header" style="position:fixed;inset:0 0 auto;height:46px;z-index:1;background:#111;color:#fff">App header</header>
 <main style="padding-top:46px"><div class="chat-dock__conversation-surface" style="width:480px;height:360px;overflow:hidden;transform:translateZ(0)">Chat dock</div></main>
-<div class="station-dialog__overlay responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="station-dialog station-dialog--lg basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="station-dialog__header"><div class="station-dialog__heading"><h2 class="station-dialog__title">Basis</h2></div><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><div class="station-dialog__body"><section class="session-inventory"><h2>Session inventory</h2></section></div></div></div></body></html>`;
+<div class="station-dialog__overlay responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="station-dialog station-dialog--lg basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="station-dialog__header"><div class="station-dialog__heading"><h2 class="station-dialog__title">Basis</h2></div><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><div class="station-dialog__body"><section class="session-inventory"><h2>Chat inventory</h2></section></div></div></div></body></html>`;
 }
 
 function renderCompactMarkup(density: 'aside' | 'card'): string {

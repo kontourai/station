@@ -322,6 +322,18 @@ retired names.
 - **Panel** — a bounded visual grouping of controls or information within a
   page or pane, such as a Trust panel or inspector panel. A Panel is not
   persisted and is not a synonym for a pane.
+- **Session context card** — the Chat dock's compact "what is the state of
+  this chat" panel, titled **This chat** where users see it
+  ([SessionContextCard](../src-ui/src/components/chat-dock/SessionContextCard.tsx)).
+  Its rows are the workspace (project and directory), the branch with its
+  changed-file count, the activity line (the inbox row's status-ladder word,
+  background tasks and pending messages) and any linked pull requests; its
+  footer opens Chat inventory. Each row shows a fact the dock already holds
+  and opens a surface that already exists; it computes no state of its own.
+  It sits beside the transcript when the dock body has room for it and a
+  640px transcript, and is otherwise one tap away: a header chip on a desktop
+  dock, a row of the Chat actions sheet on a phone. It is a Panel, not a
+  pane, and is not persisted.
 
 > **Composition:** the **shell** has regions; a region holds a **surface**;
 > a surface or a layout holds a **pane host**; a pane host holds **panes** in
@@ -432,11 +444,14 @@ release delivery.
 | A thing that can occupy a region (Chat, Activity) | **Surface** |
 | The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
 | Visual grouping inside a page or pane | **Panel** |
+| The Chat dock's summary of the open chat's workspace, branch, activity and pull requests | **This chat** (the **session context card**) |
 | The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
+| The navigable record of what one chat drew on and produced (inputs, execution, sources, outputs, kept results), whole or scoped to one answer | **Chat inventory**, part of **Basis**. An answer's **Basis** chip opens it scoped to that answer; the dock's More menu opens the whole chat. Never "Session inventory" in Station's UI. The developer contract keeps the name: `@kontourai/station-contracts/session-inventory`, the SDK's `useSessionInventoryQuery`, and the portable MCP App's server identity (its visible text says Chat inventory) |
 | One agent working through a request from start to stop | **Agent run** (the Settings card is **Agent runs**) |
 | An authored instruction a user or agent can reuse (some are runnable as `/command`) | **Skill** — the page is **Skills** (`/guidance`, with a Commands tab) |
+| The live transcript's map of user turns, and stepping between them | **Conversation turns** (the desktop gutter's name; contributors call it the turn rail); **Previous turn** / **Next turn** beside Scroll to bottom. History replay's separate view is **History** |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
 
 ## Persisted identity records

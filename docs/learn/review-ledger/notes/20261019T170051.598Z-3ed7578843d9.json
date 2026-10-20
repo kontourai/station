@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Inventory files gained entries for the session context card/sheet; the new CSS uses existing Station aliases and --k-* tokens without a channel override. No theming claim changed.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]}
+  ]
+}

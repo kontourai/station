@@ -548,8 +548,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dependency-patch-binding.test.ts',
   // Installed YAML CLI children protect the parser migration's public behavior.
   'scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts',
-  // Bounded Bash children test Linux bootstrap recovery with inert swap commands.
-  'scripts/__tests__/gcp-bootstrap.test.ts',
   // Offline Git children validate encrypted workspace transport against real repositories.
   'packages/shared/src/__tests__/workspace-package.test.ts',
   'packages/cli/src/__tests__/cloud.test.ts',

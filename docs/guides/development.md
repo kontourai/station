@@ -625,7 +625,7 @@ Its `kind` says what happened:
 | `scroll` | A scroll event, labelled `programmatic` when it lands on the transcript list's own last write, otherwise `reader`. The virtualizer's own scroll writes are not noted, so they read as `reader`. |
 | `layout-shift` | A Chromium layout-shift entry and the rows or elements it names as sources. A chat switch does not record the browser's buffered entries twice. |
 | `rows`, `sibling` | Rows mounted or removed in the transcript, and elements added beside it in the chat body. |
-| `phase` | A named step: `pin-layout`, `pin-raf`, `content-repin`, `content-reanchor`, `clamp-repin`, `older-request`, `older-commit`, `scroll-to-bottom-*`, `virtualizer-*`, `dock-loading`, `lazy-chunk-resolved`, `markdown-renderer-resolved`, and `highlight-applied`. |
+| `phase` | A named step: `pin-layout`, `pin-raf`, `content-repin`, `content-reanchor`, `clamp-repin`, `older-request`, `older-commit`, `scroll-to-bottom-*`, `turn-jump`, `virtualizer-*`, `dock-loading`, `lazy-chunk-resolved`, `markdown-renderer-resolved`, and `highlight-applied`. |
 
 Records name elements without user content. A row appears as its role and a
 one-way hash of its key, because a row key can embed message text. Other
