@@ -124,7 +124,11 @@
 
     "src-ui/src/views/plugin-management/InstallPreviewModal.tsx",
 
-    "src-ui/src/views/plugin-management/PluginModalStack.tsx"
+    "src-ui/src/views/plugin-management/PluginModalStack.tsx",
+
+    "src-ui/src/components/registry/StationExtensionsAccess.css",
+
+    "src-ui/src/views/plugin-management/InstallPreviewExtensionAccess.tsx"
   ],
 
   "checks": [
