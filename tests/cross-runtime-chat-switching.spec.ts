@@ -8,6 +8,7 @@ import { expect, type Page, type TestInfo, test } from '@playwright/test';
 import { createDailyDriverUiObservation } from '../scripts/lib/daily-driver-ui-observation.mjs';
 import { monitorBrowserHealth } from './helpers/browser-health';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
+import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import { pressAndHold } from './helpers/long-press';
 import {
@@ -613,7 +614,7 @@ async function seedCrossRuntimeRoutes(
   });
 
   // This mocked chat journey must not depend on the checkout's live upstream status.
-  await page.route('**/api/system/core-update', (route) =>
+  await routeCoreUpdateCheck(page, (route) =>
     route.fulfill(
       json({
         updateAvailable: false,

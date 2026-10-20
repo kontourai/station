@@ -415,6 +415,7 @@ import {
   createRuntimeSearch,
   type RuntimeSearch,
 } from '../../services/search/runtime-search.js';
+import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
 import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
@@ -532,6 +533,9 @@ export interface StationRuntimeOptions {
   /** Immutable process identity captured by the entrypoint during bootstrap. */
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
 }
+
+/** How long session recovery may take before update readiness warns. */
+const SESSION_RECOVERY_WARNING_MS = 5 * 60_000;
 
 /**
  * Main runtime for Station system
@@ -734,6 +738,10 @@ export class StationRuntime {
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
   private agentActivityPublisher?: AgentActivityPublisher;
+  /** #3851: the server's own update lifecycle. */
+  private serverUpdate?: ServerUpdateCoordinator;
+  /** #3851: the warning for a session recovery that does not settle. */
+  private recoveryWarningTimer?: ReturnType<typeof setTimeout>;
   private notificationDeliveryRouter?: NotificationDeliveryRouter;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
@@ -3425,6 +3433,38 @@ export class StationRuntime {
       }
       this.virtualApplicationLifetime.signal.throwIfAborted();
       this.recordRuntimeLifecycle('ready');
+      // #3851: the server listens, but orchestration's session recovery
+      // (which re-registers the turns it finds) runs unawaited from its
+      // initialize. A persisted update when idle may read the running turns
+      // only once that recovery settled, which it does whether it succeeded
+      // or failed (the signal resolves in the recovery chain's `finally`).
+      const recovery =
+        this.orchestrationService?.whenSessionAttachmentSettled();
+      if (recovery) {
+        // A recovery that never settles (an adapter that hangs) would keep
+        // update when idle off silently: say so once (round 4 item 4).
+        const slow = setTimeout(
+          () =>
+            this.logger?.warn?.(
+              'Session recovery has not settled after 5 minutes; a pending server update when idle waits for it',
+            ),
+          SESSION_RECOVERY_WARNING_MS,
+        );
+        slow.unref?.();
+        // Shutdown clears it too (round 5 item 4).
+        this.recoveryWarningTimer = slow;
+        void recovery
+          .then(() => {
+            clearTimeout(slow);
+            this.serverUpdate?.markReady();
+          })
+          .catch((error: unknown) => {
+            clearTimeout(slow);
+            this.logger?.warn?.('Server update readiness failed', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+      }
       void this.usageTelemetry?.stationStarted();
     } catch (error) {
       virtualApplication?.stop();
@@ -4315,6 +4355,7 @@ export class StationRuntime {
       deviceHosts,
       agentActivityPublisher,
       notificationDeliveryRouter,
+      serverUpdate,
     } = configureRuntimeRoutes({
       relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
@@ -4438,6 +4479,7 @@ export class StationRuntime {
     this.deviceSessions = deviceSessions;
     this.agentActivityPublisher = agentActivityPublisher;
     this.notificationDeliveryRouter = notificationDeliveryRouter;
+    this.serverUpdate = serverUpdate;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -5011,6 +5053,10 @@ export class StationRuntime {
       this.agentActivityPublisher = undefined;
       this.notificationDeliveryRouter?.stop();
       this.notificationDeliveryRouter = undefined;
+      this.serverUpdate?.stop();
+      this.serverUpdate = undefined;
+      clearTimeout(this.recoveryWarningTimer);
+      this.recoveryWarningTimer = undefined;
     } catch (error) {
       failures.push(error);
     }

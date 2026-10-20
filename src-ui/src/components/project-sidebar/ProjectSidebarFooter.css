@@ -3,6 +3,16 @@
   padding: var(--k-space-2);
   flex-shrink: 0;
 }
+.sidebar__update {
+  display: flex;
+  padding-bottom: var(--k-space-2);
+}
+.sidebar__update:empty {
+  display: none;
+}
+.sidebar--collapsed .sidebar__update {
+  justify-content: center;
+}
 .sidebar__footer-meta {
   display: flex;
   align-items: center;

@@ -220,6 +220,23 @@ export const APP_SETTINGS_REGISTRY = [
     description: 'Minimum severity Station writes to its server logs.',
   }),
   defineSetting({
+    key: 'serverUpdateDownloadPolicy',
+    scope: 'station',
+    // `SERVER_UPDATE_DOWNLOAD_POLICIES` in system-status.ts, restated as a
+    // literal for the schema-parity test (see defaultApprovalMode below).
+    descriptor: {
+      kind: 'enum',
+      values: ['never', 'after-24h', 'immediately'],
+    },
+    label: 'Automatic server download',
+    help: 'A Station service downloads an available update by itself on this schedule; it restarts only when someone applies it.',
+    description:
+      'For a Station service installed from a release archive: download an available server update never, once it has been available for 24 hours, or immediately. Downloading verifies the release and keeps the server running; restarting into it always takes an explicit Restart (or Update when idle).',
+    // Confirmed against ServerUpdateCoordinator's policy read: absent falls
+    // through to DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY.
+    defaultValue: 'after-24h',
+  }),
+  defineSetting({
     key: 'telemetryTier',
     scope: 'station',
     descriptor: { kind: 'composite' },

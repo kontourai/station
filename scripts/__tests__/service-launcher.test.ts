@@ -870,6 +870,11 @@ describe('an update keeps moving when its pieces fail (#2675 D review F1, F4-F7)
     await waitFor('the recovery instruction', () =>
       current.output().includes('station service stop --instance='),
     );
+    // The commands name the home, where a service installed with --base
+    // keeps its manifest (#3851 review round 3).
+    expect(current.output()).toContain(
+      `station service stop --instance=svc --base="${install.home}" && station service start --instance=svc --base="${install.home}"`,
+    );
     // It waits, serving nothing, instead of exiting into a restart loop.
     await new Promise((resolve) => setTimeout(resolve, 1_500));
     expect(current.process.exitCode).toBeNull();

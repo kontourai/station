@@ -229,6 +229,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'personal-claude-approval': 'account',
   'personal-muse-approval': 'account',
   'review-guides': 'station',
+  'server-update-download-policy': 'station',
   'review-guide-model': 'station',
   'review-guide-instructions': 'station',
   'approval-guardian': 'station',

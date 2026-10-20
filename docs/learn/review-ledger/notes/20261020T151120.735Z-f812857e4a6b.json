@@ -1,0 +1,7 @@
+{
+  "revision": "c6c7abc36946001aeeebec69d23eced6c871f880",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed after the gallery's server update check stub moved to routeCoreUpdateCheck, a path predicate that also matches the SDK's ?staged=1 query (a whole-URL glob had stopped matching and let a live git fetch hold the Settings skeleton). Updated the gallery paragraph to name the server update check among the mocked live endpoints; the remaining claims still hold.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

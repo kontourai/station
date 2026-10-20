@@ -301,6 +301,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // Guide runtime wiring reads enabled === true: absent is off.
         'reviewGuidesEnabled',
         'runtime',
+        // #3851: confirmed against ServerUpdateCoordinator's policy read,
+        // which falls through to 'after-24h'.
+        'serverUpdateDownloadPolicy',
         'surfaceTrustFromVeritasEvidence',
         'telemetryEnabled',
         'telemetryTier',

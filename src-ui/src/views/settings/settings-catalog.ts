@@ -185,7 +185,9 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'desktop-app-updates',
     title: 'Desktop app updates',
     section: 'system',
-    keywords: ['desktop app updater signed release channel'],
+    keywords: [
+      'desktop app updater signed release channel automatic download restart',
+    ],
     conditional: 'desktop',
   },
   {
@@ -193,6 +195,13 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Connected Station server',
     section: 'system',
     keywords: ['update channel'],
+  },
+  {
+    id: 'server-update-download-policy',
+    title: 'Automatic server download',
+    section: 'system',
+    keywords: ['update download automatic server service'],
+    configKeys: ['serverUpdateDownloadPolicy'],
   },
   {
     id: 'deployed-build',

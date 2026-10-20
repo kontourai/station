@@ -170,7 +170,9 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
 import {
+  CLIENT_ORIGIN_HEADER,
   type ClientOrigin,
+  parseClientReportedOrigin,
   UNKNOWN_CLIENT_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
@@ -408,6 +410,7 @@ import { createNativeDeviceProofBindingRoutes } from '../../routes/system/native
 import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/native-device-proof-self-receipt-routes.js';
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
+import { resolveThisServerProvenance } from '../../routes/system/system-update-routes.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { launchesCommand } from '../../routes/working-directory-authority.js';
@@ -628,6 +631,7 @@ import type {
   SecretBindingAdministration,
   SecretBindingIntegrationAdministration,
 } from '../../services/secrets/secret-binding-administration.js';
+import { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
 import { createConversationIntentSummaryEvidenceCatalog } from '../../services/session-summary/conversation-intent-summary-source.js';
 import { ExistingAgentSetupImportModule } from '../../services/setup/existing-agent-setup-import.js';
 import {
@@ -990,6 +994,8 @@ export interface ConfigureRuntimeRoutesContext {
 }
 
 interface ConfigureRuntimeRoutesResult {
+  /** #3851: the runtime stops it (and its timers) on shutdown. */
+  serverUpdate: ServerUpdateCoordinator;
   schedulerService: SchedulerService;
   notificationService: NotificationService;
   attentionProjection: AttentionProjectionService;
@@ -2772,9 +2778,65 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  // #3851: the server's own update lifecycle, one per runtime. It checks
+  // once after boot and when a newer client connects (below), never on a
+  // schedule; see the coordinator's header.
+  const serverUpdate = new ServerUpdateCoordinator({
+    provenance: resolveThisServerProvenance,
+    readDownloadPolicy: async () =>
+      (await context.configLoader.loadAppConfig()).serverUpdateDownloadPolicy,
+    // Every session's active-turn state, ephemeral ones included: what the
+    // restart would stop, not what any reader may list.
+    listRunningTurns: async () =>
+      context.orchestrationService
+        .listActiveTurnThreadIds()
+        .map((sessionId) => ({ sessionId })),
+    subscribe: (listener) => context.eventBus.subscribe(listener),
+    publish: (state) =>
+      context.eventBus.emit(SERVER_EVENTS.SERVER_UPDATE_CHANGED, state),
+    logger: context.logger,
+  });
   context.app.route(
     '/api/system',
-    createSystemRoutes(createRuntimeSystemRouteDeps(context), context.logger),
+    createSystemRoutes(
+      {
+        ...createRuntimeSystemRouteDeps(context),
+        serverUpdate,
+        listRunningTurnsFor: async (c) => {
+          // What the restart would stop: every session with an active turn,
+          // ephemeral ones included, the same set apply-when-idle counts
+          // (review round 2 item 4). The caller sees the titles it may read;
+          // every other one is counted in hiddenCount.
+          const running =
+            context.orchestrationService.listActiveTurnThreadIds();
+          if (running.length === 0) return { turns: [], hiddenCount: 0 };
+          let mine: Awaited<
+            ReturnType<OrchestrationService['listSessionReadModel']>
+          > = [];
+          try {
+            mine = await context.orchestrationService.listSessionReadModel(
+              conversationReadAuthorityForContext(c),
+              { threadIds: running },
+            );
+          } catch {
+            mine = [];
+          }
+          const active = new Set(running);
+          const turns = mine
+            .filter((session) => active.has(session.threadId))
+            .map((session) => ({
+              sessionId: session.threadId,
+              conversationId: session.conversationId ?? null,
+              title: session.displayTitle ?? null,
+              engine: session.provider,
+              startedAt:
+                session.conversationActivity?.openTurn?.startedAt ?? null,
+            }));
+          return { turns, hiddenCount: running.length - turns.length };
+        },
+      },
+      context.logger,
+    ),
   );
   context.app.route(
     '/api/analytics',
@@ -7289,7 +7351,16 @@ export function configureRuntimeRoutes(
           context.orchestrationService.canUserReadSession(sessionId, authority)
         );
       },
-      connectClientSession: (request) => clientStreamPresence.connect(request),
+      connectClientSession: (request) => {
+        // #3851: a client newer than this server means a newer Station
+        // exists; its build travels on the stream it opens.
+        serverUpdate.noteClientBuild(
+          parseClientReportedOrigin(
+            request.headers.get(CLIENT_ORIGIN_HEADER) ?? undefined,
+          ).build,
+        );
+        return clientStreamPresence.connect(request);
+      },
       isPairedDeviceConnectionCurrent: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);
         return (
@@ -7513,7 +7584,9 @@ export function configureRuntimeRoutes(
         }),
       );
 
+  serverUpdate.start();
   return {
+    serverUpdate,
     schedulerService,
     notificationService,
     attentionProjection,

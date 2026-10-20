@@ -44,6 +44,15 @@
       "route": "/settings?view=system&highlight=core-app-updates"
     },
     {
+      "id": "server-update-download-policy",
+      "label": "Automatic server download",
+      "help": "A Station service downloads an available update by itself on this schedule; it restarts only when someone applies it.",
+      "scope": "station",
+      "section": "system",
+      "route": "/settings?view=system&highlight=server-update-download-policy",
+      "configKey": "serverUpdateDownloadPolicy"
+    },
+    {
       "id": "deployed-build",
       "label": "Deployed Build",
       "scope": "informational",

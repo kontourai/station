@@ -807,6 +807,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
+  // Walks tests/ to refuse a whole-URL glob for the server update check (#3851).
+  'scripts/__tests__/core-update-route.test.ts',
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/docs-index-reachability.test.ts',
   'scripts/__tests__/docs-reference-gate.test.ts',
@@ -1536,6 +1538,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/documentation-foundations.test.ts',
       'scripts/__tests__/public-doc-contract-examples.test.ts',
+      'scripts/__tests__/install-script.test.ts',
     ],
     reason: 'getting-started runtime source contract',
   },

@@ -192,6 +192,12 @@
       "enum": ["trace", "debug", "info", "warn", "error"],
       "description": "Minimum severity Station writes to its server logs."
     },
+    "serverUpdateDownloadPolicy": {
+      "type": "string",
+      "enum": ["never", "after-24h", "immediately"],
+      "description": "For a Station service installed from a release archive: when it downloads an available server update by itself. Downloading never restarts the server. Default: after-24h",
+      "default": "after-24h"
+    },
     "telemetryTier": {
       "type": "object",
       "properties": {

@@ -168,7 +168,9 @@ button; selecting a Board dismisses the popup. Palette creation with the
 rail collapsed opens the new Board without focusing an invisible rename.
 
 The expanded footer uses one row. The collapsed footer puts live work,
-Schedule, Customize and Settings in **Sidebar utilities**. The presence tray
+Schedule, Customize and Settings in **Sidebar utilities**. In the desktop app, an
+update control sits above that row only while a desktop update is available,
+downloading or ready to install; collapsed, it is icon-only (#3851). The presence tray
 continues to distinguish published participants, live work, pending reads,
 failed reads and unsupported publication. Notifications stay in the header.
 

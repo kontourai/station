@@ -2167,8 +2167,9 @@ records which version it runs. An update request
 into `versions/<version>`, nothing else changed). The launcher then stops the
 running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
-manifests, `instances.json`, logs, monitoring, quarantine and `tmp` (which the
-service owns), and but the default project directories under `workspaces/`
+manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
+restore marker `update-restore.json` (which the service and its updates own),
+the default project directories under `workspaces/`,
 and the browser's `browser/chromium` and `browser/profiles`: an update neither
 copies nor rolls them back. For `workspaces/` this is an accepted gap, not a
 claim that it holds no Station data: Station writes `.station/` stores into
@@ -2185,9 +2186,11 @@ launcher that is killed at any point finishes the same update when it starts
 again. A restore that fails is retried up to three times (each failure
 restarts the unit); after that the update needs an operator: the launcher
 keeps the backup, starts no Station, and logs the error. Fix its cause, then
-run `station service stop --instance=<name>` and
-`station service start --instance=<name>`: each start tries the restore once
-more. That includes any restart of the launcher, a reboot among them: every
+run `station service stop --instance=<name> --base="<home>"` and
+`station service start --instance=<name> --base="<home>"`: each start tries
+the restore once more. (The launcher's log line names `--base` only for a
+service installed or reinstalled since #3851, because the launcher file is
+fixed at `station service install`.) That includes any restart of the launcher, a reboot among them: every
 launcher start in this state runs one restore attempt on its own.
 
 On Windows the launcher supervises itself, because Task Scheduler does
@@ -2242,6 +2245,104 @@ host; an install that records no public manifest cannot be checked from a
 client. An update that needs an operator is not visible from a client: in that
 state the service runs no Station to answer, so the card keeps waiting and
 names `station service status --instance=<name>` on the host.
+
+A request can also do half of that (#3851). A **stage** request (`mode:
+"stage"`) is staged the same way and ends as `staged` in
+`runtime/update-request-result.json`. The launcher is never asked, and the
+running version keeps serving. While it stages, the running version records
+the installer's step and, while downloading, the archive's size on disk
+against the signed manifest's size in `runtime/update-stage-progress.json`
+(only `install.sh` reports these; on Windows staging shows no step). An
+**apply** request (`mode: "apply"`) names a staged version and hands it to the
+launcher's trial without downloading anything; it fails when that version is
+not staged. A request with no mode (what `install.sh` and older clients write)
+does both, as before, and skips the download when the version is already
+staged. The launcher itself is unchanged by this.
+
+A server the launcher runs uses these requests itself:
+- **Checks:** it checks for a release about a minute after it boots, and when
+  a client whose version is newer than the server's connects. Each check is
+  cached for 30 minutes.
+- **Automatic download:** `serverUpdateDownloadPolicy` (`never`, `after-24h` by
+  default, or `immediately`; see
+  [configuration](config.md)) stages an available version once it has been
+  available that long. The clock starts at the first check that saw the
+  version and is kept in `runtime/server-update.json` across restarts.
+  The policy runs after the server's own checks and when the setting itself
+  changes, not when a client checks or another setting is saved.
+  Downloading never restarts the server. A download of the policy's that
+  failed is tried again after 1 hour, then 6, then every 24
+  (`autoDownloadPausedReason: "download-failed"`, with the retry time in
+  `autoDownloadAt`). A version whose update rolled back or failed is not
+  downloaded again until a person's **Download** or a newer release
+  (`"update-failed"`). Nothing is downloaded, by the policy or by a person,
+  while an Update when idle request waits: cancel it first (a download
+  request then answers 409). A deadline check that cannot verify the
+  manifest is retried on the same backoff; until the deadline, nothing is
+  fetched.
+- **Restart:** only a person's Restart, or the **Update when idle** request
+  they made, restarts the server. Update when idle is also kept in
+  `runtime/server-update.json`. Once the server is listening and its turn
+  recovery has run, it applies the staged version when no session has an
+  active turn. That count includes sessions no list shows, such as webhook,
+  delegation and execution-target turns. It is checked again as runtime
+  events arrive, and the request can be cancelled (a cancel after the
+  restart was requested, or while the launcher is updating, answers 409).
+  The state's `applyWhenIdle.waitingForTurns` shows how many running turns
+  the last check found, so a turn that never ends (a stray open turn
+  boundary keeps a session active) is visible as a wait that does not
+  finish; cancel, or restart now. A turn that starts in the moment between
+  that check and the launcher stopping the server is interrupted; nothing
+  holds new turns back while the restart is requested.
+
+The client API:
+- `GET /api/system/core-update/state` returns the state. Every change is also
+  pushed to clients as the `server-update:changed` event.
+- `POST /api/system/core-update` takes `{"action":"stage"}` or
+  `{"action":"apply","version":"<staged version>"}`. With no body it is the
+  one-click update.
+- `PUT` and `DELETE /api/system/core-update/apply-when-idle` set and cancel
+  Update when idle.
+- `GET /api/system/core-update/running-turns` lists the agent turns a restart
+  would interrupt (the same set Update when idle counts, ephemeral sessions
+  included), as far as the caller may read those sessions.
+  `hiddenCount` counts the running sessions the caller may not read, so any
+  caller of this read-tier route learns how many of those exist (not what
+  they are).
+- `server-update:changed` withholds a failed download's error text (its
+  `reason` reads `withheld`); `GET /api/system/core-update/state` has it.
+- The progress routes report `staged` only to a client that asks with
+  `?staged=1`. An older client's parser would read that state as unreadable
+  progress. Without it, a download under way is not reported either, since
+  older clients present any queued or staging request as a coming restart.
+
+A supervised update handoff leaves `update-restore.json` in the home (see the
+restore marker in `@kontourai/station-shared/station-home-restore-marker`).
+The release that boots next restores the home from the marker's backup if it
+is the release the handoff left, and does nothing if it is the target.
+Anything else refuses to start: the marker cannot be read, it names neither
+release, the backup is missing, or the restore fails. A failed restore is
+recorded on the marker and not tried again by a later boot, so a service
+manager restarting the server never runs a restore beside yours. The
+refusal is logged in `logs/server` and on the console, and it lists the way
+back:
+
+1. `station service stop --instance=<name> --base="<home>"`, so nothing
+   starts the server while you work (`--base` finds a service installed with
+   `--home` or `--base`).
+2. Restore with the from-release's own CLI, the one command that reads this
+   backup format: `"<from-release root>/bin/station" service update-home
+   restore --backup-dir="<backup>" --base="<home>"`. That is
+   `bin\station.cmd` on Windows, and `station` at the root of a source
+   checkout, whose version is its commit. A checkout has only that bash
+   script, so on Windows run it in Git Bash, not WSL
+   (`bash "<root>/station" …`). Skip this when the home already belongs to
+   the release being started.
+3. Remove `update-restore.json` (`rm`, or `del` on Windows).
+4. `station service start --instance=<name> --base="<home>"`.
+
+`service update-home` is otherwise an internal launcher command; this is the
+case it is documented for.
 
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse
