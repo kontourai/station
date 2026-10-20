@@ -209,6 +209,13 @@ const expectedDependencies = new Map(
     // focusing the chat so the Coding host centres it. It renders no Coding
     // pane and grants no workspace authority: a route choice only.
     'src-ui/src/views/home/useHomeViewModel.ts': 'navigation',
+    // Pane relationships (docs/design/pane-relationships.md): a related
+    // preview's Up to a Files opener reads that Project's layout list and,
+    // when one is a Coding layout, returns there through canonical
+    // `setLayout`; while the dock is bound to that Project it reveals the
+    // dock's `coding:file-browser` surface instead. A route or reveal choice
+    // only: it mounts no Coding pane and grants nothing.
+    'src-ui/src/workspace-panes/RelatedPaneStrip.tsx': 'navigation',
     // #2047: the surface → pane inventory joins the coding dock surfaces
     // (`coding:terminal`, `coding:diff`, `coding:file-browser`) to the
     // coding pane contracts' fixed per-project instances and canonical
