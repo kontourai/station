@@ -559,6 +559,7 @@ export function AuthorityQueryProvider({
           status: unauthorized ? 'unavailable' : 'unverified',
           namespace: null,
           observation: null,
+          refused: unauthorized,
         }}
       >
         <EphemeralTree key={ephemeralKey}>
