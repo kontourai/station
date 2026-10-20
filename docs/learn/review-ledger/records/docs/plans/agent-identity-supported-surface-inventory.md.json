@@ -12,11 +12,11 @@
   "sources": [
     "docs/architecture/module-map.md",
 
-    "docs/guides/agents.md",
-
     "packages/contracts/src/agent-identity.ts",
 
-    "scripts/agent-identity-supported-surface-inventory.mjs"
+    "scripts/agent-identity-supported-surface-inventory.mjs",
+
+    "docs/guides/agent-configuration.md"
   ],
 
   "checks": [
