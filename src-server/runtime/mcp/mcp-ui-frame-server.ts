@@ -13,6 +13,7 @@ import { buildHtmlReplyProxyDocument } from '@kontourai/station-shared/html-repl
 import { MCP_UI_NETWORK_BOOTSTRAP_TAG } from '@kontourai/station-shared/mcp-ui-csp';
 import { Hono } from 'hono';
 import { mcpUiFrameServeTotal } from '../../telemetry/metrics.js';
+import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
 
 const SECURITY_HEADERS: Record<string, string> = {
@@ -34,17 +35,19 @@ export interface McpUiFrameAppOptions {
 /**
  * Build the fixed Station UI origin set used by the proxy's framing policy.
  *
- * This mirrors the runtime's trusted browser origins, but stays local to the
- * proxy so an untrusted request can never expand the frame-ancestors policy.
+ * The origins are the runtime's trusted browser origins
+ * (`resolveStationBrowserOrigins`), narrowed to what a CSP `frame-ancestors`
+ * source list can express. They come from configuration only, so an untrusted
+ * request can never expand the policy.
  */
 export function resolveMcpUiFrameAncestors(options: {
   port: number;
   host?: string;
-  additionalOrigins?: readonly string[];
+  /** Comma-separated `ALLOWED_ORIGINS` value; defaults to the environment. */
+  allowedOriginsEnv?: string;
 }): string[] {
   const origins = new Set<string>();
-  const add = (origin: string | undefined) => {
-    if (!origin) return;
+  const add = (origin: string) => {
     try {
       const url = new URL(origin);
       if (
@@ -55,27 +58,18 @@ export function resolveMcpUiFrameAncestors(options: {
       ) {
         return;
       }
+      // CSP host-source grammar does not accept IPv6 literals in these
+      // browsers, so localhost and IPv4 are the supported loopback origins.
+      if (url.hostname.startsWith('[')) return;
       // URL.origin is "null" for Tauri's custom scheme, while CSP accepts
       // the concrete tauri://localhost source expression.
-      if (url.hostname.startsWith('[')) return;
       origins.add(url.protocol === 'tauri:' ? 'tauri://localhost' : url.origin);
     } catch {
       // Invalid deployment configuration must narrow access, never broaden it.
     }
   };
 
-  for (const origin of options.additionalOrigins ?? []) add(origin);
-  add(`http://localhost:${options.port}`);
-  add(`http://127.0.0.1:${options.port}`);
-  // CSP host-source grammar does not accept IPv6 literals in these browsers.
-  // localhost and IPv4 are the supported loopback embedding origins.
-  add('tauri://localhost');
-  add('https://tauri.localhost');
-  add('http://tauri.localhost');
-  if (options.host && options.host !== '0.0.0.0' && options.host !== '::') {
-    add(`http://${options.host}:${options.port}`);
-    add(`https://${options.host}:${options.port}`);
-  }
+  for (const origin of resolveStationBrowserOrigins(options)) add(origin);
   return [...origins];
 }
 
@@ -374,10 +368,6 @@ export async function startMcpUiFrameServer(opts: {
     frameAncestors: resolveMcpUiFrameAncestors({
       port: opts.stationPort,
       host: opts.stationHost,
-      additionalOrigins: (process.env.ALLOWED_ORIGINS ?? '')
-        .split(',')
-        .map((origin) => origin.trim())
-        .filter(Boolean),
     }),
   });
   return new Promise((resolve) => {
