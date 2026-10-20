@@ -33,7 +33,7 @@ import {
 } from '@kontourai/station-supervisor/protocol';
 
 /** Stable listeners the supervisor holds across generations. */
-export const SUPERVISOR_LISTENER_NAMES = Object.freeze([
+const SUPERVISOR_LISTENER_NAMES = Object.freeze([
   'api',
   'terminal',
   'voice',
@@ -47,17 +47,17 @@ export type SupervisorListenerName = (typeof SUPERVISOR_LISTENER_NAMES)[number];
  * therefore marks every response `Connection: close` first and closes only
  * the connections still idle after this grace.
  */
-export const DRAIN_IDLE_GRACE_MS = 1_000;
+const DRAIN_IDLE_GRACE_MS = 1_000;
 /** How often a drain re-checks for connections that have gone idle. */
-export const DRAIN_SWEEP_INTERVAL_MS = 100;
+const DRAIN_SWEEP_INTERVAL_MS = 100;
 /** A drain stops waiting for requests this long before its deadline. */
-export const DRAIN_DEADLINE_MARGIN_MS = 2_000;
+const DRAIN_DEADLINE_MARGIN_MS = 2_000;
 /** After `promote`, every named handle must arrive within this time. */
-export const ADOPT_TIMEOUT_MS = 10_000;
+const ADOPT_TIMEOUT_MS = 10_000;
 /** After the supervisor disconnects, graceful shutdown gets this long. */
-export const DISCONNECT_FORCE_EXIT_MS = 20_000;
+const DISCONNECT_FORCE_EXIT_MS = 20_000;
 /** A `handoff.request` that is neither refused nor drained within this time settles as unanswered. */
-export const HANDOFF_REQUEST_TIMEOUT_MS = 30_000;
+const HANDOFF_REQUEST_TIMEOUT_MS = 30_000;
 
 export interface ListenAddress {
   port: number;
@@ -778,15 +778,4 @@ export function whenHomeAccessAllowed(
 /** Called by the entry point once promoted (or once it knows it is unsupervised). */
 export function allowHomeAccess(): void {
   releaseHomeAccess();
-}
-
-/** Asks the installed supervisor for a handoff; see `SupervisorLink.requestHandoff`. */
-export function requestSupervisorHandoff(
-  options: Parameters<SupervisorLink['requestHandoff']>[0] = {},
-): Promise<HandoffRequestOutcome> {
-  const link = installedLink;
-  if (!(link instanceof SupervisorLink)) {
-    return Promise.resolve({ status: 'unsupervised' });
-  }
-  return link.requestHandoff(options);
 }

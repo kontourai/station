@@ -1696,9 +1696,9 @@ export function compactExactPaths(paths) {
  * quote pair and a separating space per argument.
  */
 export const WINDOWS_COMMAND_LINE_LIMIT = 32_767;
-export const WORST_CASE_WINDOWS_PATH_LENGTH = 260;
+const WORST_CASE_WINDOWS_PATH_LENGTH = 260;
 
-export function windowsCommandLineLength(vitestArguments) {
+function windowsCommandLineLength(vitestArguments) {
   return [
     'x'.repeat(WORST_CASE_WINDOWS_PATH_LENGTH),
     ...vitestArguments,
