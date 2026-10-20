@@ -399,7 +399,8 @@ describe.skipIf(!probe.ok)(
       [
         'prepare one in its temp directory and move it into the workspace',
         (w: string) =>
-          `mkdir -p "$TMPDIR/q/.codex" && echo x > "$TMPDIR/q/.codex/config.toml"; mv "$TMPDIR/q" "${w}/pkg2"`,
+          // No `mkdir -p`: it would stat the hidden Station root above TMPDIR.
+          `mkdir "$TMPDIR/q" && mkdir "$TMPDIR/q/.codex" && echo x > "$TMPDIR/q/.codex/config.toml" && mv "$TMPDIR/q" "${w}/pkg2"`,
         'pkg2/.codex/config.toml',
       ],
     ])(
