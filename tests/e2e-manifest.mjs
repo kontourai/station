@@ -964,7 +964,17 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Proves an installed plugin opens its own registered panes beside its list through the SDK related-pane capability on a real Station: open, replace, focus, Keep, close, a tool landing with the Tools, the kept occurrence surviving a reload, and a removed plugin leaving its pane unavailable without running its code.',
+      'Proves an installed plugin opens its own registered panes beside its list through the SDK related-pane capability on a real Station: open, replace, focus, Keep, close, a tool landing with the Tools, the kept occurrence surviving a reload, a removed plugin leaving its pane unavailable without running its code, and a same-version reinstall not bringing it back.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/related-panes-frame.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the same related-pane capability from a plugin running in the sandboxed plugin frame: on a Station the spec owns, reached under a non-loopback name so every plugin is isolated, the real example list (a frame document) opens, replaces, focuses and closes its own report frames and opens a tool, through the real frame bootstrap, frame server, catalog and pairing, with nothing mocked.',
     exceptions: [],
   },
   {
