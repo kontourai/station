@@ -618,30 +618,38 @@ describe('installed-tree verification, exercised through the node-forge remediat
 });
 
 describe('patch-binding admission', () => {
-  const identity = {
+  const binding = fixture().remediation.patchBinding;
+  const forge = {
     scope: 'root',
+    package: 'node-forge',
+    version: '1.4.0',
+    advisory: 'GHSA-86w9-cpqp-85rv',
+    severity: 'high',
+    reachability: 'production',
+    patchBinding: binding,
+  };
+  // The binding names the same package and version as its record, so only the
+  // identity allow-list can refuse these.
+  const retired = {
+    ...forge,
     package: 'sprintf-js',
     version: '1.0.3',
     advisory: 'GHSA-hp3w-g68c-fv3c',
     severity: 'moderate',
-    reachability: 'production',
-    patchBinding: fixture().remediation.patchBinding,
+    patchBinding: { ...binding, package: 'sprintf-js', version: '1.0.3' },
   };
 
   it('refuses an identity other than the reviewed node-forge pair', () => {
-    expect(() => validateDependencyPatchBinding(identity)).toThrow(
+    expect(validateDependencyPatchBinding(forge)).toBe(binding);
+    expect(() => validateDependencyPatchBinding(retired)).toThrow(
       /unsupported identity/,
     );
-    const forge = {
-      ...identity,
-      package: 'node-forge',
-      version: '1.4.0',
-      advisory: 'GHSA-86w9-cpqp-85rv',
-      severity: 'high',
-    };
-    expect(validateDependencyPatchBinding(forge)).toBe(forge.patchBinding);
     for (const change of [
-      { version: '1.4.1' },
+      { version: '1.4.1', patchBinding: { ...binding, version: '1.4.1' } },
+      {
+        package: 'node-forge-fork',
+        patchBinding: { ...binding, package: 'node-forge-fork' },
+      },
       { advisory: 'GHSA-aaaa-bbbb-cccc' },
       { severity: 'moderate' },
       { scope: 'full' },
@@ -656,8 +664,7 @@ describe('patch-binding admission', () => {
     const f = fixture();
     f.config.remediations = [];
     f.config.residuals.push({
-      ...identity,
-      patchBinding: f.remediation.patchBinding,
+      ...retired,
       owner: 'station-maintainers',
       disposition: 'Reviewed local patch',
       controls: 'Exact machine binding',
