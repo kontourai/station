@@ -5,6 +5,7 @@ import {
 import { describe, expect, test } from 'vitest';
 import {
   deriveSessionWorkItemGithubUrl,
+  parseSessionInventoryGroupPage,
   parseSessionInventoryProjection,
   SESSION_INVENTORY_V1,
   SESSION_INVENTORY_V1_GROUP_IDS,
@@ -451,5 +452,434 @@ describe('Session inventory v2', () => {
       }),
     ])
       expect(parseStationSessionInventoryMcpV2Envelope(hostile)).toBeNull();
+  });
+});
+
+const OBSERVED_AT = '2026-10-20T00:00:00.000Z';
+const NON_AVAILABLE_ANSWER_STATES = [
+  'unavailable',
+  'stale',
+  'corrupt',
+  'restricted',
+  'unsupported-version',
+  'not-captured',
+  'observed-empty',
+] as const;
+type AnswerState = 'available' | (typeof NON_AVAILABLE_ANSWER_STATES)[number];
+
+function currentAnswerBasis(
+  state: AnswerState,
+  answerMessageId = 'message-a',
+): any {
+  const answerRef = createStationAnswerBinding({
+    sessionId: 'session-a',
+    turnId: 'turn-a',
+    messageId: answerMessageId,
+  }).answer;
+  const owner = { authority: '@kontourai/thread' as const };
+  return composeBasisProjection({
+    version: SURFACE_BASIS_VERSION,
+    answer:
+      state === 'available'
+        ? {
+            owner,
+            state,
+            observedAt: OBSERVED_AT,
+            value: {
+              ref: answerRef,
+              fact: 'answer-observed',
+              observedAt: OBSERVED_AT,
+            },
+          }
+        : state === 'observed-empty'
+          ? { owner, state, observedAt: OBSERVED_AT, value: [] }
+          : { owner, state, observedAt: OBSERVED_AT },
+    assessment: {
+      owner: { authority: '@kontourai/surface' },
+      state: 'not-captured',
+      observedAt: OBSERVED_AT,
+    },
+    contributions: [],
+  } as any);
+}
+
+function lineageRows(): Record<string, any> {
+  return {
+    input: {
+      kind: 'thread-authored-input',
+      key: 'input:event-input',
+      owner: { owner: 'thread.answer-basis', id: 'v1' },
+      relations: ['contributed-to'],
+      sessionId: 'session-a',
+      eventId: 'event-input',
+      turnId: 'turn-a',
+      inputKind: 'message',
+      attachmentDescriptors: [],
+    },
+    toolResult: {
+      kind: 'thread-tool-result',
+      key: 'tool:event-tool',
+      owner: { owner: 'station.session', id: 'v1' },
+      relations: ['observed-during', 'produced-by'],
+      sessionId: 'session-a',
+      eventId: 'event-tool',
+      turnId: 'turn-a',
+      toolCallId: 'call-a',
+      name: 'read_file',
+      terminalStatus: 'succeeded',
+    },
+    delegation: {
+      kind: 'station-delegation',
+      key: 'delegation:event-delegation',
+      owner: { owner: 'station.session', id: 'v1' },
+      relations: ['observed-during'],
+      sessionId: 'session-a',
+      eventId: 'event-delegation',
+      turnId: 'turn-a',
+      toolCallId: 'call-b',
+      childSessionId: 'session-child',
+    },
+    decision: {
+      kind: 'station-request-decision',
+      key: 'decision:event-decision',
+      owner: { owner: 'station.session', id: 'v1' },
+      relations: ['observed-during'],
+      sessionId: 'session-a',
+      eventId: 'event-decision',
+      turnId: 'turn-a',
+      requestId: 'request-a',
+      status: 'accepted',
+    },
+    output: {
+      kind: 'station-session-output',
+      key: 'output:event-output',
+      owner: { owner: 'station.session-outputs', id: 'v1' },
+      relations: ['produced-by'],
+      output: {
+        ref: { sessionId: 'session-a', eventId: 'event-output' },
+        turnId: 'turn-a',
+        toolCallId: 'call-c',
+        declaredAt: OBSERVED_AT,
+        descriptor: {
+          kind: 'workspace-file',
+          relativePath: 'report.md',
+          digest: 'c'.repeat(64),
+          length: 12,
+        },
+      },
+    },
+    workItem: {
+      kind: 'station-session-work-item',
+      key: 'work-item:association-a',
+      owner: { owner: 'station.session-work-items', id: 'v1' },
+      relations: ['observed-during', 'produced-by'],
+      sessionId: 'session-a',
+      conversationId: 'conversation-a',
+      eventId: 'event-work-item',
+      turnId: 'turn-a',
+      toolCallId: 'call-d',
+      provider: { id: 'github', host: 'github.com' },
+      workItemRef: 'github:kontourai/station#235',
+      repository: { owner: 'kontourai', name: 'station' },
+      nativeId: '1234567890',
+      associationIds: ['association-a'],
+      observedAt: OBSERVED_AT,
+    },
+    resources: {
+      kind: 'station-resource-summary',
+      key: 'resources:session-a',
+      owner: { owner: 'station.session', id: 'v1' },
+      relations: ['observed-during'],
+      sessionId: 'session-a',
+      inputTokens: 10,
+    },
+  };
+}
+
+const ROW_GROUP: Record<string, string> = {
+  input: 'inputs',
+  toolResult: 'execution',
+  delegation: 'execution',
+  decision: 'decisions',
+  output: 'outputs',
+  workItem: 'work-items',
+  resources: 'resources',
+};
+
+function withRows(value: any, rows: readonly any[]): any {
+  for (const [name, row] of Object.entries(lineageRows())) {
+    const selected = rows.filter((item) => item.key === row.key);
+    if (!selected.length) continue;
+    const group = value.groups.find((item: any) => item.id === ROW_GROUP[name]);
+    group.state = 'available';
+    group.items = [...group.items, ...selected];
+    group.count = { kind: 'exact', value: group.items.length };
+  }
+  return value;
+}
+
+/** A v2 current-answer projection with every non-answer group resolved. */
+function currentAnswerV2(state: AnswerState, rows?: readonly any[]): any {
+  const value = v2Projection();
+  value.scope = {
+    kind: 'current-answer',
+    sessionId: 'session-a',
+    turnId: 'turn-a',
+  };
+  value.basis = currentAnswerBasis(state);
+  value.basisBinding = createStationAnswerBinding({
+    sessionId: 'session-a',
+    turnId: 'turn-a',
+    messageId: 'message-a',
+  });
+  const sources = value.groups.find((item: any) => item.id === 'sources');
+  Object.assign(sources, {
+    owner: { owner: '@kontourai/fieldwork', id: 'reviewed-source/v1' },
+    state: 'unavailable',
+    gaps: [{ kind: 'unavailable' }],
+  });
+  delete sources.count;
+  const all = lineageRows();
+  return withRows(
+    value,
+    rows ?? [
+      all.input,
+      all.toolResult,
+      all.delegation,
+      all.decision,
+      all.output,
+      all.workItem,
+    ],
+  );
+}
+
+function answerContributionRow(): any {
+  return structuredClone(currentProjection().groups[1].items[0]);
+}
+
+describe('Current-answer inventory with a partial Basis (#3853)', () => {
+  test.each(NON_AVAILABLE_ANSWER_STATES)(
+    'a %s answer keeps every other resolved group',
+    (state) => {
+      const value = currentAnswerV2(state);
+      const parsed = parseSessionInventoryProjection(structuredClone(value));
+      expect(parsed).not.toBeNull();
+      expect(parsed?.basis?.answer.state).toBe(state);
+      expect(parsed?.groups).toEqual(value.groups);
+      for (const id of [
+        'inputs',
+        'execution',
+        'decisions',
+        'outputs',
+        'work-items',
+      ])
+        expect(parsed?.groups.find((group) => group.id === id)?.state).toBe(
+          'available',
+        );
+      // The group-page parser follows the same rule.
+      expect(
+        parseSessionInventoryGroupPage({
+          version: value.version,
+          scope: value.scope,
+          basis: value.basis,
+          basisBinding: value.basisBinding,
+          group: value.groups.find((group: any) => group.id === 'execution'),
+        }),
+      ).not.toBeNull();
+    },
+  );
+
+  test('an available answer must still equal the bound answer exactly', () => {
+    expect(
+      parseSessionInventoryProjection(currentAnswerV2('available')),
+    ).not.toBeNull();
+    const otherAnswer = currentAnswerV2('available');
+    otherAnswer.basis = currentAnswerBasis('available', 'message-other');
+    expect(parseSessionInventoryProjection(otherAnswer)).toBeNull();
+    const otherBinding = currentAnswerV2('available');
+    otherBinding.basisBinding = createStationAnswerBinding({
+      sessionId: 'session-a',
+      turnId: 'turn-a',
+      messageId: 'message-other',
+    });
+    expect(parseSessionInventoryProjection(otherBinding)).toBeNull();
+    expect(
+      parseSessionInventoryGroupPage({
+        version: otherAnswer.version,
+        scope: otherAnswer.scope,
+        basis: otherAnswer.basis,
+        basisBinding: otherAnswer.basisBinding,
+        group: otherAnswer.groups[0],
+      }),
+    ).toBeNull();
+  });
+
+  test.each(NON_AVAILABLE_ANSWER_STATES)(
+    'a %s answer admits no row bound to an answer',
+    (state) => {
+      const withContribution = (answerState: AnswerState) => {
+        const value = currentAnswerV2(answerState);
+        value.groups[1] = {
+          id: 'sources',
+          owner: { owner: '@kontourai/fieldwork', id: 'reviewed-source/v1' },
+          state: 'available',
+          count: { kind: 'exact', value: 1 },
+          items: [answerContributionRow()],
+          gaps: [],
+        };
+        return value;
+      };
+      // Control: the same row is admissible against an available answer.
+      expect(
+        parseSessionInventoryProjection(withContribution('available')),
+      ).not.toBeNull();
+      const value = withContribution(state);
+      expect(parseSessionInventoryProjection(value)).toBeNull();
+      expect(
+        parseSessionInventoryGroupPage({
+          version: value.version,
+          scope: value.scope,
+          basis: value.basis,
+          basisBinding: value.basisBinding,
+          group: value.groups[1],
+        }),
+      ).toBeNull();
+    },
+  );
+
+  test.each(['available', 'unavailable'] as const)(
+    'a %s answer bound to a different turn or Session is rejected',
+    (state) => {
+      const otherTurn = currentAnswerV2(state);
+      otherTurn.basisBinding = createStationAnswerBinding({
+        sessionId: 'session-a',
+        turnId: 'turn-other',
+        messageId: 'message-a',
+      });
+      expect(parseSessionInventoryProjection(otherTurn)).toBeNull();
+      const otherSession = currentAnswerV2(state);
+      otherSession.basisBinding = createStationAnswerBinding({
+        sessionId: 'session-other',
+        turnId: 'turn-a',
+        messageId: 'message-a',
+      });
+      expect(parseSessionInventoryProjection(otherSession)).toBeNull();
+      const missing = currentAnswerV2(state);
+      delete missing.basisBinding;
+      expect(parseSessionInventoryProjection(missing)).toBeNull();
+    },
+  );
+});
+
+describe('Current-answer lineage rows', () => {
+  const lineageKinds = [
+    'toolResult',
+    'delegation',
+    'decision',
+    'output',
+    'workItem',
+  ] as const;
+
+  test.each(lineageKinds)(
+    'a lineage-only %s row of the exact turn parses without contributed-to',
+    (name) => {
+      const row = lineageRows()[name];
+      expect(row.relations).not.toContain('contributed-to');
+      const value = currentAnswerV2('available', [row]);
+      const parsed = parseSessionInventoryProjection(value);
+      expect(parsed).not.toBeNull();
+      expect(
+        parsed?.groups.find((group) => group.id === ROW_GROUP[name])?.items,
+      ).toEqual([row]);
+    },
+  );
+
+  test.each(lineageKinds)(
+    'a lineage-only %s row of another turn is rejected',
+    (name) => {
+      const row = lineageRows()[name];
+      if (name === 'output') row.output.turnId = 'turn-other';
+      else row.turnId = 'turn-other';
+      expect(
+        parseSessionInventoryProjection(currentAnswerV2('available', [row])),
+      ).toBeNull();
+    },
+  );
+
+  test.each(['decision', 'delegation'] as const)(
+    'a %s row needs its turn in current-answer but not in whole-session',
+    (name) => {
+      const unbound = lineageRows()[name];
+      delete unbound.turnId;
+      expect(
+        parseSessionInventoryProjection(
+          currentAnswerV2('available', [unbound]),
+        ),
+      ).toBeNull();
+      expect(
+        parseSessionInventoryProjection(withRows(v2Projection(), [unbound])),
+      ).not.toBeNull();
+      expect(
+        parseSessionInventoryProjection(
+          withRows(v2Projection(), [lineageRows()[name]]),
+        ),
+      ).not.toBeNull();
+      const malformed = lineageRows()[name];
+      malformed.turnId = '';
+      expect(
+        parseSessionInventoryProjection(withRows(v2Projection(), [malformed])),
+      ).toBeNull();
+    },
+  );
+
+  test('a Session resource aggregate is not a turn slice', () => {
+    const resources = lineageRows().resources;
+    expect(
+      parseSessionInventoryProjection(withRows(v2Projection(), [resources])),
+    ).not.toBeNull();
+    expect(
+      parseSessionInventoryProjection(
+        currentAnswerV2('available', [resources]),
+      ),
+    ).toBeNull();
+  });
+
+  test('lineage admits only observed-during and produced-by', () => {
+    const decision = lineageRows().decision;
+    decision.relations = ['observed-during', 'kept-in-task'];
+    expect(
+      parseSessionInventoryProjection(currentAnswerV2('available', [decision])),
+    ).toBeNull();
+    const provided = lineageRows().decision;
+    provided.relations = ['provided-to'];
+    expect(
+      parseSessionInventoryProjection(currentAnswerV2('available', [provided])),
+    ).toBeNull();
+    const none = lineageRows().toolResult;
+    none.relations = [];
+    expect(
+      parseSessionInventoryProjection(currentAnswerV2('available', [none])),
+    ).toBeNull();
+  });
+
+  test('contributed-to stays the per-kind support edge', () => {
+    for (const name of ['toolResult', 'delegation', 'decision', 'workItem']) {
+      const claimed = lineageRows()[name];
+      claimed.relations = [...claimed.relations, 'contributed-to'];
+      expect(
+        parseSessionInventoryProjection(
+          currentAnswerV2('available', [claimed]),
+        ),
+      ).toBeNull();
+    }
+    const input = lineageRows().input;
+    expect(input.relations).toEqual(['contributed-to']);
+    expect(
+      parseSessionInventoryProjection(currentAnswerV2('available', [input])),
+    ).not.toBeNull();
+    input.turnId = 'turn-other';
+    expect(
+      parseSessionInventoryProjection(currentAnswerV2('available', [input])),
+    ).toBeNull();
   });
 });

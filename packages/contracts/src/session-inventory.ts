@@ -191,12 +191,22 @@ export type StationPlanSnapshotRow = RowBase<'station-plan-snapshot'> & {
 export type StationRequestDecisionRow = RowBase<'station-request-decision'> & {
   sessionId: string;
   eventId: string;
+  /**
+   * Optional and additive: the turn the decision was observed in. Required,
+   * and equal to the scope turn, for a lineage-only current-answer row.
+   */
+  turnId?: string;
   requestId: string;
   status: 'accepted' | 'declined' | 'cancelled' | 'pending';
 };
 export type StationDelegationRow = RowBase<'station-delegation'> & {
   sessionId: string;
   eventId: string;
+  /**
+   * Optional and additive: the turn that started the delegation. Required,
+   * and equal to the scope turn, for a lineage-only current-answer row.
+   */
+  turnId?: string;
   toolCallId: string;
   childSessionId: string;
 };
@@ -702,6 +712,7 @@ function rowDetails(value: Record<string, unknown>): boolean {
       return (
         string(value.sessionId) &&
         string(value.eventId) &&
+        (value.turnId === undefined || string(value.turnId)) &&
         string(value.requestId) &&
         ['accepted', 'declined', 'cancelled', 'pending'].includes(
           value.status as string,
@@ -711,6 +722,7 @@ function rowDetails(value: Record<string, unknown>): boolean {
       return (
         string(value.sessionId) &&
         string(value.eventId) &&
+        (value.turnId === undefined || string(value.turnId)) &&
         string(value.toolCallId) &&
         string(value.childSessionId)
       );
@@ -874,8 +886,8 @@ function row(value: unknown): value is SessionInventoryV2Row {
     'flow-agents-narrative': [],
     'thread-tool-result': [],
     'station-plan-snapshot': [],
-    'station-request-decision': [],
-    'station-delegation': [],
+    'station-request-decision': ['turnId'],
+    'station-delegation': ['turnId'],
     'station-session-output': [],
     'flow-gate-verdict': [],
     'flow-policy-verdict': [],
@@ -935,11 +947,29 @@ function validGap(value: unknown, requiredKind?: string): boolean {
     ].includes(value.code as string)
   );
 }
-function matchesCurrentAnswerBasis(
+/**
+ * Binds a current-answer projection to its exact Session and turn.
+ *
+ * Decision (#3853, following epic #418's rule that partial owner outages
+ * preserve successfully resolved regions): the projection is admitted
+ * whatever the Surface answer state is, so an unavailable, stale, corrupt,
+ * restricted, unsupported-version, not-captured or observed-empty answer no
+ * longer discards the inputs, execution and other groups resolved for the
+ * same turn. The answer's own state stays in `basis` for the consumer to
+ * render. What is not loosened:
+ * - the binding must still name the scope's exact Session and turn;
+ * - when the answer IS available, its reference must equal the binding's
+ *   answer exactly, as before, so a projection bound to a different answer
+ *   is still rejected;
+ * - when it is not available, nothing can prove which answer a row is bound
+ *   to, so `availableAnswer` is null and `group()` rejects every row that
+ *   carries an answer reference (`surface-answer-contribution`).
+ */
+function matchCurrentAnswerBasis(
   scope: Extract<SessionInventoryScope, { kind: 'current-answer' }>,
   basis: unknown,
   binding: unknown,
-): binding is StationAnswerBinding {
+): { availableAnswer: StationAnswerBinding | null } | null {
   const parsedBinding = parseStationAnswerBinding(binding);
   const parsedBasis = parseStationBasisProjection(basis);
   if (
@@ -947,26 +977,38 @@ function matchesCurrentAnswerBasis(
     !parsedBasis ||
     parsedBinding.sessionId !== scope.sessionId ||
     parsedBinding.turnId !== scope.turnId ||
-    parsedBinding.answer.threadId !== scope.sessionId ||
-    parsedBasis.answer.state !== 'available'
+    parsedBinding.answer.threadId !== scope.sessionId
   )
-    return false;
+    return null;
+  if (parsedBasis.answer.state !== 'available')
+    return { availableAnswer: null };
   const answer = parsedBasis.answer.value.ref;
-  return (
-    answer.authority === '@kontourai/thread' &&
+  return answer.authority === '@kontourai/thread' &&
     answer.schemaVersion === '1.2.0' &&
     answer.kind === 'assistant-message' &&
     answer.standing === 'observed' &&
     answer.threadId === parsedBinding.answer.threadId &&
     answer.messageId === parsedBinding.answer.messageId
-  );
+    ? { availableAnswer: parsedBinding }
+    : null;
+}
+/**
+ * The exact turn a row is bound to, if its kind carries one. Outputs carry
+ * it on the declared output item rather than on the row.
+ */
+function rowTurnId(itemRecord: Record<string, unknown>): unknown {
+  return itemRecord.kind === 'station-session-output' &&
+    plain(itemRecord.output)
+    ? itemRecord.output.turnId
+    : itemRecord.turnId;
 }
 function group(
   value: unknown,
   projectionScope: SessionInventoryScope,
   page: boolean,
   groupIds: readonly SessionInventoryV2GroupId[],
-  basisBinding?: StationAnswerBinding,
+  /** Set only when the current-answer Basis has an available, bound answer. */
+  availableAnswer?: StationAnswerBinding,
 ): value is AnySessionInventoryGroup {
   if (
     !plain(value) ||
@@ -1084,18 +1126,33 @@ function group(
       return false;
     const relations = itemRecord.relations;
     if (!Array.isArray(relations)) return false;
+    // Current-answer rows are either support or lineage, never inferred
+    // support. `contributed-to` stays the only edge meaning a row supported
+    // this answer. A row without it is admitted only as lineage of the exact
+    // turn: every relation is `observed-during` (tool results, decisions,
+    // delegations, work items seen in the turn) or `produced-by` (outputs the
+    // turn produced), each still limited by the per-kind `allowed` table, and
+    // the row carries that turn's id. Kinds with no turn binding (a Session
+    // resource aggregate, plan snapshots, narratives) therefore stay out of
+    // the lineage arm rather than being presented as a fabricated turn slice.
     if (
       projectionScope.kind === 'current-answer' &&
-      !relations.includes('contributed-to')
+      !relations.includes('contributed-to') &&
+      (relations.length === 0 ||
+        relations.some(
+          (relation) =>
+            relation !== 'observed-during' && relation !== 'produced-by',
+        ) ||
+        rowTurnId(itemRecord) !== projectionScope.turnId)
     )
       return false;
     if (itemRecord.kind === 'surface-answer-contribution') {
       if (
         projectionScope.kind !== 'current-answer' ||
-        !basisBinding ||
-        itemRecord.answerReferenceId !== basisBinding.answer.messageId ||
-        itemRecord.sessionId !== basisBinding.sessionId ||
-        itemRecord.turnId !== basisBinding.turnId ||
+        !availableAnswer ||
+        itemRecord.answerReferenceId !== availableAnswer.answer.messageId ||
+        itemRecord.sessionId !== availableAnswer.sessionId ||
+        itemRecord.turnId !== availableAnswer.turnId ||
         itemRecord.key !==
           `reviewed-source:${(itemRecord.reviewedSource as Record<string, unknown>).exactRef}`
       )
@@ -1161,13 +1218,12 @@ export function parseSessionInventoryProjection(
     )
       return null;
     const parsedScope = value.scope;
-    const basisBinding =
-      parsedScope.kind === 'current-answer' &&
-      matchesCurrentAnswerBasis(parsedScope, value.basis, value.basisBinding)
-        ? parseStationAnswerBinding(value.basisBinding)
+    const currentAnswer =
+      parsedScope.kind === 'current-answer'
+        ? matchCurrentAnswerBasis(parsedScope, value.basis, value.basisBinding)
         : null;
     if (
-      (parsedScope.kind === 'current-answer' && !basisBinding) ||
+      (parsedScope.kind === 'current-answer' && !currentAnswer) ||
       (parsedScope.kind !== 'current-answer' &&
         (value.basis !== undefined || value.basisBinding !== undefined)) ||
       value.groups.length !==
@@ -1183,7 +1239,7 @@ export function parseSessionInventoryProjection(
             value.version === SESSION_INVENTORY_V1
               ? SESSION_INVENTORY_V1_GROUP_IDS
               : SESSION_INVENTORY_V2_GROUP_IDS,
-            basisBinding ?? undefined,
+            currentAnswer?.availableAnswer ?? undefined,
           ) ||
           (item as AnySessionInventoryGroup).id !==
             (value.version === SESSION_INVENTORY_V1
@@ -1220,13 +1276,12 @@ export function parseSessionInventoryGroupPage(
       !scope(value.scope)
     )
       return null;
-    const basisBinding =
-      value.scope.kind === 'current-answer' &&
-      matchesCurrentAnswerBasis(value.scope, value.basis, value.basisBinding)
-        ? parseStationAnswerBinding(value.basisBinding)
+    const currentAnswer =
+      value.scope.kind === 'current-answer'
+        ? matchCurrentAnswerBasis(value.scope, value.basis, value.basisBinding)
         : null;
     if (
-      (value.scope.kind === 'current-answer' && !basisBinding) ||
+      (value.scope.kind === 'current-answer' && !currentAnswer) ||
       (value.scope.kind !== 'current-answer' &&
         (value.basis !== undefined || value.basisBinding !== undefined)) ||
       !group(
@@ -1236,7 +1291,7 @@ export function parseSessionInventoryGroupPage(
         value.version === SESSION_INVENTORY_V1
           ? SESSION_INVENTORY_V1_GROUP_IDS
           : SESSION_INVENTORY_V2_GROUP_IDS,
-        basisBinding ?? undefined,
+        currentAnswer?.availableAnswer ?? undefined,
       )
     )
       return null;
