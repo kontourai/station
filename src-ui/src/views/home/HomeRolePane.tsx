@@ -129,8 +129,8 @@ function HomeRoleFallback({
           {grant.descriptor.name}” from plugin{' '}
           {grant.descriptor.provenance.pluginId} could not render: {reason}
         </p>
-        {extensionBlocked && <StationExtensionsAccess onlyWhenOff compact />}
         <div className="home-role-fallback__actions">
+          {extensionBlocked && <StationExtensionsAccess onlyWhenOff compact />}
           {onRetry && <Button onClick={onRetry}>Try again</Button>}
           <Button onClick={onRevoke}>Keep the built-in Home</Button>
         </div>

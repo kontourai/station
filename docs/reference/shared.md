@@ -278,6 +278,7 @@ interface PluginPreview {
   valid: boolean;
   error?: string;
   manifest?: PluginManifest;
+  hasBundle?: boolean;
   components: PluginComponent[];
   conflicts: ConflictInfo[];
 }
@@ -297,6 +298,10 @@ interface ConflictInfo {
   existingSource?: string;
 }
 ```
+
+`hasBundle` reports whether the staged root plugin already contains
+`dist/bundle.js`. Installation may build client code from `manifest.entrypoint`
+even when this field is false; it does not establish runtime readiness.
 
 ## agent types
 

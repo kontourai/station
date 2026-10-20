@@ -547,6 +547,47 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(onAction).not.toHaveBeenCalled();
   });
 
+  test('preserves sibling details and keyboard focus while extension access changes', () => {
+    const remote = entry('Remote', {
+      state: 'temporarily-unavailable',
+      reason: { code: 'renderer-missing', source: 'renderer' },
+    });
+    const onSelect = vi.fn();
+    const list = (blocked: boolean) => (
+      <WorkspacePaneAvailabilityList
+        entries={[
+          unavailable,
+          {
+            ...remote,
+            ...(blocked ? { rendererGate: 'remote-isolation' as const } : {}),
+          },
+        ]}
+        onSelect={onSelect}
+      />
+    );
+    const { rerender } = render(list(false));
+    const details = screen.getByRole('button', {
+      name: 'Preview Setup needed',
+    });
+    fireEvent.click(details);
+    details.focus();
+
+    for (const blocked of [true, false]) {
+      rerender(list(blocked));
+      expect(document.activeElement).toBe(details);
+      expect(
+        screen
+          .getByRole('button', { name: 'Preview Setup needed' })
+          .getAttribute('aria-expanded'),
+      ).toBe('true');
+      expect(
+        screen
+          .getByText('Choose a Project before opening this pane.')
+          .closest('[hidden]'),
+      ).toBeNull();
+    }
+  });
+
   test.each([
     [
       'with a remote-extension gate',

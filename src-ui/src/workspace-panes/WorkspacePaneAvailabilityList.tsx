@@ -1,5 +1,12 @@
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
-import { type CSSProperties, useId, useState } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { PlugGlyph } from '../components/icons/Glyph';
 import { useStationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import {
@@ -236,7 +243,7 @@ function WorkspacePaneAvailabilityCard({
               <button
                 type="button"
                 className="workspace-pane-availability-list__remedy"
-                onClick={onReviewExtensions}
+                onClick={() => onReviewExtensions()}
                 disabled={pending}
               >
                 Review and enable
@@ -315,19 +322,30 @@ function PaneAvailabilityCards({
   );
 }
 
-function ExtensionReviewList(props: WorkspacePaneAvailabilityListProps) {
+function ExtensionReviewHost({
+  registerReview,
+}: {
+  registerReview: (review: () => void) => () => void;
+}) {
   const access = useStationExtensionsAccess();
-  return (
-    <>
-      <PaneAvailabilityCards {...props} onReviewExtensions={access.review} />
-      {access.dialog}
-    </>
+  useLayoutEffect(
+    () => registerReview(access.review),
+    [registerReview, access.review],
   );
+  return access.dialog;
 }
 
 export function WorkspacePaneAvailabilityList(
   props: WorkspacePaneAvailabilityListProps,
 ) {
+  const review = useRef<(() => void) | null>(null);
+  const registerReview = useCallback((callback: () => void) => {
+    review.current = callback;
+    return () => {
+      if (review.current === callback) review.current = null;
+    };
+  }, []);
+  const openReview = useCallback(() => review.current?.(), []);
   const needsReview =
     !props.onReviewExtensions &&
     props.entries.some(
@@ -338,9 +356,15 @@ export function WorkspacePaneAvailabilityList(
           entry.rendererResolution,
         ).reviewExtensions,
     );
-  return needsReview ? (
-    <ExtensionReviewList {...props} />
-  ) : (
-    <PaneAvailabilityCards {...props} />
+  return (
+    <>
+      <PaneAvailabilityCards
+        {...props}
+        onReviewExtensions={
+          props.onReviewExtensions ?? (needsReview ? openReview : undefined)
+        }
+      />
+      {needsReview && <ExtensionReviewHost registerReview={registerReview} />}
+    </>
   );
 }
