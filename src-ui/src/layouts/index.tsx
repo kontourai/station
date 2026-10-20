@@ -329,32 +329,6 @@ builtinRegistry['flow-run-console'] = ({ boundProjectSlug }) => (
 );
 builtinRegistry['kit-standard-view'] = KitStandardViewLayout;
 
-/**
- * Reports only whether this UI build has a renderer dispatch branch for a
- * declared component. MCP host support is distinct from a tool's permission
- * or health, which remain resolver-owned facts.
- */
-export function clientLayoutRendererPresence(
-  component: string | LayoutComponentRef,
-): 'present' | 'missing' {
-  let normalized: LayoutComponentRef;
-  try {
-    normalized = normalizeLayoutComponentRef(component);
-  } catch {
-    return 'missing';
-  }
-  switch (normalized.kind) {
-    case 'builtin-component':
-      return builtinRegistry[normalized.name] ? 'present' : 'missing';
-    case 'plugin-component':
-      return pluginRegistry.getLayout(normalized.name) ? 'present' : 'missing';
-    case 'mcp-tool-ui':
-      // MCPToolUILayout is an explicit host branch; this says nothing about
-      // the MCP tool's own permission or availability.
-      return 'present';
-  }
-}
-
 function resolvePluginLayoutComponent(
   componentId: string,
 ): AgentLayoutComponent {

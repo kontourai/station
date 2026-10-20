@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added why useSessionInventoryQuery revokes only on 401/403/404 while useAnswerBasisQuery revokes on any refusal (503 means could-not-perform). Checked against lostAuthority and its comment in packages/sdk/src/session-inventory.ts, plus the mount success gate and lifecycle tests.","inputs":["docs/reference/sdk.md","packages/sdk/src/session-inventory.ts"]}
+  ]
+}

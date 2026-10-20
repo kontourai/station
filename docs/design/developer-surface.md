@@ -1,5 +1,12 @@
 # Developer surface
 
+> **Reading status: implemented; current reference for the Developer
+> workspace (2026-10-08).** [routing.ts](../../src-ui/src/app-shell/routing.ts)
+> and [DeveloperView](../../src-ui/src/views/DeveloperView.tsx) own the
+> behaviour. The [monitoring guide](../guides/monitoring.md) owns Monitoring's
+> data sources and collection limits. Until that guide covers the section
+> list, redirects and shortcuts below, this page is their only description.
+
 `/developer` is a lazy-loaded diagnostic workspace with **Logs, System,
 Monitoring, Memory, and Archive** sections. Settings and Developer use the same
 [section navigation](../../src-ui/src/components/SectionNavigation.tsx): a desktop
