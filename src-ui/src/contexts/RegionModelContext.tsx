@@ -952,7 +952,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  // Where an open lands, decided once (#3964): `openSurfaceInRegion` runs
+  // Where an open lands, decided once: `openSurfaceInRegion` runs
   // the plan, and `previewOpenSurfaceInRegion` returns it without committing,
   // so a caller that asks the guards of what an open will take off screen
   // asks about the arrangement the open will actually commit — the phone
