@@ -223,7 +223,8 @@ function useRouteUp(source: Extract<PaneOpener['source'], { kind: 'route' }>) {
  */
 function usePluginOccurrenceUp(instanceId: string, opener: PaneOpener) {
   const model = useRegionModelOptional();
-  const showSurface = useShowSurface();
+  const modelRef = useRef(model);
+  modelRef.current = model;
   const leaveFor = useLeaveFor(instanceId);
   const { setLayout, setProject } = useNavigationActions();
   const source = opener.source as Extract<
@@ -232,8 +233,13 @@ function usePluginOccurrenceUp(instanceId: string, opener: PaneOpener) {
   >;
   return () => {
     const occurrence = opener.occurrenceId;
-    if (model && occupiedRegion(model.regions, occurrence) !== undefined) {
-      leaveFor(occurrence, () => showSurface(occurrence));
+    const current = modelRef.current;
+    if (current && occupiedRegion(current.regions, occurrence) !== undefined) {
+      leaveFor(occurrence, () =>
+        modelRef.current?.openSurfaceInRegion(occurrence, {
+          focusExisting: true,
+        }),
+      );
       return;
     }
     if (source.layoutSlug) setLayout(source.projectSlug, source.layoutSlug);

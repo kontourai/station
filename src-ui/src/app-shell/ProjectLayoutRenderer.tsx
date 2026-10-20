@@ -105,6 +105,7 @@ import {
 import { trackMcpAppDisplayModeDecision } from '../workspace-panes/mcpAppDisplayModeTelemetry';
 import { PluginWorkspacePaneSDKBoundary } from '../workspace-panes/PluginWorkspacePaneSDKBoundary';
 import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
+import { relatedPaneCaller } from '../workspace-panes/relatedPanesHost';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import { WorkspacePaneFrame } from '../workspace-panes/WorkspacePaneFrame';
 import { WorkspacePaneHost } from '../workspace-panes/WorkspacePaneHost';
@@ -1453,11 +1454,24 @@ function BuiltinCodingLayoutHost({
         slug: instance.instanceId,
         tabs: [selectedTab],
       };
+      // The tab as a related-pane opener: Up from a pane it opens returns to
+      // this Project layout.
+      const related = projectId
+        ? relatedPaneCaller({
+            occurrenceId: String(instance.instanceId),
+            instance,
+            projectId,
+            projectSlug: catalog.projectSlug,
+            layoutSlug,
+            label: descriptor.name,
+          })
+        : null;
       return (
         <PluginWorkspacePaneSDKBoundary
           layout={paneLayout}
           projectSlug={catalog.projectSlug}
           pluginName={pluginName}
+          related={related}
         >
           <LayoutRenderer
             componentId={pluginComponent}

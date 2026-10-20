@@ -47,6 +47,7 @@ export type {
   WorkspacePaneProvenance,
   WorkspacePaneProvenanceOrigin,
   WorkspacePaneRegion,
+  WorkspacePaneRelationRole,
   WorkspacePaneRendererCandidate,
   WorkspacePaneRendererCapability,
   WorkspacePaneRendererId,

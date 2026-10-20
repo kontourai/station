@@ -1,7 +1,10 @@
 /** @vitest-environment jsdom */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { PaneSkillExperienceHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
+import type {
+  PaneRelatedPanesHost,
+  PaneSkillExperienceHost,
+} from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -43,6 +46,7 @@ function Harness({
   granted = ['navigation.dock', 'ui.confirm'],
   active = true,
   skillExperience,
+  relatedPanes,
   authorizeExperience,
   generation,
   pluginName = 'demo',
@@ -53,6 +57,7 @@ function Harness({
   granted?: readonly string[];
   active?: boolean;
   skillExperience?: PaneSkillExperienceHost;
+  relatedPanes?: PaneRelatedPanesHost;
   authorizeExperience?: () => boolean;
   generation?: number;
   pluginName?: string;
@@ -65,6 +70,7 @@ function Harness({
     granted,
     active,
     skillExperience,
+    relatedPanes,
     authorizeExperience,
     generation,
     navigate,
@@ -558,4 +564,162 @@ test('a rich result belonging to a retired frame document cannot cross into its 
   expect(
     posted.filter((value) => value.method === 'pane-host/experience-result'),
   ).toEqual([]);
+});
+
+describe('related-pane requests reach the same host object a direct pane calls', () => {
+  function relatedHost(overrides: Partial<PaneRelatedPanesHost> = {}) {
+    return {
+      version: 1 as const,
+      open: vi.fn(async () => ({
+        status: 'opened' as const,
+        handle: `plugin-pane:${'a'.repeat(32)}`,
+        presentation: 'beside' as const,
+      })),
+      reveal: vi.fn(async () => ({
+        status: 'focused' as const,
+        presentation: 'beside' as const,
+      })),
+      close: vi.fn(async () => ({ status: 'closed' as const })),
+      target: vi.fn(async () => null),
+      ...overrides,
+    };
+  }
+
+  function results() {
+    return posted.filter(
+      (message) => message.method === 'pane-host/related-result',
+    );
+  }
+
+  test('each request is answered once, with its own id', async () => {
+    const host = relatedHost();
+    render(<Harness relatedPanes={host} />);
+    const request = {
+      descriptorId: 'pane:plugin%3Areports:detail',
+      modeId: 'project',
+      key: 'weekly',
+    };
+    await act(async () => {
+      adapter().receive({
+        method: 'pane-host/related-open',
+        params: { id: 'open-1', request },
+      });
+      adapter().receive({
+        method: 'pane-host/related-close',
+        params: { id: 'close-1', handle: `plugin-pane:${'a'.repeat(32)}` },
+      });
+    });
+    expect(host.open).toHaveBeenCalledWith(request);
+    expect(host.close).toHaveBeenCalledWith(`plugin-pane:${'a'.repeat(32)}`);
+    expect(results()).toEqual([
+      {
+        method: 'pane-host/related-result',
+        params: {
+          id: 'open-1',
+          data: {
+            status: 'opened',
+            handle: `plugin-pane:${'a'.repeat(32)}`,
+            presentation: 'beside',
+          },
+        },
+      },
+      {
+        method: 'pane-host/related-result',
+        params: { id: 'close-1', data: { status: 'closed' } },
+      },
+    ]);
+  });
+
+  test('a placement without the capability, or a malformed request, still answers', async () => {
+    const host = relatedHost();
+    const mounted = render(<Harness />);
+    await act(async () => {
+      adapter().receive({
+        method: 'pane-host/related-open',
+        params: { id: 'no-capability', request: {} },
+      });
+      adapter().receive({
+        method: 'pane-host/related-target',
+        params: { id: 'no-target' },
+      });
+    });
+    mounted.rerender(<Harness relatedPanes={host} />);
+    await act(async () => {
+      adapter().receive({
+        method: 'pane-host/related-reveal',
+        params: { id: 'bad-handle', handle: 7 },
+      });
+      adapter().receive({
+        method: 'pane-host/related-target',
+        params: { id: 'extra-field', path: '/etc' },
+      });
+      adapter().receive({ method: 'pane-host/related-close', params: {} });
+    });
+    expect(results().map((message) => message.params)).toEqual([
+      {
+        id: 'no-capability',
+        data: { status: 'unavailable', reason: 'unsupported' },
+      },
+      { id: 'no-target', data: null },
+      {
+        id: 'bad-handle',
+        data: { status: 'unavailable', reason: 'invalid-request' },
+      },
+      { id: 'extra-field', data: null },
+    ]);
+    // No id, nothing to correlate an answer with: refused by name.
+    expect(refusals().map((message) => message.params.method)).toEqual([
+      'pane-host/related-close',
+    ]);
+    expect(host.reveal).not.toHaveBeenCalled();
+    expect(host.target).not.toHaveBeenCalled();
+  });
+
+  test('an answer for a frame document that was replaced is not delivered to its successor', async () => {
+    let settle: ((value: null) => void) | undefined;
+    const host = relatedHost({
+      target: vi.fn(
+        () =>
+          new Promise<null>((resolve) => {
+            settle = resolve;
+          }),
+      ),
+    });
+    const mounted = render(<Harness relatedPanes={host} generation={1} />);
+    act(() =>
+      adapter().receive({
+        method: 'pane-host/related-target',
+        params: { id: 'old-document' },
+      }),
+    );
+    mounted.rerender(<Harness relatedPanes={host} generation={2} />);
+    await act(async () => {
+      settle?.(null);
+    });
+    expect(results()).toEqual([]);
+  });
+
+  test('a frame holds at most sixteen requests open at once', async () => {
+    const host = relatedHost({
+      reveal: vi.fn(() => new Promise<never>(() => {})),
+    });
+    render(<Harness relatedPanes={host} />);
+    await act(async () => {
+      for (let index = 0; index < 17; index += 1)
+        adapter().receive({
+          method: 'pane-host/related-reveal',
+          params: {
+            id: `reveal-${index}`,
+            handle: `plugin-pane:${'a'.repeat(32)}`,
+          },
+        });
+    });
+    expect(host.reveal).toHaveBeenCalledTimes(16);
+    expect(results().map((message) => message.params)).toEqual([
+      {
+        id: 'reveal-16',
+        data: { status: 'unavailable', reason: 'rate-limited' },
+      },
+    ]);
+  });
 });

@@ -249,6 +249,31 @@ describe('WorkspacePane contract', () => {
     });
   });
 
+  // docs/design/pane-relationships.md: the role a related open presents a
+  // pane in. Optional and reader-compatible: a role this version does not
+  // know (a newer host's) is dropped, so the descriptor still parses here as
+  // a destination; a role that is not a string is malformed.
+  test('reads the optional relation role compatibly', () => {
+    expect(
+      parseWorkspacePaneDescriptor({
+        ...pluginDescriptorInput(),
+        relationRole: 'tool',
+      })?.relationRole,
+    ).toBe('tool');
+    const newer = parseWorkspacePaneDescriptor({
+      ...pluginDescriptorInput(),
+      relationRole: 'inspector',
+    });
+    expect(newer).not.toBeNull();
+    expect(newer).not.toHaveProperty('relationRole');
+    expect(
+      parseWorkspacePaneDescriptor({
+        ...pluginDescriptorInput(),
+        relationRole: 3,
+      }),
+    ).toBeNull();
+  });
+
   test('parses a representative sandboxed MCP App descriptor', () => {
     const descriptor = parseWorkspacePaneDescriptor(mcpDescriptorInput());
     expect(descriptor).toEqual({

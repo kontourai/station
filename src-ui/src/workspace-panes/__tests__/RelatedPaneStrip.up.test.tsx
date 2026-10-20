@@ -247,6 +247,52 @@ describe('Up to a Files opener', () => {
   });
 });
 
+describe('Up to a plugin opener', () => {
+  const OPENER_PANE = `plugin-pane:${'c'.repeat(32)}`;
+  const opener = (
+    occurrenceId: string,
+    layoutSlug: string | null,
+  ): PaneOpener => ({
+    occurrenceId,
+    label: 'Reports',
+    source: { kind: 'plugin-occurrence', projectSlug: 'alpha', layoutSlug },
+  });
+
+  test('a Project layout tab: Up goes to that layout through canonical navigation', async () => {
+    seedRelation(opener('instance:plugin:alpha-id:list', 'reports'));
+    mount();
+    act(() => screen.getByRole('button', { name: 'Up to Reports' }).click());
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/projects/alpha/layouts/reports'),
+    );
+  });
+
+  test('with no layout, Up goes to its Project', async () => {
+    seedRelation(opener('instance:plugin:alpha-id:list', null));
+    mount();
+    act(() => screen.getByRole('button', { name: 'Up to Reports' }).click());
+    await waitFor(() =>
+      expect(window.location.pathname.startsWith('/projects/alpha')).toBe(true),
+    );
+  });
+
+  test('an opener a region holds is revealed there, exactly', async () => {
+    seedRelation(opener(OPENER_PANE, 'reports'));
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => {
+      model?.placeSurface(OPENER_PANE, 'right');
+      model?.placeSurface('activity', 'right');
+    });
+    expect(model?.regions.right.occupant).toBe('activity');
+    act(() => screen.getByRole('button', { name: 'Up to Reports' }).click());
+    await waitFor(() =>
+      expect(model?.regions.right.occupant).toBe(OPENER_PANE),
+    );
+    expect(window.location.pathname).toBe('/');
+  });
+});
+
 test('a relation recorded on another Station offers no Up', () => {
   seedRelation(
     {

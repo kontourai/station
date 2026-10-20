@@ -113,16 +113,16 @@ import {
   isCanonicalFilePreviewPaneInstance,
 } from '../workspace-panes/filePreviewPaneInstance';
 import {
+  type FilePreviewPaneStateStorage,
+  readFilePreviewPaneState,
+  removeFilePreviewPaneState,
+} from '../workspace-panes/filePreviewPaneStateStorage';
+import {
   PLUGIN_PANE_ID,
   pluginPaneInstance,
   readPluginPaneState,
   removePluginPaneState,
 } from '../workspace-panes/pluginPaneOccurrence';
-import {
-  type FilePreviewPaneStateStorage,
-  readFilePreviewPaneState,
-  removeFilePreviewPaneState,
-} from '../workspace-panes/filePreviewPaneStateStorage';
 
 /** What a region host knows when it builds its panes: the dock's project. */
 export interface RegionPaneContext {
@@ -205,7 +205,7 @@ function codingPane(
   instanceId: string,
   create: (projectId: string) => WorkspacePaneInstance | null,
   isCanonical: (instance: WorkspacePaneInstance) => boolean,
-): [string, RegionSurfacePane] {
+): [string, RegisteredRegionSurfacePane] {
   return [
     surfaceId,
     {
@@ -221,82 +221,89 @@ function codingPane(
   ];
 }
 
-export const REGION_SURFACE_PANES: ReadonlyMap<string, RegionSurfacePane> =
-  new Map<string, RegionSurfacePane>([
-    [
-      'chat',
-      {
-        surfaceId: 'chat',
-        descriptorId: WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
-        instanceId: AMBIENT_CHAT_PANE_INSTANCE.instanceId,
-        instance: () => AMBIENT_CHAT_PANE_INSTANCE,
-        // The predicate the chat-dock host used before it became the region
-        // host, unchanged: a persisted project-bound Chat under the same
-        // instance id is normalised to the projectless catalog record by
-        // `restoreWorkspacePaneHostDocument`'s catalog match, so admission
-        // needs no project rule of its own.
-        isCanonical: (instance) =>
-          instance.descriptorId === WORKSPACE_CHAT_PANE_DESCRIPTOR.id &&
-          isCanonicalWorkspaceChatPaneInstance(instance),
-      },
-    ],
-    [
-      'activity',
-      {
-        surfaceId: 'activity',
-        descriptorId: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
-        instanceId: WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId,
-        instance: () => WORKSPACE_ACTIVITY_PANE_INSTANCE,
-        isCanonical: isCanonicalWorkspaceActivityPaneInstance,
-      },
-    ],
-    [
-      'workspace-agents',
-      {
-        surfaceId: 'workspace-agents',
-        descriptorId: WORKSPACE_AGENTS_PANE_DESCRIPTOR.id,
-        instanceId: WORKSPACE_AGENTS_PANE_INSTANCE.instanceId,
-        instance: () => WORKSPACE_AGENTS_PANE_INSTANCE,
-        isCanonical: isCanonicalWorkspaceAgentsPaneInstance,
-      },
-    ],
-    [
-      'device',
-      {
-        surfaceId: 'device',
-        descriptorId: WORKSPACE_DEVICE_PANE_DESCRIPTOR.id,
-        instanceId: WORKSPACE_DEVICE_PANE_INSTANCE.instanceId,
-        // Ignores the context, like Chat, Activity and Agents, and for a
-        // reason of its own: the device list is a fact about the STATION's host, not
-        // about a checkout, so a Device pane renders in a dock with no
-        // project rather than showing "choose a project" for a question no
-        // project answers.
-        instance: () => WORKSPACE_DEVICE_PANE_INSTANCE,
-        isCanonical: isCanonicalWorkspaceDevicePaneInstance,
-      },
-    ],
-    codingPane(
-      'coding:terminal',
-      WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
-      WORKSPACE_CODING_TERMINAL_PANE_INSTANCE_ID,
-      createWorkspaceCodingTerminalPaneInstance,
-      isCanonicalWorkspaceCodingTerminalPaneInstance,
-    ),
-    codingPane(
-      'coding:diff',
-      WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
-      WORKSPACE_CODING_DIFF_PANE_INSTANCE_ID,
-      createWorkspaceCodingDiffPaneInstance,
-      isCanonicalWorkspaceCodingDiffPaneInstance,
-    ),
-    codingPane(
-      'coding:file-browser',
-      WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
-      WORKSPACE_CODING_FILE_BROWSER_PANE_INSTANCE_ID,
-      createWorkspaceCodingFileBrowserPaneInstance,
-      isCanonicalWorkspaceCodingFileBrowserPaneInstance,
-    ),
-  ]);
+/** A registered surface's pane, which always names its built-in descriptor. */
+export interface RegisteredRegionSurfacePane extends RegionSurfacePane {
+  descriptorId: string;
+}
+
+export const REGION_SURFACE_PANES: ReadonlyMap<
+  string,
+  RegisteredRegionSurfacePane
+> = new Map<string, RegisteredRegionSurfacePane>([
+  [
+    'chat',
+    {
+      surfaceId: 'chat',
+      descriptorId: WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
+      instanceId: AMBIENT_CHAT_PANE_INSTANCE.instanceId,
+      instance: () => AMBIENT_CHAT_PANE_INSTANCE,
+      // The predicate the chat-dock host used before it became the region
+      // host, unchanged: a persisted project-bound Chat under the same
+      // instance id is normalised to the projectless catalog record by
+      // `restoreWorkspacePaneHostDocument`'s catalog match, so admission
+      // needs no project rule of its own.
+      isCanonical: (instance) =>
+        instance.descriptorId === WORKSPACE_CHAT_PANE_DESCRIPTOR.id &&
+        isCanonicalWorkspaceChatPaneInstance(instance),
+    },
+  ],
+  [
+    'activity',
+    {
+      surfaceId: 'activity',
+      descriptorId: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
+      instanceId: WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId,
+      instance: () => WORKSPACE_ACTIVITY_PANE_INSTANCE,
+      isCanonical: isCanonicalWorkspaceActivityPaneInstance,
+    },
+  ],
+  [
+    'workspace-agents',
+    {
+      surfaceId: 'workspace-agents',
+      descriptorId: WORKSPACE_AGENTS_PANE_DESCRIPTOR.id,
+      instanceId: WORKSPACE_AGENTS_PANE_INSTANCE.instanceId,
+      instance: () => WORKSPACE_AGENTS_PANE_INSTANCE,
+      isCanonical: isCanonicalWorkspaceAgentsPaneInstance,
+    },
+  ],
+  [
+    'device',
+    {
+      surfaceId: 'device',
+      descriptorId: WORKSPACE_DEVICE_PANE_DESCRIPTOR.id,
+      instanceId: WORKSPACE_DEVICE_PANE_INSTANCE.instanceId,
+      // Ignores the context, like Chat, Activity and Agents, and for a
+      // reason of its own: the device list is a fact about the STATION's host, not
+      // about a checkout, so a Device pane renders in a dock with no
+      // project rather than showing "choose a project" for a question no
+      // project answers.
+      instance: () => WORKSPACE_DEVICE_PANE_INSTANCE,
+      isCanonical: isCanonicalWorkspaceDevicePaneInstance,
+    },
+  ],
+  codingPane(
+    'coding:terminal',
+    WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+    WORKSPACE_CODING_TERMINAL_PANE_INSTANCE_ID,
+    createWorkspaceCodingTerminalPaneInstance,
+    isCanonicalWorkspaceCodingTerminalPaneInstance,
+  ),
+  codingPane(
+    'coding:diff',
+    WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+    WORKSPACE_CODING_DIFF_PANE_INSTANCE_ID,
+    createWorkspaceCodingDiffPaneInstance,
+    isCanonicalWorkspaceCodingDiffPaneInstance,
+  ),
+  codingPane(
+    'coding:file-browser',
+    WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+    WORKSPACE_CODING_FILE_BROWSER_PANE_INSTANCE_ID,
+    createWorkspaceCodingFileBrowserPaneInstance,
+    isCanonicalWorkspaceCodingFileBrowserPaneInstance,
+  ),
+]);
 
 /**
  * The renderer source each REGISTERED surface mounts, by surface id: the

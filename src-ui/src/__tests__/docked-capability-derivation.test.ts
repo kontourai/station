@@ -210,8 +210,16 @@ describe('docked is a derived capability, pinned to the shell surface registry',
       'browser-preview:',
       'board:',
       'layout:',
+      // A related plugin pane: each occurrence names its plugin's own
+      // descriptor, which a related open admits without `docked`
+      // (docs/design/pane-relationships.md), so the family names none.
+      'plugin-pane:',
     ]);
     for (const prefix of INSTANCE_SURFACE_PREFIXES) {
+      if (prefix.descriptorId === null) {
+        expect(prefix.prefix).toBe('plugin-pane:');
+        continue;
+      }
       const descriptor = byId.get(prefix.descriptorId);
       expect(descriptor, prefix.prefix).toBeDefined();
       expect(
@@ -244,7 +252,9 @@ describe('docked is a derived capability, pinned to the shell surface registry',
     const placeable = new Set<string>([
       ...Object.values(SURFACE_DESCRIPTORS).map((descriptor) => descriptor.id),
       // Placeable by instance rather than by registry entry (#2049).
-      ...INSTANCE_SURFACE_PREFIXES.map((prefix) => prefix.descriptorId),
+      ...INSTANCE_SURFACE_PREFIXES.flatMap((prefix) =>
+        prefix.descriptorId === null ? [] : [prefix.descriptorId],
+      ),
     ]);
     const declared = new Set<string>(
       exportedBuiltinDescriptors()

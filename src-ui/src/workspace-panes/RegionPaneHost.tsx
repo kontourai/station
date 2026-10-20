@@ -332,6 +332,16 @@ const loadRegionBuiltinPane = () =>
   }));
 
 /**
+ * A plugin's own pane a related open placed (`plugin-pane:`), behind its own
+ * lazy boundary: the plugin render graph joins the host only when a region
+ * holds one.
+ */
+const loadRegionPluginPane = () =>
+  import('./RegionPluginPane').then((module) => ({
+    default: module.RegionPluginPane,
+  }));
+
+/**
  * What a region shows for a selected pane its dock cannot supply (#2047 D6:
  * a coding pane while the dock has no project). The tab and the record keep
  * the surface; only the rendering waits. Same scroll container as every
@@ -888,7 +898,11 @@ export function RegionPaneHost({
                     return ownedByPane(
                       instance,
                       <LazyBoundary
-                        load={loadRegionBuiltinPane}
+                        load={
+                          String(instance.instanceId).startsWith('plugin-pane:')
+                            ? loadRegionPluginPane
+                            : loadRegionBuiltinPane
+                        }
                         componentProps={{ instance }}
                         pending={
                           <SkeletonBlock count={3} label="Loading pane" />

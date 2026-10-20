@@ -9,6 +9,7 @@ import {
   type PaneOpener,
   type PaneRelation,
   type PaneRelationTarget,
+  paneRelationOf,
   prunePaneRelations,
   sameRelationTarget,
   transientPaneForOpener,
@@ -343,6 +344,73 @@ export async function openRelatedOccurrence<AdapterRefusal extends string>(
           disposition: replacing === undefined ? 'opened' : 'replaced',
         },
       };
+    },
+    { station },
+  );
+  if (!result.ok) return { ok: false, reason: stepRefusal ?? result.reason };
+  return result.value;
+}
+
+/**
+ * Reveal one EXISTING related occurrence, the handle-addressed half of the
+ * pipeline above: the covered pane's guard is asked first, then — inside the
+ * lock, over a fresh read — the occurrence must still be the related one
+ * `admitRelation` accepts, still exist, the covered pane must be the one the
+ * guard was asked about, and the adapter's admission must still hold.
+ */
+export async function revealRelatedOccurrence<AdapterRefusal extends string>(
+  getModel: () => RelatedOpenModel,
+  relations: PaneRelationsValue,
+  instanceId: string,
+  adapter: {
+    readonly landing: DockRegionId;
+    admitRelation(relation: PaneRelation | undefined): boolean;
+    admit?(): AdapterRefusal | null;
+    reveal(model: RelatedOpenModel, instanceId: string): OpenInRegionOutcome;
+  },
+): Promise<RelatedOpenOutcome<AdapterRefusal | 'unknown-handle'>> {
+  const station = relations.stationId;
+  if (station === null) return { ok: false, reason: 'station-unverified' };
+  if (
+    !adapter.admitRelation(relations.relationOf(instanceId)) ||
+    !relatedOccurrenceExists(instanceId)
+  )
+    return { ok: false, reason: 'unknown-handle' };
+  const refusedFirst = adapter.admit?.() ?? null;
+  if (refusedFirst !== null) return { ok: false, reason: refusedFirst };
+  const asked = paneHiddenBy(getModel(), instanceId, adapter.landing);
+  const hidden = asked === instanceId ? null : asked;
+  if (!(await guardsAllow([hidden])))
+    return { ok: false, reason: 'guard-cancelled' };
+  let stepRefusal:
+    | RelatedOpenRefusal
+    | AdapterRefusal
+    | 'unknown-handle'
+    | undefined;
+  const result = await relations.transact<
+    RelatedOpenOutcome<AdapterRefusal | 'unknown-handle'>
+  >(
+    (tx) => {
+      const fresh = prunePaneRelations(tx.record, relatedOccurrenceExists);
+      if (!adapter.admitRelation(paneRelationOf(fresh, instanceId))) {
+        stepRefusal = 'unknown-handle';
+        return { ok: false, reason: 'refused' };
+      }
+      const refused = adapter.admit?.() ?? null;
+      if (refused !== null) {
+        stepRefusal = refused;
+        return { ok: false, reason: 'refused' };
+      }
+      const model = getModel();
+      const coveredNow = paneHiddenBy(model, instanceId, adapter.landing);
+      if ((coveredNow === instanceId ? null : coveredNow) !== hidden)
+        return { ok: false, reason: 'superseded' };
+      const outcome = adapter.reveal(model, instanceId);
+      if (!outcome.ok) {
+        stepRefusal = outcome.reason;
+        return { ok: false, reason: 'refused' };
+      }
+      return { ok: true, value: { ...outcome, disposition: 'focused' } };
     },
     { station },
   );

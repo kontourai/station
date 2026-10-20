@@ -174,10 +174,41 @@ describe('reading the pane relations side record', () => {
             },
           },
         }),
+        relation('plugin-no-project', {
+          opener: {
+            ...SECURITY,
+            source: {
+              kind: 'plugin-occurrence',
+              projectSlug: '',
+              layoutSlug: null,
+            },
+          },
+        }),
+        relation('plugin-long-layout', {
+          opener: {
+            ...SECURITY,
+            source: {
+              kind: 'plugin-occurrence',
+              projectSlug: 'station',
+              layoutSlug: 'l'.repeat(257),
+            },
+          },
+        }),
+        relation('plugin', {
+          opener: {
+            ...SECURITY,
+            source: {
+              kind: 'plugin-occurrence',
+              projectSlug: 'station',
+              layoutSlug: 'reports',
+            },
+          },
+        }),
       ]),
     );
     expect(read.record.entries.map((entry) => entry.instanceId)).toEqual([
       'route',
+      'plugin',
     ]);
   });
 
@@ -317,6 +348,17 @@ describe('matching related panes', () => {
         source: { kind: 'files', projectId: 'p1', projectSlug: 's' },
       }),
     ).toBe('files:p1');
+    expect(
+      openerSelectionKey({
+        occurrenceId: 'instance:plugin:p1:list',
+        label: 'Reports',
+        source: {
+          kind: 'plugin-occurrence',
+          projectSlug: 's',
+          layoutSlug: null,
+        },
+      }),
+    ).toBe('plugin-occurrence:s/');
   });
 
   test('source changes hide transient previews only', () => {
