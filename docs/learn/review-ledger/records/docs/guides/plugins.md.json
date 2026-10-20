@@ -116,7 +116,15 @@
 
     "src-ui/src/components/DeferredCapabilityBoundary.tsx",
 
-    "src-ui/src/views/RegistryView.tsx"
+    "src-ui/src/views/RegistryView.tsx",
+
+    "src-ui/src/components/registry/StationExtensionsAccess.tsx",
+
+    "src-ui/src/components/registry/__tests__/StationExtensionsAccess.test.tsx",
+
+    "src-ui/src/views/plugin-management/InstallPreviewModal.tsx",
+
+    "src-ui/src/views/plugin-management/PluginModalStack.tsx"
   ],
 
   "checks": [
