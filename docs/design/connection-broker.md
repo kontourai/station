@@ -31,7 +31,7 @@ Production TURN/TLS, supported native runtimes and actual remote delivery must
 qualify independently. The Node UDP backend remains useful diagnostic evidence;
 it does not acquire TURN/TCP support from Pion's results.
 
-Native desktop has a separate [OS-keyring routing-grant vault](../../src-desktop/src/relay_grant_vault.rs),
+Native desktop has a separate [OS-keyring routing-grant vault](../../src-desktop/src/native_relay_redemption.rs),
 and a host-owned Device enrollment ceremony. The ordinary saved-route owner
 now composes `/native-application`, fresh ICE, Device proof and a separate
 account continuation for bounded health and member Project reads. Operator
