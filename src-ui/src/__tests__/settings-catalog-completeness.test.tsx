@@ -2477,6 +2477,7 @@ describe('settings catalog completeness', () => {
     ['combined', 200],
     ['combined', 403],
     ['kontour-only', 200],
+    ['kontour-stale-sibling', 200],
   ] as const)(
     'Settings %s Detailed binds author acknowledgement; response %s',
     async (mode, status) => {
@@ -2486,10 +2487,14 @@ describe('settings catalog completeness', () => {
       configSnapshot = {
         config: {
           ...INITIAL_CONFIG,
-          telemetryTier: { kontour: 'lite', operator: 'off' },
+          telemetryTier: {
+            kontour: 'lite',
+            operator: mode === 'kontour-stale-sibling' ? 'full' : 'off',
+          },
         },
         dataUpdatedAt: 1,
       };
+      let remoteOperator: string = 'off';
       const order: string[] = [];
       vi.mocked(authenticatedFetch).mockImplementation(async (url, init) => {
         if (String(url).endsWith('/acknowledgements')) {
@@ -2501,8 +2506,10 @@ describe('settings catalog completeness', () => {
         }
         return new Response(null, { status: 503 });
       });
-      updateConfig.mockImplementation(async () => {
+      updateConfig.mockImplementation(async (patch) => {
         order.push('config');
+        if (patch.telemetryTier?.operator)
+          remoteOperator = patch.telemetryTier.operator;
         return {};
       });
       await renderSettings();
@@ -2554,6 +2561,8 @@ describe('settings catalog completeness', () => {
             ? ['kontour', 'operator', 'config', 'config']
             : ['kontour', 'config'],
         );
+        if (mode === 'kontour-stale-sibling')
+          expect(remoteOperator).toBe('off');
       }
     },
   );

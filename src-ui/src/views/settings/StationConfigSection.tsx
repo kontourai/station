@@ -212,7 +212,7 @@ export function StationConfigSection({
   telemetryCounts?: SharingCounts;
   telemetryNoticeRef?: Ref<HTMLElement>;
   telemetryNoticeError?: boolean;
-  onTelemetryDetailedIntent?: () => void;
+  onTelemetryDetailedIntent?: (publisher?: 'kontour' | 'operator') => void;
 }) {
   const rows = (
     STATION_SETTING_KEYS_BY_SECTION[section] as readonly (keyof AppConfig)[]

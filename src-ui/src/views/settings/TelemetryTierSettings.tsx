@@ -42,7 +42,7 @@ export function TelemetryTierSettings({
   counts?: SharingCounts;
   noticeRef?: Ref<HTMLElement>;
   noticeError?: boolean;
-  onDetailedIntent?: () => void;
+  onDetailedIntent?: (publisher?: 'kontour' | 'operator') => void;
   savedChoices?: TelemetryTierChoices;
   statusError?: boolean;
   onChange: (config: AppConfig) => void;
@@ -194,7 +194,7 @@ export function TelemetryTierSettings({
                             publisher === 'kontour') &&
                           tier === 'full'
                         )
-                          onDetailedIntent?.();
+                          onDetailedIntent?.(publisher);
                         const previous =
                           savedChoices?.[publisher] ??
                           status?.userChoice ??

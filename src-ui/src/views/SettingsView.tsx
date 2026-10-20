@@ -256,6 +256,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const [telemetryConsentRevision, setTelemetryConsentRevision] = useState<
     string | null
   >(null);
+  const [telemetryConsentPublishers, setTelemetryConsentPublishers] = useState<
+    ('kontour' | 'operator')[]
+  >([]);
   const [telemetryConsentAuthor, setTelemetryConsentAuthor] =
     useState<string>();
   const [telemetryFeedback, setTelemetryFeedback] = useState<
@@ -712,7 +715,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         delete changed.telemetryTier;
     }
     if (telemetryConsentRevision) {
-      for (const id of ['kontour', 'operator'] as const) {
+      for (const id of telemetryConsentPublishers) {
         if (config.telemetryTier?.[id] === 'full')
           changed.telemetryTier = { ...changed.telemetryTier, [id]: 'full' };
       }
@@ -752,6 +755,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   throw new SharingDetailsChangedError();
                 for (const publisher of ['kontour', 'operator'] as const) {
                   if (
+                    !telemetryConsentPublishers.includes(publisher) ||
                     telemetryTier?.[publisher] !== 'full' ||
                     dntAtSave?.[publisher]?.reason === 'DNT'
                   )
@@ -1285,7 +1289,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       telemetryCounts={telemetryStatus.data?.liteInventory}
                       telemetryNoticeRef={telemetryNotice.element}
                       telemetryNoticeError={telemetryNotice.isError}
-                      onTelemetryDetailedIntent={() => {
+                      onTelemetryDetailedIntent={(publisher) => {
+                        setTelemetryConsentPublishers(
+                          publisher ? [publisher] : ['kontour', 'operator'],
+                        );
                         setTelemetryConsentRevision(
                           telemetryDisclosure.data?.inventoryRevision ?? null,
                         );
