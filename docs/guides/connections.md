@@ -831,8 +831,27 @@ as `origin/main` after a fetch) still applies, as the top-level one does. Any
 other `.codex` anywhere from the repository root down to the session's folder
 (uncommitted, committed only locally, changed, inside a nested repository,
 or in a folder with no repository or no remote) stops the session from
-starting, with the directory named: commit and push `.codex` to its
-upstream and fetch, remove it, or run the session as `host`. If Codex does not
+starting, with the directory named. Station checks from the repository that
+contains the session's Project folder (or, with no Project, its folder) down
+to the session's folder. Cases that refuse a session you meant to allow,
+and the remedy:
+
+- **No remote, or not pushed or not fetched yet.** The repository has no
+  remote-tracking branch, or the `.codex` is committed only locally, or the
+  latest push has not been fetched. Push it and run `git fetch`.
+- **A local change.** An uncommitted edit or an extra untracked file inside
+  a `.codex` (a local override) does not match upstream. Commit and push it,
+  move it to your own Codex configuration, or run the session as `host`.
+- **The reftable ref backend.** Station cannot read its refs safely, so it
+  trusts no `.codex` there. Run the session as `host`.
+- **A nested repository or submodule below the Project folder** whose own
+  `.codex` is not on the Project repository's remote-tracking branches. Run
+  the session as `host`, or start it with that repository as its Project.
+
+A confined Claude session cannot run `git fetch` or `pull` (or pack refs) in
+a folder whose `.git` is inside it, as in a linked worktree: the
+remote-tracking refs are what a later Codex session trusts. Fetch and pull
+from your own terminal or a `host` session. If Codex does not
 report the profile applied (a Codex version without permission profiles),
 a session that must be confined is refused, and any other is recorded as
 `configured-but-failed`. On Linux, Codex cannot deny a `.codex` the session

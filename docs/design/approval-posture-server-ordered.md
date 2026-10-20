@@ -878,13 +878,24 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
     outside the sandbox (EXECUTED, codex-cli 0.162.1). Before spawning Codex
     for any session not started as `host` (start, resume, fork, adoption and
     respawn all pass through `startReservedSession`), Station checks every
-    directory from the outermost Git work tree containing the cwd down to
-    the cwd, on the lexical and the resolved path
+    directory from the trusted repository's root down to the cwd, on the
+    lexical and the resolved path
     ([codex-project-config-provenance.ts](../../src-server/providers/adapters/codex-project-config-provenance.ts)).
     A `.codex` there must be a real directory whose every file is a regular
     file whose bytes are the blob at the same path in one remote-tracking
-    ref (`refs/remotes/*`) of that outermost repository: content that came
-    from upstream. Otherwise the start is refused with
+    ref (`refs/remotes/*`) of the trusted repository: content that came
+    from upstream.
+    - **The anchor is server-authorized.** The orchestration service stamps
+      `confinementRoot` into the start metadata (replacing any caller value,
+      and carried to respawns with the stored metadata): the Project's
+      directory when the cwd lies inside it, else the cwd. The trusted
+      repository is the innermost one containing that root. Anything found
+      from the cwd is no anchor: an agent can build a whole repository,
+      commit and remote-tracking ref included, in temp and move it in
+      (EXECUTED in review). Below the root, a repository is trusted only as
+      a linked worktree the trusted one registered; a root in no repository
+      trusts no `.codex`. A start without the stamp (recorded before it, or a
+      direct adapter call) is authorized for its cwd. Otherwise the start is refused with
     `confinement_workspace_incompatible`, naming the directory and saying to
     commit and push `.codex` to its upstream or run as `host`, whether or
     not the session requires confinement, since the command would run
@@ -907,8 +918,8 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
       too. Push it, or run the session as `host`. The user's `~/.codex` and
       `CODEX_HOME` are user configuration and are skipped.
     - A `.codex` known only to a nested repository (including a submodule)
-      is refused: only the outermost repository's refs count, and a planted
-      repository is nested by construction. The exception is a linked
+      below the root is refused: only the trusted repository's refs count.
+      The exception is a linked
       worktree the outermost repository registered (for example a
       gitignored `.worktrees/lane`): its gitfile names
       `<common dir>/worktrees/<name>`, whose `gitdir` points back at it, so
@@ -917,15 +928,12 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
       another worktree's entry, is not one.
     - A start without a cwd checks the server's own directory, where Codex
       then runs.
-    - **Not covered: a project inside another repository.** The anchor is the
-      outermost repository, so a project inside, say, a home-directory
-      dotfiles repository has its own upstream `.codex` judged against the
-      outer one and refused; the refusal says so. Bounding the walk needs
-      the Project root on the start input.
-    - **Not covered: a workspace outside any repository.** There the
-      outermost repository is whichever one is found, and an agent can build
-      a whole repository, remote-tracking refs included, in temp and move it
-      in. Closing it also needs the Project root from the server.
+    - A Project inside another repository (a home-directory dotfiles
+      repository, say) anchors to its own, innermost repository.
+    - **Not covered: a session with no Project.** It is authorized for its
+      cwd, so a repository an earlier session moved into a parent folder,
+      that a caller then starts a session in directly, is that session's
+      own root.
     - Content that reaches the upstream (an agent that can push, then an
       operator fetch) is trusted like any other upstream content.
   - **Checked-in configuration is still honoured.** A committed `.codex`, at
