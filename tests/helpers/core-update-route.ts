@@ -12,7 +12,7 @@ import type { Page, Route } from '@playwright/test';
  * the path keeps the stub in force. Sub-routes (`/state`, `/service-update`,
  * `/restart-status`, ...) are separate endpoints and are not matched.
  */
-export function isCoreUpdateCheckUrl(url: URL): boolean {
+function isCoreUpdateCheckUrl(url: URL): boolean {
   return url.pathname.endsWith('/api/system/core-update');
 }
 
