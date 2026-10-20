@@ -312,11 +312,12 @@ is a closed built-in target rather than a plugin-supplied key:
 
 - The target shape is plain data declared in the pane host contract,
   `{ kind: 'terminal'; binding; terminalId?; new?: { profile? } }`, where
-  `binding` is a session's `bindingKey`. The
+  `binding` is a session's `bindingKey`. A `terminalId` whose session is in
+  another binding or project is reported unavailable. The
   terminal contracts module re-exports it. It carries no working directory:
   the server decides the cwd from the binding.
 - Station's terminal host binding validates the target against the caller's
-  own grants for that project. Creating a terminal (`new`) needs
+  own grants for the session's project, never a caller-supplied one. Creating a terminal (`new`) needs
   `terminal:operate`. Opening an existing `terminalId` needs
   `terminal:observe` and is read-only unless the caller also holds
   `terminal:operate`. Holding a pane or plugin grant never implies terminal
@@ -344,7 +345,8 @@ is a closed built-in target rather than a plugin-supplied key:
 | Current surface | Outcome |
 | --- | --- |
 | `port + 1` WebSocket, `GET /api/system/terminal-port`, SDK `fetchTerminalPort` | Removed after the new socket ships |
-| `DELETE /api/projects/:slug/terminals/:terminalId` | Kept, backed by the new session store |
+| `DELETE /api/projects/:slug/terminals/:terminalId` | Kept, backed by the new session store; the server rejects an id whose session is not in `:slug` |
+| Project-scoped terminal ids | Mapped once to new instance-unique ids when their history and stored tabs are imported |
 | `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept |
 | `POST /api/coding/exec` fallback | Kept for hosts without node-pty |
 | `PAIRING_SCOPE_TERMINAL_OPERATE` | Kept; `terminal:observe` added |
