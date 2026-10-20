@@ -47,6 +47,7 @@ export function useStationExtensionsAccess() {
     apiBase: string;
     name: string;
     origin: string;
+    framed: boolean;
     enable: boolean;
     selection: number;
   } | null>(null);
@@ -58,6 +59,7 @@ export function useStationExtensionsAccess() {
       apiBase,
       name,
       origin,
+      framed: isTauri && remote,
       enable,
       selection: captureSelectionIntent(),
     });
@@ -68,7 +70,9 @@ export function useStationExtensionsAccess() {
       title={`${review.enable ? 'Allow' : 'Turn off'} extensions from ${review.name}?`}
       message={
         review.enable
-          ? `Extensions add custom views and controls. This choice is saved for ${review.origin}, but enabled code has access across this app: other Stations' data, credentials available in this window, and these permission settings.${isTauri ? ' This includes the native bridge and your paired Station credentials.' : ''} Only allow a Station you control or trust.`
+          ? review.framed
+            ? `Extensions from ${review.origin} add custom views and controls. They run in separate frames. Protection from the native app has not been verified, so only allow a Station you control. Treat its code as having access to this app's data, native bridge and saved Station credentials.`
+            : `Extensions from ${review.origin} run inside this app. Their code can access other Stations' data, credentials available in this window, and these permission settings.${isTauri ? ' This includes the native bridge and your paired Station credentials.' : ''} Only allow a Station you control or trust.`
           : `This stops loading extensions from ${review.name} on this device. Station will reload to stop code that is already running. Installed plugins stay on the Station.`
       }
       confirmLabel={review.enable ? 'Allow extensions' : 'Turn off and reload'}
@@ -80,7 +84,8 @@ export function useStationExtensionsAccess() {
         if (
           captureSelectionIntent() !== review.selection ||
           connectionId !== review.connectionId ||
-          apiBase !== review.apiBase
+          apiBase !== review.apiBase ||
+          (isTauri && remote) !== review.framed
         ) {
           setError(
             'The selected Station changed. Close this review and try again.',

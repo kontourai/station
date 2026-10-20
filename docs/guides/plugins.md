@@ -1793,9 +1793,13 @@ allows them. A blocked pane or layout offers **Review and enable** in place.
 Plugin previews with a client bundle or declared entrypoint explain that installation
 can proceed while custom code stays off; built-in views still work. The staged
 preview reports bundle presence separately from its manifest. The review names
-the Station and its origin, and explains
-that extension code can access other Stations' data and available credentials,
-including the native bridge and paired credentials in a native app.
+the Station and its origin. Code loaded into the app has app-wide authority.
+Paired native Stations use separate plugin frames, but their native security
+boundary is not qualified; the review says to treat that code as having access
+to app data, the native bridge and saved credentials. This remains an explicit
+opt-in, not a claim that frame isolation is verified. Dependency-only client code
+may first offer review when its blocked view opens; preview bundle metadata
+currently describes the staged root plugin.
 
 Manage access in **Stations → current Station details → Extensions**, or from
 Registry. **Turn off extensions** removes the stored permission, verifies the

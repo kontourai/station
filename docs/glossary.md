@@ -201,9 +201,11 @@ platform credential store (internally `StationProfile`,
 Station am I talking to, and as whom" — it deliberately does not describe
 where an agent executes (an **Environment**) or how it is executed (an engine
 connection). Permission to load remote extension bundles is stored **per
-Station on this device**. That key does not isolate the code: an enabled
-extension can use app-wide authority, including data and available credentials
-for other Stations. The consent dialog names this scope before enabling.
+Station on this device**. That key is not an isolation boundary. Code loaded
+into the app has app-wide authority. Paired native Stations use separate frames,
+but that native boundary is not yet qualified; the review conservatively asks
+the person to treat enabled code as having access to app data and saved
+credentials. The consent dialog explains the applicable loading mode.
 
 - **The user-facing noun is just "Station."** The switcher and manager list
   *Stations*; the affordances are "Connect a Station", "Edit Station", and

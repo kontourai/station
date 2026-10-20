@@ -556,7 +556,7 @@ describe('RegistryView', () => {
     expect(screen.queryByText(/native bridge/i)).toBeNull();
   });
 
-  test('names the native bridge and paired credentials in native-host consent copy', () => {
+  test('names framed native loading and its unverified protection without promising app isolation', () => {
     platformProfile.isTauri = true;
     render(<RegistryView />);
 
@@ -575,9 +575,7 @@ describe('RegistryView', () => {
     );
 
     expect(
-      screen.getByText(
-        /This includes the native bridge and your paired Station credentials\./,
-      ),
+      screen.getByText(/Protection from the native app has not been verified/),
     ).toBeTruthy();
   });
 

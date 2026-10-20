@@ -83,9 +83,7 @@ describe('Station extension access at the user decision', () => {
       screen.getByRole('dialog', { name: 'Allow extensions from Studio?' }),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        /other Stations' data, credentials available in this window/,
-      ),
+      screen.getByText(/Protection from the native app has not been verified/),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     expect(remotePluginBundlesAllowed(a.id, a.url)).toBe(false);
@@ -96,6 +94,32 @@ describe('Station extension access at the user decision', () => {
       remotePluginBundlesAllowed(a.id, 'https://another.example.test'),
     ).toBe(false);
     expect(store.getActive()?.id).toBe(a.id);
+  });
+
+  test('an injected native origin reviews app-wide loading rather than claiming a frame boundary', () => {
+    render(
+      <ConnectionsProvider
+        seedDefault={false}
+        injectedConnection={{
+          id: 'cli',
+          name: 'CLI Station',
+          url: 'https://owned.example.test',
+          source: 'cli-base',
+        }}
+      >
+        <StationExtensionsAccess />
+      </ConnectionsProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
+    expect(screen.getByText(/run inside this app/)).toBeTruthy();
+    expect(
+      screen.getByText(/native bridge and your paired Station credentials/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/They run in separate frames/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(
+      remotePluginBundlesAllowed('cli', 'https://owned.example.test'),
+    ).toBe(false);
   });
 
   test('a Station switch before a render cannot grant the old or new Station', () => {
