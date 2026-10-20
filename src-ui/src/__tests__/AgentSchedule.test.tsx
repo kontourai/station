@@ -249,10 +249,9 @@ describe('in-chat notes', () => {
     // The height transition ending first does not cut the fade short.
     await act(async () => finishTransition(row, 'grid-template-rows'));
     expect(screen.queryByText(/Checking back at/)).not.toBeNull();
-    finishTransition(row, 'opacity');
-    await waitFor(() =>
-      expect(screen.queryByText(/Checking back at/)).toBeNull(),
-    );
+    // Settled by the transition itself, not by the fallback timer.
+    await act(async () => finishTransition(row, 'opacity'));
+    expect(screen.queryByText(/Checking back at/)).toBeNull();
     // The proposal card it sat beside stays put.
     expect(
       screen.getByRole('region', { name: 'Proposed job hourly-digest' }),
@@ -352,10 +351,8 @@ describe('the "This chat" card’s Scheduled section', () => {
       return item!;
     });
     expect(row.hasAttribute('inert')).toBe(true);
-    finishTransition(row, 'opacity');
-    await waitFor(() =>
-      expect(screen.queryByRole('region', { name: 'Scheduled' })).toBeNull(),
-    );
+    await act(async () => finishTransition(row, 'opacity'));
+    expect(screen.queryByRole('region', { name: 'Scheduled' })).toBeNull();
   });
 
   test('is hidden when nothing is scheduled', async () => {
