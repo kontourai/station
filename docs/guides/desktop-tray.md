@@ -116,8 +116,8 @@ with an explicit PATH; the desktop process never trusts a GUI-launcher PATH.
 The tray resolves only those source-checkout paths. A service installed from a
 prebuilt archive (manifest `kind: "archive"`) runs `bin/station.mjs` instead, or,
 for an installer-owned archive, the fixed service launcher
-at `<install-root>/runtime/station-launcher.mjs` (#2675; on Windows since
-slice W3, with the `node.exe` frozen beside it). Either way
+at `<install-root>/runtime/station-launcher.mjs` (#2675; on Windows too,
+with the `node.exe` frozen beside it). Either way
 the tray finds no command paths, reports it Unhealthy, and refuses its Start
 and Stop actions; use that install's `station service` command.
 For terminal diagnosis, carry the same manifest identity rather than allowing

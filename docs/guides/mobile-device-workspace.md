@@ -94,8 +94,8 @@ and cannot be supplied in tool arguments. See the
 conversation. `device_open` starts a stopped device asynchronously (a `starting`
 answer is not completed boot) or opens/joins its live session. Android boots can
 change the device ID from AVD name to emulator serial: list again and select
-the running row. A running session is watchable from Device; this first slice
-does **not** reveal the pane automatically. The tool returns `paneRevealed: false`
+the running row. A running session is watchable from Device; Station does
+**not** reveal the pane automatically yet. The tool returns `paneRevealed: false`
 and instructions for opening the existing pane.
 
 `device_input` sends bounded typed pointer, text and key events through the
