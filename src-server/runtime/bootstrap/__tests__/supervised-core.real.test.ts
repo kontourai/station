@@ -679,9 +679,23 @@ describe('a supervised core handoff', () => {
       }
 
       // Stopping the supervisor drains the serving generation (3 after the
-      // SIGTERM phase, 2 on Windows) and exits cleanly.
+      // SIGTERM phase, 2 on Windows) and exits cleanly. Windows has no
+      // SIGTERM to catch (kill ends the process outright), so there the stop
+      // comes over the control channel, as the CLI and tray send it.
       const exited = exitOf(supervisor);
-      supervisor.kill('SIGTERM');
+      if (process.platform === 'win32') {
+        const stopper = await connectControl(endpoint.path, endpoint.tokenPath);
+        try {
+          const reply = await stopper.request({ type: 'stop', id: 'stop' }, [
+            'stop.result',
+          ]);
+          expect(reply).toMatchObject({ type: 'stop.result', accepted: true });
+        } finally {
+          stopper.close();
+        }
+      } else {
+        supervisor.kill('SIGTERM');
+      }
       await expect(exited).resolves.toBe(0);
     },
     BOOT_TIMEOUT_MS * 4,
