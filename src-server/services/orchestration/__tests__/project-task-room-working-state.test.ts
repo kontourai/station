@@ -198,7 +198,10 @@ describe('project task room working state', () => {
   });
 
   test.each([
-    ['worker-error', 'throw new Error("worker failure with private database data");'],
+    [
+      'worker-error',
+      'throw new Error("worker failure with private database data");',
+    ],
     ['worker-exit', 'process.exit(7);'],
     [
       'malformed-response',
@@ -207,35 +210,38 @@ describe('project task room working state', () => {
   ] as const)(
     'reports %s without exposing worker payload or changing refusal',
     async (reason, source) => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-reason-'));
-    const working = createProjectTaskRoomWorkingState(
-      join(directory, 'orchestration.sqlite'),
-      {
-        workerSourceUrl: new URL(
-          `data:text/javascript,${encodeURIComponent(source)}`,
-        ),
-      },
-    );
-    try {
-      await expect(working.read({ scope })).resolves.toEqual({
-        kind: 'unavailable',
-      });
-      expect(warnings).toHaveBeenCalledWith(
-        'Task room working state unavailable',
+      directory = mkdtempSync(join(tmpdir(), 'station-room-working-reason-'));
+      const working = createProjectTaskRoomWorkingState(
+        join(directory, 'orchestration.sqlite'),
         {
-          event: 'project-task-room-working-state-unavailable',
-          operation: 'read',
-          reason,
+          workerSourceUrl: new URL(
+            `data:text/javascript,${encodeURIComponent(source)}`,
+          ),
         },
       );
-      expect(JSON.stringify(warnings.mock.calls)).not.toContain('private database data');
-      await expect(working.read({ scope })).resolves.toEqual({
-        kind: 'unavailable',
-      });
-    } finally {
-      await working.close();
-    }
-  });
+      try {
+        await expect(working.read({ scope })).resolves.toEqual({
+          kind: 'unavailable',
+        });
+        expect(warnings).toHaveBeenCalledWith(
+          'Task room working state unavailable',
+          {
+            event: 'project-task-room-working-state-unavailable',
+            operation: 'read',
+            reason,
+          },
+        );
+        expect(JSON.stringify(warnings.mock.calls)).not.toContain(
+          'private database data',
+        );
+        await expect(working.read({ scope })).resolves.toEqual({
+          kind: 'unavailable',
+        });
+      } finally {
+        await working.close();
+      }
+    },
+  );
 
   test('reports a real postMessage clone failure without serializing the request payload', async () => {
     directory = mkdtempSync(join(tmpdir(), 'station-room-working-clone-'));
@@ -243,11 +249,13 @@ describe('project task room working state', () => {
       join(directory, 'orchestration.sqlite'),
     );
     try {
-      await expect(working.agentLifecycle({
-        scope,
-        intentId: 'private-intent',
-        value: () => 'private-payload',
-      })).resolves.toBe('unavailable');
+      await expect(
+        working.agentLifecycle({
+          scope,
+          intentId: 'private-intent',
+          value: () => 'private-payload',
+        }),
+      ).resolves.toBe('unavailable');
       expect(warnings).toHaveBeenCalledWith(
         'Task room working state unavailable',
         {
@@ -263,7 +271,9 @@ describe('project task room working state', () => {
   });
 
   test('keeps the unavailable result and owned shutdown when the diagnostic sink fails', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-log-failure-'));
+    directory = mkdtempSync(
+      join(tmpdir(), 'station-room-working-log-failure-'),
+    );
     warnings.mockImplementation(() => {
       throw new Error('diagnostic sink failed');
     });
@@ -271,7 +281,9 @@ describe('project task room working state', () => {
       join(directory, 'orchestration.sqlite'),
       { workerSourceUrl: new URL('data:text/javascript,process.exit(7);') },
     );
-    await expect(working.read({ scope })).resolves.toEqual({ kind: 'unavailable' });
+    await expect(working.read({ scope })).resolves.toEqual({
+      kind: 'unavailable',
+    });
     await expect(working.close()).resolves.toBeUndefined();
   });
 
