@@ -1,0 +1,31 @@
+{
+  "revision": "66955f4ec788f466a2e60f7f09b930755c88cdd2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed pending-supersession delta against open-PR controller: pending added to both branch/event run listings and final live-status fence; run attempt/head and refreshed live PR head checks still gate POST cancellation. Parameterized CLI HTTP fixture now respects status filters and covers in_progress/queued/pending plus preserved current/unrelated heads. Guide correctly includes native pending waiters without extending authority to same-head or merge-group work. This review executed no tests/cancellations; supplied1FAIL33PASS→34PASS is owner evidence only. Terminal cancellation, overflow recovery and throughput improvement remain unverified.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts","scripts/pr-ci-supersession.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-read hosted receipt-bound shards/local bounded lane and Push & Monitor instructions. Obsolete different-head pending cancellation changes no required check, receipt identity, queue composition, normal hook or arm-confirm-stop policy. A cancellation request is not successful current-head verification; guide keeps that evidence boundary accurate. No prose change or new timing claim needed.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed common slice acceptance requirements and dated design classification. Adding pending to obsolete CI lifecycle selection changes no shell/plugin trust, layout or distribution contract; behavior-reversion test and persistent-state requirements remain applicable to their slices. No cancellation or capacity evidence is imported into plugin acceptance.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed Components and evidence limitations and branding ownership for this controller delta. Cancellation of obsolete CI pending runs alters no theme/token/contrast/startup behavior and cannot supply actual platform or visual proof; existing light/dark and NOT_VERIFIED instructions remain accurate.","inputs":["docs/guides/theming.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Re-read logging and focused verification/caller-evidence guidance. Pending cancellation is GitHub controller behavior, not React state/navigation/query/logger behavior. Focused routing and separate mounted/keyboard/native/provider evidence remain required; no frontend claim needs change.","inputs":["docs/patterns/frontend.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"scripts/AGENTS.md","note":"Read full script instructions against pending-state repair: live authority and attempt fences retained, status-aware HTTP fixture reaches real executable controller without new production test seam. Deterministic fail-closed, focused policy/resource classification and assertion-versus-infrastructure/exit collection requirements remain valid. No new process API, generated lane schedule or completion rule introduced.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Read full server instructions. GitHub pending-run cancellation changes no Station route/domain/logger, batching/freshness or installed-integrity authority. Existing exact focused server and mutation/profile routing remains accurate; controller fixture is not server-runtime performance proof.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Read full UI instructions. Different-head pending supersession does not affect query/layout/guard authority, styles or physical target rules. Existing focused/mounted profiling and real geometry evidence boundaries remain correct; no visual proof follows from cancellation selection.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Read full test instructions against parameterized real CLI/HTTP fixture. Status-filter fidelity protects observable cancellation requests without treating same-head/unrelated runs as authorized. Existing hermetic fixture, resource classification and non-completion warning still apply; fixture requests establish neither live GitHub terminal cancellation nor backlog relief.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/CLAUDE.md","note":"Read complete @AGENTS.md forwarding file and reviewed paired scripts instructions against obsolete pending-run cancellation. Import remains valid; no separate lifecycle/throughput claim is duplicated here.","inputs":["scripts/CLAUDE.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"Read complete @AGENTS.md forwarding file and reviewed paired src-server instructions against obsolete pending-run cancellation. Import remains valid; no separate lifecycle/throughput claim is duplicated here.","inputs":["src-server/CLAUDE.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Read complete @AGENTS.md forwarding file and reviewed paired src-ui instructions against obsolete pending-run cancellation. Import remains valid; no separate lifecycle/throughput claim is duplicated here.","inputs":["src-ui/CLAUDE.md"]},
+
+    {"path":"tests/CLAUDE.md","note":"Read complete @AGENTS.md forwarding file and reviewed paired tests instructions against obsolete pending-run cancellation. Import remains valid; no separate lifecycle/throughput claim is duplicated here.","inputs":["tests/CLAUDE.md"]}
+  ]
+}
