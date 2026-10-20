@@ -211,6 +211,22 @@ the delivery plan: j is **[security]**, j's acme acceptance moves to a
 fixture replacement layout, and a growth-only import ratchet guards
 `coding-layout/` while #3039 work continues.
 
+**Owner answers to the open items (2026-10-20).** Later the same day the
+owner answered three items this record had left open:
+
+- **OPEN-14: pre-approved by lock.** Each `plugins.lock` entry lists the
+  plugin's capabilities. A `kontour`-provenance plugin listed in the lock
+  gets exactly those capabilities with no prompt; anything beyond them
+  prompts.
+- **OPEN-12: wait for the SDK terminal view.** There is no interim. j ships
+  only once the SDK `TerminalView` exists ([terminal.md](terminal.md)'s
+  phases 2 to 4, slice SDK-5). The Coding plugin renders `TerminalView` or
+  opens the core closed terminal target.
+- **OPEN-13: their own default plugins.** File preview and PR review each
+  ship as their own plugin in the bundled default set (slices jF and jP).
+  Chat and Coding both use them, and nothing outside Coding depends on the
+  Coding plugin.
+
 ### Decision 1: OPEN-4 signing is Sigstore keyless
 
 **What Station pins.** For each Kontour plugin, the expected signer is an
@@ -336,6 +352,15 @@ workflow to locked plugins because:
   `kontour` (the lock pins the name for provenance; the sha256 pins only the
   bundled version).
 
+Provenance is **recomputed** against the running release's lock on every
+start, not recorded once at install. A plugin that a later release drops
+from the lock therefore loses `kontour` provenance; i0 states what follows.
+The global pinned identity, compiled into Station, decides provenance. Each
+lock entry still carries its Sigstore identity (decision 3 names it), but
+that field must equal the pinned identity: CI and the release build refuse
+a lock whose entry names any other identity, so the field documents the
+entry and cannot widen trust.
+
 Keeping examples in a separate workflow file is still good hygiene, as
 defence in depth.
 
@@ -367,9 +392,11 @@ different artifact on a different path.
 
 ### Decision 2: everything in Coding moves into the plugin
 
-Core keeps capabilities; the plugin owns every Coding pane and its
-composition. This replaces the research recommendation that diff, file
-preview, terminal and PR review stay core panes the plugin references.
+Core keeps capabilities; plugins own the panes. This replaces the research
+recommendation that diff, file preview, terminal and PR review stay core
+panes the plugin references. Under the OPEN-13 answer, file preview and PR
+review are not Coding panes at all: each is its own plugin in the bundled
+set (jF, jP), which chat and Coding both open by descriptor.
 
 **This record's reading of "plan/readiness/trust composition"** (*engineering
 reading, for owner confirmation*). The Coding inspector's arrangement of
@@ -391,11 +418,17 @@ layout panes normally get a minted id of the form `pane:plugin%3A<plugin>:…`
 (see `layout-pane-reference.ts`), so keeping the `pane:builtin:coding:*` ids
 needs an explicit **legacy-id adoption** rule. The rule is security-relevant,
 because any plugin that could claim a `pane:builtin:*` id could stand in for
-a core pane. It belongs to slice jG: a fixed table maps each legacy id to the
-Coding plugin, honoured only when that plugin's trust record has `kontour`
-provenance (pinned identity and a lock entry). The same applies to the
-file-preview descriptor (`pane:builtin:workspace-preview:file-preview`) and
-the `pr:` instance family. The terminal ids are not adopted.
+a core pane. It belongs to slice jG: a fixed table maps each legacy id to the plugin that
+owns it, honoured only when that plugin has `kontour` provenance (pinned
+identity and a lock entry):
+
+| Legacy id | Owning plugin |
+| --- | --- |
+| `pane:builtin:coding:file-browser`, `pane:builtin:coding:diff` | Coding (j) |
+| `pane:builtin:workspace-preview:file-preview` and the `file-preview:` instance family | File preview (jF) |
+| `pane:builtin:workspace-pull-request` and the `pr:` instance family | PR review (jP) |
+
+The terminal ids are not adopted.
 
 **Core sites that use Coding panes today, and the recommendation for each**
 (verified at `e880e9c92`):
@@ -403,10 +436,10 @@ the `pr:` instance family. The terminal ids are not adopted.
 | Site | Uses today | Recommendation | With the Coding plugin absent |
 | --- | --- | --- | --- |
 | `views/TaskWorkspaceView.tsx:31-32` | `DiffPanel`, `FileContentViewer` inline in a task | **SDK view components** (`DiffView`, `FileView`). A task embeds content, not panes | No change: Tasks keeps its diff and file views |
-| `workspace-panes/FilePreviewPane.tsx` (its diff mode lazily imports `DiffPanel` at :1023) | The file-preview pane itself | Moves into the plugin; its diff mode uses SDK `DiffView` | — (moves) |
-| Callers that open file preview: chat dock and its view model, `SessionsView`, navigation store and `useOpenInRegion`, the region `file-preview:` family | Open a file link in the preview pane | **By descriptor** through the pane-open capability (SDK-4). #3875 reworks file-preview relations, so this move is coordinated with that lane | The open answers `unavailable`. File links in chat and Sessions show the path with a copy action and no preview |
-| `workspace-panes/builtinWorkspacePaneRegistry.tsx:75-83, 756` | Registers the Coding panes, the evidence-pane content, `selectWorkflowPlanSession`, and the lazy PR review panel | Drop the Coding file, diff and PR registrations: those panes come from the plugin under the adopted ids. The terminal registration becomes the core terminal target's. SDK-views moves the evidence-pane content and `planSession` to core | Plan, readiness and trust panes keep working. Coding panes in saved layouts render `unavailable` with a reason |
-| Region `pr:` family and the dock's PR chips (`region-surface-panes.ts:321`, `region-model.ts`) | Open PR review from chat | **By descriptor** (SDK-4) | PR chips open the pull request externally (`host.openExternal`) instead of the review pane |
+| `workspace-panes/FilePreviewPane.tsx` (its diff mode lazily imports `DiffPanel` at :1023) | The file-preview pane itself | Moves into the file-preview plugin (jF); its diff mode uses SDK `DiffView` | Unaffected: file preview is its own plugin |
+| Callers that open file preview: chat dock and its view model, `SessionsView`, navigation store and `useOpenInRegion`, the region `file-preview:` family | Open a file link in the preview pane | **By descriptor** through the pane-open capability (SDK-4). #3875 reworks file-preview relations, so jF coordinates with that lane | Unaffected. Only without the file-preview plugin does the open answer `unavailable`, and file links then show the path with a copy action |
+| `workspace-panes/builtinWorkspacePaneRegistry.tsx:75-83, 756` | Registers the Coding panes, the evidence-pane content, `selectWorkflowPlanSession`, and the lazy PR review panel | Drop the file-browser and diff registrations (Coding plugin, j) and the PR review registration (PR review plugin, jP). The `CodingTerminalPane` registration is retired when j lands; the terminal is the core closed target (SDK-5). SDK-views moves the evidence-pane content and `planSession` to core | Plan, readiness and trust panes keep working. Coding panes in saved layouts render `unavailable` with a reason |
+| Region `pr:` family and the dock's PR chips (`region-surface-panes.ts:321`, `region-model.ts`) | Open PR review from chat | **By descriptor** (SDK-4), to the PR review plugin (jP) | Unaffected. Only without the PR review plugin do PR chips open the pull request externally (`host.openExternal`) |
 | Region `coding:diff`, `coding:file-browser` families (`region-surface-panes.ts:307-309`) | Dock placements of Coding panes | By descriptor; the architecture ratchet's source map points at the plugin | Those dock placements render `unavailable` with a reason |
 | Region `coding:terminal` family (`region-surface-panes.ts:305-306`) | Dock placement of the terminal | The core terminal target (`pane:builtin:coding:terminal` stays its presentation alias) | Unaffected: the terminal is core |
 | `components/modals/NewChatModal.tsx:82` | Helpers from `coding-layout/chatContextDraft.ts` that compose a start message (not a pane) | SDK-3 moves the helpers into core chat start; the plugin supplies its context draft through SDK-3 | New chat works. A Coding context draft is offered only when the plugin supplies one |
@@ -415,21 +448,21 @@ the `pr:` instance family. The terminal ids are not adopted.
 **Consequence, stated plainly.** Because i0 installs Coding by default, the
 plugin is absent only when an operator uninstalls or disables it, or a
 distribution manifest leaves it out. Then: no Coding layout; stored Coding
-layouts and docked Coding panes show `unavailable`; chat and Sessions file
-links lose their preview; PR chips open the pull request externally; the
-"Open in Coding" entries disappear. Tasks, the evidence panes and the
-terminal *runtime* are unaffected.
+layouts and docked Coding file-browser and diff panes show `unavailable`;
+the "Open in Coding" entries disappear. Chat and Sessions file links, PR
+review, Tasks, the evidence panes and the terminal are unaffected, because
+none of them depends on the Coding plugin.
 
-**Pushback recorded with the decision.** File preview and PR review are
-also the general targets for links in chat, not only Coding panes. If the
-loss of in-app preview without Coding is unwanted, the cheaper fix is to
-ship them as their own small plugins in the default set, the pattern
-already planned for the browser-preview pane, rather than moving them back
-into core. That choice is open as OPEN-13 (HOLD-C).
+**File preview and PR review (OPEN-13, answered 2026-10-20).** This record
+had pushed back that both are the general targets for links in chat, not
+only Coding panes. The owner answered by making each its own plugin in the
+bundled default set (jF, jP).
 
-**Terminal.** This record reconciles decision 2 with
-[terminal.md](terminal.md) and its amendment in #3894 (open at the time of
-writing). The terminal is a core feature and a **closed built-in pane
+**Terminal** (*engineering reading, for owner confirmation*). The decision
+says "terminal pane UI" moves. This record reads that as **presentation
+only**: the terminal stays a core closed target. That reconciles decision 2
+with [terminal.md](terminal.md) and its amendment in #3894 (open at the time
+of writing). The terminal is a core feature and a **closed built-in pane
 target**, `{ kind: 'terminal'; binding; terminalId?; new?: { profile? } }`,
 declared in the pane host contract. `pane:builtin:coding:terminal` and
 `workspace-coding-terminal` become presentation aliases that resolve to the
@@ -445,28 +478,49 @@ grant for the project decides, as terminal.md specifies: creating a terminal
 needs `terminal:operate`; opening an existing one needs `terminal:observe`
 and is read-only without `terminal:operate`. A pane or plugin grant never
 implies terminal access. So jG adopts no terminal id and adds no
-install-time terminal grant. Until `TerminalView` exists, whether the plugin
-opens the existing core terminal pane by id is OPEN-12 (HOLD-B).
+install-time terminal grant.
+
+Under the OPEN-12 answer there is no interim: j waits for `TerminalView`
+(SDK-5). When j lands, the existing `CodingTerminalPane` (and the
+`coding-layout/` terminal components behind it) is retired. Two items that
+#3894 assigns to "the Coding layout" become plugin-side work after j: its
+boundary test that Coding imports no terminal internals (it then scans the
+Coding plugin in station-plugins), and the one-time import of the
+`coding-terminal-*` presentation state (open, height) by Coding's panel
+writer.
 
 ### Decision 3: `plugins.lock` and the offline default set
 
 - **The lock.** A committed JSON file. Each entry holds name, version,
-  artifact URL, sha256, and the Sigstore identity from decision 1. Entries
-  are sorted by name, so two bumps touching different plugins merge
-  cleanly.
+  artifact URL, sha256, the Sigstore identity from decision 1 (which must
+  equal the pinned identity), and the plugin's capabilities (the OPEN-14
+  answer). Entries are sorted by name, so two bumps touching different
+  plugins merge cleanly.
+- **The lock is a trust root.** It decides which plugins are `kontour`, and
+  which capabilities they get with no prompt. It must be listed in
+  `.github/CODEOWNERS`, and `main` must require code-owner review. Today
+  `main`'s pull-request rule has `require_code_owner_review: false` and no
+  required approvals (read from `gh api
+  repos/kontourai/station/rules/branches/main` on 2026-10-20), so a
+  CODEOWNERS entry alone would bind nothing. That ruleset change is
+  owner-gated: it is a **prerequisite of i0 that the owner performs**, not
+  something an i0 pull request can do.
 - **CI.** Installs every entry from its released artifact, checks the sha256
   and the Sigstore bundle, and fails when an artifact is missing or
   unverifiable. CI never installs workspace sources of a plugin.
-- **Bumps.** A bot PR changes the lock. Its review is the review of what
-  Kontour code ships by default.
+- **Bumps.** A bot PR changes the lock. Once the ruleset above requires
+  code-owner review, that review is the review of what Kontour code ships by
+  default and with which capabilities. Until then it is not, and i0 does
+  not start.
 - **Cross-repository testing.** station-plugins' CI runs against Station's
   published preview build, so the two repositories never move in lock-step.
 - **The offline default set (slice i0).** The Station release carries every
   locked artifact and its Sigstore bundle. At first run, with no network,
   the installer installs the set from that payload and verifies it as in
-  decision 1. On every upgrade it also installs any locked plugin that is
-  missing, so a Station upgraded across j or i2 gets Coding and Board
-  without a network. Release size grows by the bundled plugins.
+  decision 1. On every start it installs any locked plugin that is missing
+  and not marked uninstalled, so a Station upgraded across j, jF, jP or i2
+  gets those plugins without a network. Release size grows by the bundled
+  plugins.
 
 **How the `BUILTIN_CODING_LAYOUT` promise survives.** Its docstring calls it
 "the safe starter that every Station installation can create without a
@@ -1101,10 +1155,10 @@ to `@kontourai/station-shared` or into the plugin).
 | Shortcuts | `useKeyboardShortcut`, `KeyboardShortcutsContext` | SDK-1. The SDK's `useKeyboardShortcut(s)` exist but throw for plugins: `SDKAdapter.tsx` passes `hooks: {}` and wires no shortcuts context |
 | Chat interop | `ActiveChatsContext` drafts, `CodingFilesContextProvider`, `ACPChatPanel`, `useACPConnections`, `useRecentAgents` | SDK-3 (`useChatComposer`, `useChatContextAttachments`); the chat pane by descriptor (SDK-4); ACP connections are already in the SDK; recent agents become plugin-local on SDK-6 |
 | Git and repositories | `useGitActions`, `useGitStatus` | SDK-2 (repositories, branches, checkout, commit, push). `useGitStatusQuery` already exists. Commit and push stay operator-only on the server |
-| Files and preview | `FilePreviewPane`, the file-preview intent, the browser-preview launcher, clipboard, `PromptModal` | SDK views (`FileView`); browser preview by descriptor (REF, slated to become its own plugin); SDK-1 (`host.clipboard`, `host.prompt`) |
+| Files and preview | `FilePreviewPane`, the file-preview intent, the browser-preview launcher, clipboard, `PromptModal` | The file-preview plugin (jF), opened by descriptor through SDK-4; SDK views (`FileView`); browser preview by descriptor (REF, slated to become its own plugin); SDK-1 (`host.clipboard`, `host.prompt`) |
 | Diff | `DiffPanel` and its performance hooks; diff-comment data | SDK views (`DiffView`); the diff and diff-comment queries are already public |
 | Terminal | `browserWebSocketAuth`, `@xterm/*`, `errorText` | The core `terminal` target via SDK-4, or SDK-5's `TerminalView`; both owned by [terminal.md](terminal.md) and gated by the caller's own terminal grants **[security]**; `errorText` is SHARED |
-| PR review | `pull-requests/*` components, `openExternalLink`, `useUnsavedGuard`, `useTickingNow`, request-authority scope | SDK views (PR review data hooks); SDK-1 (`host.openExternal`, `useRequestAuthorityScope`); SDK-4 (`useUnsavedGuard` bound to #3875's close guard); KIT (row, chips, relative time) |
+| PR review | `pull-requests/*` components, `openExternalLink`, `useUnsavedGuard`, `useTickingNow`, request-authority scope | The PR review plugin (jP), opened by descriptor through SDK-4; SDK views (PR review data hooks); SDK-1 (`host.openExternal`, `useRequestAuthorityScope`); SDK-4 (`useUnsavedGuard` bound to #3875's close guard); KIT (row, chips, relative time) |
 | Evidence | `WorkflowPlanPanel`, `ReadinessPanel`, `TrustPanel` | REF: the core plan, readiness and trust panes. Only the inspector composition moves |
 | UI primitives | `Button`, `IconButton`, `Tabs`, `ActionOverflowMenu`, `LazyBoundary`, `ResponsiveDialogSurface`, `state`, `icons/Glyph`, `ConfirmModal`, `isComposingKeyEvent` | KIT; dialogs become `host.confirm`, `host.prompt` and `host.menu`; `isComposingKeyEvent` is SHARED |
 
@@ -1227,41 +1281,19 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
 
   *This record's proposal* is (b), with (d)'s disclosure in every raise
   prompt. It is not an owner decision.
-- **OPEN-12 (HOLD-B). Terminal interim for j (2026-10-20), awaiting the
-  owner.** The terminal UI the Coding plugin shows comes from the SDK
-  `TerminalView` or the core `terminal` target, never from plugin-owned
-  terminal code ([decision 2](#decision-2-everything-in-coding-moves-into-the-plugin)).
-  `TerminalView` and the target arrive with terminal.md's later phases and
-  #3875. Until then, either j waits, or the plugin opens the existing core
-  terminal pane by its id (`pane:builtin:coding:terminal`), which terminal.md
-  already keeps as an alias.
-  *Recommendation:* the interim. It adds no plugin-side terminal code or
-  grant, and the alias it relies on survives the terminal rewrite, so j need
-  not wait on the Ghostty work.
-- **OPEN-13 (HOLD-C). File preview and PR review: inside Coding or their
-  own default-set plugins? (2026-10-20), awaiting the owner.** Inside Coding,
-  chat and Sessions lose in-app file preview and PR review whenever Coding is
-  absent. As their own plugins in the bundled set, they survive without
-  Coding and other layouts can use them, at the cost of two more packages
-  and two more legacy-id adoptions.
-  *Recommendation:* keep them inside Coding for j, because the bundled set
-  makes Coding's absence an explicit operator choice; split them later if
-  that loss proves unwanted. Not decided.
-- **OPEN-14 (HOLD-A). Grants for bundled plugins (2026-10-20), awaiting the
-  owner.** i0 installs the bundled set at first run and on upgrade, often
-  with no operator present (a headless server, an automatic update). Either:
-  - (a) the bundled set's grants are pre-approved, as a stated exception to
-    install-time consent; or
-  - (b) the operator is prompted at first run and on upgrade, and the
-    plugins stay inactive (their layouts `unavailable`) until approved.
-
-  *Recommendation:* (a), bounded: pre-approve exactly the capabilities that
-  the plugin's `plugins.lock` entry lists (a field the lock would gain
-  beyond decision 3's list), so the bot PR that bumps the lock is where that
-  consent is reviewed; only for `kontour` provenance; anything
-  beyond the lock's list re-prompts; and the plugin manager shows the
-  pre-approval as such. Option (b) is the stronger consent story but leaves
-  upgraded Stations without Coding until someone acts. Not decided.
+- **OPEN-12. Terminal interim for j: answered 2026-10-20.** No interim. j
+  waits for the SDK `TerminalView` (SDK-5); the Coding plugin renders it or
+  opens the core closed terminal target. See
+  [decision 2](#decision-2-everything-in-coding-moves-into-the-plugin).
+- **OPEN-13. File preview and PR review: answered 2026-10-20.** Each ships
+  as its own plugin in the bundled default set (slices jF and jP), used by
+  chat and Coding alike.
+- **OPEN-14. Grants for bundled plugins: answered 2026-10-20.** Pre-approved
+  by lock: each lock entry lists the plugin's capabilities, a `kontour`
+  plugin listed in the lock gets exactly those with no prompt, and anything
+  beyond them prompts. Because the lock now grants authority, it needs
+  code-owner review on `main` first
+  ([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
 
 ## Delivery plan
 
@@ -1301,13 +1333,15 @@ before merge.
 | SDK-6. Plugin device state | coordinate with #1359 | |
 | SDK-views. Diff view, file view, PR review data | — | |
 | KIT. UI kit upstream to `@kontourai/ui` | a `@kontourai/ui` release | |
-| i0. Offline bundled default set from `plugins.lock`, at first run and on upgrade | d1, i1, OPEN-14 | [security] |
-| i1. station-plugins repo scaffold and starter template | — (own verifier) | [security] (release signing) |
+| i0. Offline bundled default set from `plugins.lock` | d1, i1, and the owner's code-owner ruleset change for `plugins.lock` | [security] |
+| i1. station-plugins repo scaffold and starter template | — (its CI has its own verifier; Station's verifier is d1's, which i0 uses) | [security] (release signing) |
 | i2. Board extraction as an installed plugin, with migration | d1, i1, i0 | [security] |
 | i3. kontour-default and acme manifests | g, h, i2 | [security] |
 | R. Growth-only ratchet on `coding-layout/` app-internal imports | — | |
-| jG. Coding capability grants and legacy pane-id adoption | d1 | [security] |
-| j. Coding → plugin, with migration | a, a2, i0, i2, jG, SDK-1, SDK-2, SDK-3, SDK-4, SDK-5 (or OPEN-12's interim), SDK-6, SDK-views, KIT, OPEN-13 | [security] |
+| jG. Capability grants and legacy pane-id adoption (Coding, file preview, PR review) | d1 | [security] |
+| jF. File preview → its own default plugin, with migration | i0, jG, SDK-4, SDK-views, KIT | [security] |
+| jP. PR review → its own default plugin, with migration | i0, jG, SDK-1, SDK-4, SDK-views, KIT | [security] |
+| j. Coding → plugin, with migration | a, a2, i0, i2, jF, jP, jG, SDK-1, SDK-2, SDK-3, SDK-4, SDK-5, SDK-6, SDK-views, KIT | [security] |
 | k. Home → plugin, with migration | e, i2 | [security] |
 | l. Inbox/Chat → plugin, approval decisions | a, d2, e, j, OPEN-11 | [security] |
 | m. Plugin authoring | docs part: —; signing and registry: d1 | [security] (signing) |
@@ -1361,8 +1395,9 @@ derivation (so only `type === 'coding'` works) must fail the fixture half.
   three server checks of `type === 'coding'`
   (`layout-working-directory.ts`, `project-layout-admission.ts`,
   `projects.ts`).
-- The declaration derives a path; it grants no file access. File, diff and
-  terminal authority stay with the grants in jG.
+- The declaration derives a path; it grants no file access. File and diff
+  authority stay with the grants in jG; terminal authority stays with the
+  caller's own `terminal:operate` / `terminal:observe` (terminal.md).
 - Replace the `codingPanels` device-settings record with a generic panel
   record keyed by layout, which slice a's host owns.
 - **Migration:** a stored `type: 'coding'` layout without the field reads
@@ -1479,7 +1514,8 @@ view export, the closed `terminal` pane target and its sample plugin are in
 its layout phase as amended by #3894, and the target depends on #3875. The
 caller's own `terminal:operate` / `terminal:observe` grants gate every open.
 The Coding plugin opens the target or renders `TerminalView`; it adds no
-terminal code or grant of its own. See OPEN-12 (HOLD-B) for the interim.
+terminal code or grant of its own. j depends on this slice with no interim
+(OPEN-12, answered 2026-10-20).
 
 ### SDK-6. Plugin device state
 
@@ -1798,54 +1834,95 @@ tests for the two refusals.
 
 ### i0. Offline bundled default set from `plugins.lock` [security]
 
-- Commit `plugins.lock`: per plugin, name, version, artifact URL, sha256 and
-  Sigstore identity
-  ([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
+**Owner prerequisite.** Before i0 starts, the owner lists `plugins.lock` in
+`.github/CODEOWNERS` and changes `main`'s ruleset to require code-owner
+review. That is a repository-settings change an i0 pull request cannot make
+([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
+
+- Commit `plugins.lock`: per plugin, name, version, artifact URL, sha256,
+  Sigstore identity (equal to the pinned identity) and capabilities.
 - The Station release build fetches every locked artifact and its Sigstore
   bundle, checks both, and carries them in the release payload. A missing or
-  unverifiable artifact fails the build.
-- **First run.** With no network, the installer installs the set from the
-  payload, verifies each digest and bundle against the embedded trusted root,
-  the pinned identity and the lock, and writes ordinary d1 trust records
-  (`kontour`, tier 2).
-- **Upgrade.** On the first start of each release, the installer installs
-  every locked plugin that is not installed, the same way. A plugin the
-  operator deliberately uninstalled is recorded as such and is not
-  reinstalled by an upgrade.
-- **Grants** on both paths follow OPEN-14 (HOLD-A): either the lock entry's
-  capabilities are pre-approved as a stated exception, or the plugin waits
-  inactive for an operator prompt. The rest of this slice is the same under
-  either answer.
-- An operator who uninstalls a bundled plugin can reinstall it from the
-  payload, also offline.
+  unverifiable artifact, or an entry whose identity is not the pinned one,
+  fails the build.
+- **On every start**, with no network needed, the installer:
+  - recomputes each installed plugin's provenance against the running
+    release's lock;
+  - installs every locked plugin that is missing and not marked uninstalled,
+    verifying digest and bundle against the embedded trusted root, the
+    pinned identity and the lock;
+  - updates an installed `kontour` plugin whose installed version is older
+    than the locked version to the locked version, offline. It never
+    downgrades a newer version the operator installed.
+- **Grants** (OPEN-14, answered): a `kontour` plugin listed in the lock gets
+  exactly the lock entry's capabilities with no prompt, at install and at a
+  version update. A capability beyond the lock's list prompts the operator,
+  and the plugin stays inactive until that prompt is answered.
+- **The uninstall record.** i0 owns it. When the operator uninstalls a
+  bundled plugin, the installer writes a `bundledUninstalled` entry (plugin
+  name) in the server's plugin installation state, beside the install
+  records. A start never reinstalls a name with that entry. Reinstalling the
+  plugin (from the plugin manager, the CLI, or the bundled payload) clears
+  it. Disabling is different: a disabled plugin stays installed and
+  disabled across starts and updates, and writes no uninstall record.
+- **Dropped from the lock.** A plugin that the running release no longer
+  locks loses `kontour` provenance at the next start, and with it its
+  legacy-id adoptions (jG) and its lock pre-approval. It is not removed. The
+  plugin manager shows it as "no longer in this Station's default set" and
+  asks the operator to keep it (as a `publisher`-provenance decision under
+  d1's rules) or uninstall it. Until then it is inactive, and panes that
+  relied on an adopted id render `unavailable` with that reason.
+  "Reinstall from the bundled set" offers only plugins in the current lock.
+- **Name conflicts.** If an installed plugin has a locked name but is not
+  `kontour` (for example a `publisher` plugin of the same name), it does not
+  count as the bundled plugin. The installer does not replace it
+  automatically; it surfaces a conflict in the plugin manager, and the
+  bundled plugin stays uninstalled until the operator uninstalls the other
+  one. Auto-replacing would let a start silently remove an operator's
+  choice; leaving it unflagged would let a same-name plugin stand in for the
+  bundled one.
 - A bot PR bumps the lock.
 
 Acceptance, with a fixture lock of test plugins signed by a test identity
 that a test build pins (no dependence on Coding or j):
 
-- A fresh Station with all outbound network refused at first run installs
-  the locked set, and a project can create the fixture plugin's layout.
-- That first run makes zero outbound requests, including to Sigstore and
-  the plugin registry.
+- A fresh Station with all outbound network refused installs the locked
+  set, makes zero outbound requests (including to Sigstore and the plugin
+  registry), and a project can create the fixture plugin's layout.
+- The installed plugins hold exactly the lock entries' capabilities and no
+  prompt was raised. A fixture whose manifest requests one capability beyond
+  its lock entry is inactive with a prompt for that capability only.
 - **Upgrade:** a Station data directory in today's exact shape, holding a
-  stored project layout that the fixture plugin's migration claims (the
-  shape a stored `type: 'coding'` layout has today), started on a build
-  whose lock contains that plugin, installs it with no network and opens
-  the layout unchanged. Under OPEN-14 (b) the assertion is that the layout
-  is `unavailable` with an approval prompt until approved, then opens
-  unchanged.
-- An operator-uninstalled bundled plugin is not reinstalled on upgrade.
+  stored project layout that the fixture plugin's migration claims, started
+  on a build whose lock contains that plugin, installs it with no network
+  and opens the layout unchanged.
+- **Version update:** a Station with fixture version 1 installed, started on
+  a build locking version 2, runs version 2 with no network; one with
+  version 3 installed by the operator keeps version 3.
+- **Uninstall record:** an uninstalled bundled plugin stays uninstalled
+  across restarts; reinstalling clears the record; a disabled plugin stays
+  disabled and installed.
+- **Dropped from the lock:** a plugin locked in build A and absent from
+  build B's lock is, on B, non-`kontour`, inactive, flagged in the plugin
+  manager, and its adopted-id panes render `unavailable` with the reason.
+- **Name conflict:** a `publisher` plugin with a locked name is left in
+  place, a conflict is surfaced, and the bundled plugin is not installed
+  until it is resolved.
 - A tampered artifact in the payload is refused, and Station still boots:
   the affected layout is `unavailable` with a reason (safe mode only when a
   required-slot default filler is affected, per slice e).
-- CI fails when a locked artifact is missing.
+- CI fails when a locked artifact is missing or an entry's identity is not
+  the pinned one.
 
-Proof: end-to-end first-run and upgrade runs in an environment with
-outbound network refused, asserting the request count, the installed set
-and the opened layout; a tampered-payload test; and a CI run against a lock
-entry whose artifact is missing. Removing the upgrade install step must
-fail the upgrade test; removing bundle verification must fail the tamper
-test.
+Proof: end-to-end first-run, upgrade and version-update runs in an
+environment with outbound network refused, asserting the request count, the
+installed set, the granted capabilities and the opened layout; installer
+tests for the uninstall record, the dropped-from-lock path and the name
+conflict, each starting from installation state in today's exact writer
+shape; a tampered-payload test; and a CI run against a missing artifact.
+Removing the start-time install must fail the upgrade test; recording
+provenance once instead of recomputing must fail the dropped-from-lock test;
+auto-replacing must fail the name-conflict test.
 
 ### i1. station-plugins repo scaffold and starter template
 
@@ -1942,7 +2019,7 @@ passes.
 Proof: the ratchet run as a child process against a fixture tree with one
 added pair (non-zero exit, pair named) and one removed pair (zero exit).
 
-### jG. Coding capability grants and legacy pane-id adoption [security]
+### jG. Capability grants and legacy pane-id adoption [security]
 
 - Replace the `resolveBuiltinCoding*Grant` checks in
   `workspace-coding-{file,diff,evidence}-composition.ts`, which grant only
@@ -1951,11 +2028,16 @@ added pair (non-zero exit, pair named) and one removed pair (zero exit).
 - A minimal piece of d2: the Coding plugin requests these capabilities in
   its manifest and the operator approves them at install (or, for the
   bundled set, as OPEN-14 decides).
-- Legacy-id adoption: a fixed table maps `pane:builtin:coding:file-browser`,
-  `pane:builtin:coding:diff`, the file-preview descriptor and the `pr:`
-  family to the Coding plugin's panes, keeping their instance ids and
-  stateKeys. It is honoured only for `kontour` provenance (pinned identity
-  and lock entry).
+- Legacy-id adoption: a fixed table maps each legacy id to the plugin that
+  owns it (the table in
+  [decision 2](#decision-2-everything-in-coding-moves-into-the-plugin)):
+  the Coding file-browser and diff ids to Coding, the file-preview
+  descriptor and `file-preview:` family to the file-preview plugin, and the
+  PR review descriptor and `pr:` family to the PR review plugin. Instance ids
+  and stateKeys are kept. Each mapping is honoured only for that plugin, and
+  only with `kontour` provenance (pinned identity and lock entry).
+- The same grant mechanism serves jF (file read) and jP (pull-request data),
+  so neither builds its own.
 - **No terminal.** jG adopts no terminal id and adds no install-time
   terminal grant: `pane:builtin:coding:terminal` stays a presentation alias
   of the core `terminal` target, gated by the caller's own
@@ -1970,24 +2052,82 @@ build pins and lists in a test lock (no dependence on j):
   reason.
 - Built-in provenance alone no longer grants anything.
 - A plugin from another identity, or from the pinned identity but absent
-  from the lock, declaring a `pane:builtin:coding:*` id is refused the
-  adoption.
+  from the lock, declaring a legacy id is refused the adoption.
+- A `kontour` plugin declaring a legacy id that the table maps to a
+  different plugin is refused the adoption.
 - A plugin declaring `pane:builtin:coding:terminal` is refused at install.
 
 Proof: contracts and installer tests per rule, and a real-browser spec with
 a grant withheld. Restoring the provenance check must fail the plugin-pane
 test; removing the identity or lock condition must fail the spoofing test.
 
+### jF. File preview → its own default plugin, with migration [security]
+
+- The file-preview pane (`workspace-panes/FilePreviewPane.tsx` and its
+  state storage) ships from station-plugins as its own plugin in the
+  bundled set, built only on public packages. Its diff mode uses the SDK
+  `DiffView`; its content uses `FileView`.
+- Chat, Sessions, the navigation store, `useOpenInRegion` and Coding open it
+  by descriptor through SDK-4. Nothing in core imports it.
+- File read comes from a jG-style grant listed in its lock entry.
+- **Coordination:** #3875 reworks file-preview relations. jF lands on that
+  lane's relation contract and does not carry a second version of it.
+- **Migration:** `pane:builtin:workspace-preview:file-preview` and the
+  `file-preview:` instance family are adopted by this plugin (jG), and the
+  stored `station:file-preview-pane-state:v1` entries keep reading.
+
+Acceptance:
+
+- A file link in chat opens the plugin's preview pane, with Coding
+  uninstalled.
+- A file-preview pane saved in a layout or dock before jF reopens with its
+  stored state.
+- Without the file-preview plugin, the open answers `unavailable`, and the
+  link shows the path with a copy action.
+- `src-ui` has no file-preview pane source left.
+
+Proof: a real-browser spec opening a file link with Coding uninstalled; a
+migration test from a stored layout and a stored preview-state entry in
+today's exact shape; and a dependency scan paired with those specs.
+Removing the adoption entry must fail the migration test.
+
+### jP. PR review → its own default plugin, with migration [security]
+
+- The PR review pane (`coding-layout/PullRequestReviewPanel.tsx` and the
+  `pull-requests/` components it needs) ships as its own plugin in the
+  bundled set, on SDK-views' PR review data hooks, SDK-1's
+  `host.openExternal` and the kit.
+- The dock's PR chips, the region `pr:` family and Coding open it by
+  descriptor through SDK-4.
+- Pull-request data comes from a jG-style grant listed in its lock entry.
+- **Migration:** `pane:builtin:workspace-pull-request` and the `pr:`
+  instance family are adopted by this plugin (jG).
+
+Acceptance:
+
+- A PR chip in chat opens the plugin's review pane, with Coding
+  uninstalled.
+- A PR review pane saved before jP reopens on the same pull request.
+- Without the PR review plugin, the chip opens the pull request externally.
+
+Proof: a real-browser spec from a PR chip with Coding uninstalled; a
+migration test from a stored `pr:` placement in today's exact shape.
+Removing the adoption entry must fail the migration test.
+
 ### j. Coding → plugin, with migration [security]
 
-Marked **[security]** because it moves file, diff, terminal and execution
-authority from built-in provenance to grants (jG), and changes server
-admission (a2).
+Marked **[security]** because it moves file and diff authority from
+built-in provenance to grants (jG) and changes server admission (a2).
+Terminal authority does not move: it stays with the caller's own terminal
+grants (terminal.md).
 
 - Coding ships from station-plugins using slice a's fields, built only on
   public packages: the SDK, `@kontourai/station-shared`,
-  `@kontourai/station-contracts` and `@kontourai/ui`. It owns every Coding
-  pane and its composition ([decision 2](#decision-2-everything-in-coding-moves-into-the-plugin)).
+  `@kontourai/station-contracts` and `@kontourai/ui`. It owns the Coding
+  panes (file browser, diff, branch toolbar, pull-request list, the
+  inspector composition, the terminal drawer's presentation) and opens file
+  preview and PR review through their own plugins (jF, jP)
+  ([decision 2](#decision-2-everything-in-coding-moves-into-the-plugin)).
 - Core surfaces that used Coding panes switch to SDK views or open them by
   descriptor, per the decision 2 table.
 - Delete every site in the
@@ -2002,8 +2142,11 @@ admission (a2).
   those records. It is removed only after a recorded migration of stored
   records. With the plugin absent, such a layout renders `unavailable` with
   a reason and a reinstall action from the bundled set.
-- The terminal inside Coding is the core `terminal` target or the SDK
-  `TerminalView`, per OPEN-12 (HOLD-B); j adds no terminal code.
+- The terminal inside Coding is the SDK `TerminalView` or the core closed
+  `terminal` target (OPEN-12, answered: no interim). When j lands, the
+  existing `CodingTerminalPane` is retired. #3894's boundary test and the
+  one-time import of `coding-terminal-*` presentation state move into the
+  Coding plugin as plugin-side work.
 
 Acceptance:
 
