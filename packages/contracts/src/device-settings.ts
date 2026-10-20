@@ -253,7 +253,7 @@ export const DEFAULT_REGION_ARRANGEMENT_RECORD: RegionArrangementRecord = {
 /**
  * Named color-theme families (docs/decisions/user-color-themes.md). `station`
  * is today's look and sets nothing; every other id is a family in the UI's
- * catalog (`src-ui/src/lib/color-themes/catalog.ts`), which owns flavors,
+ * catalog (`src-ui/src/lib/color-theme-catalog.ts`), which owns flavors,
  * accents and every color value.
  */
 export const COLOR_THEME_IDS = [
@@ -266,6 +266,16 @@ export const COLOR_THEME_IDS = [
 ] as const;
 
 export type ColorThemeId = (typeof COLOR_THEME_IDS)[number];
+
+/**
+ * The shape every stored color-theme family, flavor and accent id must have.
+ * The account server stores ids in this shape rather than today's list (a
+ * newer client may name a family this server has not heard of), and the
+ * device registry imports flavor and accent ids under the same pattern, so an
+ * imported value can never be one the server refuses: a refused field fails
+ * the whole account patch.
+ */
+export const COLOR_THEME_ID_PATTERN = '^[a-z][a-z0-9-]{0,47}$';
 
 export interface DeviceSettings {
   theme: 'light' | 'dark';
@@ -717,7 +727,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
   defineDeviceSetting({
     key: 'colorThemeFlavor',
     scope: 'account',
-    descriptor: { kind: 'string', maxLength: 64 },
+    descriptor: { kind: 'string', pattern: COLOR_THEME_ID_PATTERN },
     label: 'Color theme dark flavor',
     help: 'Dark mode uses this variant of the color theme; light mode always uses the theme’s light variant.',
     description:
@@ -727,7 +737,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
   defineDeviceSetting({
     key: 'colorThemeAccent',
     scope: 'account',
-    descriptor: { kind: 'string', maxLength: 64 },
+    descriptor: { kind: 'string', pattern: COLOR_THEME_ID_PATTERN },
     label: 'Color theme accent',
     help: 'Buttons, links and focus rings use this color from the color theme’s palette, unless a custom accent color is set.',
     description:

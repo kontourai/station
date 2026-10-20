@@ -1,19 +1,11 @@
 /**
- * Resolving a stored color-theme selection against the catalog, and the
- * read-only view of the catalog a picker renders
- * (docs/decisions/user-color-themes.md).
- *
- * The three settings (`colorTheme`, `colorThemeFlavor`, `colorThemeAccent`)
- * arrive from device storage, Settings import, another tab, and the account
- * server, any of which can be older or newer than this client. So nothing
- * here trusts them: an unknown family resolves to `station` (today's look),
- * an unknown flavor or accent to the family's default. Nothing throws.
+ * The read-only view of the color-theme catalog a picker renders
+ * (docs/decisions/user-color-themes.md). This module carries the full
+ * catalog, so only Settings (or another lazily loaded surface) should import
+ * it; the startup path resolves selections with `color-theme-selection.ts`.
  */
 
-import type {
-  ColorThemeId,
-  DeviceSettings,
-} from '@kontourai/station-contracts/device-settings';
+import type { ColorThemeId } from '@kontourai/station-contracts/device-settings';
 import { SHIPPED_THEMES } from '@kontourai/ui/contrast';
 import {
   COLOR_THEME_FAMILIES,
@@ -21,75 +13,19 @@ import {
   type ColorThemeFlavor,
   type ColorThemeMode,
 } from './color-theme-catalog';
+import {
+  colorThemeFlavorId,
+  type ResolvedColorTheme,
+} from './color-theme-selection';
 
-export const DEFAULT_COLOR_THEME: ColorThemeId = 'station';
-
-/** The selection after validation. `station` carries no family. */
-export type ResolvedColorTheme =
-  | { readonly id: 'station' }
-  | {
-      readonly id: ColorThemeFamily['id'];
-      readonly family: ColorThemeFamily;
-      /** The dark flavor in force (light mode always uses `family.light`). */
-      readonly darkFlavor: ColorThemeFlavor;
-      /** The accent id in force; present in every flavor of the family. */
-      readonly accent: string;
-    };
-
-export type ColorThemeSettings = Pick<
-  DeviceSettings,
-  'colorTheme' | 'colorThemeFlavor' | 'colorThemeAccent'
->;
-
-const FAMILY_BY_ID = new Map<string, ColorThemeFamily>(
-  COLOR_THEME_FAMILIES.map((family) => [family.id, family]),
-);
-
-/**
- * Validate a stored selection. Accepts `unknown` fields on purpose: the
- * values come from storage and the network, not from this client's types.
- */
-export function resolveColorThemeSelection(input: {
-  readonly colorTheme?: unknown;
-  readonly colorThemeFlavor?: unknown;
-  readonly colorThemeAccent?: unknown;
-}): ResolvedColorTheme {
-  const family =
-    typeof input.colorTheme === 'string'
-      ? FAMILY_BY_ID.get(input.colorTheme)
-      : undefined;
-  if (!family) return { id: 'station' };
-  const darkFlavor =
-    family.dark.find((flavor) => flavor.id === input.colorThemeFlavor) ??
-    family.dark.find((flavor) => flavor.id === family.defaultDarkFlavor) ??
-    family.dark[0];
-  const accent = family.accents.some((a) => a.id === input.colorThemeAccent)
-    ? (input.colorThemeAccent as string)
-    : family.defaultAccent;
-  return { id: family.id, family, darkFlavor, accent };
-}
-
-/** The flavor a resolved family renders in `mode`. */
+/** The catalog flavor a resolved family renders in `mode`. */
 export function colorThemeFlavorFor(
   resolved: Exclude<ResolvedColorTheme, { id: 'station' }>,
   mode: ColorThemeMode,
 ): ColorThemeFlavor {
-  return mode === 'light' ? resolved.family.light : resolved.darkFlavor;
-}
-
-/** Station's own page canvas per mode, from the installed tokens. */
-const STATION_BACKGROUND: Readonly<Record<ColorThemeMode, string>> = {
-  dark: SHIPPED_THEMES.default.dark['--k-bg'],
-  light: SHIPPED_THEMES.default.light['--k-bg'],
-};
-
-/** The effective `--k-bg` for a selection and mode, for `<meta name="theme-color">`. */
-export function colorThemeBackground(
-  resolved: ResolvedColorTheme,
-  mode: ColorThemeMode,
-): string {
-  if (resolved.id === 'station') return STATION_BACKGROUND[mode];
-  return colorThemeFlavorFor(resolved, mode).roles['--k-bg'];
+  const family = COLOR_THEME_FAMILIES.find((f) => f.id === resolved.id)!;
+  const id = colorThemeFlavorId(resolved, mode);
+  return [family.light, ...family.dark].find((f) => f.id === id)!;
 }
 
 /** The colors a picker shows for one flavor with one accent. */
@@ -159,12 +95,13 @@ function stationSwatch(mode: ColorThemeMode): ColorThemeSwatch {
 
 function familyOption(family: ColorThemeFamily): ColorThemeOption {
   const flavors = [family.light, ...family.dark];
-  const resolved = resolveColorThemeSelection({ colorTheme: family.id });
-  if (resolved.id === 'station') throw new Error('unreachable');
+  const defaultDark =
+    family.dark.find((f) => f.id === family.defaultDarkFlavor) ??
+    family.dark[0]!;
   return {
     id: family.id,
     label: family.label,
-    defaultDarkFlavor: resolved.darkFlavor.id,
+    defaultDarkFlavor: defaultDark.id,
     defaultAccent: family.defaultAccent,
     flavors: flavors.map((flavor) => ({
       id: flavor.id,
@@ -181,7 +118,7 @@ function familyOption(family: ColorThemeFamily): ColorThemeOption {
     })),
     preview: {
       light: swatch(family.light, family.defaultAccent),
-      dark: swatch(resolved.darkFlavor, family.defaultAccent),
+      dark: swatch(defaultDark, family.defaultAccent),
     },
   };
 }

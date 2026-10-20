@@ -525,6 +525,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
 > = Object.freeze({
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts':
     'walks its own fixture directory',
+  'src-ui/src/__tests__/color-theme-artifacts.test.ts':
+    'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
   'scripts/__tests__/ci-event-environment.test.ts':

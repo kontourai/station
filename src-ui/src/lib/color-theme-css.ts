@@ -1,13 +1,19 @@
 /**
- * Renders the color-theme catalog into the two checked-in artifacts that put
- * a theme in force before the first paint (docs/decisions/user-color-themes.md):
+ * Renders the color-theme catalog into the checked-in artifacts that put a
+ * theme in force before the first paint without charging default users for
+ * it (docs/decisions/user-color-themes.md):
  *
- * - `src-ui/src/color-themes.generated.css`, imported by `index.css` (every
- *   token) and, as `color-themes.startup.generated.css`, by the splash
- *   stylesheet (surfaces and text only, which is all the splash paints).
- * - the index block in `src-ui/public/startup-theme.js`, which validates the
- *   stored selection, stamps the root attributes and sets `theme-color`
- *   before any stylesheet or module loads.
+ * - one stylesheet per family, `src-ui/public/color-themes/<family>.css`,
+ *   served as a static file under a stable name and loaded only when that
+ *   family is selected (by `startup-theme.js` before first paint, and by the
+ *   applier on a live switch). Nothing here is in the entry bundle.
+ * - `color-themes.startup.generated.css`, the splash's subset for every
+ *   family (surfaces, text and focus), imported by the splash stylesheet so
+ *   the first paint is themed while the family sheet is still loading.
+ * - `lib/color-theme-index.generated.json`, the small index the runtime
+ *   resolves selections against (ids, defaults, canvases and each sheet's URL
+ *   with a content digest), so the applier never loads the full catalog.
+ * - the index block in `src-ui/public/startup-theme.js`.
  *
  * `npm run gen:color-themes` writes them; `color-theme-artifacts.test.ts`
  * regenerates and compares, so a hand edit or a stale artifact fails.
@@ -23,17 +29,20 @@
  *   the mode, weight (0,4,0); a named accent adds one attribute (0,5,0). That
  *   outranks the tokens' and index.css's `:root`/`[data-theme]` blocks (0,1,0)
  *   and the channel blocks (up to 0,3,0), so the theme owns action and focus
- *   in a Dev, Beta or Nightly build too.
+ *   in a Dev, Beta or Nightly build too. Weight, not order, decides: the
+ *   family sheet loads before or after the entry CSS depending on the path.
  * - Brand: `html[data-color-theme]:where(...)`, weight (0,1,1). It beats the
  *   (0,1,0) defaults but loses to the channel blocks (0,2,0 and up), and
  *   the per-flavor channel rules below (0,5,0) replace the channel colour
  *   with its shade for this flavor's surfaces. So a channel build keeps its
  *   identity on `--k-brand` alone.
  * - A white-label branding theme is inline style on `<html>`
- *   (`branding-theme.ts`) and wins over all of it; a custom device accent
- *   writes `--accent-primary` inline and still wins over the theme's action.
- * - Islands: an element with its own `data-theme` below the root resolves the
- *   theme's flavor for that mode, like the tokens' own dark-island blocks.
+ *   (`branding-theme.ts`) and wins over all of it, re-rated against the
+ *   theme's surfaces; a custom device accent writes `--accent-primary`
+ *   inline and still wins over the theme's action.
+ * - Only the root is themed. An element with its own `data-theme` below the
+ *   root (an island) keeps Station's tokens: Station has none today, and the
+ *   rules for them would double every sheet.
  *
  * Generated rules never use `!important` and never set a property outside
  * the catalog's role and variable lists.
@@ -49,10 +58,12 @@ import {
   type ColorThemeFlavor,
   type ColorThemeRoleProperty,
 } from './color-theme-catalog';
-import { colorThemeBackground } from './color-themes';
 
-export const COLOR_THEME_STYLESHEET_PATH =
-  'src-ui/src/color-themes.generated.css';
+/** Where the per-family sheets live, and the URL path they are served at. */
+export const COLOR_THEME_STYLESHEET_DIR = 'src-ui/public/color-themes';
+const COLOR_THEME_STYLESHEET_URL = '/color-themes';
+export const COLOR_THEME_INDEX_PATH =
+  'src-ui/src/lib/color-theme-index.generated.json';
 export const COLOR_THEME_STARTUP_STYLESHEET_PATH =
   'src-ui/src/color-themes.startup.generated.css';
 export const COLOR_THEME_STARTUP_SCRIPT_PATH = 'src-ui/public/startup-theme.js';
@@ -74,8 +85,6 @@ interface Scope {
   readonly root: string;
   /** Mode condition for the root itself. */
   readonly rootMode: string;
-  /** The island selector's mode attribute. */
-  readonly island: string;
 }
 
 function scopeFor(mode: Mode, flavor: ColorThemeFlavor): Scope {
@@ -83,13 +92,8 @@ function scopeFor(mode: Mode, flavor: ColorThemeFlavor): Scope {
     ? {
         root: `[data-color-theme-flavor="${flavor.id}"]`,
         rootMode: ':not([data-theme="light"])',
-        island: '[data-theme="dark"]',
       }
-    : {
-        root: '[data-color-theme-flavor]',
-        rootMode: '[data-theme="light"]',
-        island: '[data-theme="light"]',
-      };
+    : { root: '[data-color-theme-flavor]', rootMode: '[data-theme="light"]' };
 }
 
 function block(selectors: readonly string[], declarations: string[]): string {
@@ -112,15 +116,14 @@ function brandDeclarations(accent: ColorThemeAccentValue): string[] {
 }
 
 function roleSelectors(family: string, scope: Scope, extra = ''): string[] {
-  const root = `:root[data-color-theme="${family}"]${scope.root}${extra}`;
-  return [`${root}${scope.rootMode}`, `${root} ${scope.island}`];
+  return [
+    `:root[data-color-theme="${family}"]${scope.root}${extra}${scope.rootMode}`,
+  ];
 }
 
 function brandSelectors(family: string, scope: Scope, extra = ''): string[] {
-  const where = `[data-color-theme="${family}"]${scope.root}${extra}`;
   return [
-    `html[data-color-theme]:where(${where}${scope.rootMode})`,
-    `html[data-color-theme]:where(${where}) ${scope.island}`,
+    `html[data-color-theme]:where([data-color-theme="${family}"]${scope.root}${extra}${scope.rootMode})`,
   ];
 }
 
@@ -178,14 +181,120 @@ function flavorRules(
   return out.join('');
 }
 
-export function renderColorThemeStylesheet(): string {
-  const parts = [HEADER];
-  for (const family of COLOR_THEME_FAMILIES) {
-    for (const flavor of [family.light, ...family.dark]) {
-      parts.push(`\n${flavorRules(family, flavor)}`);
-    }
+/** FNV-1a, for a cache-busting digest; not a security property. */
+function digest(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return parts.join('');
+  return hash.toString(16).padStart(8, '0');
+}
+
+/** One family's stylesheet: every flavor, accent and channel rule. */
+export function renderColorThemeFamilyStylesheet(
+  family: ColorThemeFamily,
+): string {
+  return [
+    HEADER,
+    ...[family.light, ...family.dark].map(
+      (flavor) => `\n${flavorRules(family, flavor)}`,
+    ),
+  ].join('');
+}
+
+/** Every family's sheet, keyed by its repository path. */
+export function renderColorThemeFamilyStylesheets(): Record<string, string> {
+  return Object.fromEntries(
+    COLOR_THEME_FAMILIES.map((family) => [
+      `${COLOR_THEME_STYLESHEET_DIR}/${family.id}.css`,
+      renderColorThemeFamilyStylesheet(family),
+    ]),
+  );
+}
+
+/** Each family's sheet URL, with a digest so an upgrade is never served stale. */
+function stylesheetHrefs(): Record<string, string> {
+  return Object.fromEntries(
+    COLOR_THEME_FAMILIES.map((family) => [
+      family.id,
+      `${COLOR_THEME_STYLESHEET_URL}/${family.id}.css?v=${digest(renderColorThemeFamilyStylesheet(family))}`,
+    ]),
+  );
+}
+
+/** The runtime index: everything resolution and the startup script need. */
+/**
+ * A flavor's entry: its canvas (theme-color), and the surfaces and fill
+ * texts a white-label brand is re-rated against (branding-theme.ts). Every
+ * accent of a flavor shares one contrast text, which is what lets the index
+ * carry one value instead of the catalog's per-accent pairs.
+ */
+function flavorEntry(flavor: ColorThemeFlavor) {
+  const contrasts = new Set(
+    Object.values(flavor.accents).map((accent) => accent.contrast),
+  );
+  if (contrasts.size !== 1)
+    throw new Error(
+      `${flavor.id}: accents no longer share one contrast text; the runtime index needs per-accent values`,
+    );
+  return {
+    id: flavor.id,
+    background: flavor.roles['--k-bg'],
+    panel: flavor.roles['--k-panel'],
+    raised: flavor.roles['--k-panel-raised'],
+    accentContrast: [...contrasts][0]!,
+    channelContrast: Object.fromEntries(
+      COLOR_THEME_CHANNELS.map((channel) => [
+        channel,
+        flavor.channels[channel].contrast,
+      ]),
+    ),
+  };
+}
+
+function runtimeIndex() {
+  const hrefs = stylesheetHrefs();
+  return Object.fromEntries(
+    COLOR_THEME_FAMILIES.map((family) => [
+      family.id,
+      {
+        stylesheet: hrefs[family.id],
+        light: flavorEntry(family.light),
+        dark: family.dark.map(flavorEntry),
+        defaultDarkFlavor: family.defaultDarkFlavor,
+        accents: family.accents.map((accent) => accent.id),
+        defaultAccent: family.defaultAccent,
+      },
+    ]),
+  );
+}
+
+/** What the startup script needs from the index, and nothing more. */
+function startupIndex() {
+  const slim = (flavor: ColorThemeFlavor) => ({
+    id: flavor.id,
+    background: flavor.roles['--k-bg'],
+  });
+  const hrefs = stylesheetHrefs();
+  return Object.fromEntries(
+    COLOR_THEME_FAMILIES.map((family) => [
+      family.id,
+      {
+        stylesheet: hrefs[family.id],
+        light: slim(family.light),
+        dark: family.dark.map(slim),
+        defaultDarkFlavor: family.defaultDarkFlavor,
+        accents: family.accents.map((accent) => accent.id),
+        defaultAccent: family.defaultAccent,
+      },
+    ]),
+  );
+}
+
+/** `color-theme-index.generated.json`, read by `color-theme-selection.ts`. */
+export function renderColorThemeIndex(): string {
+  return `${JSON.stringify({ families: runtimeIndex() }, null, 2)}\n`;
 }
 
 /** What the splash paints (`components/startup-screen.css`). */
@@ -222,26 +331,11 @@ export function renderColorThemeStartupStylesheet(): string {
 }
 
 /**
- * The index `startup-theme.js` resolves against: per family, the light
- * canvas, each dark flavor's canvas, the defaults and the accent ids.
+ * The index `startup-theme.js` resolves against: the runtime index, inlined
+ * so the script needs no request before first paint.
  */
 export function renderColorThemeStartupIndex(): string {
-  const index: Record<string, unknown> = {};
-  for (const family of COLOR_THEME_FAMILIES) {
-    index[family.id] = {
-      light: family.light.roles['--k-bg'],
-      dark: Object.fromEntries(
-        family.dark.map((flavor) => [flavor.id, flavor.roles['--k-bg']]),
-      ),
-      defaultDark: family.defaultDarkFlavor,
-      accents: family.accents.map((accent) => accent.id),
-      defaultAccent: family.defaultAccent,
-    };
-  }
-  const station = {
-    dark: colorThemeBackground({ id: 'station' }, 'dark'),
-    light: colorThemeBackground({ id: 'station' }, 'light'),
-  };
+  const index = startupIndex();
   // Shaped the way the repository formatter leaves it (a JSON string is
   // never re-wrapped), so `lint:check` and the drift test agree.
   return [
@@ -249,7 +343,6 @@ export function renderColorThemeStartupIndex(): string {
     '  const COLOR_THEMES = JSON.parse(',
     `    '${JSON.stringify(index)}',`,
     '  );',
-    `  const STATION_BACKGROUND = { dark: '${station.dark}', light: '${station.light}' };`,
     `  ${STARTUP_INDEX_END}`,
   ].join('\n');
 }

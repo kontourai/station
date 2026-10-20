@@ -180,6 +180,11 @@ export function AccountPreferencesProvider({
     return { ...query.data, values };
   }, [query.data, pending, pendingVersion]);
   useLayoutEffect(() => {
+    // No person here: this device's own appearance applies, not the account
+    // appearance the startup path painted from its cache.
+    if (!eligible) deviceSettingsStore.releaseBootAppearance();
+  }, [eligible]);
+  useLayoutEffect(() => {
     if (!eligible || !scope?.isCurrent()) return;
     return deviceSettingsStore.bindAccountPreferences(
       query.isFetchedAfterMount ? projected?.values : undefined,

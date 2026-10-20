@@ -63,12 +63,16 @@ import { PermissionManager } from './core/PermissionManager';
 import { EXTENSIONS_UNAVAILABLE_LABEL } from './core/pluginRegistryCopy';
 import { LocaleProvider, resolveDevelopmentLocale } from './i18n/LocaleContext';
 import { applyAccentColor } from './lib/accent-contrast';
+import { readAppearanceCache } from './lib/appearance-cache';
 import {
   applyBrandingTheme,
   BRANDING_THEME_STORAGE_KEY,
   resolveCachedBrandingTheme,
 } from './lib/branding-theme';
-import { bindColorThemeToSettings } from './lib/color-theme-apply';
+import {
+  bindColorThemeToSettings,
+  whenColorThemeStylesheetSettled,
+} from './lib/color-theme-apply';
 import {
   deviceSettingsStore,
   resolveBootAccentColor,
@@ -216,6 +220,7 @@ const _envelopeRaw = localStorage.getItem('station-device-settings-v1');
 const _bootTheme = resolveBootTheme(
   _envelopeRaw,
   localStorage.getItem('theme'),
+  readAppearanceCache(),
 );
 document.documentElement.setAttribute('data-theme', _bootTheme);
 const _bootAccent = resolveBootAccentColor(
@@ -369,4 +374,10 @@ function renderApp(): void {
   );
 }
 
-renderApp();
+// A themed person's family sheet was requested by startup-theme.js; the first
+// render waits for it (at most a few seconds) so the app never appears in
+// Station's colours after a themed splash. Without a theme this renders
+// synchronously, as before.
+const colorThemeSheet = whenColorThemeStylesheetSettled(document);
+if (colorThemeSheet) void colorThemeSheet.then(renderApp);
+else renderApp();
