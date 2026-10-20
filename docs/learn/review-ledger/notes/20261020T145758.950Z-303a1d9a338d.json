@@ -1,0 +1,7 @@
+{
+  "revision": "c6fbaa8f3330ffe4393f92f76bd799824c85a2e5",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"TelemetryConsent.routes.test.tsx now passes onAppConfigPersisted in its real position after #3937 removed a createConfigRoutes parameter, and asserts the PUT reconfigured the service with operator Off. Production runtime-routes wiring was already correct; 'Turn off usage telemetry saves operator Off before acknowledging' remains accurate.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx"]}
+  ]
+}

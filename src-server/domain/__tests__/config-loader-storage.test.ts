@@ -65,7 +65,7 @@ describe('skill config storage resolves names through the shared seam', () => {
     }
   });
 
-  // Review round 2, L3. A package copied into a new directory carries the
+  // A package copied into a new directory carries the
   // record it was copied with. Answering `bar` with a record that says `foo`
   // hands the caller `foo`'s identity — and `SkillService.updateLocalSkill`
   // reads `name` back off this record, so a PUT on `bar` that requested no

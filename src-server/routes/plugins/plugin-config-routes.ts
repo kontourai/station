@@ -79,8 +79,8 @@ interface PluginConfigRouteDeps {
  * 2. Value-shape axis (`redactSecrets`, which is a key-name-in-text scan
  *    over the value's own contents — `redactContextualFields` — followed by
  *    `SECRET_PATTERNS`) — a lower-confidence second net for a value that
- *    looks credential-shaped under a name that doesn't. Review round:
- *    caught only 2/14 real credential shapes on its own, and produces real
+ *    looks credential-shaped under a name that doesn't. Measured on its
+ *    own, it caught only 2/14 real credential shapes, and it produces real
  *    false positives on ordinary strings ("Basic plan", "Bearer token",
  *    prose containing the word "password"). A match here is WARNED but
  *    still EMITTED — withholding a value on a match this unreliable buys no

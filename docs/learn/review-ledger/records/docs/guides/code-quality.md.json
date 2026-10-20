@@ -102,7 +102,11 @@
 
     "package.json#/packageManager",
 
-    ".fallowrc.json#/dynamicallyLoaded"
+    ".fallowrc.json#/dynamicallyLoaded",
+
+    "scripts/fallow-ceiling.mjs",
+
+    "scripts/fallow-baseline.mjs"
   ],
 
   "checks": [

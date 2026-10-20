@@ -56,7 +56,8 @@ vi.mock('../contexts/NavigationContext', () => {
     useNavigationActions: navigation,
   };
 });
-vi.mock('../hooks/useIsMobile', () => ({
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => false,
   MOBILE_MEDIA_QUERY: '(max-width: 768px)',
 }));

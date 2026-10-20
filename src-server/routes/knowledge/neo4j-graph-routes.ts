@@ -1,16 +1,11 @@
 /**
  * K5 Neo4j graph-view routes — thin delegations onto
  * `../knowledge-store/neo4j-graph-sync.ts` (sync) and
- * `../knowledge-store/neo4j-graph-provider.ts` (`readGraph`/`shortestPath`),
- * completing `s203-knowledge-meeting-notes--plan.md`'s Wave 1 Task 1 (the Q1-
- * ratified "Graph view, synced" scope). A deliberate SIBLING file to
- * `knowledge-record-routes.ts` rather than an extension of it: that file's own
- * `GET /roots/:rootId/graph` doc comment explicitly defers "wiring a Neo4j-backed
- * root's graph read" to "whichever task lands `runtime-routes.ts`'s final wiring
- * decision" — this file is that wiring, kept file-disjoint from the already-landed
- * Task 2 route module rather than risking a diff against its existing (already
- * green) test suite. `knowledge-record-routes.ts`'s `/graph` route stays
- * file-adapter-only and unchanged; these routes are the explicit Neo4j-backed
+ * `../knowledge-store/neo4j-graph-provider.ts` (`readGraph`/`shortestPath`)
+ * for the "Graph view, synced" scope. A deliberate SIBLING file to
+ * `knowledge-record-routes.ts` rather than an extension of it, so that module
+ * and its test suite stay unchanged. `knowledge-record-routes.ts`'s `/graph`
+ * route stays file-adapter-only; these routes are the explicit Neo4j-backed
  * equivalent, addressed at a distinct sub-path so a caller (a future recall-UI
  * task) chooses per-root which backend to query, rather than this route silently
  * guessing.
@@ -21,8 +16,8 @@
  * the existing file-based `/roots/:rootId/graph`, so there is no collision with
  * any route mounted at that same base today.
  *
- * Configuration gating (per this module's remit — "follow how the K2 stub expected
- * configuration"): a single, global, opt-in connection
+ * Configuration gating (following how the K2 stub expected configuration): a
+ * single, global, opt-in connection
  * (`getNeo4jGraphViewConnection()` — `../knowledge-store/neo4j-connection.ts`), not
  * a per-root setting. When no connection is registered, or the lazy real-driver
  * load fails (package unavailable / construction failure), every route in this file
@@ -31,7 +26,7 @@
  * An invalid request shape (`rootId`, `fromId`/`toId`) is a `400`, checked before
  * any connection/driver work.
  *
- * Path-safety (SEC-1, Wave 1 precedent — mirrors `knowledge-record-routes.ts`'s
+ * Path-safety (mirrors `knowledge-record-routes.ts`'s
  * `isSafePathSegment` guard on every id-shaped input): `rootId` gets the same
  * defensive shape/length check `knowledge-index-routes.ts`/
  * `knowledge-record-routes.ts` already apply (it never reaches a filesystem path —
@@ -40,7 +35,7 @@
  * query text), so they carry no Cypher-injection risk the way a raw path join
  * would carry a traversal risk; they still get the same `isSafePathSegment` check
  * as a defense-in-depth consistency measure, matching every other route file's
- * treatment of an id-shaped value in this plan.
+ * treatment of an id-shaped value.
  */
 
 import { Hono } from 'hono';
@@ -291,7 +286,7 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
   });
 
   // GET /roots/:rootId/graph/neo4j/shortest-path?fromId=&toId= — the one
-  // structural query this slice ships (Q1 verdict).
+  // structural query this slice ships.
   app.get('/roots/:rootId/graph/neo4j/shortest-path', async (c) => {
     try {
       const rootId = c.req.param('rootId');

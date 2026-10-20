@@ -57,7 +57,8 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../hooks/useIsMobile', () => ({
+vi.mock('../../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../hooks/useIsMobile')>()),
   useIsMobile: () => harness.isMobile,
   useDockSlotDevice: () => ({
     viewportWidth: harness.bottomOnly ? 402 : 1440,

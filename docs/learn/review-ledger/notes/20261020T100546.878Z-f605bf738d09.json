@@ -1,0 +1,17 @@
+{
+  "revision": "8a8abded3641b7934ee12bf2c1072289ce868093",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked against the second repo-map change in this PR: the resolver-precedence entry now says docs/strategy/README.md supplies the default Phase S1 resolution and that live priorities are tracked in GitHub issues; a second policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":[".veritas/README.md",".veritas/repo-map.json"]},
+
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Checked against the second repo-map change in this PR: the resolver-precedence entry now says docs/strategy/README.md supplies the default Phase S1 resolution and that live priorities are tracked in GitHub issues; a second policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked against the second repo-map change in this PR: the resolver-precedence entry now says docs/strategy/README.md supplies the default Phase S1 resolution and that live priorities are tracked in GitHub issues; a second policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":["docs/guides/code-quality.md",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/development.md","note":"Checked against the second repo-map change in this PR: the resolver-precedence entry now says docs/strategy/README.md supplies the default Phase S1 resolution and that live priorities are tracked in GitHub issues; a second policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":["docs/guides/development.md",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/documentation.md","note":"Checked against the second repo-map change in this PR: the resolver-precedence entry now says docs/strategy/README.md supplies the default Phase S1 resolution and that live priorities are tracked in GitHub issues; a second policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked against the second repo-map change in this PR: the resolver-precedence entry now says docs/strategy/README.md supplies the default Phase S1 resolution and that live priorities are tracked in GitHub issues; a second policy-change attestation advances .veritas/attestations/HEAD. No work area, evidence check, enforcement level or timeout this document describes changes.","inputs":["docs/guides/testing.md",".veritas/repo-map.json"]}
+  ]
+}

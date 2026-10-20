@@ -56,7 +56,7 @@ const TOOL_SERVER_FAILURE_RESULT = Object.freeze({
   content: [{ type: 'text', text: 'MCP tool call failed' }],
 });
 
-export function isToolServerFailureResult(value: unknown): boolean {
+function isToolServerFailureResult(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
   const result = value as Record<string, unknown>;
   return result.isError === true || result.status === 'error';

@@ -177,7 +177,8 @@ vi.mock('../../workspace-panes/ChatWorkspaceLayout', () => ({
     return <div>Chat workspace rendered</div>;
   },
 }));
-vi.mock('../../hooks/useIsMobile', () => ({
+vi.mock('../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useIsMobile')>()),
   useIsMobile: () => mobileMock(),
   // A phone-sized viewport folds the dock to one region, so its Coding Chat
   // page is the dock, not the centre (`resolveLayoutChatPlacement`).

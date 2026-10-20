@@ -200,7 +200,7 @@ describe('App home profile routes (#896)', () => {
   });
 
   test('provenance only advances on a completed import', async () => {
-    // MED-3 (security review): an unreadable/absent global config dir must
+    // An unreadable/absent global config dir must
     // fail the import outright — the route must never advance
     // `seededFrom` to `'global-import'` on a failed one.
     const app = createAppHomeRoutes();
@@ -242,7 +242,7 @@ describe('App home profile routes (#896)', () => {
   });
 
   test('an import that copies nothing does not advance provenance', async () => {
-    // Item 3 (security review round 2): an import that reads a genuinely
+    // An import that reads a genuinely
     // empty (or wholly-refused) global config dir still succeeds — but
     // must NOT stamp `seededFrom: 'global-import'` on a profile that
     // received nothing. The response says so plainly via
@@ -287,9 +287,9 @@ describe('App home profile routes (#896)', () => {
   });
 
   test('records the appHomeImport metric with outcome failed for an unreadable global config dir', async () => {
-    // Item 5 (security review round 2): the reviewer noted no test pinned
-    // either the 'failed' or 'error' telemetry outcome — this pins
-    // 'failed' (MED-3's route branch).
+    // Pins the 'failed' telemetry outcome: the unreadable-global-dir
+    // branch the 'provenance only advances on a completed import' test
+    // drives. The next test pins the 'error' outcome.
     const app = createAppHomeRoutes();
     const missingGlobalDir = join(
       tmpdir(),

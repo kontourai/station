@@ -95,7 +95,7 @@ One authenticated binary, two handshakes:
   nothing it could legitimately hand over; answering it is a
   credential-disclosure surface. Refusing it (`-32601`) leaves v3 turns
   unable to execute — a known Kiro compatibility break that already bites
-  other generic ACP clients (kirodotdev/Kiro#10416, #10543) and is not
+  other generic ACP clients (kirodotdev/Kiro#10416, kirodotdev/Kiro#10543) and is not
   Station's to paper over.
 
 ### The ecosystem (surveyed 2026-08-03)
@@ -318,7 +318,7 @@ reason to render it.
 Third: refusing inbound extension requests can break an agent that
 requires a client-side answer to function — Kiro v3 is *already* this case
 (turns fail without the auth callback). That is disclosed as the vendor's
-compatibility break (their #10416), not absorbed; the alternative
+compatibility break (kirodotdev/Kiro#10416), not absorbed; the alternative
 (answering unknowable requests with fabricated success, or with
 credentials) fails worse in the invisible direction.
 

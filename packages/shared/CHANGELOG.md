@@ -1,5 +1,48 @@
 # @kontourai/station-shared
 
+## 0.11.0
+
+### Minor Changes
+
+- b97b819: Support repeatable `station delegate --attach=<path>` for new current-host tasks. Stage files with owner and digest checks, preserve exact bytes in the resolved workspace, and refuse unsupported hosts or over-limit batches instead of dropping files.
+  
+  Use coded refusals, release staged bindings and remove workspace files after confirmed pre-effect failure, and retain files for uncertain invocations. Refuse unsupported attachment fields instead of stripping them; pre-check duplicate basenames and cancel CLI stages on failed dispatch.
+- f94583e: Remove exports that had no consumer. Import the replacements where one exists.
+  
+  - Shared: remove the `./guidance-assets`, `./agent-validation` and
+    `./mcp-elicitation-form` subpaths and the root re-exports of
+    `skillToGuidanceAsset`, `requiresAgentPrompt` and
+    `requiresAgentPromptForRuntime`. Use
+    `@kontourai/station-contracts/guidance-assets` (its copy also keeps the
+    skill's `provenance`, which the shared copy dropped) and
+    `@kontourai/station-contracts/agent-validation`. Read MCP elicitations with
+    `inputRequestFromRequestEvent` from `@kontourai/station-shared/input-request`.
+  - Contracts: remove `McpElicitationForm`, which only the removed shared reader
+    returned. The field types stay.
+  - SDK: remove the unused `KeyboardCommand`, `WindowOptions` and
+    `IKnowledgeProvider` types; the `./answer-narrative-binding` subpath
+    (`getAnswerNarrativeTarget`, `publishAnswerNarrative`,
+    `removeAnswerNarrative`, `AnswerNarrativeBindingRequestError`);
+    `useSecretBindingQuery`; `useSessionOutputsQuery` and
+    `sessionOutputsQueries`; `useKeepDeclaredOutputMutation` and
+    `keepDeclaredOutput` (use `useKeepSessionOutputMutation` from
+    `./session-output-actions`); and `useInvalidateSessionInventory`.
+
+### Patch Changes
+
+- 822331d: Remove an internal planning label ("Phase 4a") from two AGENTS.md
+  portability messages. The omitted-field warning and the missing export block
+  error otherwise read the same.
+- 99c843d: Classify shared pull request guides as Station home state so backups and update rollback retain their versioned stored guides.
+- Updated dependencies [9b1c96b]
+- Updated dependencies [9e9d0ff]
+- Updated dependencies [b97b819]
+- Updated dependencies [2bd9640]
+- Updated dependencies [8d1d328]
+- Updated dependencies [f94583e]
+- Updated dependencies [2bd9640]
+  - @kontourai/station-contracts@0.11.0
+
 ## 0.10.0
 
 ### Patch Changes

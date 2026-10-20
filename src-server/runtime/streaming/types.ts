@@ -55,22 +55,3 @@ export interface StreamHandler {
 export interface WritableStream {
   write(data: string): Promise<void>;
 }
-
-/**
- * Bedrock-specific chunk format for SSE output
- */
-export interface BedrockChunk {
-  type: string;
-  text?: string;
-  toolCallId?: string;
-  toolName?: string;
-  args?: unknown;
-  result?: unknown;
-  error?: string;
-  usage?: {
-    promptTokens?: number;
-    completionTokens?: number;
-  };
-  finishReason?: string;
-  [key: string]: unknown;
-}

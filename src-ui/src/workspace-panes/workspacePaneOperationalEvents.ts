@@ -22,7 +22,7 @@ import {
   workspacePaneHostStorageKey,
 } from './workspacePaneHostStorage';
 
-/** UI injection seam only. This slice deliberately has no server EventBus dependency. */
+/** UI injection seam only. Deliberately has no server EventBus dependency. */
 export interface WorkspacePaneOperationalEventSink {
   emit(event: OperationalEventEnvelope): void;
 }

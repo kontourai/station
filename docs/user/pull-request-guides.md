@@ -29,7 +29,7 @@ Generation reads bounded Git blobs through an admitted repository snapshot,
 without creating a checkout or running Git smudge filters. It gives the model
 no tools and requests structured guide output. Station reads the merge-base-to-head change, so a
 stacked pull request covers its own layer. Both exact commits must already be
-available in the project's checkout: this slice does not fetch missing commits.
+available in the project's checkout; Station does not fetch missing commits.
 Submodules follow
 Station's repository-read policy and are not entered. Review conversations are
 not supplied to the model, including resolved conversations.
@@ -55,8 +55,8 @@ starts independently; a batch
 can contain both starts and capacity refusals. These tools do not post reviews,
 change source files, or approve a pull request.
 
-This first slice does not provide project-specific instructions, external
-coding-engine generation, excerpt selection for comments, question-to-chat
+Guides do not yet support project-specific instructions, generation by an
+external coding engine, excerpt selection for comments, question-to-chat
 actions, or a finish-review workflow. Questions are reading prompts only.
 
 While a guide is running, the Guide tab polls process-local status every 15 seconds

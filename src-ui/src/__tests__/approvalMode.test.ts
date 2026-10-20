@@ -59,28 +59,47 @@ describe('APPROVAL_MODE_OPTIONS copy', () => {
   });
 });
 
-describe('full-access copy does not promise "no sandbox"', () => {
-  // Full access turns off approval prompts where the engine allows it. It
-  // does not lift Station's workspace confinement from a start that carries
-  // no full-access grant (a webhook start; `approval-posture.ts`
-  // startConfinement), so no description may promise "no sandbox" (#3918
-  // pinned the same for the Default approval mode setting).
-  test('the generic never option names the confinement and not "no sandbox"', () => {
+describe('full-access copy does not overstate what a start without a grant gets', () => {
+  // Full access turns off approval prompts where the engine allows it. A
+  // start that carries no full-access grant (a webhook start;
+  // `approval-posture.ts` applicableMode) gets a narrower setting, and which
+  // one depends on the engine and on what happens at start: Codex keeps
+  // `never` inside its sandbox, Claude Code may fall back to Auto with no
+  // confinement (`fallbackConfinementRecord`), and an ACP engine such as
+  // OpenCode is lowered to Auto, where reads and other non-edit requests
+  // follow the engine's own rules. So the copy promises none of those
+  // details: not "no sandbox" (#3918 pinned the same for the Default
+  // approval mode setting), not "still runs inside" confinement, and not
+  // "only file edits" run on their own. Detail lives in
+  // docs/guides/acp.md#which-side-decides-which-calls-ask.
+  const FORBIDDEN = [/no sandbox/i, /still runs inside/i, /only file edits/i];
+
+  test('the generic never option says a start without a grant gets a narrower setting', () => {
     const never = APPROVAL_MODE_OPTIONS.find(
       (option) => option.value === 'never',
     );
-    expect(never?.description).toMatch(/workspace confinement/);
-    expect(never?.description.toLowerCase()).not.toContain('no sandbox');
+    expect(never?.description).toBe(
+      'Turns off approval prompts where the engine allows it. Without a full-access grant, Station applies a narrower setting, so some actions may still ask.',
+    );
   });
 
-  test('no per-engine never description promises "no sandbox"', () => {
-    for (const engine of ['codex', 'claude', 'opencode', 'acp', undefined]) {
-      expect(
-        approvalModeDescription('never', engine).toLowerCase(),
-      ).not.toContain('no sandbox');
+  test('no never description, generic or per engine, makes a forbidden promise', () => {
+    const descriptions = [
+      ...APPROVAL_MODE_OPTIONS.filter((o) => o.value === 'never').map(
+        (o) => o.description,
+      ),
+      ...['codex', 'claude', 'opencode', 'acp', undefined].map((engine) =>
+        approvalModeDescription('never', engine),
+      ),
+    ];
+    for (const description of descriptions) {
+      for (const pattern of FORBIDDEN) expect(description).not.toMatch(pattern);
     }
+  });
+
+  test('the OpenCode never copy is conditional on the grant', () => {
     expect(approvalModeDescription('never', 'opencode')).toBe(
-      'Every action runs without asking, and subagents may run. Plan mode still blocks edits.',
+      'With full access granted, permitted actions run without approval prompts. Questions, plan exits and network-host requests may still ask. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
     );
   });
 });

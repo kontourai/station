@@ -115,10 +115,32 @@ export function summarizeGallery(capture, files) {
       (screen) => screen.ok === true && files.includes(screen.file),
     ) &&
     files.length === capture.screens.length;
+  const listed = new Set(capture.screens.map((screen) => screen.file));
+  const problems = [
+    ['unlisted images', files.filter((file) => !listed.has(file))],
+    [
+      'missing images',
+      capture.screens
+        .filter((screen) => !files.includes(screen.file))
+        .map((screen) => screen.file),
+    ],
+    [
+      'failed screens',
+      capture.screens
+        .filter((screen) => screen.ok !== true)
+        .map((screen) => screen.name),
+    ],
+    [
+      'selected screens not captured',
+      expected ? expected.filter((name) => !names.includes(name)) : [],
+    ],
+  ]
+    .filter(([, items]) => items.length)
+    .map(([label, items]) => `${label}: ${items.join(', ')}`);
   return {
     name: 'Screenshot captures',
     status: complete ? 'PASS' : 'FAIL',
-    detail: `${files.length} images; ${expected ? 'explicit subset' : 'full gallery'}; ${complete ? 'capture manifest accounted for' : 'failed or missing captures'}. This checks capture coverage, not runtime journeys.`,
+    detail: `${files.length} images; ${expected ? 'explicit subset' : 'full gallery'}; ${complete ? 'capture manifest accounted for' : `failed or missing captures${problems.length ? ` (${problems.join('; ')})` : ''}`}. This checks capture coverage, not runtime journeys.`,
   };
 }
 
