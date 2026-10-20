@@ -96,7 +96,9 @@
 
     "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
 
-    "tests/container-self-host.spec.ts"
+    "tests/container-self-host.spec.ts",
+
+    "scripts/code-health-gate.mjs"
   ],
 
   "checks": [

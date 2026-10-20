@@ -220,7 +220,7 @@ CLI parity, source references, links, public-content hygiene, generated issue
 lifecycle content and contract examples. Veritas readiness also selects the
 full `docs:truth:gate` as required evidence, including recorded review
 freshness for source-only changes: a stale record blocks when the change's own
-diff touches it ([keep reviews fresh](documentation.md#keep-reviews-fresh)).
+diff touches it ([keep reviews fresh](documentation-review-ledger.md#keep-reviews-fresh)).
 The separate **Repository source scans** job remains non-required and only
 reports freshness. Merge-queue static verification also includes the
 documentation truth gate, where freshness is advisory. These checks catch stale

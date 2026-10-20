@@ -1,0 +1,39 @@
+{
+  "path": "docs/guides/documentation-review-ledger.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Review-ledger machinery split verbatim out of docs/guides/documentation.md: impact and catch-up reporting, freshness modes, record/note commands, ledger layout, append-only guards, migration and merge recipes, and generated-record exceptions.",
+
+  "limits": "The moved text was not re-audited line by line against the scripts in the split; it retains the review state it had in documentation.md. A note or passing gate does not certify prose accuracy.",
+
+  "sources": [
+    "scripts/lib/documentation-freshness.mjs",
+
+    "scripts/check-documentation-freshness.mjs",
+
+    "scripts/record-documentation-review.mjs",
+
+    "scripts/documentation-impact.mjs",
+
+    "scripts/docs-freshness-sweep.mjs",
+
+    ".github/workflows/docs-freshness-sweep.yml",
+
+    "scripts/lib/review-ledger-store.mjs",
+
+    "scripts/lib/review-binding.mjs",
+
+    "scripts/migrate-review-ledger.mjs",
+
+    "scripts/lib/review-history.mjs",
+
+    "scripts/lib/review-git.mjs"
+  ],
+
+  "checks": [
+    "Moved from docs/guides/documentation.md; every inbound anchor to the moved sections was repointed and docs:links:check passes."
+  ]
+}

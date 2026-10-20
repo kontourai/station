@@ -1,5 +1,5 @@
 {
-  "path": "docs/reference/deferred-dependency-upgrades.md",
+  "path": "docs/design/strands-migration.md",
 
   "kind": "historical",
 
@@ -9,7 +9,11 @@
 
   "limits": "Guidance, proposals and dated outcomes are not newly executed implementation or release evidence. Current code and delivery policy take precedence over historical examples.",
 
-  "sources": [],
+  "sources": [
+    "src-server/runtime/frameworks/strands-adapter.ts",
+
+    "src-server/runtime/bootstrap/runtime-initialize.ts"
+  ],
 
   "checks": []
 }
