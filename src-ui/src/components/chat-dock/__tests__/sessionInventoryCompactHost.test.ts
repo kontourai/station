@@ -2,7 +2,11 @@
 
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, expect as expectPlaywright } from '@playwright/test';
+import {
+  chromium,
+  expect as expectPlaywright,
+  type Locator,
+} from '@playwright/test';
 import { render } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -190,6 +194,24 @@ describe('Session inventory compact host', () => {
   });
 });
 
+/**
+ * One rendered line of `element`'s text, in CSS pixels: the height of a
+ * single-glyph probe laid out with the element's own computed font and line
+ * height, so the bound follows whatever fonts this host resolves.
+ */
+async function lineHeightOf(element: Locator): Promise<number> {
+  return element.evaluate((node) => {
+    const probe = document.createElement('span');
+    const style = getComputedStyle(node);
+    probe.style.cssText = `display:block;position:absolute;visibility:hidden;white-space:nowrap;font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing}`;
+    probe.textContent = 'X';
+    node.parentElement!.appendChild(probe);
+    const height = probe.getBoundingClientRect().height;
+    probe.remove();
+    return height;
+  });
+}
+
 describe.skipIf(!chromiumAvailable)(
   'Session inventory compact host geometry',
   () => {
@@ -259,8 +281,14 @@ describe.skipIf(!chromiumAvailable)(
           expect(inventoryBox!.width).toBeLessThanOrEqual(fixture.inventoryMax);
           expect(chatBox!.width).toBeGreaterThanOrEqual(fixture.chatMin);
           expect(titleBox!.width).toBeGreaterThan(100);
-          expect(titleBox!.height).toBeLessThanOrEqual(60);
-          expect(scopeBox!.height).toBeLessThanOrEqual(40);
+          // At most two lines each, measured in the element's own line
+          // height rather than pixels: a fixed 60px bound held on the hosted
+          // Linux fonts and failed on macOS's, where the same two-line title
+          // measures 62px (#3887). Three lines still fail on either.
+          const titleLine = await lineHeightOf(heading.locator('h2'));
+          const scopeLine = await lineHeightOf(heading.locator('bdi'));
+          expect(titleBox!.height).toBeLessThanOrEqual(2 * titleLine + 1);
+          expect(scopeBox!.height).toBeLessThanOrEqual(2 * scopeLine + 1);
           const highlights = page.getByRole('region', {
             name: 'Inventory highlights',
           });
