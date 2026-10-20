@@ -44,8 +44,10 @@ The decision is made; its implementation is not finished.
   fixture core server.
 - Not shipped: the core server's supervised mode, and adoption by
   `station start`, `station service run`, the container, and Desktop. No
-  launch mode runs the supervisor, so the Desktop-owned sidecar lifecycle in
-  ADR 0015 is still what every launch mode ships.
+  launch mode runs the supervisor. Desktop still ships the Desktop-owned
+  sidecar lifecycle from ADR 0015, and the other launch modes keep their
+  existing lifecycles (`station service run`, for example, supervises its own
+  child process).
 - The remaining work follows the delivery phases in the
   [design](../design/process-supervisor.md). No open issue tracks phases 2 to
   4 yet.
