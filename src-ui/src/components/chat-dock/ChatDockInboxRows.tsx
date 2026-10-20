@@ -587,7 +587,7 @@ export function InboxRow({
     !beside('discard') && discardThreadId && onDraftDiscarded
       ? { threadId: discardThreadId, onDraftDiscarded }
       : undefined;
-  // U11 (design round 2026-10): an UNSENT composer draft — text typed into
+  // #3239: an UNSENT composer draft — text typed into
   // an open chat on this device, the row's "Unsent draft" chip — had no way
   // off a phone. It is this device's text, not a server Draft, so discarding
   // it clears the composer and the store the chip reads, nothing else.

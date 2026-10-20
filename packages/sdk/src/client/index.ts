@@ -30,7 +30,6 @@ export * from './account-preferences';
 export * from './agents';
 export * from './analytics';
 export * from './answer-basis';
-export * from './answer-narrative-binding';
 export * from './answer-support';
 export {
   envelopeDetailsMessage,

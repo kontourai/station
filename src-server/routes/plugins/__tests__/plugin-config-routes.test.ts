@@ -32,7 +32,7 @@ import {
 // - Key-name axis (`isSecretField`) — a field NAMED `apiKey`/`apiToken`/
 //   `clientSecret`/etc. is withheld regardless of value shape. This is the
 //   axis that actually covers the issue's scenario (value-only matching
-//   caught only 2/14 real credential shapes in one review round). It is NOT
+//   caught only 2/14 real credential shapes when measured). It is NOT
 //   false-positive-free: `isSecretField` is tuned for log redaction, where
 //   over-redaction is free — a standard OAuth-shaped manifest
 //   (`authorizationUrl`/`tokenEndpoint`/`tokenUrl`) and assorted
@@ -149,7 +149,7 @@ describe('emittedPluginSettings (station#3576)', () => {
     });
   });
 
-  // archive#3577 review round 2 (NIT): the field key here must NOT also
+  // archive#3577: the field key here must NOT also
   // trip the key-name axis (unlike the previous fixture, `password`, which
   // does) — otherwise this test cannot tell "declared `secret: true` is
   // honored" apart from "the key-name axis also caught it," and would keep
@@ -193,7 +193,7 @@ describe('emittedPluginSettings (station#3576)', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  // archive#3577 review round 2 (MEDIUM-3): the round-1 docblock claimed
+  // archive#3577: an earlier docblock claimed
   // "0 false positives on a real corpus." There was no corpus — nine
   // hand-picked names. Measured against `isSecretField`, a standard,
   // entirely non-secret OAuth-shaped manifest is mostly withheld, and a
@@ -538,7 +538,7 @@ describe('PUT /:name/settings unbounded nesting (station#4307 review)', () => {
     // `PUT /:name/overrides` copies `body.disabled` verbatim into the same
     // file, so it is the same vector — and its cap is a SEPARATE `.refine`
     // instance. Removing it left the whole suite green, which is why this
-    // exists (archive#4307 delta review, LOW-4).
+    // exists (archive#4307).
     const root = mkdtempSync(join(tmpdir(), 'station-override-depth-'));
     cleanupDirs.push(root);
     seedDemo(root);

@@ -6,7 +6,7 @@
  * pushed, and nothing else in the folder is read. In particular the
  * folder's own `.git` (any entry whose name folds to `.git`) is never
  * opened, listed or descended into. That repository can be written by an
- * agent or a Project member, and three review rounds of the first design
+ * agent or a Project member, and probes against the first design
  * (which ran git in the folder) showed that neither its config, its index
  * nor its object store can be trusted, and that git's own writes follow
  * symbolic links planted inside it.
@@ -319,7 +319,7 @@ export async function snapshotPluginFolder(
           // own. A file's is compared with the open descriptor, its own name
           // after the read, and every recorded parent after the read; a
           // directory's with its parents before it is listed. Fault
-          // injection (#2374 round 3) showed a check here catches nothing
+          // injection (#2374) showed a check here catches nothing
           // those do not.
           if (!status) {
             // A name that is not valid UTF-8 cannot be looked up again by

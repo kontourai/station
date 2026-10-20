@@ -1,4 +1,4 @@
-# Local-bootstrap token (station#1991)
+# Local-bootstrap token (archive#1991)
 
 > **Status: historical launch design with an evolved implementation;
 > current-owner check 2026-09-26.** The

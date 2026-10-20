@@ -294,7 +294,7 @@ interface ChatDockBodyProps {
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
   /**
-   * D3 (design round 2026-10): how long a load runs before the "Start new
+   * #3239: how long a load runs before the "Start new
    * chat" escape joins the skeleton. One state at a time: a load that is
    * going to land shows a skeleton and nothing else; the escape is for a
    * load that has stopped looking like one. Tests set it to 0.
@@ -740,7 +740,7 @@ export function ChatDockBody({
    * never lands settles into the read-only verdict in at most ~30s rather than
    * hanging. That is long enough that the composer being disabled with no way
    * out would be its own defect, so the control row below keeps "Start new
-   * chat" reachable for the whole window (review L1). Retry deliberately does
+   * chat" reachable for the whole window (#1607). Retry deliberately does
    * not appear: retrying a read that is still in flight is what the resolver is
    * already doing.
    *
@@ -2020,7 +2020,7 @@ export function ChatDockBody({
         `!recoveryOpen` because the recovery notice below carries its
         own "Start new chat": a reload whose point-read lands `unavailable`
         BEFORE the transcript's first read satisfies both conditions at once,
-        and rendered the control twice (delta-review L1).
+        and rendered the control twice (#1607).
       */}
       {showLoadingLongRow ? (
         <div className="session-history-controls">

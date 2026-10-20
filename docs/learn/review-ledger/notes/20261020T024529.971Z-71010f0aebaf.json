@@ -1,0 +1,13 @@
+{
+  "revision": "888cc1da49dfb2fd7860fbfbb1fa8a23816c5a2f",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Broken-reference fix only: bare #10543 and 'their #10416' now read kirodotdev/Kiro#10543 and kirodotdev/Kiro#10416; both confirmed in that repository via the GitHub API (10543 closed, 10416 open). No decision text changed; check:decisions adr-freeze passes.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Broken-reference fix only: bare #15656 and #11794 after tauri-apps/tauri#15682 now name tauri-apps/tauri; both confirmed open in that repository via the GitHub API. No decision text changed.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Its cited ADR 0019 changed only in two external issue references (tauri-apps/tauri qualifications); this ADR's SSE claims are unaffected.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md"]},
+
+    {"path":"docs/design/plugin-knowledge-store-contributions.md","note":"Parent line now notes #30 was closed as batched into the open knowledge epic #1228 (gh issue view 30: NOT_PLANNED with the batching comment). Earlier in this PR the issue and parent references were repaired to archive#529 and #30.","inputs":["docs/design/plugin-knowledge-store-contributions.md"]}
+  ]
+}

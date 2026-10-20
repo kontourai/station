@@ -839,7 +839,7 @@ test.describe('Project forms', () => {
    * again." copy — is pinned in NewProjectModal.test.tsx. This pins the
    * geometry half at the audit's exact viewport: with the path-suggestion
    * dropdown open (the historical over-painting suspect,
-   * PathAutocomplete.tsx s202 Wave 4), the footer controls must own their
+   * PathAutocomplete.tsx), the footer controls must own their
    * own centers (`elementFromPoint` answers "who paints here", the trial
    * click answers "who would receive the event"), and a REAL coordinate
    * click on Create must submit.

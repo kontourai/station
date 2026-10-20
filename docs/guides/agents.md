@@ -1,30 +1,12 @@
-# Agent Development Guide
+# Configure Agents
 
-> **Keep this file minimal.** This is a quick reference that points to detailed docs. Add specifics to the pattern files, not here.
-
-## For AI Coding Assistants
-
-When working on this codebase:
-
-1. **Check pattern docs first** - Review the relevant pattern file before implementing
-2. **Follow established patterns** - Use existing patterns rather than inventing new approaches
-3. **Update docs when patterns are missing** - Add new patterns to the appropriate file
-4. **Ask if unclear** - If a pattern isn't documented and you're unsure, ask before proceeding
-5. **No TypeScript shortcuts** - Understand types before fixing errors; don't blindly use `as any`
-
-### Pattern Documentation
-
-| Area | File | When to Read |
-|------|------|--------------|
-| Frontend | [Frontend Patterns](../patterns/frontend.md) | React, hooks, styling, SDK, plugins |
-| Backend | [Backend Patterns](../patterns/backend.md) | Routes, services, Station runtime, routes |
-
-**Update these docs when:**
-- You implement a reusable pattern not yet documented
-- You discover a pitfall that others should avoid
-- You establish a convention for a new area
-
----
+This is the configuration reference for Agents: where an Agent is stored,
+which fields it has, how its tools, shared Projects and guardrails work, and how
+tool approval behaves in attended and unattended runs. To build an Agent or an
+application with the SDK, use
+[Develop Agents and applications](agent-development.md). Code conventions for
+contributors live in [Frontend patterns](../patterns/frontend.md) and
+[Backend patterns](../patterns/backend.md).
 
 ## Agent Configuration
 
@@ -255,6 +237,29 @@ every possible tool outcome:
 
 The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning. An injected event is emitted as soon as it is injected rather than waiting for the model's next chunk, so a request raised while a tool call blocks (an MCP server's form elicitation, #3284) still reaches the person; see the [MCP host design](../design/mcp-ui-host.md#elicitation-path).
 
+### Pending approvals in the Inbox
+
+`/notifications` is the Inbox: it puts active operator attention ahead of
+ordinary notification history. An approval or `review_pending` item with an
+exact request reference opens the request's decision controls. An approval
+without that reference uses its persisted notification's Allow/Deny actions;
+`review_pending` without one opens the session. `needs_input` sends a normal
+orchestration turn to the owning session. An item for a delegated task that
+runs on a paired Station offers no reply. It says to answer on that Station
+and opens the Activity detail. The header
+badge is the same deduplicated active-attention count shown in the Inbox.
+Concrete approval requests suppress a duplicate lifecycle item for the same
+session. Gate exceptions also suppress that session's lifecycle duplicate;
+gate route-back and blocked items remain separate and offer re-evaluation.
+The Inbox can accept a gate exception, while Survey/Flow gate-review items
+open the review workbench for decisions and continuation.
+
+The [attention projection](../../src-server/services/projects/attention-projection.ts)
+derives these items from their owning sources. Acknowledgement removes an item
+from the pending count while retaining it in history; it does not resolve the
+underlying approval or review. Hosted reads omit sources whose stores cannot
+enforce tenant ownership. See the [Session API attention contract](../reference/session-api.md#review-work-in-the-attention-inbox).
+
 ### Questions from agent harnesses
 
 Claude Code's `AskUserQuestion` and Codex's `requestUserInput` appear as one
@@ -338,6 +343,10 @@ A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI
 or a delegated child session that cannot grant approvals — never waits on an
 approval request. Station's engine either allows the call without asking or
 denies it.
+
+Sessions started by an [inbound webhook](inbound-webhooks.md) or the
+[Discord gateway](discord-gateway.md) are also unattended: nobody can answer an
+approval request from the webhook caller or from Discord.
 
 External engines differ. On Claude Code and ACP, `autoApprove` does not cover
 escalations or plan exits, even for `*` ([what autoApprove never covers](#what-autoapprove-never-covers)).
@@ -465,201 +474,3 @@ approval paths; these hooks do not establish external policy enforcement.
 | `PUT /agents/:slug/tools/allowed` | Update tool allow-list |
 | `POST /tool-approval/:approvalId` | Resolve a pending tool approval |
 | `GET /agents/:slug/health` | Agent health check (MCP connection status) |
-
----
-
-## Quick Reference
-
-### Core Boundaries
-
-| Location | Contents |
-|----------|----------|
-| `src-ui/src/` | Core app: Contexts, SDK Adapter, App Shell |
-| `packages/sdk/` | SDK: Query hooks, API utilities, Types |
-| `examples/*/` | Plugins: Components, ViewModels, styles |
-
-Use the public SDK and contracts for Station APIs. Plugins can also use their
-declared package dependencies; they must not import private app modules.
-
-### Cross-Tab Navigation
-
-Legacy Layout tabs use the SDK navigation hooks. This example runs inside the
-`my-layout` navigation provider; tab state belongs to that layout's scope.
-Workspace Pane placement has its own [host contract](workspace-pane-authoring.md).
-
-```typescript
-import { useNavigation, useLayoutNavigation } from '@kontourai/station-sdk';
-
-const nav = useNavigation();
-const { setTabState, getTabState } = useLayoutNavigation();
-
-// Select another tab in the current layout:
-setTabState('crm', new URLSearchParams({ selectedAccount: accountId }).toString());
-nav.setLayoutTab('my-layout', 'crm');
-
-// Read state on the receiving tab:
-const state = getTabState('crm');                  // read in useEffect([activeTab])
-const params = new URLSearchParams(state);
-const selectedAccountId = params.get('selectedAccount');
-```
-
-**Rules:**
-- `setTabState(tabId, state)` writes to sessionStorage for this layout; it updates the URL hash immediately only for the active tab. Tab selection restores that tab's stored hash.
-- `setLayout(projectSlug, layoutSlug)` handles client-side URL navigation
-- Receiving tab reads state via `getTabState(tabId)` in a `useEffect` triggered by `activeTab`
-- State format is URL search params string (e.g., `'event=abc&date=2026-01-01'`)
-
-### Running a layout locally
-
-Start Station through `./station`, never through `npm run dev:server` /
-`dev:ui` directly — the CLI orchestrates the server and UI builds in the right
-order. To run with hot reload, use `./station start --watch` (see
-[development](development.md#running-a-second-station-in-development-mode)). Use a named instance on ports that cannot collide with the defaults
-(3141/3000 are reserved for the user's own testing) and `--temp-home` so the
-runtime data is isolated from the normal Station home. Shared client/instance
-metadata can still use `STATION_ROOT`; select a separate root consistently for
-start, stop, and client commands when those records also need isolation:
-
-```bash
-./station start --instance=layout-check --temp-home --clean --force \
-  --port=3242 --ui-port=5274
-```
-
-```bash
-./station stop --instance=layout-check
-```
-
-Multiple instances can run from one checkout as long as their port ranges do
-not overlap, so this does not disturb a sibling agent's instance.
-
-### Testing with Playwright
-
-`playwright.config.ts` reads `PW_BASE_URL`, so point the run at the UI port of
-the instance you started above:
-
-```bash
-PW_BASE_URL=http://localhost:5274 npx playwright test tests/schedule.spec.ts --reporter=list
-```
-
-The full coverage contract is `npm run verify:e2e:full`, which runs the product,
-first-run, Starter clean-install, smoke-live, extended, screenshot, and Android
-buckets. `npm run test:e2e:starter-clean-install` uses its own fresh temporary
-home, disables inherited product/OTLP telemetry configuration, and pins the
-resource observation healthy, so it can prove the Starter journey independently
-of the developer's Station state and unrelated host load. Resource-posture
-fault tests continue to prove honest deferral.
-Every spec must be assigned to exactly one bucket in `tests/e2e-manifest.mjs`.
-
-### Debugging
-
-Frontend logging (never use `console.log`):
-```typescript
-import { log } from '@/utils/logger';
-log.api('message');  // Enable: localStorage.debug = 'app:*'
-```
-
-### Theming & Colors
-
-UI, brand and copy rules live in the `@kontourai/ui`
-[design constitution (DESIGN.md)](https://github.com/kontourai/ui/blob/main/DESIGN.md).
-New styles use its `--k-*` tokens; existing components also use the theme
-variables in `src-ui/src/index.css`, such as `--text-primary`,
-`--bg-secondary`, `--border-primary` and `--accent-primary`. Never hard-code
-hex colors.
-
-For status, map the domain value to a tone with the helpers in
-[station-tones.ts](../../src-ui/src/components/kontour/station-tones.ts) and
-render it with `StatusBadge` or `Badge` from `@kontourai/ui/react`, which
-take a `tone` and always show the label. Station restyles the positive,
-caution, negative and active `.tone-*` classes with AA-checked pairs. Custom status
-styles use the tone tokens `--k-positive`, `--k-caution`, `--k-negative`,
-`--k-active` and `--k-neutral`, with `--k-positive-soft`, `--k-caution-soft`,
-`--k-negative-soft` and `--k-active-soft` as tinted fills (there is no neutral
-soft fill), and always carry a text label; color only reinforces it. The
-installed package (1.18.0) also defines `--k-status-contrast` (text on a
-status fill), the `--k-trust-*` trust-state inks, fills and line styles, and
-the `--k-action` and `--k-focus` interaction roles; check
-`node_modules/@kontourai/ui/tokens/tokens.css` before using a token. Follow the
-owning component's button style and [frontend guidance](../patterns/frontend.md).
-
-### Styling
-
-**Prefer CSS classes over inline styles.** Define styles in the component's CSS file (or `index.css` for shared styles) and reference them via `className`. Inline `style={}` should only be used for truly dynamic values (e.g., computed widths, conditional colors from data). All colors, spacing, and theming must use CSS variables — never hardcoded hex values.
-
-### Confirmation Dialogs
-
-Never use `window.confirm()` or `window.alert()`. Always use the `ConfirmModal` component for destructive or significant actions:
-
-```tsx
-import { ConfirmModal } from '@/components/modals/ConfirmModal';
-
-<ConfirmModal
-  isOpen={showConfirm}
-  title="Delete Item"
-  message="This cannot be undone."
-  confirmLabel="Delete"
-  cancelLabel="Cancel"
-  variant="danger"
-  onConfirm={handleConfirm}
-  onCancel={() => setShowConfirm(false)}
-/>
-```
-
-This ensures consistent theming, accessibility, and UX across all confirmation flows.
-
-### Agent Icons
-
-Always use the `AgentIcon` component — never manually check icon URLs or render `<img>` tags for agent icons:
-
-```tsx
-import { AgentIcon } from '@/components/icons/AgentIcon';
-<AgentIcon agent={agent} size={20} />
-```
-
-### ACP Connection Detection
-
-Never infer an engine from Agent ID prefixes. The current Agent catalog exposes
-`engineId`, `engineDisplayName`, and `engineConnectionType`; use
-`engineConnectionType === 'acp'` when the connection method matters. The saved
-connection ID is `execution.agentConnectionId`, not the Agent ID or a legacy
-`source` discriminator. Execution requests name the Agent and let the server
-resolve that binding. User-facing copy names the engine.
-
-A bound Agent's `engineId` comes from its connection's static identity (the
-Adapter's engine, or `'acp'`), not from the live connection inspection, so a
-failing or slow inspection does not remove it; `engineDisplayName` and
-readiness still need the live read (#3355). When a row's Agent resolves, is
-bound to an engine connection, and still reports no `engineId`,
-`inboxRowIconAgent` draws the engine the row's own execution recorded
-(`HomeWorkItem.provider`), only when that engine has a bundled mark and never
-for an ACP-bound or unresolved Agent.
-
-### Plugin Workflow
-
-Use the [plugin development workflow](plugins.md#development-workflow) for
-scaffolding, building, and installation. Select an isolated test Station and
-review its grants before activating the plugin. The source launcher owns the
-coordinated app start described above.
-
-### Attention inbox
-
-`/notifications` is the Inbox: it puts active operator attention ahead of
-ordinary notification history. An approval or `review_pending` item with an
-exact request reference opens the request's decision controls. An approval
-without that reference uses its persisted notification's Allow/Deny actions;
-`review_pending` without one opens the session. `needs_input` sends a normal
-orchestration turn to the owning session. An item for a delegated task that
-runs on a paired Station offers no reply. It says to answer on that Station
-and opens the Activity detail. The header
-badge is the same deduplicated active-attention count shown in the Inbox.
-Concrete approval requests suppress a duplicate lifecycle item for the same
-session. Gate exceptions also suppress that session's lifecycle duplicate;
-gate route-back and blocked items remain separate and offer re-evaluation.
-The Inbox can accept a gate exception, while Survey/Flow gate-review items
-open the review workbench for decisions and continuation.
-
-The [attention projection](../../src-server/services/projects/attention-projection.ts)
-derives these items from their owning sources. Acknowledgement removes an item
-from the pending count while retaining it in history; it does not resolve the
-underlying approval or review. Hosted reads omit sources whose stores cannot
-enforce tenant ownership. See the [Session API attention contract](../reference/session-api.md#review-work-in-the-attention-inbox).

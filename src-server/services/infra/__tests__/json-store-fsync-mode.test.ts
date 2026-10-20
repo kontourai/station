@@ -83,7 +83,7 @@ describe('durable write fsync open mode (#1162)', () => {
 });
 
 /**
- * archive#1686 review round 1, MEDIUM 7: the project-resource shadow record
+ * archive#1686: the project-resource shadow record
  * is written once per session start, synchronously, on the event loop. At
  * `crash-safe` durability that is four fsyncs — measured at ~3.6ms each,
  * ~15.4ms per write on this repo's reference host — which is 4.5x the `git`
@@ -149,7 +149,7 @@ describe('atomicWriteDurability (station#1686)', () => {
   });
 
   test('an unrecognised durability value keeps its fsyncs (fails CLOSED)', async () => {
-    // Round 2, LOW 4. Spelled as `=== 'crash-safe'` the check was fail-OPEN:
+    // Spelled as `=== 'crash-safe'` the check was fail-OPEN:
     // anything that is not exactly that literal silently degraded to no
     // fsync. Today only two literals exist so the two tests above cannot tell
     // the spellings apart — this one can, and it is what makes a third mode
@@ -170,7 +170,7 @@ describe('atomicWriteDurability (station#1686)', () => {
     expect(JSON.parse(readFileSync(`${path}.previous`, 'utf-8'))).toEqual({
       value: 1,
     });
-    // An EXACT set, not "no .tmp files" (round 2, LOW 3). The original form
+    // An EXACT set, not "no .tmp files". The original form
     // asserted on a fixed `.record.json.tmp`, which cannot exist in any mode
     // — the temp name carries the pid and a random suffix — so it could never
     // fail. An exact set catches a stray artifact from any cause, not just a

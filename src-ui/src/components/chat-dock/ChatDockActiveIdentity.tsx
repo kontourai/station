@@ -57,8 +57,8 @@ export function ChatDockActiveIdentity({
   // The assistant name already appears in the context line, so a chip repeating it
   // ("Station" beside the agent called Station) prints one word twice rather
   // than adding an identity. Same de-duplication `agentEngineDescriptor`
-  // already applies to an ACP connection's self-referential model (#894
-  // MED-1), applied one level up now that the name is visible here too.
+  // already applies to an ACP connection's self-referential model (#894),
+  // applied one level up now that the name is visible here too.
   //
   // Latent, if this call site ever starts passing `engineConnectionType`:
   // this drops the WHOLE descriptor on a name match, including the `model`
