@@ -525,3 +525,83 @@ describe('two owners of the shared record', () => {
     ]);
   });
 });
+
+/**
+ * An open waits on the guard of the pane it would cover. It is an open for
+ * the source and the Station it was clicked on, so a source that moved on or
+ * a Station that changed while the guard was answering refuses it at commit,
+ * and nothing — record, fence, state, arrangement — is written. The control
+ * case (nothing changed) proves the same path lands an open.
+ */
+describe('what changed while a guard was answering', () => {
+  async function openWhileGuardAnswers(change: () => void) {
+    await mount();
+    act(() => probe.setSelection?.(openerSelectionKey(SECURITY)));
+    await open('src/a.ts');
+    const [covered] = previewsInRight();
+    let answer: (() => void) | null = null;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('guard that answers later'),
+      (continueNavigation) => {
+        answer = continueNavigation;
+      },
+      covered,
+    );
+    try {
+      // Beginning the edit kept the covered preview; let that write land.
+      await waitFor(() =>
+        expect(probe.relations?.relationOf(covered as string)?.kept).toBe(true),
+      );
+      const arrangement = structuredClone(probe.model?.regions);
+      const before = await settledStorageSnapshot();
+      let outcome: RelatedOpenOutcome | undefined;
+      let pending: Promise<void> = Promise.resolve();
+      act(() => {
+        const openPreview = probe.open;
+        if (!openPreview) throw new Error('no opener');
+        pending = openPreview({ ...PROJECT, path: 'src/b.ts' }).then(
+          (result) => {
+            outcome = result;
+          },
+        );
+      });
+      await waitFor(() => expect(answer).not.toBeNull());
+      act(change);
+      await act(async () => {
+        answer?.();
+        await pending;
+      });
+      return {
+        outcome,
+        unchanged:
+          JSON.stringify(await settledStorageSnapshot()) ===
+            JSON.stringify(before) &&
+          JSON.stringify(probe.model?.regions) === JSON.stringify(arrangement),
+      };
+    } finally {
+      unregister();
+    }
+  }
+
+  test('control: with nothing changed the open lands beside the kept preview', async () => {
+    const { outcome, unchanged } = await openWhileGuardAnswers(() => {});
+    expect(outcome).toMatchObject({ ok: true, disposition: 'opened' });
+    expect(unchanged).toBe(false);
+  });
+
+  test('the opener moved to another conversation: superseded, nothing written', async () => {
+    const { outcome, unchanged } = await openWhileGuardAnswers(() =>
+      probe.setSelection?.(DOCS_SELECTION),
+    );
+    expect(outcome).toEqual({ ok: false, reason: 'superseded' });
+    expect(unchanged).toBe(true);
+  });
+
+  test('the verified Station changed: refused, nothing written', async () => {
+    const { outcome, unchanged } = await openWhileGuardAnswers(() =>
+      authoritySwitch.set?.({ station: 'station-b' }),
+    );
+    expect(outcome).toEqual({ ok: false, reason: 'station-changed' });
+    expect(unchanged).toBe(true);
+  });
+});
