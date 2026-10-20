@@ -23,6 +23,8 @@
 | [dogfood/first-run-ritual.md](dogfood/first-run-ritual.md) | The 15-minute fresh-home tour run before each stable release cut | Before cutting a stable release |
 | [vision/ai-ui-bridge.md](vision/ai-ui-bridge.md) | The AI ↔ UI bridge north star | When working on bridge-related features |
 | [acp-extension-upstream-proposal.md](acp-extension-upstream-proposal.md) | Proposed ACP extensions, staged for upstream | When touching ACP integration surface |
+| [station-delivery-retirement.md](station-delivery-retirement.md) | Why the internal `station-delivery` Flow definition was retired and how its old runs still render | When reading old delivery runs or the Flow run route's `flow.definition.retired` refusal |
+| [task-experience-composition.md](task-experience-composition.md) | Historical tracer bullet for Direct, Deliver, Learn and Operate Task experiences | When working on optional Task experiences |
 
 ## How These Docs Work
 
