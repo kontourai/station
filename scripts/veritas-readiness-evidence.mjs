@@ -56,6 +56,12 @@ function hasFailuresBesides(record, evidenceCheckId) {
   );
 }
 
+/**
+ * @param {object} input
+ * @param {any} input.evidenceCheckFailure
+ * @param {any} input.record
+ * @param {string | null} [input.explicitEvidenceCheckId]
+ */
 export function classifyReadinessEvidence({
   evidenceCheckFailure,
   record,
