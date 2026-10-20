@@ -27,7 +27,10 @@ import type {
   MCPToolUIResolutionStatus,
 } from '@kontourai/station-shared/mcp';
 import type { MCPToolUICsp } from '@kontourai/station-shared/mcp-ui-csp';
-import { buildMcpUiCsp } from '@kontourai/station-shared/mcp-ui-csp';
+import {
+  buildMcpUiCsp,
+  MCP_UI_NETWORK_BOOTSTRAP_TAG,
+} from '@kontourai/station-shared/mcp-ui-csp';
 import type {
   McpUiHostContext,
   McpUiStyles,
@@ -1521,7 +1524,7 @@ function wrapResourceHtml(html: string, csp: string): string {
   const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
   // Keep the policy before every byte of untrusted markup. A resource may put a
   // script before its own <head>; inserting into that head would be too late.
-  return `<!doctype html><html><head>${meta}</head><body>${html}</body></html>`;
+  return `<!doctype html><html><head>${meta}${MCP_UI_NETWORK_BOOTSTRAP_TAG}</head><body>${html}</body></html>`;
 }
 
 function ApprovalPolicyNotice({ approvalPolicy }: { approvalPolicy?: string }) {

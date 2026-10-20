@@ -106,7 +106,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
     const next = this.nextTurn;
     this.nextTurn = undefined;
     if (next === 'refuse')
-      throw new SendTurnRefusedError('The engine refused this turn.');
+      throw new SendTurnRefusedError('The engine refused this turn.', 'busy');
     if (next === 'fail') throw new Error('The engine connection dropped.');
     const invocationId = input.invocationId;
     const threadId = input.threadId;
@@ -644,6 +644,11 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
       }
       expect(lostAck).toBe(acknowledgement === 'lost-ack');
       expect(refused.status).toBeGreaterThanOrEqual(400);
+      expect(await refused.json()).toMatchObject({
+        kind: 'busy',
+        retryable: true,
+        failurePhase: 'refused',
+      });
       const inspection = await app.request(
         '/api/orchestration/conversations/conversation%3Arefused/turn-deliveries/key-refused',
       );

@@ -106,9 +106,13 @@ export const TELEMETRY_FEEDBACK_REASONS = [
 ] as const;
 export type TelemetryFeedbackReason =
   (typeof TELEMETRY_FEEDBACK_REASONS)[number];
+export const TELEMETRY_FEEDBACK_ACTIONS = [
+  'tier-lowered',
+  'plugin-uninstalled',
+] as const;
 export interface TelemetryFeedback {
   publisher: TelemetryPublisherId;
-  action: 'tier-lowered' | 'plugin-uninstalled';
+  action: (typeof TELEMETRY_FEEDBACK_ACTIONS)[number];
   reason: TelemetryFeedbackReason;
 }
 
@@ -117,7 +121,7 @@ export const STATION_DAILY_FIELDS = {
   event: { domain: ['station_daily'] },
   event_id: { domain: 'uuid-v4' },
   version: { domain: 'public-release-version-or-custom', maxLength: 64 },
-  channel: { domain: TELEMETRY_CHANNELS },
+  channel: { domain: [...TELEMETRY_CHANNELS, 'unknown'] },
   platform: {
     domain: [
       'aix',
@@ -156,7 +160,7 @@ export const STATION_DAILY_FIELDS = {
   paired_devices_bucket: { domain: TELEMETRY_COUNT_BUCKETS },
   engines_used_today: { domain: TELEMETRY_ENGINES, arrayMax: 8 },
   distribution: {
-    domain: 'public-registry-id-or-none-or-custom',
+    domain: 'public-registry-id-or-none-or-custom-or-unknown',
     maxLength: 128,
   },
   public_plugins_enabled: {
@@ -167,7 +171,7 @@ export const STATION_DAILY_FIELDS = {
   private_plugins_bucket: { domain: TELEMETRY_COUNT_BUCKETS },
   branding_overridden: { domain: 'boolean' },
   home_replaced: { domain: 'boolean' },
-  layouts_customized: { domain: 'boolean' },
+  layouts_customized: { domain: 'boolean-or-unknown' },
   setup_abandoned_step: { domain: TELEMETRY_SETUP_STEPS },
   engine_connect_failures: { domain: 'engine-count-buckets', arrayMax: 8 },
   safe_mode_entered: { domain: 'count', max: 65535 },
@@ -176,16 +180,18 @@ export const STATION_DAILY_FIELDS = {
 
 type DailyDomain<D> = D extends readonly string[]
   ? D[number]
-  : D extends 'boolean'
-    ? boolean
-    : D extends 'count'
-      ? number
-      : D extends 'engine-count-buckets'
-        ? {
-            engine: (typeof TELEMETRY_ENGINES)[number];
-            bucket: (typeof TELEMETRY_COUNT_BUCKETS)[number];
-          }
-        : string;
+  : D extends 'boolean-or-unknown'
+    ? boolean | 'unknown'
+    : D extends 'boolean'
+      ? boolean
+      : D extends 'count'
+        ? number
+        : D extends 'engine-count-buckets'
+          ? {
+              engine: (typeof TELEMETRY_ENGINES)[number];
+              bucket: (typeof TELEMETRY_COUNT_BUCKETS)[number];
+            }
+          : string;
 type DailyField<F extends { domain: unknown }> = F extends { arrayMax: number }
   ? DailyDomain<F['domain']>[]
   : DailyDomain<F['domain']>;

@@ -803,12 +803,12 @@ describe('station-control authority table: declare_pull_request and Task close-o
       personOnly: 'never',
     });
     // It writes a durable session record, so it keeps the mutating approval:
-    // only `notify_user` is auto-approved as a bounded write.
+    // visual reply tools and notify_user have their own bounded-write policies.
     expect(
       TABLE.filter(([, entry]) => entry.toolClass === 'bounded-write').map(
         ([name]) => name,
       ),
-    ).toEqual(['notify_user']);
+    ).toEqual(['html_render', 'html_preview', 'notify_user']);
   });
 
   test('declare_pull_request owns exactly its own leaf, and no other tool reaches it', () => {

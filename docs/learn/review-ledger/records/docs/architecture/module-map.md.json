@@ -1128,7 +1128,9 @@
 
     "src-server/services/devices/device-automation.ts",
 
-    "src-server/tools/station-control-device-tools.ts"
+    "src-server/tools/station-control-device-tools.ts",
+
+    "packages/telemetry-broker/src/client-address.ts"
   ],
 
   "checks": [

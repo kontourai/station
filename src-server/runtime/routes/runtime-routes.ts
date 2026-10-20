@@ -13,6 +13,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
+import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
@@ -97,6 +98,7 @@ import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-ho
 import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
 import { createSshDeviceHostActions } from '../../services/devices/hosts/ssh-device-tools.js';
 import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
+import { HtmlReplyPreview } from '../../services/html-reply-preview.js';
 import { AccountPreferencesStore } from '../../services/identity/account-preferences.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
@@ -2139,6 +2141,11 @@ export function configureRuntimeRoutes(
   // an all-method `use` would register unclassified routes. (`/api/attachments`
   // binds below, with the conversation routes.)
   context.app.on('GET', '/api/board', bindConversationReadAuthority);
+  context.app.on(
+    'GET',
+    '/api/html-replies/:sessionId/:pageId',
+    bindConversationReadAuthority,
+  );
   // Tolerant binding: the MCP-UI call itself does not depend on the
   // caller's principal, and its evidence attach is best-effort, so an
   // unresolvable principal binds nothing (and skips the attach) rather than
@@ -6935,6 +6942,40 @@ export function configureRuntimeRoutes(
   // The bytes behind a transcript's attachment chips. Separate from
   // `/api/orchestration` so its one leaf reads as a bounded blob fetch rather
   // than inheriting a session-control family's surface (station#3385).
+  const htmlPreview = new HtmlReplyPreview(
+    context.configLoader.getProjectHomeDir(),
+  );
+  context.app.route(
+    '/api/html-replies',
+    createHtmlReplyRoutes({
+      pages: runtimeContext.orchestrationEventStore.htmlReplyPages(),
+      frameOrigin: () => context.getMcpUiFrameOrigin?.(),
+      isInternalRequest: isStationInternalRequest,
+      resolveCaller: (request) =>
+        resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        ),
+      sessionContext: (sessionId) => {
+        const row =
+          runtimeContext.orchestrationEventStore.readSessionByThread(sessionId);
+        if (!row?.cwd) return undefined;
+        return {
+          cwd: row.cwd,
+          conversationId:
+            runtimeContext.orchestrationEventStore.conversationForSession(
+              sessionId,
+            )?.conversationId ?? sessionId,
+        };
+      },
+      canReadSession: (sessionId, request) =>
+        context.orchestrationService.canUserReadSession(
+          sessionId,
+          conversationReadAuthorityForRequest(request),
+        ),
+      preview: (page, width, theme) => htmlPreview.render(page, width, theme),
+    }),
+  );
   context.app.route(
     '/api/attachments',
     createAttachmentRoutes({

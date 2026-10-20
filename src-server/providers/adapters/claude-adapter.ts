@@ -44,7 +44,11 @@ import {
   readApprovalMode,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { CONFINED_FULL_ACCESS_UNAVAILABLE_CODE } from '@kontourai/station-contracts/provider-failure';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type {
   ModelOption,
@@ -140,6 +144,7 @@ import {
   runCliCommand,
 } from '../auth/cli-auth.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
+import { providerFailure } from '../provider-failure.js';
 import {
   decodeChatAttachments,
   decodeUtf8Attachment,
@@ -1036,8 +1041,6 @@ interface SeatbeltStart {
 }
 
 /** #2494: the warning a start that fell back to Auto publishes. */
-const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
-  'confined_full_access_unavailable';
 
 const DEFAULT_CONFINEMENT_HANDSHAKE_TIMEOUT_MS = 60_000;
 
@@ -2282,6 +2285,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (record.confinementPending)
       throw new SendTurnRefusedError(
         'This Claude session is still starting inside its confinement.',
+        'busy',
       );
     this.refuseSendWhileTurnOwed(record);
     return this.dispatchTurn(record, input, crypto.randomUUID());
@@ -2306,6 +2310,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (blockedBy === 'dispatched') {
       throw new SendTurnRefusedError(
         'This Claude session already has an active turn.',
+        'busy',
       );
     }
     if (blockedBy === 'provider') throw new ProviderTurnInProgressError();
@@ -2789,6 +2794,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (queuedClaudeTurn(record, turnId)) {
       throw new SendTurnRefusedError(
         'This Claude turn has not started yet, so it cannot be steered. Send the message as a new turn.',
+        'conflict',
       );
     }
     if (record.activeTurnId !== turnId) {
@@ -4275,9 +4281,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         threadId: record.session.threadId,
         createdAt: new Date().toISOString(),
         method: 'runtime.error',
+        ...providerFailure('provider_error'),
         severity: 'error',
         message,
-      });
+      } satisfies ProviderRuntimeErrorEvent);
       record.session.status = 'error';
       record.promptQueue.close();
     }

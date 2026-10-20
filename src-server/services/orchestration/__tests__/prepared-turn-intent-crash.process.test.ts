@@ -69,7 +69,10 @@ class LiveResumeAdapter extends GateTestAdapter {
   override async sendTurn(input: ProviderSendTurnInput) {
     this.sent.push(input);
     if (this.result === 'refused')
-      throw new SendTurnRefusedError('No provider-visible effect.');
+      throw new SendTurnRefusedError(
+        'No provider-visible effect.',
+        'provider_error',
+      );
     if (this.result === 'unknown')
       throw new Error('Connection dropped after begin.');
     return { threadId: input.threadId, turnId: 'resumed-original' };

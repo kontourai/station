@@ -1,0 +1,7 @@
+{
+  "revision": "fa08748729eaaa67830668ab9c34982156ea20b7",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"The chat.css delta adds the turn steps to an existing composer activity row 44px rule. The guide's chat claims (selected-answer save, mentions, approval controls, conversation picker) do not depend on that rule; no prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

@@ -17,6 +17,7 @@ import { FilePartPreview } from './FilePartPreview';
 import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
+import { PublishedHtmlReply } from './PublishedHtmlReply';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import {
   SubagentCardsForCalls,
@@ -217,6 +218,10 @@ function StreamingMessageWithApps({
 
         {/* Render completed content parts in order */}
         {blocks.map((block) => {
+          if (block.type === 'html-reply')
+            return (
+              <PublishedHtmlReply key={block.key} reference={block.reference} />
+            );
           if (block.type === 'subagent')
             return (
               <SubagentTranscriptCard key={block.key} child={block.child} />

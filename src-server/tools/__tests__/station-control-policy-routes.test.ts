@@ -251,6 +251,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
     operation: 'open',
     scope: { kind: 'whole-session', sessionId: 'session-1' },
   },
+  html_render: { html: '<h1>Test</h1>' },
+  html_preview: { html: '<h1>Test</h1>' },
   notify_user: { title: 't' },
 };
 

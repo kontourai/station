@@ -1,12 +1,14 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
+import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
 import {
   type ApprovalMode,
   type EngineId,
   PROVIDER_CODEX,
 } from './provider.js';
+import type { ProviderFailure } from './provider-failure.js';
 import type {
   SessionLifecycleState,
   SessionTransitionReason,
@@ -619,6 +621,8 @@ export interface ToolOutputReceipt {
 }
 
 export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
+  /** Bounded page display reference retained independently of output excerpts. */
+  htmlReply?: HtmlReplyReference;
   method: 'tool.completed';
   /** Station stamps this from an already-open tool definition, never from result metadata. */
   mcpAppResourceUri?: string;
@@ -814,7 +818,10 @@ export interface RequestDeliveryEvent extends CanonicalRuntimeEventBase {
   engineStatus?: ApprovalStatus;
 }
 
-export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
+/** Stored events and third-party plugins may predate failure classification. */
+export interface RuntimeErrorEvent
+  extends CanonicalRuntimeEventBase,
+    Partial<ProviderFailure> {
   method: 'runtime.error';
   severity: Extract<RuntimeSeverity, 'error'>;
   message: string;
@@ -1275,3 +1282,16 @@ export type CanonicalRuntimeEvent =
   | ExtensionEvent
   | ChildWorkUpdatedEvent
   | ConversationForkedEvent;
+
+/** Built-in adapter writers must classify failures; legacy stored readers remain compatible. */
+export type ProviderRuntimeErrorEvent = RuntimeErrorEvent & ProviderFailure;
+
+/** A session-source fragment whose emitter supplies the common envelope. */
+export type ProviderRuntimeErrorBody = Omit<
+  ProviderRuntimeErrorEvent,
+  'eventId' | 'provider' | 'threadId' | 'createdAt'
+>;
+
+export type ProviderRuntimeEvent =
+  | Exclude<CanonicalRuntimeEvent, RuntimeErrorEvent>
+  | ProviderRuntimeErrorEvent;

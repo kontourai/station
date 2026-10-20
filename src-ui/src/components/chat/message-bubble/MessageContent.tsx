@@ -8,6 +8,7 @@ import {
 import { FilePartPreview } from '../FilePartPreview';
 import { InputRequestRecordRow } from '../InputRequestRecordRow';
 import { LazyMarkdown } from '../LazyMarkdown';
+import { PublishedHtmlReply } from '../PublishedHtmlReply';
 import { ReasoningSection } from '../ReasoningSection';
 import {
   SubagentCardsForCalls,
@@ -136,6 +137,10 @@ function MessageContentComponent({
     return (
       <>
         {blocks.map((block) => {
+          if (block.type === 'html-reply')
+            return (
+              <PublishedHtmlReply key={block.key} reference={block.reference} />
+            );
           if (block.type === 'subagent')
             return (
               <SubagentTranscriptCard key={block.key} child={block.child} />

@@ -18,6 +18,15 @@ It does not provide filesystem inspection, create a new skill, or change Project
 configuration by itself. Those require a separately authorized surface; the
 example does not grant one implicitly.
 
+## Visual replies
+
+Attach `station-control` and select `html_preview` and `html_render` to let an
+Agent preview and publish a self-contained HTML reply in its own conversation.
+This works through the existing Claude, Codex and ACP MCP passthroughs when the
+connection supports tool servers. Preview starts Chromium and publishing stores a page. Both are bounded writes
+and respect the engine's approval policy. The [visual replies guide](../user/html-replies.md)
+owns limits, theme variables, Chromium prerequisites and page deletion semantics.
+
 ## What `station-control` gives you
 
 `station-control` is the built-in MCP server for platform management. It exposes tools such as:

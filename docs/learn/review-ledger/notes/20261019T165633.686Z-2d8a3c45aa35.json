@@ -1,0 +1,7 @@
+{
+  "revision": "beb50b43531c96cf1d5eb6b68e8e1716fde982bc",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"The glossary delta adds one user-facing label row (live turn navigation: Conversation turns, Previous turn / Next turn). This page only points to the glossary for vocabulary and keeps no copy of it; its responsibility areas and relationships are unchanged; no prose change.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

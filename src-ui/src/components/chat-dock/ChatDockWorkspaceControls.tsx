@@ -64,7 +64,7 @@ export function ChatDockSessionInventoryHost({
       pending={null}
       componentProps={{
         launch: occurrence,
-        isMobile: false,
+        isMobile: inventory.isMobile ?? false,
         dockMode: inventory.dockMode,
         fullscreen: inventory.fullscreen,
         onClose: () => closeSessionInventoryOccurrence(hostId),

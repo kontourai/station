@@ -29,7 +29,10 @@ import {
   NATIVE_RESUME_BINDING_METADATA_KEY,
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import type {
   ModelOptionCapabilities,
   Prerequisite,
@@ -88,6 +91,7 @@ import {
   effectiveModelMetadata,
   reportedModelMetadata,
 } from '../llm/effective-model-metadata.js';
+import { providerFailure } from '../provider-failure.js';
 import {
   decodeChatAttachments,
   rejectFileAttachments,
@@ -1994,13 +1998,14 @@ export class CodexAdapter implements ProviderAdapterShape {
           threadId: input.threadId,
           createdAt: this.now().toISOString(),
           method: 'runtime.error',
+          ...providerFailure('session_gone'),
           severity: 'error',
           code: ENGINE_SESSION_BINDING_DEAD_CODE,
           retriable: false,
           message:
             'The engine opened a different native conversation; the requested resume was refused.',
           metadata: { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'mismatch' },
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         throw new Error(
           'The engine opened a different native conversation; the requested resume was refused.',
         );

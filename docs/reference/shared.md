@@ -29,6 +29,11 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+The browser-safe `@kontourai/station-shared/html-reply-document` subpath builds
+the restrictive page document and page-only proxy bootstrap used by the
+[HTML reply sandbox](../decisions/html-replies.md). It also validates bounded page references for event-window projection. It
+carries no MCP tool or session bridge and does not publish or store pages.
+
 ## Recorded MCP app results
 
 `@kontourai/station-shared/mcp-app-result` exports
@@ -56,6 +61,20 @@ commit, deduplication and namespace isolation belong to the receiver.
 The contract shape and event constants live in
 `@kontourai/station-contracts/product-telemetry`. Validation alone proves no
 collection, consent, durable storage or deployed service.
+`parseStationDailyPing` validates the declared Lite fields with the receiver's
+public registry/release catalogs, or with `semver` version admission using the
+same `mapRuntimeVersionToTelemetryVersion` validator as the sender. The broker's
+source configuration chooses the policy; publication still uses a fixed catalog.
+`custom` versions and `unknown` channel,
+distribution and layouts values are explicit sentinels; unknown object keys
+remain errors. The Lite inventory revision changes with these domain changes.
+`parseTelemetryFeedback` accepts exactly publisher, fixed action and fixed reason
+fields from the shared feedback contract, rejecting unknown fields and enums
+and the local-only `skip` dismissal.
+It adds no IDs, content or sender time. Receiver source binding, daily dedupe,
+retention and operator-only counts belong to the
+[Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
+
 
 `parseProductTelemetryCommitReceipt` additionally requires the exact requested
 event-ID set, valid timestamp and matching inserted/duplicate counts before a
@@ -1233,7 +1252,10 @@ or explicitly configured integrations.
 The browser-safe `@kontourai/station-shared/mcp-ui-csp` leaf constructs resource
 policy separately from these Node transports. It filters URL schemes and emits
 directives; that alone is not complete CSP source-expression validation or
-browser network-containment proof. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
+browser network-containment proof. `MCP_UI_NETWORK_BOOTSTRAP_TAG` disables direct
+peer/ICE constructors before authored code in the shared wrappers. Nested srcdoc
+can obtain fresh constructors, so this does not guarantee network isolation.
+Frame source declarations are refused. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
 
 ### types
 
