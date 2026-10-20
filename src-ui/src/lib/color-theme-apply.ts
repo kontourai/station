@@ -110,10 +110,15 @@ function requestSheet(root: HTMLElement, href: string): void {
     link.dataset.state = state;
     if (pendingSheets.get(doc) !== link) return;
     pendingSheets.delete(doc);
+    if (state === 'failed') {
+      // The selection is not claimed: whatever was in force stays, and the
+      // next apply asks for the sheet again. Not re-applied from here, so a
+      // sheet that keeps failing cannot loop.
+      link.remove();
+      return;
+    }
     activeSheet(doc)?.remove();
     link.id = COLOR_THEME_STYLESHEET_ID;
-    // A sheet that failed still hands over: the attributes then select no
-    // rules and Station's own colours show, rather than a half-applied theme.
     const settings = latestSettings.get(root);
     if (settings) applyColorTheme(root, settings);
   };
@@ -144,17 +149,44 @@ export function applyColorTheme(
     return resolved;
   }
   const href = colorThemeStylesheet(resolved);
-  if (activeSheet(doc)?.getAttribute('href') !== href) {
-    requestSheet(root, href);
-    return resolveColorThemeSelection({
-      colorTheme: root.getAttribute(COLOR_THEME_ATTRIBUTE),
-      colorThemeFlavor: root.getAttribute(COLOR_THEME_FLAVOR_ATTRIBUTE),
-      colorThemeAccent: root.getAttribute(COLOR_THEME_ACCENT_ATTRIBUTE),
-    });
+  const active = activeSheet(doc);
+  if (active?.getAttribute('href') === href) {
+    if (active.dataset.state !== 'failed') {
+      dropPending(doc);
+      if (!active.dataset.state && !active.sheet) retryIfItFails(root, active);
+      stamp(root, resolved, mode);
+      return resolved;
+    }
+    // Its sheet failed (the startup script's request, say): the page shows
+    // Station's colours, so the theme is not claimed until a retry loads.
+    active.remove();
+    stamp(root, { id: 'station' }, mode);
   }
-  dropPending(doc);
-  stamp(root, resolved, mode);
-  return resolved;
+  requestSheet(root, href);
+  return resolveColorThemeSelection({
+    colorTheme: root.getAttribute(COLOR_THEME_ATTRIBUTE),
+    colorThemeFlavor: root.getAttribute(COLOR_THEME_FLAVOR_ATTRIBUTE),
+    colorThemeAccent: root.getAttribute(COLOR_THEME_ACCENT_ATTRIBUTE),
+  });
+}
+
+/**
+ * The selected sheet is still loading (the startup script's request): if it
+ * fails, apply again, which un-claims the theme and asks once more.
+ */
+function retryIfItFails(root: HTMLElement, link: HTMLLinkElement): void {
+  if (link.dataset.watched) return;
+  link.dataset.watched = '';
+  link.addEventListener(
+    'error',
+    () => {
+      link.dataset.state = 'failed';
+      const settings = latestSettings.get(root);
+      if (settings && activeSheet(root.ownerDocument) === link)
+        applyColorTheme(root, settings);
+    },
+    { once: true },
+  );
 }
 
 /**

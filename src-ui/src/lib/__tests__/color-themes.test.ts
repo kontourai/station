@@ -278,7 +278,7 @@ describe('family stylesheets load on demand', () => {
     expect(root.hasAttribute('data-color-theme')).toBe(false);
   });
 
-  test('a superseded request never takes over, and a failed sheet still hands over', () => {
+  test('a superseded request never takes over, and a failed sheet claims nothing until a retry loads', () => {
     applySettled(root, { ...base, colorTheme: 'gruvbox' });
     applyColorTheme(root, { ...base, colorTheme: 'tokyo-night' });
     // Back to gruvbox before tokyo-night loaded: its request is dropped.
@@ -287,12 +287,54 @@ describe('family stylesheets load on demand', () => {
       expect.stringContaining('/gruvbox.css'),
     ]);
     expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
+    // rose-pine's sheet 404s: gruvbox stays in force, attributes and sheet.
     applyColorTheme(root, { ...base, colorTheme: 'rose-pine' });
     settleSheets('error');
+    expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
+    expect(sheets().map((s) => s.href)).toEqual([
+      expect.stringContaining('/gruvbox.css'),
+    ]);
+    // The next apply asks again, and this time it loads.
+    applyColorTheme(root, { ...base, theme: 'light', colorTheme: 'rose-pine' });
+    settleSheets('load');
     expect(root.getAttribute('data-color-theme')).toBe('rose-pine');
     expect(sheets().map((s) => s.href)).toEqual([
       expect.stringContaining('/rose-pine.css'),
     ]);
+  });
+
+  test('a startup sheet that fails is not claimed, and is requested again', () => {
+    // What startup-theme.js leaves behind: attributes, theme-color and a
+    // sheet request for the family.
+    const nord = { ...base, colorTheme: 'nord' as const };
+    applySettled(root, nord);
+    const href = sheets()[0]!.href!;
+    document.head.innerHTML = '';
+    const startup = document.createElement('link');
+    startup.rel = 'stylesheet';
+    startup.id = COLOR_THEME_STYLESHEET_ID;
+    startup.setAttribute('href', href);
+    document.head.append(startup);
+    applyColorTheme(root, nord);
+    expect(root.getAttribute('data-color-theme')).toBe('nord');
+    // It 404s while the app runs: the theme is un-claimed and re-requested.
+    startup.dispatchEvent(new Event('error'));
+    expect(root.hasAttribute('data-color-theme')).toBe(false);
+    expect(document.head.querySelector('meta[name="theme-color"]')).toBeNull();
+    expect(sheets()).toEqual([{ id: '', href }]);
+    settleSheets('load');
+    expect(root.getAttribute('data-color-theme')).toBe('nord');
+    expect(sheets()).toEqual([{ id: COLOR_THEME_STYLESHEET_ID, href }]);
+    // A sheet already marked failed (it failed before the app loaded) is the
+    // same: not claimed, asked again.
+    const failed = document.head.querySelector<HTMLLinkElement>(
+      `#${COLOR_THEME_STYLESHEET_ID}`,
+    )!;
+    failed.dataset.state = 'failed';
+    applyColorTheme(root, nord);
+    expect(root.hasAttribute('data-color-theme')).toBe(false);
+    settleSheets('load');
+    expect(root.getAttribute('data-color-theme')).toBe('nord');
   });
 
   test('the first render waits only for a sheet that is still loading', async () => {
