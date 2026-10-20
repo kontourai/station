@@ -832,8 +832,9 @@ other `.codex` anywhere from the repository root down to the session's folder
 (uncommitted, committed only locally, changed, inside a nested repository,
 or in a folder with no repository or no remote) stops the session from
 starting, with the directory named. Station checks from the repository that
-contains the session's Project folder (or, with no Project, its folder) down
-to the session's folder. Cases that refuse a session you meant to allow,
+contains the session's Project folder (the deepest Project folder around the
+session's folder, even when the start names none) down to the session's
+folder. Cases that refuse a session you meant to allow,
 and the remedy:
 
 - **No remote, or not pushed or not fetched yet.** The repository has no
@@ -846,7 +847,10 @@ and the remedy:
   trusts no `.codex` there. Run the session as `host`.
 - **A nested repository or submodule below the Project folder** whose own
   `.codex` is not on the Project repository's remote-tracking branches. Run
-  the session as `host`, or start it with that repository as its Project.
+  the session as `host`, or make that repository a Project of its own.
+- **A folder outside every Project.** A session that is not `host` there
+  trusts no `.codex` at all. Add the folder as a Project, or run the session
+  as `host`.
 
 A confined Claude session cannot run `git fetch` or `pull` (or pack refs) in
 a folder whose `.git` is inside it, as in a linked worktree: the

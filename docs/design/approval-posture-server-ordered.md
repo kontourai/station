@@ -887,15 +887,27 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
     from upstream.
     - **The anchor is server-authorized.** The orchestration service stamps
       `confinementRoot` into the start metadata (replacing any caller value,
-      and carried to respawns with the stored metadata): the Project's
-      directory when the cwd lies inside it, else the cwd. The trusted
+      and carried to respawns with the stored metadata;
+      `sessionConfinementRoot`): the named Project's directory when it
+      contains the cwd; else the deepest configured Project directory that
+      does (a station-control `send_message` to a plain folder inside the
+      Project names no Project, and an agent may have planted a repository
+      at that folder); else the server-admitted workspace when the cwd is
+      exactly it (a provisioned worktree, or an adopted continuation's
+      verified folder); else nothing, for a folder outside every Project.
+      Only a session that is not `host` is checked, and such a session is
+      never the operator's own, so a folder outside every Project trusts no
+      `.codex`. Native adoption stamps the same value. The trusted
       repository is the innermost one containing that root. Anything found
       from the cwd is no anchor: an agent can build a whole repository,
       commit and remote-tracking ref included, in temp and move it in
       (EXECUTED in review). Below the root, a repository is trusted only as
       a linked worktree the trusted one registered; a root in no repository
       trusts no `.codex`. A start without the stamp (recorded before it, or a
-      direct adapter call) is authorized for its cwd. Otherwise the start is refused with
+      direct adapter call) is authorized for its cwd. Codex's own subagents
+      run in the parent's process and cwd (`thread/started` reports the
+      parent cwd in the captured 0.155.1 collab traffic), so the start check
+      covers them. Otherwise the start is refused with
     `confinement_workspace_incompatible`, naming the directory and saying to
     commit and push `.codex` to its upstream or run as `host`, whether or
     not the session requires confinement, since the command would run
@@ -930,10 +942,6 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
       then runs.
     - A Project inside another repository (a home-directory dotfiles
       repository, say) anchors to its own, innermost repository.
-    - **Not covered: a session with no Project.** It is authorized for its
-      cwd, so a repository an earlier session moved into a parent folder,
-      that a caller then starts a session in directly, is that session's
-      own root.
     - Content that reaches the upstream (an agent that can push, then an
       operator fetch) is trusted like any other upstream content.
   - **Checked-in configuration is still honoured.** A committed `.codex`, at
