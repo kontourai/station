@@ -192,6 +192,11 @@ updates liveness without advancing the event replay cursor.
 running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
 
+Claude's early resumed-child replies require an observed matching `SendMessage`
+recipient before they can seed the resumed run. Replay suppression retains the
+latest 64 SDK-frame, tool-call and resume-call identities per category; identities
+evicted from that bounded history are no longer recognized as replays.
+
 ## Engine-neutral failures
 
 `@kontourai/station-contracts/provider-failure` owns the closed
