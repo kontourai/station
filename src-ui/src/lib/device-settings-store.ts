@@ -1007,9 +1007,14 @@ class DeviceSettingsStore {
       // cache, until the account answers again, the device's own appearance
       // is chosen, or a definite no-person answer releases it.
       if (binding.values) {
-        const held = {} as Record<string, unknown>;
-        for (const key of APPEARANCE_KEYS) held[key] = this.snapshot[key];
-        this.bootAppearance = held as unknown as Appearance;
+        const { theme, colorTheme, colorThemeFlavor, colorThemeAccent } =
+          this.snapshot;
+        this.bootAppearance = {
+          theme,
+          colorTheme,
+          colorThemeFlavor,
+          colorThemeAccent,
+        };
       }
       this.account = undefined;
       this.snapshot = this.resolve();
