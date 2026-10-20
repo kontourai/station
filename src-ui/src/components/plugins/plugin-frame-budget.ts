@@ -127,7 +127,9 @@ export const pluginConfirmBudget = createPluginBudget({
  * changes what the user sees beside their work, so a plugin may not spend
  * more of that by being in a different tier. Four at once covers stepping
  * through a short list on purpose; one more every five seconds keeps a loop
- * from churning Related. Reveal and close spend from the same bucket.
+ * from churning Related. Reveal spends from the same bucket, and so does a
+ * close that would ask the pane's unsaved-changes guard; a close that asks
+ * nothing does not.
  */
 export const pluginRelatedPaneBudget = createPluginBudget({
   burst: 4,

@@ -555,6 +555,50 @@ describe('a plugin opens its own related panes', () => {
       reason: 'rate-limited',
     });
   });
+
+  test('a close that asks nothing spends nothing; one that would ask a guard spends, and asks nothing when refused', async () => {
+    await mount();
+    const { handle: kept } = (await open({ key: 'kept' })) as {
+      handle: string;
+    };
+    await run(async () => {
+      await probe.relations?.keep(kept);
+    });
+    const { handle: guarded } = (await open({ key: 'guarded' })) as {
+      handle: string;
+    };
+    await run(async () => {
+      await probe.relations?.keep(guarded);
+    });
+    await open({ key: 'third' });
+    await open({ key: 'fourth' });
+    expect(await open({ key: 'fifth' })).toEqual({
+      status: 'unavailable',
+      reason: 'rate-limited',
+    });
+    const asked = vi.fn();
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty related pane'),
+      (continueNavigation) => {
+        asked();
+        continueNavigation();
+      },
+      guarded,
+    );
+    try {
+      expect(await run(() => host().close(guarded))).toEqual({
+        status: 'unavailable',
+        reason: 'rate-limited',
+      });
+      expect(asked).not.toHaveBeenCalled();
+      expect(
+        Object.values(regions()).flatMap((region) => region.panes),
+      ).toContain(guarded);
+    } finally {
+      unregister();
+    }
+    expect(await run(() => host().close(kept))).toEqual({ status: 'closed' });
+  });
 });
 
 describe('a handle reveals and closes only what its caller opened', () => {

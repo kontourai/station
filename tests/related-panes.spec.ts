@@ -2,10 +2,11 @@
  * Related panes from an installed plugin (docs/design/pane-relationships.md):
  * the `related-reports` example, built and installed through real preview and
  * consent, opens its own report panes beside its list through the SDK's
- * related-pane capability on a real Station. The journey covers open,
- * replace, focus, Keep, close, a tool landing with the Tools, the occurrence
- * surviving a reload, and the plugin's removal leaving its pane unavailable
- * rather than running stale code.
+ * related-pane capability on a real Station. One journey, because what it
+ * proves is per device: open, replace, focus, Keep, close, the kept
+ * occurrence surviving a reload, a tool landing with the Tools, and the
+ * plugin's removal leaving its panes unavailable rather than running stale
+ * code.
  *
  * The frame tier's transport is covered where its boundary is
  * (`framePaneHost.test.tsx`, the SDK client test and the bootstrap relay
@@ -107,7 +108,7 @@ test.describe('related panes from an installed plugin', () => {
     }
   });
 
-  test('opens, replaces, focuses, keeps and closes its own report panes beside the list', async ({
+  test('opens, replaces, focuses, keeps and closes its own report panes, and a removed plugin’s pane runs no plugin code', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -120,87 +121,93 @@ test.describe('related panes from an installed plugin', () => {
     ).toBeVisible({ timeout: 30_000 });
     const status = reports(page).getByRole('status');
 
-    // Open: beside the list, with the way back to it and the preview's Keep.
-    await openFromList(page, 'Open Weekly report');
-    await expect(status).toHaveText('Weekly report: opened, beside.');
-    const weekly = page.getByRole('article', { name: 'Weekly report' });
-    await expect(weekly).toBeVisible();
-    await expect(weekly).toContainText('Seven days of work, summarised.');
-    await expect(
-      page.getByRole('button', { name: 'Up to Reports', exact: true }),
-    ).toBeVisible();
-
-    // Another report replaces the one preview; the same report focuses it.
-    await openFromList(page, 'Open Monthly report');
-    await expect(status).toHaveText('Monthly report: replaced, beside.');
-    await expect(
-      page.getByRole('article', { name: 'Monthly report' }),
-    ).toBeVisible();
-    await expect(weekly).toHaveCount(0);
-    await openFromList(page, 'Open Monthly report');
-    await expect(status).toHaveText('Monthly report: focused, beside.');
-
-    // Keep it: the next report opens beside it instead of replacing it.
-    await page.getByRole('button', { name: 'Keep open', exact: true }).click();
-    await expect(
-      page.getByRole('button', { name: 'Keep open', exact: true }),
-    ).toHaveCount(0);
-    await openFromList(page, 'Open Weekly report');
-    await expect(status).toHaveText('Weekly report: opened, beside.');
-    await expectRegionTabs(
-      page,
-      ['Monthly report', 'Weekly report'],
-      'Weekly report',
-    );
-
-    // Close what this pane opened.
-    await reports(page)
-      .getByRole('button', { name: 'Close report', exact: true })
-      .click();
-    await expect(status).toHaveText('Report closed.');
-    await expect(
-      page.getByRole('article', { name: 'Weekly report' }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole('article', { name: 'Monthly report' }),
-    ).toBeVisible();
-
-    // A tool lands with the Tools, not beside the list.
-    await reports(page)
-      .getByRole('button', { name: 'Open report log', exact: true })
-      .click();
-    await expect(status).toHaveText('Report log: opened, tool.');
-    await expect(
-      page.getByRole('region', { name: 'Report log' }),
-    ).toBeVisible();
-
-    // The kept report is the same occurrence after a reload.
-    await page.reload();
-    await expect(
-      page.getByRole('article', { name: 'Monthly report' }),
-    ).toBeVisible({ timeout: 30_000 });
-  });
-
-  test('a removed plugin’s related pane stays, unavailable, and runs no plugin code', async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.addInitScript(() => {
-      localStorage.setItem('station:onboarding-setup-dismissed', '1');
+    await test.step('open beside the list, with the way back and Keep', async () => {
+      await openFromList(page, 'Open Weekly report');
+      await expect(status).toHaveText('Weekly report: opened, beside.');
+      const weekly = page.getByRole('article', { name: 'Weekly report' });
+      await expect(weekly).toBeVisible();
+      await expect(weekly).toContainText('Seven days of work, summarised.');
+      await expect(
+        page.getByRole('button', { name: 'Up to Reports', exact: true }),
+      ).toBeVisible();
     });
-    await page.goto(reportsRoute);
-    await expect(
-      page.getByRole('article', { name: 'Monthly report' }),
-    ).toBeVisible({ timeout: 30_000 });
-    await removePlugin();
-    // The Project is still the dock's; its catalog no longer offers the
-    // plugin, so the kept occurrence renders its placeholder.
-    await page.reload();
-    await expect(
-      page.getByText('This plugin pane is unavailable', { exact: true }),
-    ).toBeVisible({ timeout: 30_000 });
-    await expect(
-      page.getByRole('article', { name: 'Monthly report' }),
-    ).toHaveCount(0);
+
+    await test.step('another report replaces the preview; the same one focuses it', async () => {
+      await openFromList(page, 'Open Monthly report');
+      await expect(status).toHaveText('Monthly report: replaced, beside.');
+      await expect(
+        page.getByRole('article', { name: 'Monthly report' }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('article', { name: 'Weekly report' }),
+      ).toHaveCount(0);
+      await openFromList(page, 'Open Monthly report');
+      await expect(status).toHaveText('Monthly report: focused, beside.');
+    });
+
+    await test.step('a kept report stays when the next one opens', async () => {
+      await page
+        .getByRole('button', { name: 'Keep open', exact: true })
+        .click();
+      await expect(
+        page.getByRole('button', { name: 'Keep open', exact: true }),
+      ).toHaveCount(0);
+      await openFromList(page, 'Open Weekly report');
+      await expect(status).toHaveText('Weekly report: opened, beside.');
+      await expectRegionTabs(
+        page,
+        ['Monthly report', 'Weekly report'],
+        'Weekly report',
+      );
+    });
+
+    await test.step('close what this pane opened', async () => {
+      // Four related requests have spent this page's burst. A close that
+      // asks no unsaved-changes guard spends nothing, so it still closes.
+      await reports(page)
+        .getByRole('button', { name: 'Close report', exact: true })
+        .click();
+      await expect(status).toHaveText('Report closed.');
+      await expect(
+        page.getByRole('article', { name: 'Weekly report' }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole('article', { name: 'Monthly report' }),
+      ).toBeVisible();
+    });
+
+    await test.step('the kept report is the same occurrence after a reload', async () => {
+      await page.reload();
+      await expect(
+        page.getByRole('article', { name: 'Monthly report' }),
+      ).toBeVisible({ timeout: 30_000 });
+    });
+
+    await test.step('a tool lands with the Tools, not beside the list', async () => {
+      // A new page, so a new budget: the burst above is not carried over.
+      await reports(page)
+        .getByRole('button', { name: 'Open report log', exact: true })
+        .click();
+      await expect(status).toHaveText('Report log: opened, tool.');
+      await expect(
+        page.getByRole('region', { name: 'Report log' }),
+      ).toBeVisible();
+    });
+
+    await test.step('a removed plugin’s pane stays, unavailable, and runs no plugin code', async () => {
+      await removePlugin();
+      await page.reload();
+      await expect(
+        page
+          .getByText('This plugin pane is unavailable', { exact: true })
+          .first(),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page.getByRole('article', { name: 'Monthly report' }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole('region', { name: 'Report log' }),
+      ).toHaveCount(0);
+    });
   });
 });

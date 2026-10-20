@@ -529,7 +529,6 @@ export function createRelatedPanesHost(
   const close: PaneRelatedPanesHost['close'] = async (handle) => {
     if (typeof handle !== 'string' || !PLUGIN_PANE_ID.test(handle))
       return unavailable('unknown-handle');
-    if (!claim()) return unavailable('rate-limited');
     const { model, relations } = live();
     if (!model) return unavailable('unsupported');
     if (
@@ -538,6 +537,12 @@ export function createRelatedPanesHost(
       occupiedRegion(model.regions, handle) === undefined
     )
       return unavailable('unknown-handle');
+    // A close that asks the pane's guard puts a question in front of the
+    // user, which a loop must not repeat, so it spends from the budget. One
+    // that asks nothing only takes away a pane this caller's budgeted open
+    // put there, and a refusal would keep a pane the user asked to close.
+    if (navigationStore.hasNavigationGuard(handle) && !claim())
+      return unavailable('rate-limited');
     // The related pane's own unsaved-changes guard decides; Cancel leaves the
     // pane, its relation and its state exactly as they were. The answer can
     // arrive after the pane moved: only a pane its region still held is

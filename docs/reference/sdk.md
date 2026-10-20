@@ -2661,7 +2661,9 @@ updated since the caller was mounted, or its renderer is not admitted),
 screen), `station-unverified`, `capacity` (too many related panes; nothing is
 evicted), `contended` (another window was writing at that moment),
 `superseded`, `rate-limited` (four at once, then one every five seconds, per
-plugin, across both tiers), `guard-cancelled`, `unknown-handle` and `refused`.
+plugin, across both tiers; a `close` spends from it only when it would ask the
+pane's unsaved-changes guard), `guard-cancelled`, `unknown-handle` and
+`refused`.
 
 A related occurrence is fenced to the Station it was opened on and renders only
 while its plugin is still the installed generation it was opened under; a
