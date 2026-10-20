@@ -68,16 +68,6 @@
 
     "packages/cli/src/commands/telemetry.ts",
 
-    "src-server/services/telemetry-publisher-service.ts",
-
-    "src-server/services/telemetry-local-state.ts",
-
-    "src-server/services/__tests__/telemetry-publishers.test.ts",
-
-    "src-server/utils/logger.ts",
-
-    "src-server/routes/system/build-provenance.ts",
-
     "src-ui/src/views/settings/TelemetryTierSettings.tsx",
 
     "src-ui/src/views/settings/StationConfigSection.tsx",
@@ -87,8 +77,6 @@
     "src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx",
 
     "src-server/routes/system/__tests__/config.routes.test.ts",
-
-    "src-server/security/coding-authority.ts",
 
     "src-ui/src/components/UsageTelemetryDisclosure.css",
 
@@ -112,7 +100,23 @@
 
     "src-ui/src/hooks/useTelemetryNotice.ts",
 
-    "packages/cli/src/commands/lifecycle.ts"
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "src-server/routes/system/__tests__/config-telemetry-paired.routes.test.ts",
+
+    "src-ui/src/__tests__/authorityRecoveryScope.test.tsx",
+
+    "src-server/services/telemetry-publisher-service.ts",
+
+    "src-server/services/telemetry-local-state.ts",
+
+    "src-server/services/__tests__/telemetry-publishers.test.ts",
+
+    "src-server/utils/logger.ts",
+
+    "src-server/routes/system/build-provenance.ts",
+
+    "src-server/security/coding-authority.ts"
   ],
 
   "checks": [

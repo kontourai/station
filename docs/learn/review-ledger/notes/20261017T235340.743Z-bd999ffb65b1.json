@@ -1,0 +1,9 @@
+{
+  "revision": "3d349d1b2f387a1f4bb92d4970813700154730c6",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the added ToolCompletedEvent completion-stamp paragraph in docs/reference/contracts.md against glossary terminology. It adds inert App presentation metadata and no new identity, authority, agent or integration category; glossary definitions remain accurate. No provider/device qualification claimed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed docs/reference/contracts.md additive runtime-event completion-stamp paragraph. It preserves contract type ownership and compatibility rules; the callback and catalog reads remain server implementations. Existing instructions remain accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

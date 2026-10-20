@@ -29,7 +29,7 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -88,10 +88,10 @@ jobs:
           test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - name: Check native platform boundary before staging
@@ -131,7 +131,7 @@ jobs:
         run: npm run test:e2e:pr-smoke
       - name: Upload test-gate diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         continue-on-error: true
         with:
           name: nightly-test-gate-${{ github.run_id }}
@@ -210,10 +210,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - id: cli_source_decide
         name: Skip CLI publication when nightly already names this source
@@ -337,7 +337,7 @@ jobs:
           REGISTRY_SHA="$registry_sha" node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync(process.argv[1], JSON.stringify({schemaVersion:1,kind:"station.npm-publish-receipt",package:"@kontourai/station-cli",version:process.env.CLI_VERSION,sourceSha:process.env.SOURCE_SHA,registryGitHead:process.env.REGISTRY_SHA,artifactBuiltAt:null,artifactBuiltAtReason:"npm package has no native artifact manifest",sourceBinding:"npm registry gitHead",},null,2)+"\n")' provider-receipts/nightly-cli.json
       - id: ledger_token
         if: ${{ always() && steps.cli_registry_provenance.outcome == 'success' }}
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -350,7 +350,7 @@ jobs:
           node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record nightly-npm ${{ steps.identity.outputs.version }} from run $GITHUB_RUN_ID" --summary-line "- recorded: nightly-npm ${{ steps.identity.outputs.version }}" -- node scripts/deploy-ledger.mjs --channel nightly-npm --version "${{ steps.identity.outputs.version }}" --sha "${{ needs.test-gate.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'Nightly exact gates success; npm registry gitHead equals source SHA' --github-repo "$GITHUB_REPOSITORY" --artifact "npm:@kontourai/station-cli@${{ steps.identity.outputs.version }} (dist-tag nightly; artifactBuiltAt unknown)" --note 'artifactBuiltAt is null: npm package has no native artifact manifest'
       - name: Retain the Nightly CLI provider receipt
         if: ${{ always() && steps.cli_registry_provenance.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-cli-provider-receipt-${{ github.run_id }}
           path: provider-receipts/nightly-cli.json

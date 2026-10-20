@@ -1,0 +1,7 @@
+{
+  "revision": "b54fd23978e4ce4e9a810cd1247f010b3b4b36b1",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed the Fallow 3.33 attribution adapter against the pinned upstream occurrence-based complexity ledger and retained schema-12 report: each same-named finding is counted once. Every row still requires boolean attribution and its path/name/metric fields; per-row counts must equal nonnegative integer introduced/inherited totals, and base/head/new-only checks and unused-export/type blockers remain unchanged. Focused protocol and real CLI negative controls passed; no threshold, baseline, or protected policy changed. This preserves the script-scope requirement to distinguish introduced code-health findings from inherited debt and missing evidence. Full source-scan results remain separate from adapter validation.","inputs":["scripts/AGENTS.md","scripts/code-health-gate.mjs"]}
+  ]
+}

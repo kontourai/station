@@ -1,0 +1,7 @@
+{
+  "revision": "a568dc0f8498402db800d4084133e1aadc41fea3",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Fix round 1 source review at a568dc0f8498402db800d4084133e1aadc41fea3: verified runtime-random HMAC receipt generation and exact identity-bound artifact inspection, matching successful Skill and MCP completions, engine-reported tool list metadata from real init fixture, unknown inventories remain unverified, local skill scope, once-only bounded signal cleanup and printed recovery IDs. Preserved incoming ingress/cursor tests and reviewed both merge parents. Adapter/mapper suites pass 461 tests; pure verdict/smoke/lifecycle suites pass 86; server-test typecheck passes. Full delivery/SIGINT and requested fault injections are NOT_VERIFIED: base e420381 counts setup POSTs and causes prepare refusal before probe turns. Added prominent integration hold; no budget/allowlist workaround. Signal deadline, SIGKILL/crash and late server commit limits are explicit. Code-health gate at ea92a963 passes with no blockers, manual capture entrypoint and eleven complexity advisories retained as review debt, not zero-findings claim.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/__tests__/engine-delivery-probes.test.ts","scripts/engine-delivery-probes.ts","src-server/providers/adapters/claude-adapter-events.ts","src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts","scripts/lib/matrix-cleanup.mjs","src-server/providers/__tests__/claude-adapter-events.test.ts"]}
+  ]
+}

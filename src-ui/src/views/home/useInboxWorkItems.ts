@@ -1,10 +1,14 @@
-import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
+import type {
+  OrchestrationSessionSummary,
+  TaskRecord,
+} from '@kontourai/station-sdk';
 import { useMemo } from 'react';
 import { useOpenChatInbox } from '../../contexts/open-chats-store';
 import type { AgentSummary } from '../../types';
 import {
   buildHomeWorkItems,
   type HomeWorkItem,
+  type RemoteHomeEnvironmentSessions,
   type ResolveModelLabel,
 } from './home-view-model';
 
@@ -21,15 +25,18 @@ import {
  * and "Idle" in the sidebar for the same chat. One item, one ladder
  * (`workStatus`), so two surfaces cannot disagree.
  *
- * A chat open in this tab always has exactly one item here: chat items are
- * the base of the merge, and the only path that folds a chat away (a durable
- * Task that owns it) takes `tasks`, which the inbox does not pass. The second
- * tab of one conversation folds into its newest child, as it always did.
+ * Durable Tasks retain their correlated chat as a child row; recorded
+ * delegation and Task links are folded by the shared lane presentation.
  */
+const NO_TASKS: TaskRecord[] = [];
+const NO_REMOTE: RemoteHomeEnvironmentSessions[] = [];
+
 export function useInboxWorkItems(
   agents: AgentSummary[],
   sessions: OrchestrationSessionSummary[],
   resolveModelLabel?: ResolveModelLabel,
+  tasks: TaskRecord[] = NO_TASKS,
+  remoteEnvironments: RemoteHomeEnvironmentSessions[] = NO_REMOTE,
 ): HomeWorkItem[] {
   const { items: openChatItems, currentSessionIdByConversation } =
     useOpenChatInbox(agents, sessions, resolveModelLabel);
@@ -38,6 +45,9 @@ export function useInboxWorkItems(
       buildHomeWorkItems({
         chats: {},
         sessions,
+        tasks,
+        remoteEnvironments,
+        retainTaskChildren: true,
         agents,
         chatItems: openChatItems,
         currentSessionIdByConversation,
@@ -45,6 +55,8 @@ export function useInboxWorkItems(
       }),
     [
       agents,
+      tasks,
+      remoteEnvironments,
       currentSessionIdByConversation,
       openChatItems,
       resolveModelLabel,

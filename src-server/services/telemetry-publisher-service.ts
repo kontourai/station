@@ -13,6 +13,7 @@ import {
   mapRuntimeChannelToTelemetryChannel,
   mapRuntimeVersionToTelemetryVersion,
   parseStationDailyPing,
+  parseTelemetryFeedback,
 } from '@kontourai/station-shared/product-telemetry';
 import type { ResolvedTelemetryConfiguration } from '../domain/telemetry-configuration.js';
 import { writeUserNotice } from '../utils/logger.js';
@@ -445,7 +446,9 @@ export class TelemetryPublisherService {
             headers: {
               'content-type': 'application/json',
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(
+              'action' in payload ? parseTelemetryFeedback(payload) : payload,
+            ),
           }),
           controller.signal,
         );

@@ -1,3 +1,13 @@
+import { join } from 'node:path';
+import { z } from 'zod';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import { createToolRoutes } from '../../../routes/agents/tools.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { MCPService } from '../../../services/plugins/mcp-service.js';
+
+const makeAppTempDir = trackTempDirs();
+
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
 import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
@@ -537,6 +547,125 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
         execution: { agentConnectionId: 'codex' },
       }),
     );
+  });
+
+  test('Codex-default exposes and retains shipped inventory and Basis Apps without loading Station agent tools or connecting MCP', async () => {
+    const home = makeAppTempDir('codex-default-apps-');
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    loader.registerBuiltinIntegrationRuntimeIdentity('station-control', () =>
+      stationControlRuntimeIdentity(4487),
+    );
+    const loadAgentTools = vi.fn();
+    const scenario = bindingScenario({
+      configLoader: loader,
+      loadAgentTools,
+      builtinEngineBinding: {
+        connectionId: 'codex',
+        matrix: ENGINE_CAPABILITY_MATRICES.codex,
+      },
+    });
+    expect(await scenario.run()).toEqual({});
+    expect(loadAgentTools).not.toHaveBeenCalled();
+    const connections = new Map();
+    const service = new MCPService(
+      loader,
+      connections,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      scenario.logger,
+    );
+    const routes = createToolRoutes(service, vi.fn());
+    const readMembers = async () =>
+      z
+        .object({ data: z.array(z.string()) })
+        .parse(await (await routes.request('/station-control/ui-tools')).json())
+        .data;
+    const members = await readMembers();
+    expect(members).toEqual(
+      expect.arrayContaining([
+        'get_session_inventory',
+        'get_basis',
+        'get_task_basis',
+      ]),
+    );
+    const inventoryUri = service.getOpenMCPAppResourceUri(
+      'station-control/get_session_inventory',
+    );
+    expect(inventoryUri).toBe('ui://station/basis/session-inventory/v2');
+    const resource = await routes.request(
+      '/station-control/ui/get_session_inventory/resource',
+      { headers: { 'x-station-mcp-transcript': 'preview' } },
+    );
+    expect(resource.status).toBe(200);
+    expect(
+      z
+        .object({ data: z.object({ text: z.string() }) })
+        .parse(await resource.json()).data.text,
+    ).toContain('Session');
+    const store = new EventStore(join(home, 'apps.sqlite'));
+    try {
+      store.setMcpAppResourceResolver((ref) =>
+        service.getOpenMCPAppResourceUri(ref),
+      );
+      store.appendEvent({
+        provider: 'codex',
+        threadId: 'session',
+        turnId: 'turn',
+        createdAt: '2026-10-17T12:00:00.000Z',
+        eventId: 'start',
+        method: 'turn.started',
+        prompt: 'Inventory',
+      });
+      store.appendEvent({
+        provider: 'codex',
+        threadId: 'session',
+        turnId: 'turn',
+        createdAt: '2026-10-17T12:00:00.000Z',
+        eventId: 'result',
+        method: 'tool.completed',
+        itemId: 'inventory',
+        toolCallId: 'inventory',
+        toolName: 'station-control/get_session_inventory',
+        status: 'success',
+        output: { content: [{ type: 'text', text: 'Saved inventory' }] },
+      });
+      expect(
+        store
+          .listEventWindowByTurn('session', { turnLimit: 1 })
+          .events.find((e) => e.id === 'result')?.payload,
+      ).toMatchObject({
+        mcpAppResourceUri: inventoryUri,
+        output: { content: [{ type: 'text', text: 'Saved inventory' }] },
+      });
+    } finally {
+      store.close();
+    }
+    await loader.updateIntegration('station-control', (def) => ({
+      ...def,
+      disabledTools: ['get_session_inventory'],
+    }));
+    expect(
+      service.getOpenMCPAppResourceUri('station-control/get_session_inventory'),
+    ).toBeUndefined();
+    expect(await readMembers()).not.toContain('get_session_inventory');
+    expect(
+      (
+        await routes.request(
+          '/station-control/ui/get_session_inventory/resource',
+          { headers: { 'x-station-mcp-transcript': 'preview' } },
+        )
+      ).status,
+    ).toBe(404);
+    await loader.updateIntegration('station-control', (def) => ({
+      ...def,
+      enabled: false,
+    }));
+    expect(
+      service.getOpenMCPAppResourceUri('station-control/get_basis'),
+    ).toBeUndefined();
+    expect(connections.size).toBe(0);
   });
 
   test('idempotent: re-running bootstrap with the SAME binding produces the same result — never clobbers back to Station', async () => {

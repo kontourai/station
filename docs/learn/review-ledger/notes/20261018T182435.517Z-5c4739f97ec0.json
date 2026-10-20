@@ -1,0 +1,7 @@
+{
+  "revision": "381819009f338806c574afb085f1b57627ae2f30",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Round 3 merge at 381819009f338806c574afb085f1b57627ae2f30: read both base commits and compared runner, manifest, prose and ledger against both parents. Replaced the rejected start/send command shapes with the base public foreground routes; prepared Agent identity is selected in target, continuations and evaluator events follow providerTurnId. Reviewed all delivery CRUD route/schema citations and managed-Agent prompt validation; fixed empty managed prompt. Combined five suites passed 128 tests. Real-server full native delivery executes the API-created script, declares the file via real output admission, calls the local MCP process, counts 14 sends and confirms three successful DELETEs; Station skill and native policy remain unverified. Claude invocation/read captures remain loopback synthetic-inference CLI protocol evidence only. Committed-head mutations caught missing disabled-ID guards (2 assertions), omitted maxTurns (6, including preflight expected refusal versus accepted), Read-only acceptance (1) and nonexistent setup route (1); each restored suite passes. No live provider, external passthrough, actual UI or native policy proof.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/__tests__/engine-delivery-probes.test.ts","scripts/engine-delivery-probes.ts","src-server/domain/validator.ts"]}
+  ]
+}

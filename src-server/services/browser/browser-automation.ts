@@ -2486,6 +2486,7 @@ export class BrowserAutomation {
       WAIT_MAX_TIMEOUT_MS,
     );
     const needle = jsStringLiteral(given[0]);
+    // The isolated world is in the root frame; the engine still checks DOM visibility.
     const expression =
       input.text !== undefined
         ? `(() => { const body = ${PROTO_GET('Document', 'body')}.call(document); return (body ? ${PROTO_GET('HTMLElement', 'innerText')}.call(body) : '').includes(${needle}); })()`
@@ -2493,7 +2494,7 @@ export class BrowserAutomation {
           ? `location.href.includes(${needle})`
           : `(() => { const engine = ${BROWSER_LOCATOR_ENGINE_REF}; if (!engine || typeof engine.parseSelector !== 'function') return 'no-engine';
               try { const el = engine.querySelector(engine.parseSelector(${needle}), document, false);
-                return !!el && engine.elementState(el, 'visible').matches === true; }
+                return !!el && engine.elementState(el, 'visible', true).matches === true; }
               catch (error) { return 'error:' + String(error && error.message || error).slice(0, 300); } })()`;
     const kind =
       input.text !== undefined

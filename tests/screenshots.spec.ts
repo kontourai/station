@@ -1729,7 +1729,10 @@ function telemetryConsentScreens(): Screen[] {
     ).map((mode) => {
       const dialogVisible = mode.startsWith('dialog-');
       const dnt = mode.includes('dnt');
-      const endpoint = mode === 'dialog-endpoint' || mode === 'dialog-detailed';
+      const endpoint =
+        mode === 'dialog-endpoint' ||
+        mode === 'dialog-detailed' ||
+        mode === 'dialog-dnt';
       const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
       let ownPage: Page;
       const device = viewport === MOBILE ? 'mobile' : 'desktop';

@@ -633,18 +633,18 @@ test('Session inventory resource interoperates with an independent official AppB
     await browser.reload();
     await app.getByRole('button', { name: 'Load more', exact: true }).click();
     await expect(
-      app.getByText('Session inventory is unavailable.', { exact: true }),
+      app.getByText('Chat inventory is unavailable.', { exact: true }),
     ).toBeVisible();
 
     invalidResult = 'envelope';
     await browser.reload();
     await expect(
-      app.getByText('Session inventory is unavailable.', { exact: true }),
+      app.getByText('Chat inventory is unavailable.', { exact: true }),
     ).toBeVisible();
     invalidResult = 'capability';
     await browser.reload();
     await expect(
-      app.getByText('Session inventory is unavailable.', { exact: true }),
+      app.getByText('Chat inventory is unavailable.', { exact: true }),
     ).toBeVisible();
     await testInfo.attach('session-inventory-mcp-interoperability-receipt', {
       contentType: 'application/json',
@@ -951,12 +951,12 @@ test('v2 work-item inventory crosses the real MCP tool, durable projection, and 
     meta = 'missing';
     await browser.reload();
     await expect(
-      app.getByText('Session inventory is unavailable.', { exact: true }),
+      app.getByText('Chat inventory is unavailable.', { exact: true }),
     ).toBeVisible();
     meta = 'malformed';
     await browser.reload();
     await expect(
-      app.getByText('Session inventory is unavailable.', { exact: true }),
+      app.getByText('Chat inventory is unavailable.', { exact: true }),
     ).toBeVisible();
     authorized = false;
     const revoked = await client.callTool({

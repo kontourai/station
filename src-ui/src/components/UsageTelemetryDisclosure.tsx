@@ -100,8 +100,7 @@ type Disclosure = {
  * `SNOOZE_DURATION_MS`, then re-offers. It re-offers immediately when the
  * server publishes a different `inventoryRevision` — a changed inventory is
  * new information the user has not declined. The snooze is deliberately not a
- * substitute for the receipt: acknowledgement is still the only thing that
- * retires the disclosure for good, and the server-side flow is unchanged.
+ * substitute for a receipt or an explicit revision-bound local decision.
  */
 export const USAGE_TELEMETRY_SNOOZE_STORAGE_KEY =
   'station.usage-telemetry-disclosure.snoozed';
@@ -200,18 +199,19 @@ export function dismissUsageTelemetryDisclosure(
   for (const listener of dismissalListeners) listener();
 }
 
+// DNT saves and paired-device withdrawals can finish without a Full receipt.
 // This is a local decision reminder, never a Full acknowledgement. Bind it to
 // the API base and disclosure revision so another API base or new wording
 // still prompts; two Stations behind one origin share it.
-const DNT_DECISIONS_STORAGE_KEY =
+const DECISIONS_STORAGE_KEY =
   'station.usage-telemetry-disclosure.dnt-decisions';
-const dntDecisionsForPage = new Map<string, string>();
+const decisionsForPage = new Map<string, string>();
 
-function readDntDecision(apiBase: string): string | null {
-  const pageRevision = dntDecisionsForPage.get(apiBase);
+function readDisclosureDecision(apiBase: string): string | null {
+  const pageRevision = decisionsForPage.get(apiBase);
   if (pageRevision) return pageRevision;
   try {
-    const raw = window.localStorage.getItem(DNT_DECISIONS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(DECISIONS_STORAGE_KEY);
     const records: unknown = raw ? JSON.parse(raw) : null;
     if (records && typeof records === 'object' && !Array.isArray(records)) {
       const revision = (records as Record<string, unknown>)[apiBase];
@@ -223,13 +223,16 @@ function readDntDecision(apiBase: string): string | null {
   return null;
 }
 
-function recordDntDecision(apiBase: string, inventoryRevision: string): void {
-  dntDecisionsForPage.set(apiBase, inventoryRevision);
+function recordDisclosureDecision(
+  apiBase: string,
+  inventoryRevision: string,
+): void {
+  decisionsForPage.set(apiBase, inventoryRevision);
   try {
-    const raw = window.localStorage.getItem(DNT_DECISIONS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(DECISIONS_STORAGE_KEY);
     const records: unknown = raw ? JSON.parse(raw) : {};
     window.localStorage.setItem(
-      DNT_DECISIONS_STORAGE_KEY,
+      DECISIONS_STORAGE_KEY,
       JSON.stringify({
         ...(records && typeof records === 'object' && !Array.isArray(records)
           ? records
@@ -247,9 +250,9 @@ function recordDntDecision(apiBase: string, inventoryRevision: string): void {
 export function resetUsageTelemetryDisclosureDismissal(): void {
   dismissedForPageLifetime = false;
   dismissedRevisionForPage = undefined;
-  dntDecisionsForPage.clear();
+  decisionsForPage.clear();
   try {
-    window.localStorage.removeItem(DNT_DECISIONS_STORAGE_KEY);
+    window.localStorage.removeItem(DECISIONS_STORAGE_KEY);
     window.localStorage.removeItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY);
   } catch {
     // Nothing persisted, nothing to clear.
@@ -277,6 +280,7 @@ const NOT_READY_RETRY_LIMIT = 20;
 const NOT_READY_RETRY_DELAY_MS = 500;
 
 class UsageTelemetryProtocolUpdateRequiredError extends Error {}
+class UsageTelemetryAcknowledgementForbiddenError extends Error {}
 
 async function responseData(response: Response): Promise<Disclosure> {
   if (response.status === 426)
@@ -287,6 +291,14 @@ async function responseData(response: Response): Promise<Disclosure> {
   if (!response.ok)
     throw new Error('Usage telemetry disclosure could not be loaded.');
   return (await response.json()).data;
+}
+
+async function acknowledgementData(response: Response): Promise<Disclosure> {
+  if (response.status === 403)
+    throw new UsageTelemetryAcknowledgementForbiddenError(
+      'This device cannot acknowledge Full usage telemetry. The operator can review it in Settings.',
+    );
+  return responseData(response);
 }
 
 /**
@@ -340,8 +352,8 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     readDismissal,
   );
   const decisionApiBase = scoped ? scope.apiBase : apiBase;
-  const dntDecision = useSyncExternalStore(subscribeToDismissal, () =>
-    readDntDecision(decisionApiBase),
+  const localDecision = useSyncExternalStore(subscribeToDismissal, () =>
+    readDisclosureDecision(decisionApiBase),
   );
   const query = useQuery({
     queryKey: scoped
@@ -437,15 +449,32 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
   // in render rather than through the store subscription because it needs the
   // query's answer; the subscription still forces the re-render whenever a
   // dismissal happens on this page.
-  const decidedUnderDnt =
-    dntDecision === query.data?.inventoryRevision && dntActive;
+  const operator = query.data?.publishers?.operator;
+  const decidedLocally =
+    localDecision === query.data?.inventoryRevision &&
+    (query.data?.publishers
+      ? dntActive ||
+        (operator?.userChoice === 'off' &&
+          status.data?.publishers.kontour?.tier === 'off')
+      : operator?.reason === 'DNT' ||
+        operator?.userChoice === 'off' ||
+        operator?.userChoice === 'lite');
+  const inactiveWithoutEndpoint =
+    query.data?.endpointConfigured === false &&
+    !status.data?.authorEndpoint &&
+    (query.data.publishers
+      ? Object.values(query.data.publishers).every(
+          (state) => state.tier === 'off',
+        )
+      : query.data.telemetryEnabled === false);
   const dismissalRevision = query.data?.publishers
     ? `${query.data.inventoryRevision}:${status.data?.liteInventoryRevision ?? ''}:${status.data?.authorEndpoint ?? ''}:${dntActive}`
     : query.data?.inventoryRevision;
   const dismissed =
+    inactiveWithoutEndpoint ||
     (pageDismissed !== undefined && pageDismissed === dismissalRevision) ||
     isSnoozedFor(dismissalRevision) ||
-    decidedUnderDnt;
+    decidedLocally;
   return {
     data: query.data
       ? {
@@ -483,7 +512,12 @@ function useAcknowledgeDisclosure(onAcknowledged?: () => void) {
   const { apiBase } = useApiBase();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (inventoryRevision: string) =>
+    mutationFn: ({
+      inventoryRevision,
+    }: {
+      inventoryRevision: string;
+      tier?: TelemetryTier;
+    }) =>
       authenticatedFetch(
         `${apiBase}/api/usage-telemetry/disclosure/acknowledgements`,
         {
@@ -494,16 +528,25 @@ function useAcknowledgeDisclosure(onAcknowledged?: () => void) {
             inventoryRevision,
           }),
         },
-      ).then(responseData),
+      ).then(acknowledgementData),
     onSuccess: (data) => {
       queryClient.setQueryData(['usage-telemetry-disclosure', apiBase], data);
       void queryClient.invalidateQueries({ queryKey: ['telemetry-status'] });
       onAcknowledged?.();
     },
-    onError: () =>
-      queryClient.invalidateQueries({
+    onError: (error, target) => {
+      if (
+        error instanceof UsageTelemetryAcknowledgementForbiddenError &&
+        target.tier &&
+        target.tier !== 'full'
+      ) {
+        recordDisclosureDecision(apiBase, target.inventoryRevision);
+        onAcknowledged?.();
+      }
+      return queryClient.invalidateQueries({
         queryKey: ['usage-telemetry-disclosure', apiBase],
-      }),
+      });
+    },
   });
 }
 
@@ -835,7 +878,10 @@ function useUsageTelemetryDecision(
   });
   const acknowledgeRecovery = useMutation({
     mutationFn: async (
-      target: RecoveryDecisionTarget & { inventoryRevision: string },
+      target: RecoveryDecisionTarget & {
+        inventoryRevision: string;
+        tier?: TelemetryTier;
+      },
     ) => {
       const response = await mutateJson(
         `${target.apiBase}/api/usage-telemetry/disclosure/acknowledgements`,
@@ -849,7 +895,7 @@ function useUsageTelemetryDecision(
           inventoryRevision: target.inventoryRevision,
         },
       );
-      return responseData(response);
+      return acknowledgementData(response);
     },
     onSuccess: (ackData, target) => {
       queryClient.setQueryData(
@@ -859,18 +905,26 @@ function useUsageTelemetryDecision(
       void queryClient.invalidateQueries({ queryKey: ['telemetry-status'] });
       onDecided?.();
     },
-    onError: (_error, target) =>
-      queryClient.invalidateQueries({
+    onError: (error, target) => {
+      if (
+        error instanceof UsageTelemetryAcknowledgementForbiddenError &&
+        target.tier &&
+        target.tier !== 'full'
+      ) {
+        recordDisclosureDecision(target.apiBase, target.inventoryRevision);
+        onDecided?.();
+      }
+      return queryClient.invalidateQueries({
         queryKey: recoveryDisclosureKey(target.apiBase, target.identityKey),
-      }),
+      });
+    },
   });
   const [pendingFeedback, setPendingFeedback] = useState<{
     target: string;
     choose: (reason: TelemetryFeedbackReason) => void;
   }>();
-  const [settingError, setSettingError] = useState(false);
+  const [settingError, setSettingError] = useState<string | null>(null);
   const settingErrorRef = useRef<HTMLParagraphElement>(null);
-
   const [dntSelection, setDntSelection] = useState<{
     target: string;
     tier: TelemetryTier;
@@ -916,7 +970,7 @@ function useUsageTelemetryDecision(
     feedbackReason?: TelemetryFeedbackReason,
   ) => {
     if (busy || !data) return;
-    setSettingError(false);
+    setSettingError(null);
     if (scoped) {
       // The target is captured from this render — the latest committed
       // scope at intent time — and the guarded requests below verify it
@@ -934,6 +988,7 @@ function useUsageTelemetryDecision(
         acknowledgeRecovery.mutate({
           ...target,
           inventoryRevision: data.inventoryRevision,
+          tier: next,
         });
         return;
       }
@@ -952,7 +1007,9 @@ function useUsageTelemetryDecision(
                   (tierAware ? 'telemetryTier' : 'telemetryEnabled'),
               )
             ) {
-              setSettingError(true);
+              setSettingError(
+                'The usage telemetry setting could not be saved.',
+              );
               return;
             }
             queryClient.invalidateQueries({
@@ -965,16 +1022,22 @@ function useUsageTelemetryDecision(
               queryKey: ['telemetry-outbox'],
             });
             if (operator?.reason === 'DNT') {
-              recordDntDecision(target.apiBase, data.inventoryRevision);
+              recordDisclosureDecision(target.apiBase, data.inventoryRevision);
               onDecided?.();
               return;
             }
             acknowledgeRecovery.mutate({
               ...target,
               inventoryRevision: data.inventoryRevision,
+              tier: next,
             });
           },
-          onError: () => setSettingError(true),
+          onError: (error) =>
+            setSettingError(
+              error instanceof Error
+                ? error.message
+                : 'The usage telemetry setting could not be saved.',
+            ),
         },
       );
       return;
@@ -982,7 +1045,10 @@ function useUsageTelemetryDecision(
     if ((next === 'full') === enabled && !keepMustRecord) {
       // Nothing to write: the choice is the state the host is already in, and
       // something durable already says so.
-      acknowledgeProtected.mutate(data.inventoryRevision);
+      acknowledgeProtected.mutate({
+        inventoryRevision: data.inventoryRevision,
+        tier: next,
+      });
       return;
     }
     updateProtected.mutate(
@@ -1007,7 +1073,7 @@ function useUsageTelemetryDecision(
                 (tierAware ? 'telemetryTier' : 'telemetryEnabled'),
             )
           ) {
-            setSettingError(true);
+            setSettingError('The usage telemetry setting could not be saved.');
             return;
           }
           void queryClient.invalidateQueries({
@@ -1017,16 +1083,24 @@ function useUsageTelemetryDecision(
             queryKey: ['telemetry-outbox'],
           });
           if (operator?.reason === 'DNT') {
-            recordDntDecision(apiBase, data.inventoryRevision);
+            recordDisclosureDecision(apiBase, data.inventoryRevision);
             queryClient.invalidateQueries({
               queryKey: ['usage-telemetry-disclosure'],
             });
             onDecided?.();
             return;
           }
-          acknowledgeProtected.mutate(data.inventoryRevision);
+          acknowledgeProtected.mutate({
+            inventoryRevision: data.inventoryRevision,
+            tier: next,
+          });
         },
-        onError: () => setSettingError(true),
+        onError: (error) =>
+          setSettingError(
+            error instanceof Error
+              ? error.message
+              : 'The usage telemetry setting could not be saved.',
+          ),
       },
     );
   };
@@ -1115,7 +1189,7 @@ function useUsageTelemetryDecision(
         tabIndex={-1}
         ref={settingErrorRef}
       >
-        The usage telemetry setting could not be saved.
+        {settingError}
       </p>
     ) : (
       <>
@@ -1255,7 +1329,7 @@ export function UsageTelemetryDisclosureStep({
           onAdvance();
         }}
         onDecided={(apiBase, dnt) => {
-          if (dnt) recordDntDecision(apiBase, data.inventoryRevision);
+          if (dnt) recordDisclosureDecision(apiBase, data.inventoryRevision);
           else dismissUsageTelemetryDisclosure(dismissalRevision);
           onAdvance();
         }}
@@ -1320,7 +1394,7 @@ export function UsageTelemetryDisclosure({
         data={data}
         onClose={() => dismissUsageTelemetryDisclosure(dismissalRevision)}
         onDecided={(apiBase, dnt) => {
-          if (dnt) recordDntDecision(apiBase, data.inventoryRevision);
+          if (dnt) recordDisclosureDecision(apiBase, data.inventoryRevision);
           else dismissUsageTelemetryDisclosure(dismissalRevision);
         }}
       />

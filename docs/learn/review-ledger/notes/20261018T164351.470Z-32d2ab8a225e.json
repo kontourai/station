@@ -1,0 +1,7 @@
+{
+  "revision": "55c6318b8f46347771da109597e233f158e04e4e",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed the one-line process-resource classification addition for #3824. The existing rules still accurately require classification of child-process tests, windowsHide on direct exec, gate routing, mutation assertion evidence and introduced code-health dispositions. No instruction or enforcement change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

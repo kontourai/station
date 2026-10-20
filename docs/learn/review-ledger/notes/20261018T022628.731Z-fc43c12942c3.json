@@ -1,0 +1,7 @@
+{
+  "revision": "82088da7469500834f34064fbe30e02079fe8ce6",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Fix round: tsc-ts row now says same flags and incremental mode, diagnostics matched on Station projects but are not guaranteed (reviewer reproduced --target es5 differing); added that a test fails when installed tsc-ts and typescript versions differ (typecheck-host-slots.test.ts 'installed tsc-ts implements the installed TypeScript version', fault-injected). Other claims re-checked against scripts/tsc-slot.mjs unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/typecheck-host-slots.test.ts","scripts/tsc-slot.mjs"]}
+  ]
+}

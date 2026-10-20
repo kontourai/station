@@ -1,0 +1,7 @@
+{
+  "revision": "11fb57333ede496c42ccd3b728e02fb0a924e9c1",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Scope correction: reverted only PR #3785's unrelated session cache normalization and SDK changeset. The historical review at 2b86d7d7bec remains evidence for those earlier bytes, not a claim about this head. Incoming main's session-sharing casts are restored unchanged; PR #3819 owns their typed repair. No session API text or sharing tests were changed by this repair. The SDK reference delta still documents the genuine guide client, status read and force option; those exports and tests remain in #3785. Removing this temporary review dependency returns the record to its pre-repair source list.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/sessionStructuralSharing.ts"]}
+  ]
+}

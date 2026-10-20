@@ -1,0 +1,7 @@
+{
+  "revision": "df508e7856d1134b824deb908ef3391fa190db7b",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed the combined Corpus/startup-harness repair at df508e7856d1134b824deb908ef3391fa190db7b after cherry-picking the authored font fix and note. The existing note records the original history; this note binds the same reviewed font-route bytes to the combined branch. index.html still preloads the Station public DM Sans font; startup-screen.css still imports published package fonts and tokens; the production cascade, timing, inert handoff and native admission owners are unchanged. The harness alone maps /fonts to src-ui/public and retains package basename mapping for other fonts. Fresh combined-head owner suites passed14/14. Original font route injection reproduced the package-path ENOENT command failure with9testbodies passing; nonexistent public preload produced8explicitfailures/1pass and no unhandled errors; byte-identical restoration passed14/14. Three independent Corpus pin-drift controls also failed correctly. Guide prose remains accurate; native/device/release behavior is not established by this browser fixture.","inputs":["docs/guides/theming.md","src-ui/src/__tests__/startup-presentation.browser.test.tsx"]}
+  ]
+}

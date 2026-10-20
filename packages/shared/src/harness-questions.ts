@@ -20,8 +20,8 @@ import {
 /**
  * @deprecated since 0.9.0 — harness questions are `station.input-request/v1`
  * forms (#3390); use `@kontourai/station-shared/input-request`. These
- * adapters keep the pre-#3390 public API working for one release and are
- * removed in 0.10.0. None of them validates on its own: answers go through
+ * adapters retain the pre-#3390 public API for compatibility. None validates
+ * on its own: answers go through
  * `validateInputRequestContent`, the one validator.
  */
 
@@ -41,7 +41,7 @@ function questionnaireForm(
 }
 
 /**
- * @deprecated since 0.9.0; removed in 0.10.0. Use
+ * @deprecated since 0.9.0; retained for compatibility. Use
  * `inputRequestFromRequestEvent`, which also reads this stored shape.
  */
 export function readHarnessQuestionnaire(
@@ -52,7 +52,7 @@ export function readHarnessQuestionnaire(
 }
 
 /**
- * @deprecated since 0.9.0; removed in 0.10.0. Use
+ * @deprecated since 0.9.0; retained for compatibility. Use
  * `validateInputRequestContent` with `content`.
  */
 export function validateHarnessQuestionAnswers(
@@ -91,7 +91,7 @@ export function validateHarnessQuestionAnswers(
   );
 }
 
-/** @deprecated since 0.9.0; removed in 0.10.0. Use `inputRequestAnswerTexts`. */
+/** @deprecated since 0.9.0; retained for compatibility. Use `inputRequestAnswerTexts`. */
 export function harnessAnswerTexts(
   question: HarnessQuestion,
   answers: HarnessQuestionAnswers,
@@ -105,7 +105,8 @@ export function harnessAnswerTexts(
 }
 
 /**
- * @deprecated since 0.9.0; removed in 0.10.0. A harness form in the pre-#3390
+ * @deprecated since 0.9.0; retained for compatibility. A harness form in the
+ * pre-#3390
  * questionnaire shape, for a surface whose own published protocol still
  * speaks it (the skill-experience rich view). Null for a form that shape
  * cannot express. A field with no `header` reads as an empty one, which the

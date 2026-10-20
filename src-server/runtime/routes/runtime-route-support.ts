@@ -602,7 +602,7 @@ export function configureRuntimeSupportServices(
     webPushService,
     canUserReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
-    listNotifications: () => notificationService.list(),
+    getNotification: (id) => notificationService.get(id),
     // #2589 iOS alerts and #2588 Android alerts through the push gateway;
     // each channel is dormant until a phone of its platform registers.
     ...(pushGateway

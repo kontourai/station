@@ -20,6 +20,63 @@ canonical personal receipts. Acknowledgements
 must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
 
+The companion receiver additionally accepts identifier-free `station_daily`
+Lite pings through public publisher/channel source IDs. Its owner view is exact:
+operator `sto_` endpoints return daily marginals and weekly sums, including daily
+distinct-network counts (weekly contributor-days; not cross-day unique people).
+The same Lite URL accepts strict fixed-enum feedback bound to the source's
+publisher. Operator responses include exact publisher/action/reason counts by
+UTC arrival day or week, covering retained days including the current partial
+period. Migration 7 stores feedback separately; it deduplicates per daily key,
+publisher and action, erases hashes after day closure and expires rows at the
+configured UTC-day cutoff (default 90 days including today). Feedback hash
+erasure still runs if ping-hash erasure fails. Committed Lite responses always
+return `{ "accepted": true }`, without exposing dedupe state. Public and
+third-party publisher views exclude feedback.
+IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits.
+Forwarded headers are ignored by default. A Cloudflare Tunnel needs explicit
+trusted connector CIDRs so clients do not share the connector key; only a trusted
+peer's single-IP `CF-Connecting-IP` is used transiently. Invalid values fall back
+to the peer and increment a content-free private counter. Startup refuses
+non-canonical ranges, whitespace, IPv4 prefixes wider than /24 and IPv6 prefixes
+wider than /64. Trusted-proxy peers can reach only the public GET routes and
+Lite POST route; private routes return 404 even with valid credentials. See the
+[single-host tunnel recipe](../../deployment/telemetry/README.md#single-host-cloudflare-tunnel)
+for public route limits and the separate infrastructure logging review.
+
+Public dashboards and scoped publisher keys receive only **weekly noisy
+estimates** over ten profile/adoption fields. The fixed public domain includes
+all enum values and operator-configured public versions/registry IDs, even true
+zero; no true-count k pre-filter remains. Sources default to catalog-only
+version admission. Optional `versionPolicy: "semver"` admits valid sender
+versions plus `custom`; operator exact views show all of them. Its public version
+support still comes only from `releaseVersions`, with no version dimension
+contributed by an empty SemVer catalog. Unlisted versions never expand public
+support. Migration 8 preserves catalog policy for existing sources. Published counts sum distinct daily
+contributor keys per value (network-days), so NAT undercounts installations.
+Sensitivity 40 per added ping and per-count ε=1/280 give ε≤1/7 per ping. If a
+network contributes at most 40 coordinates per day, its week sensitivity is 280
+and ε≤1; arbitrary traffic has the conservative domain-based bound D/40,
+computed from stored publication cells. The
+ideal geometric mechanism is pure ε-DP; persistent-key HMAC and finite-precision
+sampling qualify this implementation. Expected absolute noise is about 280
+weekly network-days. Multiple weeks/publishers compose. Counters and friction stay in
+the exact operator view. Set histograms overlap and cannot be summed or joined.
+
+Schema 6 freezes each publisher/week and its estimates once. Bounded 200-cell
+cursor pages replace the published row cap; repeated/restarted reads return the
+same stored values. A blocked dimension retains its publisher/day's associations
+while others erase theirs. Independent retention expires raw pings after 90
+days. Reads serve stored publications and finalized days without running
+finalization. Failed daily/weekly jobs appear in operator diagnostics and do not
+block other publishers/days. The captured cutoff and arrival fence prevent
+publication of a week that closes during the pass. Publisher-scoped HMAC cursors
+are verified before caching; public pages cache for at most 60 seconds and reset
+at UTC midnight. Failed credential refresh beyond 60 seconds returns
+503. This receiver implementation does not establish an installed Station sender
+or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
+before interpreting received pings as activity estimates.
+
 The repository includes an optional Docker example for Collector → Prometheus
 → Grafana metrics and Collector → Jaeger traces. Starting that example is not
 proof that Station recorded or delivered a measurement. The local event log is
@@ -285,8 +342,14 @@ two engines are declared to count cached input differently. Costs in different
 currencies, and estimates under different price snapshots, are listed side by
 side and not added together. The tree covers sessions on this Station only.
 
-Delegated tasks are found from the delegation context Station stamps at
-launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+Delegated tasks are found through an indexed projection of parent mentions
+in `session.started` and later `session.configured` events: delegation context,
+legacy `parentConversationId`, or a `parentTaskId` the request names. The
+[storage migration](../../src-server/domain/migrations/016-session-parent-mentions.ts)
+backfills existing events and maintains mentions in the event write transaction.
+The read preserves context precedence and matching-start provenance; these
+mentions describe naming, not authority to stop a child. They do not record an
+exact initiating Session or a detached lifetime. For a Claude Code or Codex
 session's `delegate_task` call Station derives the context from the calling
 session's own record; for Station's own agent the runtime attests it from the
 conversation the tool call ran in. A task launched through a caller-less

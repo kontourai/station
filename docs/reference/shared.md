@@ -12,6 +12,7 @@ If you need a server-only provider interface such as `IBrandingProvider`, `IAuth
 For runtime helpers, use explicit subpaths:
 
 - `@kontourai/station-shared/parsers`
+- `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
@@ -19,6 +20,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
 - `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
 - `@kontourai/station-shared/display-reveal` — for raw views: `revealHiddenCharacters` and friends show hidden characters as visible `«U+XXXX»` tokens (a separate subpath so the one-line display form can ship in an entry bundle without it)
+- `@kontourai/station-shared/release-version-order` — browser-safe Station release order (`compareStationReleaseVersions`), plus `clientVersionInHostOrder`, which writes a client build's version in the host stream's shape so a client can compare itself with the server it reaches
 - `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
@@ -26,6 +28,21 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 [package README](../../packages/shared/README.md) for distribution and build
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
+
+The browser-safe `@kontourai/station-shared/html-reply-document` subpath builds
+the restrictive page document and page-only proxy bootstrap used by the
+[HTML reply sandbox](../decisions/html-replies.md). It also validates bounded page references for event-window projection. It
+carries no MCP tool or session bridge and does not publish or store pages.
+
+## Recorded MCP app results
+
+`@kontourai/station-shared/mcp-app-result` exports
+`isSuccessfulMcpResult`. This browser-safe predicate accepts a content-array
+result whose `isError` is absent or false. It is only a cheap candidate filter:
+the UI separately requires membership in a connected or shipped in-process tool-definition catalog,
+and history retention requires a Station-owned completion stamp. Result metadata
+cannot authorize either behavior or a resource read.
+See [transcript previews](../design/mcp-ui-host.md#transcript-previews).
 
 ## Product telemetry
 
@@ -44,6 +61,20 @@ commit, deduplication and namespace isolation belong to the receiver.
 The contract shape and event constants live in
 `@kontourai/station-contracts/product-telemetry`. Validation alone proves no
 collection, consent, durable storage or deployed service.
+`parseStationDailyPing` validates the declared Lite fields with the receiver's
+public registry/release catalogs, or with `semver` version admission using the
+same `mapRuntimeVersionToTelemetryVersion` validator as the sender. The broker's
+source configuration chooses the policy; publication still uses a fixed catalog.
+`custom` versions and `unknown` channel,
+distribution and layouts values are explicit sentinels; unknown object keys
+remain errors. The Lite inventory revision changes with these domain changes.
+`parseTelemetryFeedback` accepts exactly publisher, fixed action and fixed reason
+fields from the shared feedback contract, rejecting unknown fields and enums
+and the local-only `skip` dismissal.
+It adds no IDs, content or sender time. Receiver source binding, daily dedupe,
+retention and operator-only counts belong to the
+[Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
+
 
 `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to `preview` and
 returns undefined for unmapped labels. Full omits that field; Lite supplies
@@ -61,13 +92,6 @@ sender can remove that batch. `parseProductTelemetryProbeRequest` and
 source/schema check. A compatible probe does not acknowledge disclosure,
 create an installation identity or establish an accepted observation. These
 parsers remain Node-only; the browser status SDK uses its own response boundary.
-
-`parseStationDailyPing` validates the bounded, identifier-free Lite catalog.
-`mapRuntimeChannelToTelemetryChannel` is the shared serialization mapping:
-runtime `beta` becomes `preview`, permitted labels are preserved, and unknown
-labels return `unknown`. Lite sends that explicit value; Full metadata may
-omit an unknown channel. The mapper does not grant
-consent or change either tier's payload identity rules.
 
 ## Native relay link codec
 
@@ -170,8 +194,9 @@ source is implemented.
 `inputRequestFromMcpElicitation` maps a form-mode request into a form,
 refusing URL mode and anything outside the schema or over a bound.
 
-`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and is
-removed in 0.10.0. `readHarnessQuestionnaire`,
+`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and
+remains exported in 0.10.0 for compatibility. Use the `input-request` helpers
+for new callers. `readHarnessQuestionnaire`,
 `validateHarnessQuestionAnswers`, `harnessAnswerTexts` and
 `harnessQuestionnaireFromInputRequest` keep the pre-#3390 shape working by
 translating to and from a form; answers are validated only by
@@ -1236,7 +1261,10 @@ or explicitly configured integrations.
 The browser-safe `@kontourai/station-shared/mcp-ui-csp` leaf constructs resource
 policy separately from these Node transports. It filters URL schemes and emits
 directives; that alone is not complete CSP source-expression validation or
-browser network-containment proof. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
+browser network-containment proof. `MCP_UI_NETWORK_BOOTSTRAP_TAG` disables direct
+peer/ICE constructors before authored code in the shared wrappers. Nested srcdoc
+can obtain fresh constructors, so this does not guarantee network isolation.
+Frame source declarations are refused. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
 
 ### types
 

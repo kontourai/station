@@ -230,7 +230,10 @@ redacted.
 
 `ConnectionHealthCoordinator` shares one sequential probe across UI consumers,
 uses bounded exponential retry with jitter, cancels when the environment or
-subscriber set changes, and wakes on browser online/visibility signals. The
+subscriber set changes, and wakes on browser online/visibility signals. In a
+hidden document it pauses polling and retries; `useConnectionStatus` probes
+again on foreground visibility, focus or pageshow. Non-DOM consumers keep their
+normal polling cadence. The
 last verified profile/session data may remain visible during a transient
 outage. Health snapshots do not themselves make all consumers read-only. The
 SDK transport can reject non-safe HTTP methods before dispatch when a host's

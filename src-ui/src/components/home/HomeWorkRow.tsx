@@ -4,6 +4,7 @@ import type { HomeLaneItem } from '../../views/home/home-lane-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
 import { rowProjectMarks } from '../inbox-row/row-project-marks';
+import { WorkItemFamily } from '../inbox-row/WorkItemFamily';
 
 interface HomeWorkRowProps {
   task: HomeLaneItem;
@@ -30,7 +31,13 @@ interface HomeWorkRowProps {
 
 export interface HomeRowContext {
   now: number;
+  childrenById?: ReadonlyMap<string, readonly HomeLaneItem[]>;
   workFacts?: WorkFactsById;
+  expandedFamilies?: ReadonlySet<string>;
+  setExpandedFamilies?: (
+    update: (previous: ReadonlySet<string>) => ReadonlySet<string>,
+  ) => void;
+  isWoken?: (id: string) => boolean;
   /** The item whose Details sheet is open; owned by the section so a row
    *  that changes lane keeps its sheet. */
   detailsFor: string | null;
@@ -74,44 +81,74 @@ export function renderHomeWorkRow({
   size = 'card',
   context,
 }: HomeWorkRowProps) {
+  const taskRootId = task.id;
   return (
     <li key={task.stableId}>
-      <InboxRow
-        item={task}
-        rowKey={task.stableId}
-        isCurrent={false}
-        isSnoozed={false}
-        isOpenChat={false}
+      <WorkItemFamily
+        root={task}
+        members={context.childrenById?.get(task.id)}
         now={context.now}
-        facts={context.workFacts?.get(task.id)}
-        detailsOpen={context.detailsFor === task.id}
-        onDetailsOpenChange={(open) =>
-          context.setDetailsFor(open ? task.id : null)
-        }
-        size={size}
-        chrome={context.chrome}
-        agents={agents}
-        isWoken={isWoken}
-        // Resolved exactly as `InboxGroupList` resolves the dock's rows.
-        gitLocation={context.gitLocationByThreadId?.get(
-          task.orchestrationThreadId ?? task.chatSessionId ?? '',
-        )}
-        {...rowProjectMarks(
-          task,
-          context.projectAccentBySlug,
-          context.projectIconBySlug,
-        )}
-        onActivate={() => onOpen(task)}
-        onSnoozeWake={
-          onSnooze
-            ? (_item, wakeAt) => {
-                // Home's live lanes hold nothing snoozed, so `null` (unsnooze)
-                // never arrives here; the shelf below wakes rows.
-                if (wakeAt !== null) onSnooze(task, wakeAt);
-              }
+        expanded={context.expandedFamilies?.has(task.id)}
+        onExpandedChange={
+          context.setExpandedFamilies
+            ? (open) =>
+                context.setExpandedFamilies!((previous) => {
+                  const next = new Set(previous);
+                  if (open) next.add(task.id);
+                  else next.delete(task.id);
+                  return next;
+                })
             : undefined
         }
-        onDraftDiscarded={discardDraft ? afterDraftDiscarded : undefined}
+        onMembersHidden={() => {
+          if (
+            context.childrenById
+              ?.get(task.id)
+              ?.some((child) => child.id === context.detailsFor)
+          )
+            context.setDetailsFor(null);
+        }}
+        renderRow={(task) => (
+          <InboxRow
+            item={task}
+            rowKey={task.stableId}
+            isCurrent={false}
+            isSnoozed={false}
+            isOpenChat={false}
+            now={context.now}
+            facts={context.workFacts?.get(task.id)}
+            detailsOpen={context.detailsFor === task.id}
+            onDetailsOpenChange={(open) =>
+              context.setDetailsFor(open ? task.id : null)
+            }
+            size={size}
+            chrome={context.chrome}
+            agents={agents}
+            isWoken={
+              context.isWoken?.(task.id) ?? (task.id === taskRootId && isWoken)
+            }
+            // Resolved exactly as `InboxGroupList` resolves the dock's rows.
+            gitLocation={context.gitLocationByThreadId?.get(
+              task.orchestrationThreadId ?? task.chatSessionId ?? '',
+            )}
+            {...rowProjectMarks(
+              task,
+              context.projectAccentBySlug,
+              context.projectIconBySlug,
+            )}
+            onActivate={() => onOpen(task)}
+            onSnoozeWake={
+              onSnooze
+                ? (_item, wakeAt) => {
+                    // Home's live lanes hold nothing snoozed, so `null` (unsnooze)
+                    // never arrives here; the shelf below wakes rows.
+                    if (wakeAt !== null) onSnooze(task, wakeAt);
+                  }
+                : undefined
+            }
+            onDraftDiscarded={discardDraft ? afterDraftDiscarded : undefined}
+          />
+        )}
       />
     </li>
   );

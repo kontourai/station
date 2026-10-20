@@ -103,8 +103,8 @@ export default function NotificationDeliverySettings() {
     >
       <legend>Notification delivery</legend>
       <p className="settings__notification-sounds-help">
-        Where notifications may interrupt you beyond the inbox. The inbox always
-        keeps everything.
+        Choose which alerts can interrupt you. All notifications stay in the
+        inbox.
       </p>
       <div className="settings__notification-sounds-grid">
         <label className="settings__notification-sound">
@@ -201,8 +201,7 @@ export default function NotificationDeliverySettings() {
       {activeDevices.length > 0 && (
         <>
           <p className="settings__notification-sounds-help">
-            Per device: what may interrupt it, and whether its lock screen shows
-            what a notification says.
+            Choose alerts and lock-screen content for each device.
           </p>
           <div className="settings__notification-sounds-grid">
             {activeDevices.map((device) => {

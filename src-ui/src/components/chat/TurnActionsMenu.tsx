@@ -112,8 +112,6 @@ export interface TurnActionsMenuProps {
     accountableHuman?: string | null;
     /** Share affordance, composed by the row and mounted only in the dialog. */
     shareContent?: React.ReactNode;
-    /** Basis affordance, composed by the row and mounted only in the dialog. */
-    basisContent?: React.ReactNode;
   };
   reasoning?: { content: string };
 }
@@ -294,7 +292,6 @@ export default function TurnActionsMenu({
                 statedInRow={provenance.statedInRow}
                 accountableHuman={provenance.accountableHuman}
                 shareContent={provenance.shareContent}
-                basisContent={provenance.basisContent}
                 defaultOpen
               />
             </Dialog>

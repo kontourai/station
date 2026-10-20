@@ -1208,6 +1208,60 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     });
   }
 
+  test.each(['muse_turn_slot_releasing', 'provider_session_start_failed'])(
+    'a hand-built %s refusal without SDK metadata retains the queued input',
+    async (code) => {
+      activeChatsStore.updateChat(threadId, {
+        queuedMessages: ['legacy refused input'],
+      });
+      const error = new ChatHttpError(400, 'Refused for now.', code);
+      Object.defineProperty(error, 'kind', { value: undefined });
+      Object.defineProperty(error, 'retryable', { value: undefined });
+      sendExecutionMessageMock.mockRejectedValueOnce(error);
+      drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.dynamicImportSettled();
+      expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+        'legacy refused input',
+      ]);
+    },
+  );
+
+  test('a muse-spawn-failed response stays a definitive rejection despite its coarse kind', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['refused input'],
+    });
+    const error = new ChatHttpError(
+      400,
+      'Unable to spawn.',
+      'muse-spawn-failed',
+    );
+    expect(error).toMatchObject({ kind: 'unavailable', retryable: true });
+    sendExecutionMessageMock.mockRejectedValueOnce(error);
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
+  });
+
+  test('a newly classified code does not expand the established queue retention policy', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['refused input'],
+    });
+    const error = new ChatHttpError(
+      400,
+      'Not ready.',
+      'continuation_engine_not_ready',
+    );
+    Object.defineProperty(error, 'failurePhase', { value: 'refused' });
+    expect(error).toMatchObject({ kind: 'unavailable', retryable: true });
+    sendExecutionMessageMock.mockRejectedValueOnce(error);
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
+  });
+
   test('#2324 (D4, review L2): a send refused because the engine is replying on its own waits in the queue — and is re-sent when no turn would drain it', async () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['after the reply'],

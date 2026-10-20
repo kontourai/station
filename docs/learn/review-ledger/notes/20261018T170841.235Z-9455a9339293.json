@@ -1,0 +1,7 @@
+{
+  "revision": "dd9e694f4bfe526d744e2ad39e7d2f8e578e7308",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Integration review #3832: corrected the skill-consumption claim to script-access/output observations, because the API package and Claude workspace materialization are readable without observing skill loading. An explicit skillDelivery check remains unverified. Added a separate nativeToolPolicy cell whose probe is unverified even when the source declares native/partial support or MCP selection passes. Traced the new report fields and render precedence through the actual runner; combined deterministic tests pass 93/93, including matrix cells. Native policy, skill loading and live provider enforcement remain NOT_VERIFIED.","inputs":["docs/conformance/tool-policy-delivery.md","scripts/__tests__/engine-delivery-probes.test.ts","scripts/engine-delivery-probes.ts"]}
+  ]
+}

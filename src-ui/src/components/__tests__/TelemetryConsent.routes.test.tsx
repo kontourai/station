@@ -90,13 +90,17 @@ import {
 
 const makeTempDir = trackTempDirs();
 
-async function publisherFixture(doNotTrack?: string, endpointFromEnv?: string) {
+async function publisherFixture(
+  doNotTrack?: string,
+  endpointFromEnv?: string,
+  options: { choices?: AppConfig['telemetryTier']; endpoint?: false } = {},
+) {
   const home = makeTempDir('station-telemetry-ui-');
   const loader = new ConfigLoader({ projectHomeDir: home, watchFiles: false });
   await loader.loadAppConfig();
   bridge.config = await loader.updateAppConfig({
-    telemetryTier: { operator: 'lite', kontour: 'lite' },
-    ...(endpointFromEnv
+    telemetryTier: options.choices ?? { operator: 'lite', kontour: 'lite' },
+    ...(endpointFromEnv || options.endpoint === false
       ? {}
       : { productTelemetryEndpoint: 'https://receiver.test/events' }),
   });
@@ -248,10 +252,17 @@ test.each(['off', 'lite', 'full'] as const)(
   },
 );
 
-test.each(['off', 'lite', 'full'] as const)(
-  'DNT displays the shared callout and saves %s without acknowledging',
-  async (tier) => {
-    const { client, loader, service } = await publisherFixture('1');
+test.each([
+  ['full', 'off'],
+  ['lite', 'off'],
+  ['off', 'full'],
+  ['lite', 'lite'],
+] as const)(
+  'under DNT, changing saved %s to %s uses the combined surface without acknowledging',
+  async (previous, tier) => {
+    const { client, loader, service } = await publisherFixture('1', undefined, {
+      choices: { kontour: previous, operator: previous },
+    });
     const advance = vi.fn();
     const view = mountChoice(client, advance);
     try {
@@ -269,12 +280,40 @@ test.each(['off', 'lite', 'full'] as const)(
       );
       fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
       await waitFor(() => expect(advance).toHaveBeenCalledOnce());
-      expect((await loader.loadAppConfig()).telemetryTier.operator).toBe(tier);
+      expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+        kontour: tier,
+        operator: tier,
+      });
       expect((await service.telemetryStatus()).publishers.operator.tier).toBe(
         'off',
       );
       expect(calls('/acknowledgements')).toHaveLength(0);
       expect((await service.telemetryStatus()).liteNotices).toEqual({});
+    } finally {
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);
+
+test.each([undefined, '1'])(
+  'an unconfigured home with both choices off does not reopen the prompt (DNT %s)',
+  async (dnt) => {
+    const { client, loader, service } = await publisherFixture(dnt, undefined, {
+      choices: { kontour: 'off', operator: 'off' },
+      endpoint: false,
+    });
+    const view = mountChoice(client, vi.fn(), true);
+    try {
+      await waitFor(() =>
+        expect(calls('/api/usage-telemetry/status').length).toBeGreaterThan(0),
+      );
+      await waitFor(() => expect(client.isFetching()).toBe(0));
+      expect((await service.disclosure()).endpointConfigured).toBe(false);
+      expect(
+        screen.queryByRole('dialog', { name: 'Usage sharing' }),
+      ).toBeNull();
     } finally {
       view.unmount();
       client.clear();

@@ -3,7 +3,8 @@ import crypto from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type {
   ApprovalStatus,
-  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
@@ -12,6 +13,7 @@ import {
 } from '../../services/infra/process-utils.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
+import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
   routeCodexChildNotification,
@@ -1334,11 +1336,12 @@ export class CodexAdapterTransport {
       threadId: record.externalThreadId,
       createdAt: nowIso,
       method: 'runtime.error',
+      ...providerFailure('engine_crashed'),
       severity: 'error',
       turnId,
       message,
       code: 'codex-turn-orphaned',
-    });
+    } satisfies ProviderRuntimeErrorEvent);
   }
 
   /**
