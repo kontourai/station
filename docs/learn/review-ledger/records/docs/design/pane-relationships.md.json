@@ -40,7 +40,21 @@
 
     "src-ui/src/views/activity/__tests__/ActivityReview.test.tsx",
 
-    "tests/activity-related-review.spec.ts"
+    "tests/activity-related-review.spec.ts",
+
+    "src-ui/src/components/SplitPaneLayout.tsx",
+
+    "src-ui/src/components/session-detail/SessionDetail.tsx",
+
+    "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",
+
+    "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
+
+    "src-ui/src/hooks/useMutableSessionDetailState.ts",
+
+    "src-ui/src/app-shell/ActivityRegionShell.tsx",
+
+    "src-ui/src/workspace-panes/RegionPaneHost.tsx"
   ],
 
   "checks": []
