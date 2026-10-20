@@ -138,6 +138,28 @@ describe('invalid stored or synced values fall back instead of throwing', () => 
     });
   });
 
+  test('an import refuses flavor and accent ids the account server would refuse', () => {
+    // A refused field fails the whole account patch, so the device side
+    // holds the same id pattern (COLOR_THEME_ID_PATTERN) as the server.
+    const { droppedKeys } = deviceSettingsStore.importEnvelope({
+      version: 1,
+      values: {
+        colorTheme: 'catppuccin',
+        colorThemeFlavor: 'Mocha Dark',
+        colorThemeAccent: 'a'.repeat(49),
+      },
+    });
+    expect(droppedKeys.sort()).toEqual([
+      'colorThemeAccent',
+      'colorThemeFlavor',
+    ]);
+    const kept = deviceSettingsStore.importEnvelope({
+      version: 1,
+      values: { colorThemeFlavor: 'frappe', colorThemeAccent: 'deep-blue' },
+    });
+    expect(kept.droppedKeys).toEqual([]);
+  });
+
   test('a device setting change is what the applier stamps', () => {
     deviceSettingsStore.set('colorTheme', 'catppuccin');
     deviceSettingsStore.set('colorThemeFlavor', 'macchiato');

@@ -4,6 +4,7 @@ import type {
   AccountPreferencesPatch,
   AccountPreferencesView,
 } from '@kontourai/station-contracts/account-preferences';
+import { COLOR_THEME_ID_PATTERN } from '@kontourai/station-contracts/device-settings';
 import {
   mutateJsonFile,
   readJsonFile,
@@ -19,7 +20,7 @@ const mode = z.enum(['ask', 'auto', 'never']);
  * resolves an unknown id to its default (`resolveColorThemeSelection`), so
  * storing it is harmless, and refusing it would fail the whole patch.
  */
-const colorThemeId = z.string().regex(/^[a-z][a-z0-9-]{0,47}$/);
+const colorThemeId = z.string().regex(new RegExp(COLOR_THEME_ID_PATTERN));
 const fields = {
   theme: z.enum(['light', 'dark']),
   accentColor: z.string().max(128).nullable(),

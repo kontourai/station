@@ -415,9 +415,20 @@ function validateImportedValue<K extends keyof DeviceSettings>(
           ? { valid: true, value: null as DeviceSettings[K] }
           : { valid: false };
       }
-      return typeof candidate === 'string'
-        ? { valid: true, value: candidate as DeviceSettings[K] }
-        : { valid: false };
+      // The descriptor's bounds are part of what an import must satisfy;
+      // the color-theme ids share the account server's pattern, so an
+      // imported value is never one that fails the whole account patch.
+      if (
+        typeof candidate !== 'string' ||
+        (descriptor.minLength !== undefined &&
+          candidate.length < descriptor.minLength) ||
+        (descriptor.maxLength !== undefined &&
+          candidate.length > descriptor.maxLength) ||
+        (descriptor.pattern !== undefined &&
+          !new RegExp(descriptor.pattern).test(candidate))
+      )
+        return { valid: false };
+      return { valid: true, value: candidate as DeviceSettings[K] };
     case 'number': {
       if (candidate === null) {
         // `chatFontSize` is the one nullable number-kind device setting —
