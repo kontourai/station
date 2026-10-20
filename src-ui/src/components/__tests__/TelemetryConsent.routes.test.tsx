@@ -500,6 +500,32 @@ test('a stale persisted notice requires visible presentation of the current revi
   }
 });
 
+test('an open prompt resets Detailed when Do Not Track changes before saving', async () => {
+  const { client, loader, service, env } = await publisherFixture('1');
+  const view = mountChoice(client, vi.fn());
+  try {
+    await screen.findByRole('region', { name: 'Do Not Track' });
+    fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.full }),
+    ).toHaveProperty('checked', true);
+    delete env.DO_NOT_TRACK;
+    await service.reconfigure(await loader.loadAppConfig());
+    await client.invalidateQueries({ queryKey: ['telemetry-status'] });
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Do Not Track' })).toBeNull(),
+    );
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.lite }),
+    ).toHaveProperty('checked', true);
+    expect((await service.disclosure()).acknowledged).toBe(false);
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+  }
+});
+
 test('a Detailed choice saved under DNT requires a fresh explicit confirmation after DNT is removed', async () => {
   const { client, loader, service, env } = await publisherFixture('1');
   const advance = vi.fn();

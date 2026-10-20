@@ -1907,10 +1907,19 @@ function telemetryConsentScreens(): Screen[] {
             }
             return;
           }
-          const choice = page.getByRole('radio', {
-            name: 'Anonymous usage counts',
-            exact: true,
-          });
+          if (dnt) {
+            const dialog = page.getByRole('dialog', { name: 'Usage sharing' });
+            await dialog
+              .getByRole('button', { name: 'Not now', exact: true })
+              .click();
+            await expect(dialog).toHaveCount(0);
+          }
+          const choice = page
+            .getByRole('region', { name: 'Usage sharing choices' })
+            .getByRole('radio', {
+              name: 'Anonymous usage counts',
+              exact: true,
+            });
           await choice.scrollIntoViewIfNeeded();
           await expect(choice).toBeChecked();
           if (dnt)

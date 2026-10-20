@@ -278,12 +278,12 @@ test('outbox limit bounds the response after publisher filtering and rejects ove
   expect(body.data.map((entry) => entry.payload.index)).toEqual([56, 58]);
   const maximum = await app.request('/outbox?limit=200');
   expect(maximum.status).toBe(200);
-  expect((await maximum.json()).data).toHaveLength(60);
+  const maximumBody = (await maximum.json()) as { data: unknown[] };
+  expect(maximumBody.data).toHaveLength(60);
   for (const limit of ['201', '0', '-1', '1.5', 'nope']) {
     const invalid = await app.request(`/outbox?limit=${limit}`);
     expect(invalid.status).toBe(400);
-    expect((await invalid.json()).error.code).toBe(
-      'telemetry_outbox_limit_invalid',
-    );
+    const invalidBody = (await invalid.json()) as { error: { code: string } };
+    expect(invalidBody.error.code).toBe('telemetry_outbox_limit_invalid');
   }
 });

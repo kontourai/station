@@ -1189,6 +1189,14 @@ publisher disclosure remains effectively Lite. Agents also receive 403 from
 `POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
 While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
 remains pending and needs confirmation after DNT is removed.
+A new Kontour Full preference at the mounted config route requires a current
+Kontour acknowledgement when a build destination is configured. DNT and an
+absent author destination permit a pending saved preference, without granting
+permission to send. A route constructed without that runtime consent capability
+retains its default refusal. `GET /api/usage-telemetry/disclosure` exposes only
+`additionalHost` for an additional destination, including an environment-derived
+address. `GET /api/usage-telemetry/disclosure?publisher=kontour` returns the exact
+build destination for its separate, revision-bound acknowledgement.
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
 returns the bounded local payload ledger with `orchestration:read` authority. The optional `limit` is an integer from 1 to 200, defaults to 50, and selects the newest records after publisher filtering; invalid values return 400.

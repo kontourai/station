@@ -1,3 +1,6 @@
+.telemetry-sharing {
+  padding-block: var(--k-space-4);
+}
 .telemetry-feedback h3 {
   margin: 0;
   font-size: var(--k-text-md);
