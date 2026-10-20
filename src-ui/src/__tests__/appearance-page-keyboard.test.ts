@@ -33,6 +33,17 @@ const PRODUCT_FOCUS_RULES = (() => {
     throw new Error('index.css focus-visible rules not found');
   return rules.join('\n');
 })();
+/**
+ * The global `button:hover` rule from the real index.css. Its `background`
+ * shorthand resets `background-clip`, so a page control that clips its paint
+ * must survive it.
+ */
+const PRODUCT_BUTTON_HOVER_RULE = (() => {
+  const css = readFileSync(resolve(REPO_ROOT, 'src-ui/src/index.css'), 'utf8');
+  const rule = css.match(/(?:^|\n)button:hover\s*\{[^}]*\}/);
+  if (!rule) throw new Error('index.css button:hover rule not found');
+  return rule[0];
+})();
 const NORD_DARK_BACKGROUND = (
   JSON.parse(
     readFileSync(
@@ -131,7 +142,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
         contentType: 'text/html',
         // `--accent-primary` is defined so the focus ring has a colour to
         // resolve; without it the declaration is invalid and draws nothing.
-        body: `<!doctype html><html data-theme="dark"><head><style>:root{--accent-primary:#ff0000;--k-text:#00ff00;--k-focus:#ff0000;--text-primary:#0000ff;--text-secondary:#888888}${PRODUCT_FOCUS_RULES}${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
+        body: `<!doctype html><html data-theme="dark"><head><style>:root{--accent-primary:#ff0000;--k-text:#00ff00;--k-focus:#ff0000;--text-primary:#0000ff;--text-secondary:#888888}${PRODUCT_FOCUS_RULES}${PRODUCT_BUTTON_HOVER_RULE}${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
       });
     });
     await page.goto(`${ORIGIN}/`);
