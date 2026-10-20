@@ -1,6 +1,7 @@
 # Station Automations
 
-> **Reading status: retained proposal with implemented foundations.** The
+> **Reading status: retained proposal with implemented foundations; tracked by
+> [#3439](https://github.com/kontourai/station/issues/3439).** The
 > [Automation contract](../../packages/contracts/src/automation.ts),
 > [configuration store](../../src-server/services/automation/automation-store.ts),
 > [SQLite ledger](../../src-server/services/automation/automation-ledger.ts), and
