@@ -218,7 +218,7 @@ describe('subagent card streaming parity', () => {
       </TranscriptChildrenContext.Provider>,
     );
     expect(screen.getAllByTestId('subagent-card')).toHaveLength(2);
-    expect(screen.queryByRole('button', { name: /2 subagents/ })).toBeNull();
+    expect(screen.queryByText('2 subagents')).toBeNull();
   });
 
   test('Codex streaming text keeps a spawned card between pre-spawn and post-spawn prose before the turn settles', () => {
