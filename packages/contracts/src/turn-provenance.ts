@@ -1,4 +1,5 @@
 import type { ConversationContextBoundaryProvenance } from './conversation-context-boundary.js';
+import { engineDisplayLabel } from './engine-display.js';
 import type { EngineId } from './provider.js';
 import type { CanonicalRuntimeEvent } from './runtime-events.js';
 import {
@@ -180,6 +181,36 @@ export type TurnProvenanceRefSlot<TRef> =
  */
 export interface TurnProvenanceEngine {
   provider: EngineId;
+  /**
+   * The name of the engine connection that ran this turn (for example the
+   * "OpenCode" connection behind the generic `acp` provider), as stamped on
+   * this turn's own `turn.started`/terminal event under
+   * `TURN_ENGINE_DISPLAY_NAME_METADATA_KEY`. It is the name the chat header
+   * shows for the same connection, recorded when the turn ran, so a later
+   * rename does not relabel history. It is a display label only: `provider`
+   * stays the identity. Absent on older envelopes and on engines whose
+   * provider already names the product.
+   */
+  displayName?: string;
+}
+
+/**
+ * Turn-event metadata key carrying `TurnProvenanceEngine.displayName`. An
+ * adapter stamps it only when `provider` alone cannot name the product (ACP).
+ */
+export const TURN_ENGINE_DISPLAY_NAME_METADATA_KEY = 'engineDisplayName';
+
+/**
+ * The one user-visible name for an envelope's engine: the connection name the
+ * turn recorded, else the canonical product name for its provider, else the
+ * raw provider slug (an identifier the envelope did observe).
+ */
+export function turnProvenanceEngineLabel(
+  engine: TurnProvenanceEngine,
+): string {
+  return (
+    engine.displayName ?? engineDisplayLabel(engine.provider) ?? engine.provider
+  );
 }
 
 /** One distinct tool the turn invoked, with its observed outcomes. */
@@ -490,7 +521,11 @@ function isRefSlot(value: unknown): boolean {
 }
 
 function isEngineValue(value: unknown): boolean {
-  return isRecord(value) && isNonEmptyString(value.provider);
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.provider) &&
+    (value.displayName === undefined || isNonEmptyString(value.displayName))
+  );
 }
 
 function isToolSummaryValue(value: unknown): boolean {

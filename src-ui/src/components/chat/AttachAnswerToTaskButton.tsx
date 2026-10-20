@@ -154,6 +154,19 @@ export function ConnectedAttachAnswerToTaskButton({
   );
 }
 
+export interface AttachUserInputToTaskButtonProps {
+  sessionId: string;
+  eventId: string;
+  projectId?: string;
+  excerpt?: string;
+  adapter: AttachUserInputToTaskAdapter;
+  onOpen?: () => void;
+  onClose?: () => void;
+  returnFocusTarget?: HTMLElement | null;
+  /** Rendered as a row of the message's ⋯ menu rather than a button. */
+  menuItem?: boolean;
+}
+
 export function AttachUserInputToTaskButton({
   sessionId,
   eventId,
@@ -161,14 +174,10 @@ export function AttachUserInputToTaskButton({
   excerpt,
   adapter,
   onOpen,
-}: {
-  sessionId: string;
-  eventId: string;
-  projectId?: string;
-  excerpt?: string;
-  adapter: AttachUserInputToTaskAdapter;
-  onOpen?: () => void;
-}) {
+  onClose,
+  returnFocusTarget,
+  menuItem,
+}: AttachUserInputToTaskButtonProps) {
   return (
     <TaskPicker
       target={{ sessionId, eventId }}
@@ -184,6 +193,9 @@ export function AttachUserInputToTaskButton({
         })
       }
       onOpen={onOpen}
+      onClose={onClose}
+      returnFocusTarget={returnFocusTarget}
+      triggerRole={menuItem ? 'menuitem' : undefined}
       attach={(taskId, target) =>
         adapter.attach({
           taskId,
@@ -203,12 +215,11 @@ export function ConnectedAttachUserInputToTaskButton({
   eventId,
   projectId,
   excerpt,
-}: {
-  sessionId: string;
-  eventId: string;
-  projectId?: string;
-  excerpt?: string;
-}) {
+  menuItem,
+  onOpen,
+  onClose,
+  returnFocusTarget,
+}: Omit<AttachUserInputToTaskButtonProps, 'adapter'>) {
   const { tasksQuery } = useTaskPickerAdapter(projectId);
   const attachMutation = useAttachTaskUserInputReferenceMutation();
   const adapter = useMemo<AttachUserInputToTaskAdapter>(
@@ -236,6 +247,10 @@ export function ConnectedAttachUserInputToTaskButton({
       projectId={projectId}
       excerpt={excerpt}
       adapter={adapter}
+      menuItem={menuItem}
+      onOpen={onOpen}
+      onClose={onClose}
+      returnFocusTarget={returnFocusTarget}
     />
   );
 }

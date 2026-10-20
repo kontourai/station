@@ -306,7 +306,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     expect(screen.queryByText(/sending/)).toBeNull();
     expect(screen.getByText('1 with no answer yet')).toBeTruthy();
     const label = screen.getByText(
-      'No answer yet · sends once Station confirms it never arrived',
+      'No answer yet. Resends only if it never arrived.',
     );
     expect(
       label.classList.contains('queued-messages__label--unconfirmed'),
@@ -466,9 +466,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     expect(screen.getByText('1 with no answer yet')).toBeTruthy();
     // The same words its bubble uses.
     expect(
-      screen.getByText(
-        'No answer yet · sends once Station confirms it never arrived',
-      ),
+      screen.getByText('No answer yet. Resends only if it never arrived.'),
     ).toBeTruthy();
     expect(screen.queryByText(/delivery-uncertain/)).toBeNull();
     // Check and Discard… sit in one action group, outside the label.

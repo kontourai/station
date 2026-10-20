@@ -34,6 +34,7 @@ import {
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
+import { useHasVisibleTranscriptContent } from './message-bubble/visibleContent';
 import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
@@ -276,6 +277,15 @@ function MessageBubbleComponent({
     [onToolApproval, activeSession.id, activeSession.agentSlug],
   );
 
+  // One rule with the streaming row (`visibleContent.ts`): an assistant row
+  // with nothing to draw renders no bubble at all, rather than a header over
+  // an empty card. Hoisted with the hooks above; read after the special rows.
+  const hasVisibleContent = useHasVisibleTranscriptContent(
+    msg.contentParts,
+    textContent,
+    { showReasoning },
+  );
+
   const flowPart = msg.contentParts?.find(
     (part) =>
       part.type === 'flow-gate-verdict' || part.type === 'flow-run-attached',
@@ -314,6 +324,10 @@ function MessageBubbleComponent({
   if (transcriptMarker) {
     return <TranscriptMarker label={transcriptMarker} anchorKey={anchorKey} />;
   }
+
+  // A user row always draws (its bubble carries delivery state even when
+  // empty of text); an assistant row only once it has content.
+  if (msg.role === 'assistant' && !hasVisibleContent) return null;
 
   const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
@@ -485,6 +499,24 @@ function MessageBubbleComponent({
         <CopyGlyph />
       </button>
     ) : null;
+  // Only a rehydrated, durable authored input has the exact identity needed
+  // for an explicit Task pin. Optimistic/content-reconciled rows deliberately
+  // carry no surrogate action. On desktop it is a row of the bubble's ⋯ menu,
+  // like an answer's "Add to Task"; the phone sheet lists it itself.
+  const userTaskTarget =
+    !replaying &&
+    msg.role === 'user' &&
+    msg.sourceEventId &&
+    msg.sessionId &&
+    msg.turnId
+      ? {
+          sessionId: msg.sessionId,
+          eventId: msg.sourceEventId,
+          excerpt: textContent,
+          projectId: activeSession.projectSlug,
+        }
+      : undefined;
+  const menuTaskTarget = isMobile ? undefined : userTaskTarget;
   // Gated on exactly what the menu can list (TurnActionsMenu's
   // UserMessageActionsMenu): a fork needs its handler, so a fork source alone
   // would draw a ⋯ that opens an empty menu.
@@ -493,7 +525,8 @@ function MessageBubbleComponent({
     textContent &&
     ((userForkSource && onForkFromTurn) ||
       onNewChatFromMessage ||
-      discardUnsent) ? (
+      discardUnsent ||
+      menuTaskTarget) ? (
       <LazyBoundary
         load={loadUserMessageActionsMenu}
         componentProps={{
@@ -503,6 +536,7 @@ function MessageBubbleComponent({
             ? () => onNewChatFromMessage(textContent)
             : undefined,
           onDiscardUnsent: discardUnsent,
+          taskTarget: menuTaskTarget,
           // The phone already opens a sheet for the row: its actions are
           // listed there, not behind a second ⋯ inside it.
           inline: isMobile,
@@ -534,24 +568,13 @@ function MessageBubbleComponent({
         {msg.traceId.slice(-8)}
       </a>
     ) : null;
-  // Only a rehydrated, durable authored input has the exact identity needed
-  // for an explicit Task pin. Optimistic/content-reconciled rows deliberately
-  // carry no surrogate action.
+  // The phone sheet's Task row (desktop lists it in the ⋯ menu instead).
   const userTaskAction =
-    !replaying &&
-    msg.role === 'user' &&
-    msg.sourceEventId &&
-    msg.sessionId &&
-    msg.turnId ? (
+    isMobile && userTaskTarget ? (
       <div className="message__task-input-action">
         <LazyBoundary
           load={loadConnectedAttachUserInputToTaskButton}
-          componentProps={{
-            sessionId: msg.sessionId,
-            eventId: msg.sourceEventId,
-            excerpt: textContent,
-            projectId: activeSession.projectSlug,
-          }}
+          componentProps={userTaskTarget}
           pending={
             <span
               className="task-picker__status"
@@ -781,8 +804,6 @@ function MessageBubbleComponent({
   );
   const metadataAfter = (
     <>
-      {!isMobile && userTaskAction}
-
       {msg.role === 'assistant' && msg.changedFiles && (
         <details className="message__changed-files">
           <summary>
@@ -1033,11 +1054,14 @@ function MessageBubbleComponent({
             Sent by stopping the step that was running
           </div>
         )}
-        {undelivered && msg.clientId ? (
+        {/* Delivered is passed too: a note that showed an undelivered state
+            fades its glyph out rather than vanishing (it renders nothing for
+            a message that was already delivered when it mounted). */}
+        {msg.role === 'user' && msg.clientId && deliveryState ? (
           <MessageDeliveryNote
             chatKey={activeSession.id}
             clientTurnId={msg.clientId}
-            state={undelivered}
+            state={deliveryState}
             text={textContent}
             notice={deliveryNotice}
           />

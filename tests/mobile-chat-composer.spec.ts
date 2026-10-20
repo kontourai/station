@@ -5132,9 +5132,7 @@ for (const viewport of [
     // A closed window's claim reads as its bubble does, with Check.
     const closed = row('Sent from a window that has closed');
     await expect(
-      closed.getByText(
-        'No answer yet · sends once Station confirms it never arrived',
-      ),
+      closed.getByText('No answer yet. Resends only if it never arrived.'),
     ).toBeVisible();
     await expect(closed.getByRole('button', { name: 'Check' })).toBeVisible();
     // Its window is gone, so it can be withdrawn like an unanswered send;
@@ -5206,9 +5204,7 @@ for (const viewport of [
       ).e2eCloseRunningWindow?.(),
     );
     await expect(
-      running.getByText(
-        'No answer yet · sends once Station confirms it never arrived',
-      ),
+      running.getByText('No answer yet. Resends only if it never arrived.'),
     ).toBeVisible({ timeout: 15_000 });
     await expect(running.getByText('Sending', { exact: true })).toHaveCount(0);
   });

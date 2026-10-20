@@ -3990,6 +3990,14 @@ button:hover {
   gap: 8px;
   align-items: flex-start;
   margin-bottom: 12px;
+  /* The row mounts with its first content (it draws nothing before that when
+     the composer pill carries the turn's status), so it eases in like a
+     settled row instead of popping. Transform and opacity only. */
+  animation: message-slide-in var(--motion-slow) var(--ease-standard);
+}
+
+:root[data-page-hidden] .streaming-message {
+  animation-play-state: paused;
 }
 
 .streaming-message-icon {

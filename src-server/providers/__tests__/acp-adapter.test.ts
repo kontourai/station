@@ -16,11 +16,13 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import { turnProvenanceEngineLabel } from '@kontourai/station-contracts/turn-provenance';
 import {
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
+import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
@@ -522,6 +524,40 @@ describe('AcpAdapter', () => {
       threadId: 'duplicate-thread',
     });
     expect(processes).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test("a completed turn's provenance names the connection that ran it, not the generic ACP provider", async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-named',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    // The iterator yields events in order; the labels only name the wait.
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-named',
+      input: 'Hello',
+    });
+    const started = await nextEvent(iterator, 'turn.started');
+    expect(started.method).toBe('turn.started');
+    processes[0]!.resolvePrompt('end_turn');
+    const completed = await nextEvent(iterator, 'turn.completed');
+    expect(completed.method).toBe('turn.completed');
+    const [envelope] = assembleTurnProvenanceEnvelopes([started, completed]);
+    expect(envelope?.turnId).toBe(turn.turnId);
+    expect(envelope?.engine).toMatchObject({
+      state: 'observed',
+      value: { provider: 'acp', displayName: 'Kiro' },
+    });
+    expect(
+      envelope?.engine.state === 'observed' &&
+        turnProvenanceEngineLabel(envelope.engine.value),
+    ).toBe('Kiro');
     await adapter.stopAll();
   });
 

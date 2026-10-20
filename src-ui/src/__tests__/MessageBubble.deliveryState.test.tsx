@@ -56,6 +56,7 @@ vi.mock('../highlight/highlight-client', () => ({
 vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
 
 const { MessageBubble } = await import('../components/chat/MessageBubble');
+const chatStatus = await import('../components/status/chatStatus');
 const { activeChatsStore } = await import('../contexts/active-chats-store');
 
 const CHAT = 'chat-delivery-bubble';
@@ -101,11 +102,36 @@ function renderBubble(message = bubbleMessage()) {
   return { bubble };
 }
 
-/** The delivery line's one status region (its label, once past Sending). */
+/** The delivery note's one status region (its fact, once past Sending). */
 function statusText(bubble: HTMLElement): string | null | undefined {
   const region = bubble.querySelector('.message-delivery__status');
   expect(region?.getAttribute('role')).toBe('status');
   return region?.textContent;
+}
+
+/** The glyph's tooltip: its SVG title, which also names it. */
+function glyphTitle(bubble: HTMLElement): string | null | undefined {
+  return glyph(bubble).querySelector('title')?.textContent;
+}
+
+/** The happy-path glyph beside the bubble (its name is the state's fact). */
+function glyph(bubble: HTMLElement): HTMLElement {
+  const element = bubble.querySelector<HTMLElement>('.message-delivery__glyph');
+  expect(element).not.toBeNull();
+  return element!;
+}
+
+/** The exception line: open with its words, or folded away with none. */
+function lineText(bubble: HTMLElement): string | null {
+  const reveal = bubble.querySelector('.message-delivery__reveal');
+  if (!reveal?.hasAttribute('data-open')) return null;
+  return reveal.querySelector('.message-delivery__label')?.textContent ?? '';
+}
+
+/** Exception: the line shows the words the status region announces. */
+function expectLine(bubble: HTMLElement, text: string) {
+  expect(lineText(bubble)).toBe(text);
+  expect(statusText(bubble)).toBe(text);
 }
 
 function expectOutlined(bubble: HTMLElement, state: string) {
@@ -133,7 +159,7 @@ describe('MessageBubble delivery state', () => {
     activeChatsStore.removeChat(CHAT);
   });
 
-  it('sending: outlined, "Sending…", and not announced on every send', () => {
+  it('sending: outlined with a turning glyph, no text line, and not announced on every send', () => {
     setChat({
       status: 'sending',
       pendingClientTurnId: KEY,
@@ -141,8 +167,10 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'sending');
-    const label = within(bubble).getByText('Sending…');
-    expect(label.closest('[role="status"]')).toBeNull();
+    expect(glyph(bubble).getAttribute('data-glyph')).toBe('sending');
+    expect(within(bubble).getByRole('img', { name: 'Sending' })).toBeTruthy();
+    expect(lineText(bubble)).toBeNull();
+    expect(statusText(bubble)).toBe('');
   });
 
   it('received: says it is safe to close only when Station outlives the app', () => {
@@ -154,17 +182,46 @@ describe('MessageBubble delivery state', () => {
     });
     const first = renderBubble();
     expectOutlined(first.bubble, 'received');
-    expect(statusText(first.bubble)).toBe('Received · safe to close');
+    // No text line: the check glyph names the fact, and it is announced.
+    expect(lineText(first.bubble)).toBeNull();
+    expect(glyph(first.bubble).getAttribute('data-glyph')).toBe('received');
+    expect(glyphTitle(first.bubble)).toBe('Received. Safe to close the app.');
+    expect(statusText(first.bubble)).toBe('Received. Safe to close the app.');
     cleanup();
 
     platform.outlives = false;
     const second = renderBubble();
-    expect(statusText(second.bubble)).toBe('Received · keep the app open');
+    expect(statusText(second.bubble)).toBe('Received. Keep the app open.');
     cleanup();
 
     platform.outlives = undefined;
     const third = renderBubble();
     expect(statusText(third.bubble)).toBe('Received');
+  });
+
+  it('the composer pill says what the received bubble says', () => {
+    const { deriveChatStatus } = chatStatus;
+    for (const outlives of [true, false, undefined]) {
+      platform.outlives = outlives;
+      setChat({
+        status: 'sending',
+        pendingClientTurnId: KEY,
+        sendAwaitingTurnStart: true,
+        deliveryChecks: { [KEY]: 'received' },
+      });
+      const { bubble } = renderBubble();
+      const pill = deriveChatStatus({
+        approvalCount: 0,
+        turnLive: true,
+        waitingOnUser: false,
+        sendAwaitingTurnStart: true,
+        stationHasSend: true,
+        stationOutlivesApp: outlives,
+      });
+      expect(pill?.label).toBe('Starting');
+      expect(pill?.details).toEqual([{ text: statusText(bubble) }]);
+      cleanup();
+    }
   });
 
   it('waiting-to-send: saved on this device and sent when connected', () => {
@@ -175,9 +232,7 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'waiting-to-send');
-    expect(statusText(bubble)).toBe(
-      'Saved on this device · sends when connected',
-    );
+    expectLine(bubble, 'Sends when connected');
   });
 
   it('not-sent: Retry resends the same key; no Check', async () => {
@@ -188,7 +243,7 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'not-sent');
-    expect(statusText(bubble)).toBe('Not sent');
+    expectLine(bubble, 'Not sent');
     expect(within(bubble).queryByRole('button', { name: 'Check' })).toBeNull();
     fireEvent.click(within(bubble).getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(outbox.retry).toHaveBeenCalledWith(KEY));
@@ -288,7 +343,7 @@ describe('MessageBubble delivery state', () => {
     setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'unconfirmed');
-    expect(statusText(bubble)).toBe('May have reached the agent');
+    expectLine(bubble, 'May have reached the agent');
     expect(within(bubble).queryByRole('button', { name: 'Retry' })).toBeNull();
     fireEvent.click(within(bubble).getByRole('button', { name: 'Check' }));
     await waitFor(() => expect(recheckOutboundTurn).toHaveBeenCalledWith(KEY));
@@ -350,18 +405,14 @@ describe('MessageBubble delivery state', () => {
       durableClientTurnId: KEY,
     });
     const saved = renderBubble();
-    expect(
-      within(saved.bubble).getByText('Sending…').getAttribute('title'),
-    ).toBe(
-      'Saved on this device. If the app closes before Station answers, it is checked and sent when you reopen it.',
+    expect(glyphTitle(saved.bubble)).toBe(
+      'Sending. Kept on this device if the app closes.',
     );
     cleanup();
     // Attachments, a visual skill, or storage that failed: no row was written.
     activeChatsStore.updateChat(CHAT, { durableClientTurnId: undefined });
     const unsaved = renderBubble();
-    expect(
-      within(unsaved.bubble).getByText('Sending…').getAttribute('title'),
-    ).toBe('Waiting for Station to answer.');
+    expect(glyphTitle(unsaved.bubble)).toBe('Sending');
   });
 
   it('one status region stays mounted, and only its text changes when Sending becomes Received', () => {
@@ -380,7 +431,7 @@ describe('MessageBubble delivery state', () => {
       });
     });
     expect(bubble.querySelector('.message-delivery__status')).toBe(region);
-    expect(region?.textContent).toBe('Received · safe to close');
+    expect(region?.textContent).toBe('Received. Safe to close the app.');
   });
 
   it('a send with no answer reads as waiting for Station, in the words the list uses', () => {
@@ -397,9 +448,7 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'awaiting-confirmation');
-    expect(statusText(bubble)).toBe(
-      'No answer yet · sends once Station confirms it never arrived',
-    );
+    expectLine(bubble, 'No answer yet. Resends only if it never arrived.');
   });
 
   it("another running window's send reads Sending…; once that window is gone it waits for Station, as the list says", () => {
@@ -412,14 +461,12 @@ describe('MessageBubble delivery state', () => {
     setChat({ outboundQueuedTurns: [{ ...row, sendUnderWay: true }] });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'sending');
-    expect(within(bubble).getByText('Sending…')).toBeTruthy();
+    expect(glyph(bubble).getAttribute('data-glyph')).toBe('sending');
     act(() => {
       activeChatsStore.updateChat(CHAT, { outboundQueuedTurns: [row] });
     });
     expectOutlined(bubble, 'awaiting-confirmation');
-    expect(statusText(bubble)).toBe(
-      'No answer yet · sends once Station confirms it never arrived',
-    );
+    expectLine(bubble, 'No answer yet. Resends only if it never arrived.');
   });
 
   it('waiting behind an earlier unsent message says so, not "sends when connected"', () => {
@@ -436,7 +483,7 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'waiting-behind-unsent');
-    expect(statusText(bubble)).toBe('Waiting behind an unsent message');
+    expectLine(bubble, 'Waits for the unsent message above');
   });
 
   it('a message written for another Station says it waits for that Station', () => {
@@ -453,16 +500,14 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'waiting-for-station');
-    expect(statusText(bubble)).toBe(
-      'Saved on this device · waits for its Station',
-    );
+    expectLine(bubble, 'Waits for its own Station');
   });
 
   it("this device's own message with no answer reads Not confirmed; another device's never does", () => {
     setChat({ localSendKeys: [KEY] });
     const own = renderBubble();
     expectOutlined(own.bubble, 'unanswered');
-    expect(statusText(own.bubble)).toBe('Not confirmed');
+    expectLine(own.bubble, 'Not confirmed');
     cleanup();
     activeChatsStore.updateChat(CHAT, { localSendKeys: [] });
     const other = renderBubble();
@@ -520,7 +565,7 @@ describe('MessageBubble delivery state', () => {
     expect(bubble.querySelector('.message-delivery')).toBeNull();
   });
 
-  it('follows the chat live: the label goes once the turn starts', () => {
+  it('follows the chat live: once the turn starts the bubble fills and the glyph fades out in place', () => {
     setChat({
       status: 'sending',
       pendingClientTurnId: KEY,
@@ -528,13 +573,49 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'sending');
+    const mark = glyph(bubble);
+    act(() => {
+      activeChatsStore.updateChat(CHAT, {
+        deliveryChecks: { [KEY]: 'received' },
+      });
+    });
     act(() => {
       activeChatsStore.updateChat(CHAT, {
         deliveryChecks: { [KEY]: 'started' },
       });
     });
     expect(bubble.classList.contains('message--undelivered')).toBe(false);
-    expect(bubble.querySelector('.message-delivery')).toBeNull();
+    // The same glyph stays mounted (its fade is CSS on the delivered state),
+    // out of the accessibility tree, with nothing announced or shown.
+    expect(glyph(bubble)).toBe(mark);
+    expect(
+      bubble
+        .querySelector('.message-delivery')
+        ?.getAttribute('data-delivery-state'),
+    ).toBe('delivered');
+    expect(mark.getAttribute('aria-hidden')).toBe('true');
+    expect(statusText(bubble)).toBe('');
+    expect(lineText(bubble)).toBeNull();
+    expect(glyphTitle(bubble)).toBe('Delivered');
+  });
+
+  it('an exception line folds away in place when the message is delivered', () => {
+    setChat({ localSendKeys: [KEY] });
+    const { bubble } = renderBubble();
+    expectLine(bubble, 'Not confirmed');
+    const reveal = bubble.querySelector('.message-delivery__reveal');
+    act(() => {
+      activeChatsStore.updateChat(CHAT, {
+        deliveryChecks: { [KEY]: 'started' },
+      });
+    });
+    // Same element, closed and inert, still holding its words while the CSS
+    // fold runs, so the band never empties before it collapses.
+    expect(bubble.querySelector('.message-delivery__reveal')).toBe(reveal);
+    expect(reveal?.hasAttribute('data-open')).toBe(false);
+    expect(reveal?.hasAttribute('inert')).toBe(true);
+    expect(reveal?.textContent).toContain('Not confirmed');
+    expect(statusText(bubble)).toBe('');
   });
 
   it("another device's or a historical message carries no delivery label", () => {
@@ -566,6 +647,6 @@ describe('MessageDeliveryNote held-on-device', () => {
     );
     expect(
       document.querySelector('.message-delivery__status')?.textContent,
-    ).toBe('Queued on this device');
+    ).toBe('Queued. Sends after this reply.');
   });
 });
