@@ -604,6 +604,47 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
     },
   );
 
+  /**
+   * The phone's `⋯` menu: Live work's state trails its label at the row's
+   * end, and the Profile row's initials chip fills the 16px glyph slot every
+   * row's label aligns to (#1552 D4) rather than its own 22px.
+   */
+  fixtureTest(
+    'the phone overflow menu trails Live work’s state and keeps Profile in its glyph slot',
+    async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'More actions' }).click();
+      const liveWork = page.getByRole('button', {
+        name: 'Live work, 2 active',
+      });
+      await expect(liveWork).toBeVisible();
+      const row = (await liveWork.boundingBox()) as {
+        x: number;
+        width: number;
+      };
+      const detail = (await liveWork
+        .getByText('2 active', { exact: true })
+        .boundingBox()) as { x: number; width: number };
+      // The state sits at the row's end, not beside the label: without
+      // its own rule it follows the label directly, far from that end.
+      expect(row.x + row.width - (detail.x + detail.width)).toBeLessThan(24);
+      const profile = page.getByRole('button', {
+        name: 'Profile',
+        exact: true,
+      });
+      const slot = (await profile
+        .locator('.menu-row__glyph')
+        .boundingBox()) as { width: number };
+      const chip = (await profile
+        .locator('.app-toolbar__overflow-initials')
+        .boundingBox()) as { width: number };
+      expect(chip.width).toBeLessThanOrEqual(slot.width + 0.5);
+      await page.screenshot({
+        path: testInfo.outputPath('overflow-live-work-profile.png'),
+      });
+    },
+  );
+
   fixtureTest(
     'opening live Activity closes mobile navigation and reveals the work',
     async ({ page }, testInfo) => {
