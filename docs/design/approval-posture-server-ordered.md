@@ -891,7 +891,25 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
     - A `.codex` committed only in a nested repository (including a
       submodule) is refused: its files are not in the outermost `HEAD`, and
       a planted repository is nested by construction, so only the outermost
-      one is trusted.
+      one is trusted. The exception is a linked worktree the outermost
+      repository registered (for example a gitignored `.worktrees/lane`):
+      its gitfile names `<common dir>/worktrees/<name>`, whose `gitdir`
+      points back at it, and its `.codex` is judged against its own `HEAD`.
+      A staged repository with its own `.git`, or a gitfile borrowing
+      another worktree's entry, is not one.
+    - A start without a cwd checks the server's own directory, where Codex
+      then runs.
+    - **Limit: a project inside another repository.** The anchor is the
+      outermost repository, so a project inside, say, a home-directory
+      dotfiles repository has its own committed `.codex` judged against the
+      outer one and refused. The refusal says so. Bounding the walk needs
+      the Project root on the start input.
+    - **Limit: a committed `.codex` that is not on disk.** One that `HEAD`
+      tracks but the folder lacks is accepted once it appears with the same
+      bytes, by any route. A Codex session cannot commit, but a confined
+      Claude session holds Seatbelt git grants (objects and its branch
+      ref), so it could commit a `.codex` and then stage the matching bytes
+      through temp.
     - **Residual:** a workspace that is not inside any Git repository has no
       such anchor, so an agent that moves in a whole committed repository is
       not told apart from a real one. Closing it needs the Project root from
