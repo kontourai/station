@@ -248,6 +248,43 @@ describe('Appearance page', () => {
   });
 });
 
+describe('the ⌘H hint', () => {
+  function stubMedia(matching: (query: string) => boolean) {
+    window.matchMedia = ((query: string) => ({
+      matches: matching(query),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      onchange: null,
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+  }
+  const original = window.matchMedia;
+  afterEach(() => {
+    window.matchMedia = original;
+  });
+  const hint = () => document.querySelector('.appearance__hint');
+
+  test('shows with a fine pointer at a desktop width', () => {
+    stubMedia(() => false);
+    renderPage();
+    expect(hint()?.textContent).toMatch(/switches modes\.$/);
+  });
+
+  test.each([
+    ['a touch screen', (q: string) => q === '(pointer: coarse)'],
+    ['the phone breakpoint', (q: string) => q.includes('max-width: 768px')],
+  ])('is hidden on %s, which has no ⌘H to press', (_label, matching) => {
+    stubMedia(matching);
+    renderPage();
+    expect(hint()).toBeNull();
+    // The control itself is still there.
+    expect(screen.getByRole('radiogroup', { name: 'Mode' })).toBeTruthy();
+  });
+});
+
 describe('Appearance page while a theme sheet loads', () => {
   const card = (name: RegExp) =>
     screen.getByRole('radio', { name }).closest('label')!;
