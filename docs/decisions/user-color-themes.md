@@ -132,8 +132,11 @@ family's sheet has loaded. A sheet that fails is not claimed: on a live switch
 the previous selection stays in force, and a failed startup request un-claims
 the theme. The startup script's request gets one automatic retry: if it fails
 while the app is running, the applier requests it once more. Otherwise a
-failure is retried only by the next apply (a settings change, or
-`retryColorTheme()`), so a sheet that keeps failing cannot loop. While the
+failed selection is requested again only when the color-theme selection
+(family, flavor or accent) changes or on `retryColorTheme()`; re-applies for
+unrelated settings (a mode toggle, a background preference save) keep what is
+in force. So a sheet that keeps failing cannot loop, and the failure mark does
+not flicker. While the
 most recent request for a family has failed, the root carries
 `data-color-theme-failed="<family>"`. It is removed when a new request for
 that family starts (retrying is not failed; it is set again only if that
