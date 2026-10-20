@@ -2977,12 +2977,13 @@ describe('artifact storage does not accumulate or gate verdicts', () => {
 });
 
 /**
- * The Tauri CLI DISCOVERS a config when none is given, by walking the tree —
- * and `experiments/browser-host/*\/tauri.conf.json` sorts before
- * `src-desktop/`. Those spike configs declare `"version": "0.0.0"`, which the
+ * The Tauri CLI DISCOVERS a config when none is given, by walking the tree.
+ * A since-removed spike's `experiments/browser-host/*\/tauri.conf.json`
+ * sorted before `src-desktop/` and declared `"version": "0.0.0"`, which the
  * Android packager rejects outright, so build-android produced no APK for four
  * days after the spike landed (station#2306). Nothing in the repo's own config
- * changed; a file added elsewhere silently captured every unpinned invocation.
+ * changed; any `tauri.conf.json` added elsewhere silently captures every
+ * unpinned invocation.
  */
 describe('every Tauri invocation is rooted at the app directory', () => {
   const DISCOVERY_EXPOSED = [
@@ -3031,22 +3032,6 @@ describe('every Tauri invocation is rooted at the app directory', () => {
         'run: npx tauri build --config "$RUNNER_TEMP/tauri.json"',
       ),
     ).toContain('unrooted Tauri invocation');
-  });
-
-  it('keeps the spike configs recognisable as the hazard they are', () => {
-    // These are legitimate cargo spikes whose build.rs needs a config, so they
-    // stay. That is exactly why the real lanes must never resolve by discovery.
-    const spike = JSON.parse(
-      readFileSync(
-        resolve(
-          root,
-          'experiments/browser-host/tauri-child-webview/tauri.conf.json',
-        ),
-        'utf8',
-      ),
-    );
-    expect(spike.version).toBe('0.0.0');
-    expect(spike.build.frontendDist).toBe('../fixture');
   });
 });
 

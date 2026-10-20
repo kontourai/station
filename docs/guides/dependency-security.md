@@ -93,16 +93,16 @@ The current six-view registry audit found no formatter advisory in this
 candidate. The obsolete formatter residual is removed in the same remediation;
 its original expired-and-unused failure remains retained evidence. All other
 records and expiry dates are preserved. No expiry is renewed, no unused record
-is automatically accepted, and the historical formatter patch file is retained
-without registration. Graph removal addresses dependency presence;
+is automatically accepted. The unregistered historical formatter patch file
+was deleted afterwards (#2722); it remains in git history. Graph removal addresses dependency presence;
 it does not establish that a Station endpoint was unreachable or that upstream
 published a patched formatter.
 
 ### Historical formatter patch and acceptance
 
-The preceding graph retained `sprintf-js` version 1.0.3 with a Station-owned
-[package patch](../../patches/sprintf-js-1.0.3.patch), bound through
-`patchedDependencies` and the lockfile hash. The
+This section records the superseded graph. It retained `sprintf-js` version
+1.0.3 with a Station-owned package patch (`patches/sprintf-js-1.0.3.patch`, now
+deleted), bound through `patchedDependencies` and the lockfile hash. The
 [formatter advisory](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) concerns
 attacker-controlled precision causing an uncaught numeric `RangeError`. The
 patch covers both `src/sprintf.js` and the shipped `dist/sprintf.min.js`:
@@ -169,9 +169,9 @@ verdict and remains separate from these proofs.
 
 Recheck before expiry, on dependency, patch, source/minified bytes, Node runtime,
 or entrypoint changes, and when untrusted production format control is found.
-Withdraw acceptance on mismatch. Remove the residual and local formatter patch
-when a compatible upstream release passes the same numeric, formatter, YAML,
-and CLI controls. No unrelated exception, baseline, severity, or proxy trust
+Withdraw acceptance on mismatch. The YAML CLI parent migration above removed
+the formatter from the graph, so the residual and the local formatter patch are
+both gone. No unrelated exception, baseline, severity, or proxy trust
 policy is changed.
 
 ## Shell quoting and MCP credential issuer advisories (2026-10)
