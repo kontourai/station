@@ -1,0 +1,7 @@
+{
+  "revision": "7929ac2c32693068ceb74596c370e84f2bcf4c41",
+
+  "notes": [
+    {"path":"docs/user/pull-request-guides.md","note":"Scoped review of the runtime-routes.ts delta against the PR-guide journey: the only changed lines append the live usage-telemetry canSaveAuthorFull callback to createConfigRoutes, failing closed when that service is absent. Pure Review guides configuration writes do not request a new telemetry choice, and the PR-guide service, managed-model factory, no-tools generation, model retry setting, route wiring and live configuration readers are unchanged. The guide, its contract/service/store/MCP/UI owners and their code have no diff against this stack's actual base2bf9b17. The existing user explanation therefore remains accurate for this callback change; no prose update is needed. This is bounded source review, not new live-model or GitLab journey qualification.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
