@@ -40,7 +40,9 @@
 
     ".github/workflows/docs-kit.yml",
 
-    "corpus.json"
+    "corpus.json",
+
+    "scripts/__tests__/learning-media.test.ts"
   ],
 
   "checks": [

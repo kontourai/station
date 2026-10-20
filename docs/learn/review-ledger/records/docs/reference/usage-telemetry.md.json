@@ -116,7 +116,11 @@
 
     "src-server/routes/system/build-provenance.ts",
 
-    "src-server/security/coding-authority.ts"
+    "src-server/security/coding-authority.ts",
+
+    "src-ui/src/lib/startup-presentation.ts",
+
+    "src-ui/src/hooks/useSectionNavigation.ts"
   ],
 
   "checks": [
