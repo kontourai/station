@@ -1,0 +1,7 @@
+{
+  "revision": "c2dd901cc34dac0a51761bd3259dc1c300ab16db",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Corrects the earlier note on ExistingSetupImportStepper: the shared formatBytes adds a TB step, so the setup stepper's output is not byte-identical for values of 1 TiB and up (1099511627776 now renders 1.0 TB instead of 1024.0 GB). The change is intentional; values below 1 TiB render as before. No documented claim in module-map.md describes the unit step.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}
