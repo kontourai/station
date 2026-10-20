@@ -77,9 +77,12 @@ export function useNewProjectStarter({
     normalizedDirectory,
     REPO_DISCOVERY_IDLE_MS,
   );
-  const repoDiscovery = useReposQuery(settledDirectory || null, {
-    enabled: isOpen && looksLikeWorkspacePath(settledDirectory),
-  });
+  const repoDiscovery = useReposQuery(
+    settledDirectory ? { workingDir: settledDirectory } : null,
+    {
+      enabled: isOpen && looksLikeWorkspacePath(settledDirectory),
+    },
+  );
   // The settle means the query can be describing a path the field no longer
   // holds — during the idle window after a paste-over, and indefinitely once
   // the new value fails `looksLikeWorkspacePath` (the query is then disabled,

@@ -1306,42 +1306,48 @@ committer `date`, `current`). Disabled unless both fields are nonempty. A
 `success: false` envelope currently becomes `[]`, which does not establish a
 repository without branches.
 
-### `useReposQuery(workspace, config?)`
+### `useReposQuery(location, config?)`
 
-Discovers the git repositories under `workspace` through `/api/coding/repos`
-and returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
+Discovers the git repositories under a folder through `/api/coding/repos` and
+returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
 `DiscoveredRepo` carries its symlink-resolved `root`, `name`, `relativePath`
 and current `branch` (`''` for a detached HEAD or a repository the Project does
-not own). `config` is a `QueryConfig` plus an optional `projectSlug`. With a
-Project the server confines the folder to it; without one only the operator in
-person gets an answer. A `success: false` envelope currently becomes an empty
+not own). `location` is a `ReposLocation`, `{ projectSlug?, workingDir }`: the
+same shape as the git reads, except that `projectSlug` is optional because a
+folder may not be a Project yet. With a Project the server confines the folder
+to it; without one only the operator in person gets an answer. Disabled
+without a `workingDir`. A `success: false` envelope currently becomes an empty
 result, so no repositories is not proof the folder holds none.
 
-### `useGitCheckoutMutation(projectSlug, workingDirectory)`
+### `useGitCheckoutMutation(location)`
 
+Takes the same `{ projectSlug, workingDir }` location as the git reads.
 `mutate({ branch, create? })` posts to `/api/coding/git/checkout` and resolves
 to `GitCheckoutResult` (`{ branch }`, the branch HEAD now names). `create`
 creates the branch from HEAD.
 
-### `useGitCommitMutation(projectSlug, workingDirectory)`
+### `useGitCommitMutation(location)`
 
 `mutate({ message })` commits every change through `/api/coding/git/commit`
 and resolves to `GitCommitResult` (`{ sha }`). The server resolves the
-Project's own folder from `projectSlug`; `workingDirectory` selects a
-repository inside it.
+Project's own folder from `projectSlug`; `workingDir` selects a repository
+inside it.
 
-### `useGitPushMutation(projectSlug, workingDirectory)`
+### `useGitPushMutation(location)`
 
 `mutate({ remote?, branch?, setUpstream? })` pushes through
-`/api/coding/git/push` and resolves to `GitPushResult` (`{ output, remote }`).
+`/api/coding/git/push` and resolves to `GitPushResult` (`{ output, remote? }`).
+`remote` is optional: Stations released before SDK 0.8.0 answer with `output`
+alone.
 
 Commit and push are the Station operator's act: the server answers any other
-caller with `403`, and the SDK grants nothing of its own. Every git write
-rejects with the server's refusal: its validation reasons when it sends them,
+caller with `403`, and the SDK grants nothing of its own. A write whose
+location lacks a Project or folder rejects without sending a request. Every
+other refusal is the server's: its validation reasons when it sends them,
 otherwise its `error` sentence (a refused secret-looking file, repository
-configuration or remote is named there). A successful write
-invalidates that folder's `useGitStatusQuery`, `useGitBranchesQuery` and
-`useGitLogQuery` reads.
+configuration or remote is named there). A successful write invalidates that
+folder's `useGitStatusQuery`, `useGitBranchesQuery` and `useGitLogQuery`
+reads.
 
 ### `useProviderCommandsQuery(provider, config?)`
 

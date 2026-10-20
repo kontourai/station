@@ -105,6 +105,28 @@ function sentBody(fetchMock: FetchMock, call = 0): unknown {
   return JSON.parse(String(fetchMock.mock.calls[call]?.[1]?.body));
 }
 
+const OTHER_FOLDER = '/work/acme/web';
+
+/** Seed the status and log reads of the written folder and of another one. */
+function seedGitReads(queryClient: QueryClient) {
+  for (const read of ['git-status', 'git-log']) {
+    queryClient.setQueryData([read, API_REPO.root], { seeded: true });
+    queryClient.setQueryData([read, OTHER_FOLDER], { seeded: true });
+  }
+}
+
+/** The written folder's reads are stale; another folder's are untouched. */
+function expectOnlyFolderRefreshed(queryClient: QueryClient) {
+  for (const read of ['git-status', 'git-log']) {
+    expect(
+      queryClient.getQueryState([read, API_REPO.root])?.isInvalidated,
+    ).toBe(true);
+    expect(queryClient.getQueryState([read, OTHER_FOLDER])?.isInvalidated).toBe(
+      false,
+    );
+  }
+}
+
 beforeEach(() => {
   _setApiBase(ORIGIN);
 });
@@ -125,7 +147,7 @@ describe('useReposQuery', () => {
     );
 
     const { result } = renderHook(
-      () => useReposQuery('/work/acme', { projectSlug: 'acme' }),
+      () => useReposQuery({ projectSlug: 'acme', workingDir: '/work/acme' }),
       { wrapper: wrapperFor(client()) },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -144,9 +166,12 @@ describe('useReposQuery', () => {
     const fetchMock = stubFetch(() =>
       json(200, { success: true, data: REPOS }),
     );
-    const { result } = renderHook(() => useReposQuery('/work/new'), {
-      wrapper: wrapperFor(client()),
-    });
+    const { result } = renderHook(
+      () => useReposQuery({ workingDir: '/work/new' }),
+      {
+        wrapper: wrapperFor(client()),
+      },
+    );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(urls(fetchMock)).toEqual([
       `${ORIGIN}/api/coding/repos?path=%2Fwork%2Fnew`,
@@ -168,7 +193,7 @@ describe('useReposQuery', () => {
     );
 
     const { result } = renderHook(
-      () => useReposQuery('/work/acme', { projectSlug: 'acme' }),
+      () => useReposQuery({ projectSlug: 'acme', workingDir: '/work/acme' }),
       { wrapper: wrapperFor(client()) },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -193,12 +218,15 @@ describe('useReposQuery', () => {
       json(200, { success: true, data: REPOS }),
     );
     const queryClient = client();
-    renderHook(() => useReposQuery(null, { projectSlug: 'acme' }), {
+    renderHook(() => useReposQuery(null), {
       wrapper: wrapperFor(queryClient),
     });
     renderHook(
       () =>
-        useReposQuery('/work/acme', { projectSlug: 'acme', enabled: false }),
+        useReposQuery(
+          { projectSlug: 'acme', workingDir: '/work/acme' },
+          { enabled: false },
+        ),
       { wrapper: wrapperFor(queryClient) },
     );
     await act(async () => {
@@ -283,7 +311,10 @@ describe('git writes', () => {
           projectSlug: 'acme',
           workingDir: API_REPO.root,
         }),
-        checkout: useGitCheckoutMutation('acme', API_REPO.root),
+        checkout: useGitCheckoutMutation({
+          projectSlug: 'acme',
+          workingDir: API_REPO.root,
+        }),
       }),
       { wrapper: wrapperFor(queryClient) },
     );
@@ -327,14 +358,20 @@ describe('git writes', () => {
     }
   });
 
-  test('commit names the Project, and the repository only as a selection inside it', async () => {
+  test('commit names the Project, the repository only as a selection inside it, and refreshes that folder', async () => {
     const commit: GitCommitResult = { sha: 'abc1234' };
     const fetchMock = stubFetch(() =>
       json(200, { success: true, data: commit }),
     );
+    const queryClient = client();
+    seedGitReads(queryClient);
     const { result } = renderHook(
-      () => useGitCommitMutation('acme', API_REPO.root),
-      { wrapper: wrapperFor(client()) },
+      () =>
+        useGitCommitMutation({
+          projectSlug: 'acme',
+          workingDir: API_REPO.root,
+        }),
+      { wrapper: wrapperFor(queryClient) },
     );
     let answer: GitCommitResult | undefined;
     await act(async () => {
@@ -347,6 +384,7 @@ describe('git writes', () => {
       path: API_REPO.root,
       message: 'change',
     });
+    expectOnlyFolderRefreshed(queryClient);
   });
 
   test("a refused commit rejects with the server's sentence, naming the files", async () => {
@@ -360,9 +398,12 @@ describe('git writes', () => {
         files: [{ path: '.env', reason: 'environment file' }],
       }),
     );
-    const { result } = renderHook(() => useGitCommitMutation('acme', '/w'), {
-      wrapper: wrapperFor(client()),
-    });
+    const { result } = renderHook(
+      () => useGitCommitMutation({ projectSlug: 'acme', workingDir: '/w' }),
+      {
+        wrapper: wrapperFor(client()),
+      },
+    );
     act(() => result.current.mutate({ message: 'change' }));
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error?.message).toBe(error);
@@ -380,20 +421,27 @@ describe('git writes', () => {
         },
       }),
     );
-    const { result } = renderHook(() => useGitCheckoutMutation('acme', '/w'), {
-      wrapper: wrapperFor(client()),
-    });
+    const { result } = renderHook(
+      () => useGitCheckoutMutation({ projectSlug: 'acme', workingDir: '/w' }),
+      {
+        wrapper: wrapperFor(client()),
+      },
+    );
     act(() => result.current.mutate({ branch: '' }));
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error?.message).toBe('Branch name is required');
   });
 
-  test('push names the Project and returns the remote it pushed to', async () => {
+  test('push names the Project, returns the remote it pushed to, and refreshes that folder', async () => {
     const push: GitPushResult = { output: 'main -> main', remote: 'origin' };
     const fetchMock = stubFetch(() => json(200, { success: true, data: push }));
-    const { result } = renderHook(() => useGitPushMutation('acme', '/w'), {
-      wrapper: wrapperFor(client()),
-    });
+    const queryClient = client();
+    seedGitReads(queryClient);
+    const { result } = renderHook(
+      () =>
+        useGitPushMutation({ projectSlug: 'acme', workingDir: API_REPO.root }),
+      { wrapper: wrapperFor(queryClient) },
+    );
     let answer: GitPushResult | undefined;
     await act(async () => {
       answer = await result.current.mutateAsync({ setUpstream: true });
@@ -402,9 +450,49 @@ describe('git writes', () => {
     expect(urls(fetchMock)).toEqual([`${ORIGIN}/api/coding/git/push`]);
     expect(sentBody(fetchMock)).toEqual({
       projectSlug: 'acme',
-      path: '/w',
+      path: API_REPO.root,
       setUpstream: true,
     });
+    expectOnlyFolderRefreshed(queryClient);
+  });
+
+  test('a push answer from an older Station without `remote` still resolves', async () => {
+    // Stations before SDK 0.8.0 answered with git's output alone.
+    const push: GitPushResult = { output: 'main -> main' };
+    stubFetch(() => json(200, { success: true, data: push }));
+    const { result } = renderHook(
+      () => useGitPushMutation({ projectSlug: 'acme', workingDir: '/w' }),
+      { wrapper: wrapperFor(client()) },
+    );
+    let answer: GitPushResult | undefined;
+    await act(async () => {
+      answer = await result.current.mutateAsync({});
+    });
+    expect(answer).toEqual(push);
+  });
+
+  test('a write without a Project folder is refused before any request', async () => {
+    const fetchMock = stubFetch(() => json(200, { success: true, data: {} }));
+    const { result } = renderHook(
+      () => ({
+        checkout: useGitCheckoutMutation(null),
+        commit: useGitCommitMutation({ projectSlug: '', workingDir: '/w' }),
+        push: useGitPushMutation({ projectSlug: 'acme', workingDir: '' }),
+      }),
+      { wrapper: wrapperFor(client()) },
+    );
+    await act(async () => {
+      await expect(
+        result.current.checkout.mutateAsync({ branch: 'main' }),
+      ).rejects.toThrow('Choose a Project folder');
+      await expect(
+        result.current.commit.mutateAsync({ message: 'x' }),
+      ).rejects.toThrow('Choose a Project folder');
+      await expect(result.current.push.mutateAsync({})).rejects.toThrow(
+        'Choose a Project folder',
+      );
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -420,8 +508,11 @@ describe('git writes', () => {
       queryClient.setQueryData(['git-status', '/w'], { seeded: true });
       const { result } = renderHook(
         () => ({
-          commit: useGitCommitMutation('acme', '/w'),
-          push: useGitPushMutation('acme', '/w'),
+          commit: useGitCommitMutation({
+            projectSlug: 'acme',
+            workingDir: '/w',
+          }),
+          push: useGitPushMutation({ projectSlug: 'acme', workingDir: '/w' }),
         }),
         { wrapper: wrapperFor(queryClient) },
       );

@@ -71,7 +71,9 @@ export function BranchToolbar({
    */
   showCommit?: boolean;
 }) {
-  const reposQuery = useReposQuery(workingDir || null, { projectSlug });
+  const reposQuery = useReposQuery(
+    workingDir ? { projectSlug, workingDir } : null,
+  );
   const reposResult = reposQuery.data;
   const repos = reposResult?.repos ?? [];
 
@@ -100,12 +102,12 @@ export function BranchToolbar({
   }, [repoRoot, onActiveRepoChange]);
 
   const status = useGitStatus(projectSlug, repoRoot);
-  const branchesQuery = useGitBranchesQuery(
-    repoRoot ? { projectSlug, workingDir: repoRoot } : null,
-  );
-  const checkout = useGitCheckoutMutation(projectSlug, repoRoot ?? '');
-  const commit = useGitCommitMutation(projectSlug, repoRoot ?? '');
-  const push = useGitPushMutation(projectSlug, repoRoot ?? '');
+  // #2412: every git read and write names the Project and the active repo.
+  const repoLocation = repoRoot ? { projectSlug, workingDir: repoRoot } : null;
+  const branchesQuery = useGitBranchesQuery(repoLocation);
+  const checkout = useGitCheckoutMutation(repoLocation);
+  const commit = useGitCommitMutation(repoLocation);
+  const push = useGitPushMutation(repoLocation);
 
   const gitStatus = status.data?.isRepo ? status.data : null;
   const currentBranch = gitStatus?.branch ?? activeRepo?.branch ?? null;

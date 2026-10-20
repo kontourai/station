@@ -1252,6 +1252,7 @@ export type {
   GitPushResult,
   GitReadLocation,
   GitStatusResult,
+  ReposLocation,
   ReposResult,
 } from './query-domains/projectData.js';
 export {

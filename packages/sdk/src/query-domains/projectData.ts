@@ -187,7 +187,11 @@ export interface GitCommitResult {
 /** Server answer to a push: git's output and the remote it pushed to. */
 export interface GitPushResult {
   output: string;
-  remote: string;
+  /**
+   * The remote git pushed to. Absent from Stations released before SDK 0.8.0,
+   * which answered with `output` alone.
+   */
+  remote?: string;
 }
 
 /**
@@ -220,20 +224,31 @@ export function useGitBranchesQuery(
 }
 
 /**
- * Discover the git repositories under a workspace via `GET /api/coding/repos`,
- * including a workspace that is not itself a repository but holds several.
+ * Where repository discovery looks: a folder, and the Project it belongs to
+ * when there is one. `projectSlug` is optional, unlike {@link GitReadLocation},
+ * because the New Project form asks about a folder that is not a Project yet.
+ */
+export interface ReposLocation {
+  projectSlug?: string;
+  /** The folder as the client names it; the server expands and confines it. */
+  workingDir: string;
+}
+
+/**
+ * Discover the git repositories under a folder via `GET /api/coding/repos`,
+ * including a folder that is not itself a repository but holds several.
  *
- * #2412: `projectSlug` names the Project the workspace belongs to, and the
- * server refuses a folder outside it. Without one (a folder that is not a
- * Project yet) only the operator in person gets an answer; anyone else gets
- * none. A `success: false` envelope becomes an empty result, so "no repos"
- * is not proof the folder holds none.
+ * #2412: with a `projectSlug` the server refuses a folder outside that
+ * Project. Without one only the operator in person gets an answer; anyone
+ * else gets none. A `success: false` envelope becomes an empty result, so
+ * "no repos" is not proof the folder holds none.
  */
 export function useReposQuery(
-  workspace: string | null | undefined,
-  config: QueryConfig<ReposResult> & { projectSlug?: string } = {},
+  location: ReposLocation | null | undefined,
+  config?: QueryConfig<ReposResult>,
 ) {
-  const { projectSlug, ...queryConfig } = config;
+  const workspace = location?.workingDir || null;
+  const projectSlug = location?.projectSlug || null;
   return useApiQuery<ReposResult>(
     ['coding-repos', projectSlug ?? '', workspace ?? ''],
     async () => {
@@ -254,9 +269,9 @@ export function useReposQuery(
       return result.data;
     },
     {
-      ...queryConfig,
-      enabled: !!workspace && (queryConfig.enabled ?? true),
-      staleTime: queryConfig.staleTime ?? 30_000,
+      ...config,
+      enabled: !!workspace && (config?.enabled ?? true),
+      staleTime: config?.staleTime ?? 30_000,
     },
   );
 }
@@ -267,18 +282,31 @@ interface GitEnvelope<T> {
   error?: string;
 }
 
-/** POST a git write; a refusal rejects with the server's own sentence. */
+/**
+ * POST a git write to a Project's folder; a refusal rejects with the server's
+ * own message. A location missing its Project or folder is refused here,
+ * before any request: there is nothing for the server to act on.
+ */
 async function postGitWrite<T>(
   route: 'checkout' | 'commit' | 'push',
+  location: GitReadLocation | null | undefined,
   body: Record<string, unknown>,
 ): Promise<T> {
+  if (!isGitReadLocation(location)) {
+    throw new Error('Choose a Project folder before running git');
+  }
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/coding/git/${route}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      // The location is the hook's, never a variable's to override.
+      body: JSON.stringify({
+        ...body,
+        projectSlug: location.projectSlug,
+        path: location.workingDir,
+      }),
     },
   );
   const result = (await response.json()) as GitEnvelope<T>;
@@ -294,29 +322,24 @@ async function postGitWrite<T>(
  * Refresh the git reads of one folder (status, branches, log) after a write,
  * so every surface reading that folder shows the new repository state.
  */
-function useRefreshGitReads(workingDirectory: string) {
+function useRefreshGitReads(location: GitReadLocation | null | undefined) {
   const queryClient = useQueryClient();
+  const workingDir = location?.workingDir ?? '';
   return () => {
     for (const read of ['git-status', 'git-branches', 'git-log']) {
-      queryClient.invalidateQueries({ queryKey: [read, workingDirectory] });
+      queryClient.invalidateQueries({ queryKey: [read, workingDir] });
     }
   };
 }
 
 /** Check out (or, with `create`, create) a branch in a Project's folder (#2412). */
 export function useGitCheckoutMutation(
-  projectSlug: string,
-  workingDirectory: string,
+  location: GitReadLocation | null | undefined,
 ) {
-  const refresh = useRefreshGitReads(workingDirectory);
+  const refresh = useRefreshGitReads(location);
   return useMutation({
     mutationFn: ({ branch, create }: { branch: string; create?: boolean }) =>
-      postGitWrite<GitCheckoutResult>('checkout', {
-        projectSlug,
-        path: workingDirectory,
-        branch,
-        create,
-      }),
+      postGitWrite<GitCheckoutResult>('checkout', location, { branch, create }),
     onSuccess: refresh,
   });
 }
@@ -326,43 +349,32 @@ export function useGitCheckoutMutation(
  *
  * #2363: commit and push are the Station operator's act; the server refuses
  * any other caller with 403. They run in the Project's own folder, which the
- * server resolves from `projectSlug`; `workingDirectory` only names which
+ * server resolves from `projectSlug`; `workingDir` only names which
  * repository inside it (a multi-repo workspace). A refusal (a secret-looking
  * file, repository config Station will not run git with, a remote it will
  * not push to) rejects the mutation with the server's message, which names
  * the files or keys.
  */
 export function useGitCommitMutation(
-  projectSlug: string,
-  workingDirectory: string,
+  location: GitReadLocation | null | undefined,
 ) {
-  const refresh = useRefreshGitReads(workingDirectory);
+  const refresh = useRefreshGitReads(location);
   return useMutation({
     mutationFn: ({ message }: { message: string }) =>
-      postGitWrite<GitCommitResult>('commit', {
-        projectSlug,
-        path: workingDirectory,
-        message,
-      }),
+      postGitWrite<GitCommitResult>('commit', location, { message }),
     onSuccess: refresh,
   });
 }
 
 /** Push the current branch to a remote. See {@link useGitCommitMutation}. */
 export function useGitPushMutation(
-  projectSlug: string,
-  workingDirectory: string,
+  location: GitReadLocation | null | undefined,
 ) {
-  const refresh = useRefreshGitReads(workingDirectory);
+  const refresh = useRefreshGitReads(location);
   return useMutation({
     mutationFn: (
       args: { remote?: string; branch?: string; setUpstream?: boolean } = {},
-    ) =>
-      postGitWrite<GitPushResult>('push', {
-        projectSlug,
-        path: workingDirectory,
-        ...args,
-      }),
+    ) => postGitWrite<GitPushResult>('push', location, args),
     onSuccess: refresh,
   });
 }
