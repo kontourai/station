@@ -13,6 +13,8 @@
  * the animation runs and hands back to follow in `onFinish`.
  */
 
+import { prefersReducedMotion } from '../../lib/reduced-motion';
+
 export interface ScrollToBottomAnimation {
   /** Stops the animation where it is; `onFinish` reports `false`. */
   cancel(): void;
@@ -49,7 +51,7 @@ const SCROLL_TO_BOTTOM_JUMP_VIEWPORTS = 1.5;
 export function prefersInstantScroll(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
     return true;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return prefersReducedMotion();
 }
 
 function easeOutCubic(progress: number) {

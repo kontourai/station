@@ -15,9 +15,19 @@ evidence:
 
 # Browser Agent actions and cross-engine binding
 
-This record holds the current authority constraints and incremental action
-implementation. The cross-engine channel design remains proposed and
-NOT_IMPLEMENTED. It builds on frozen
+This record holds two things with different status:
+
+- **Current and shipped:** the authority constraints for Browser Agent actions
+  below, and the leased hover, pointer, select and color-scheme actions
+  (#3779).
+- **Decided, not implemented:** the cross-engine bound channel. Its decision
+  is that Codex URL-token and ACP header-token passthrough stay
+  `caller-not-bound` until a provider can supply independent proof, and the
+  four-step design below is the required shape. No engine supplies that proof
+  today, so no external-engine Session receives browser authority. #122 owns
+  the implementation; the remaining slices are listed at the end.
+
+It builds on frozen
 [ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md),
 whose historical text remains unchanged. The [Browser guide](../guides/browser-workspace.md)
 owns the current inventory.

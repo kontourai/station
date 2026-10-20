@@ -10,7 +10,8 @@
 > not prove that every setting's consumer, save failure, or migration was
 > rechecked in this review.
 
-Status: incremental implementation (2026-07-30). Research base: comparative review of four reference
+Status when written: incremental implementation (2026-07-30); the numbered
+slices below record what each one shipped. Research base: comparative review of four reference
 agent-tooling products' settings systems, plus a full audit of Station's current
 settings surface at `73381430`. The separate attributed research record is not
 required to understand or implement this design. Companion backlog: #572 (navigation grouping),
@@ -209,7 +210,7 @@ log level, update channel/check, build provenance, host runtime status, diagnost
 bundle, distribution profile, registry URL, terminal shell, MCP UI host, approval
 guardian, `defaultMaxTurns` / `defaultMaxOutputTokens`, trust-surface flag,
 feature flags (env-derived ones shown **read-only with provenance**, e.g.
-`managedChatOrchestration` → "set by operator: STATION_FEATURES").
+`mcpUiFrameOrigin` → "set by operator: MCP_UI_FRAME_PORT").
 Storage: `<STATION_HOME>/config/app.json`, typed contract at the route
 boundary. One instance = one settings document; every client sees the same values.
 
@@ -427,7 +428,7 @@ Registry-derived surfaces and checks intended to detect drift:
 - Export/Import coverage (export what the registry declares, honestly, both scopes),
 - settings search terms (replacing the drifted hardcoded keyword map),
 - registry-completeness tests: every `AppConfig` field is either registered or
-  explicitly listed as `internal` (e.g. `managedChatOrchestration`), every device
+  explicitly listed as `internal` (e.g. `mcpUiFrameOrigin`), every device
   setting is either registered or explicitly grandfathered — CI fails on drift.
 
 Write path: **all writers go through the live route** — UI, and `station config

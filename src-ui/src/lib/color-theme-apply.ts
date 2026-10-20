@@ -242,7 +242,8 @@ export function applyColorTheme(
 
 /**
  * The selected sheet is still loading (the startup script's request): if it
- * fails, apply again, which un-claims the theme and asks once more.
+ * fails, un-claim the theme and apply the latest settings, which asks once
+ * more for the same family.
  */
 function retryIfItFails(root: HTMLElement, link: HTMLLinkElement): void {
   if (link.dataset.watched) return;
@@ -251,9 +252,20 @@ function retryIfItFails(root: HTMLElement, link: HTMLLinkElement): void {
     'error',
     () => {
       link.dataset.state = 'failed';
+      if (activeSheet(root.ownerDocument) !== link) return;
+      // The page now shows Station's colours, so un-claim at once, whatever
+      // else is pending: another family requested meanwhile must not leave
+      // this one named on the root (or its theme-color stamped).
       const settings = latestSettings.get(root);
-      if (settings && activeSheet(root.ownerDocument) === link)
-        applyColorTheme(root, settings);
+      link.remove();
+      stamp(
+        root,
+        { id: 'station' },
+        settings?.theme === 'light' ? 'light' : 'dark',
+      );
+      // Then apply the latest settings: the same family gets its single
+      // automatic retry; a different, pending family settles on its own.
+      if (settings) applyColorTheme(root, settings);
     },
     { once: true },
   );

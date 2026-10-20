@@ -373,6 +373,8 @@ export interface ChatSession {
   lastAppliedApprovalMode?: ApprovalMode;
   /** See ChatUIState.approvalEscalationRejected (active-chats-state.ts, #2436). */
   approvalEscalationRejected?: boolean;
+  /** #3290: the engine's latest turn could not take the recorded posture. */
+  approvalTakeoverFailed?: boolean;
   /** See ChatUIState.queuedApprovalMode (active-chats-state.ts, #2436). */
   queuedApprovalMode?: ApprovalMode;
   queuedApprovalDefaultNamespace?: string;

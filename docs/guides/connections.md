@@ -809,9 +809,17 @@ connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
 push with your SSH agent. In a linked worktree it can commit to its own
 branch, but `git stash`, `fetch` and `pull` are refused: they write shared
 refs (`refs/stash`, remote-tracking refs, `packed-refs`) that it may not
-change. On Linux and Windows such a session is
+change. It also cannot create or change the folder's `.claude` or `.codex`
+directory, which your own unconfined sessions there would load. On Linux and
+Windows such a session is
 refused, because no confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
+
+A Codex session that does not run as `host` (started by you in person, or
+from a device you granted full access) ignores every
+`sandbox_workspace_write.writable_roots` setting, whether it comes from the
+folder's `.codex/config.toml` or your own Codex configuration, so its sandbox
+lets it write only inside its folder (and its temp directories).
 
 Two boundaries to know: credential-profile login/enrolment children do not
 receive the connection's `env`; they use the selected profile's config home

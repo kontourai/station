@@ -1,5 +1,5 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 import { bindingDigest, bindingFile } from './review-binding.mjs';
 import { readGitObjects } from './review-git.mjs';
 import {
@@ -9,12 +9,10 @@ import {
 } from './review-ledger-paths.mjs';
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
-    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
-    maxBuffer: 64 * 1024 * 1024,
   }).trim();
 }
 

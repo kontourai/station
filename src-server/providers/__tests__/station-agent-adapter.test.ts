@@ -2215,9 +2215,9 @@ describe('StationAgentAdapter', () => {
     });
   });
 
-  // Review round 1 (Codex MED-1/MED-2): the rejection-body read is bounded
+  // #1071: the rejection-body read is bounded
   // and abort-aware, and the republished reason is a normalized single line.
-  describe('readChatRejectionReason bounds (#1071 review round 1)', () => {
+  describe('readChatRejectionReason bounds (#1071)', () => {
     test('an oversized body falls back to the generic message', async () => {
       const huge = JSON.stringify({ error: 'x'.repeat(64 * 1024) });
       await expect(
@@ -2460,8 +2460,8 @@ describe('StationAgentAdapter', () => {
     ]);
   });
 
-  // archive#1207 review round 1, HIGH 2 — the actual production trigger
-  // under `managed-chat-orchestration`: before this fix, a silent stall on
+  // archive#1207 — the production trigger is managed chat, which runs
+  // through orchestration: before this fix, a silent stall on
   // the inner /chat bridge stream (server crash, dropped connection, no
   // error event) meant `reader.read()` inside `consumeChatStream` never
   // resolved, no terminal event was ever published, and the client's own
@@ -2532,7 +2532,7 @@ describe('StationAgentAdapter', () => {
       );
     });
 
-    // archive#1207 review round 2, item 2: the sibling case to the stall
+    // archive#1207: the sibling case to the stall
     // test above — a HEALTHY long-running tool call (delegateTask sub-agent
     // or a slow MCP/shell tool) that legitimately produces zero `data:`
     // frames for well over the stall timeout, with only server-emitted

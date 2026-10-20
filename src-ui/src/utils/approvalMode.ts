@@ -1,4 +1,8 @@
 import {
+  type AcpApprovalControl,
+  acpStationApprovalEngine,
+} from '@kontourai/station-contracts/engine-capability-matrix';
+import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   type ApprovalFullAccessRefusalDetails,
   parseApprovalFullAccessRefusalDetails,
@@ -15,16 +19,51 @@ export type { ApprovalMode } from '@kontourai/station-contracts/provider';
  * Muse's is its `muse serve` approval mode (#2452); a Muse session on the
  * `muse exec` fallback reports what actually applied, so the chip shows the
  * request as not yet applied rather than claiming it.
+ *
+ * `opencode` is an ACP engine whose approval rules Station sets at launch
+ * (#3290). An ACP connection's own id is NOT an engine identity: callers
+ * derive this one from the connection's command (`acpApprovalFor`), so
+ * a connection merely named `opencode` gets no knob.
  */
-const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set(['claude', 'codex', 'muse']);
+const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set([
+  'claude',
+  'codex',
+  'muse',
+  'opencode',
+]);
 
 /**
  * Whether this engine connection's adapter reads `approvalMode` at all.
- * Everything else (ACP, Ollama, Bedrock, the Station agent runtime) has no
- * native knob, so the composer chip renders read-only for them.
+ * Everything else (an ACP engine that decides for itself, Ollama, Bedrock,
+ * the Station agent runtime) has no native knob, so the composer chip
+ * renders read-only for them.
  */
 export function approvalModeKnobSupported(engineId?: string | null): boolean {
   return !!engineId && APPROVAL_MODE_KNOB_ENGINE_IDS.has(engineId);
+}
+
+/**
+ * #3290: an ACP session's approval control, from its connection. `engineId`
+ * is the engine identity the approval surfaces read (`opencode` when Station
+ * sets the engine's approval rules), derived from the connection's command
+ * and never its id; `null` when the engine decides for itself.
+ */
+export function acpApprovalFor(
+  connection?: { command?: string | null; name?: string | null } | null,
+):
+  | {
+      control: AcpApprovalControl;
+      engineId: string | null;
+      engineName?: string;
+    }
+  | undefined {
+  if (!connection) return undefined;
+  const engineId = acpStationApprovalEngine(connection.command) ?? null;
+  return {
+    control: engineId ? 'station' : 'engine',
+    engineId,
+    ...(connection.name ? { engineName: connection.name } : {}),
+  };
 }
 
 /**
@@ -68,7 +107,7 @@ export const APPROVAL_MODE_OPTIONS: Array<{
     value: 'never',
     label: 'Never ask (full access)',
     description:
-      'Runs fully autonomously with no sandbox — the agent can do anything you can.',
+      'Turns off approval prompts where the engine allows it. A start without a full-access grant still runs inside Station’s workspace confinement.',
   },
 ];
 
@@ -85,6 +124,21 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     codex:
       "Agent requests approval at its own discretion; Codex's configured reviewer may approve sandbox escalations automatically. File writes stay sandboxed to the workspace.",
     claude: 'File edits auto-approved; other actions still ask.',
+    // #3290: Station answers OpenCode's requests; only edits are allowed.
+    opencode:
+      'File edits run on their own; shell commands, web access and MCP tools still ask.',
+  },
+  never: {
+    // #3290: nothing asks; the built-in subagents may run (their rules cannot
+    // ask either); plan mode's own edit block stays.
+    opencode:
+      'Every action runs without asking, and subagents may run. Plan mode still blocks edits.',
+  },
+  'connection-default': {
+    // #3290 (owner decision): Station sends OpenCode no mode until it takes
+    // over, as with Claude and Codex (`resolveDefaultPick`).
+    opencode:
+      "Uses OpenCode's own permission settings until you pick a mode here. After that, Default means Ask first.",
   },
   ask: {
     codex:
@@ -99,6 +153,10 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // narrowing was in place — do not restore that wording without it.
     claude:
       "Claude asks before tool calls its own rules don't already allow — your Claude settings and a trusted workspace's both count.",
+    // #3290: Station launches OpenCode asking before every action that is
+    // not a read, whatever the user's own OpenCode rules allow.
+    opencode:
+      'Asks before shell commands, file edits, web access, MCP tools and files outside the project. Reads run on their own.',
   },
 };
 
@@ -296,8 +354,10 @@ export interface SessionApprovalOverride {
    * - `refused`: a recorded full access the engine refused because the
    *   session was not spawned with it (Claude); it needs a session restart.
    * - `confirmed`: the engine's latest report shows it applied.
+   * - `not-applied`: the engine's latest turn could not be moved onto the
+   *   rules this mode needs (#3290, OpenCode); it kept what it ran before.
    */
-  state: 'requested' | 'refused' | 'confirmed';
+  state: 'requested' | 'refused' | 'confirmed' | 'not-applied';
 }
 
 /** The approval-posture fields of a chat (#2436). */
@@ -312,6 +372,8 @@ export interface ApprovalPostureState {
   lastAppliedApprovalMode?: ApprovalMode;
   /** The engine refused the recorded full access on its latest turn. */
   approvalEscalationRejected?: boolean;
+  /** #3290: the engine's latest turn could not take the recorded posture. */
+  approvalTakeoverFailed?: boolean;
 }
 
 /**
@@ -335,8 +397,9 @@ export function sessionApprovalOverride(
     return { mode: posture, state: 'confirmed' };
   return {
     mode: posture,
-    state:
-      posture === 'never' && chat.approvalEscalationRejected
+    state: chat.approvalTakeoverFailed
+      ? 'not-applied'
+      : posture === 'never' && chat.approvalEscalationRejected
         ? 'refused'
         : 'requested',
   };
@@ -373,6 +436,12 @@ export function foldApprovalPosture(
   return {
     approvalPosture: approvalMode,
     approvalPostureSequence: sequence,
+    // #3290: a newly recorded decision has not failed yet; the engine's next
+    // turn or warning says whether it took it.
+    ...(chat?.approvalPosture !== approvalMode ||
+    sequence !== chat?.approvalPostureSequence
+      ? { approvalTakeoverFailed: undefined }
+      : {}),
   };
 }
 

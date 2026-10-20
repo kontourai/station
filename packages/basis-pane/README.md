@@ -12,7 +12,9 @@ override `private: true` or prove a public release. `npm run build --prefix
 packages/basis-pane` compiles locally, while consumers continue to use the
 source export map through Station's bundler.
 
-The root exports `StationBasisPane`, `AnswerBasisAffordance` and the built-in Pane
+The root exports `StationBasisPane`, `AnswerBasisAffordance` (an answer's Basis
+entry: plain "Basis" unless Surface's standing for that answer is notable, then
+Surface's own label) and the built-in Pane
 descriptor/instance helpers. Opt-in subpaths expose collection views, Session
 inventory, and the portable MCP App resources. The
 [connected host](../../src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx)

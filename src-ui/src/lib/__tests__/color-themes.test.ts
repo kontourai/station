@@ -347,6 +347,51 @@ describe('family stylesheets load on demand', () => {
     expect(failed()).toBeNull();
   });
 
+  test.each([
+    ['then loads', 'load'],
+    ['then fails too', 'error'],
+  ] as const)(
+    'a failing startup sheet is un-claimed even while another family is pending, which %s',
+    (_label, outcome) => {
+      const themeColor = () =>
+        document.head
+          .querySelector('meta[name="theme-color"]')
+          ?.getAttribute('content') ?? null;
+      // What startup-theme.js leaves behind for nord, still loading.
+      const nord = { ...base, colorTheme: 'nord' as const };
+      applySettled(root, nord);
+      const href = sheets()[0]!.href!;
+      document.head.innerHTML = '';
+      const startup = document.createElement('link');
+      startup.rel = 'stylesheet';
+      startup.id = COLOR_THEME_STYLESHEET_ID;
+      startup.setAttribute('href', href);
+      document.head.append(startup);
+      applyColorTheme(root, nord);
+      expect(root.getAttribute('data-color-theme')).toBe('nord');
+      // The person picks gruvbox while nord loads; then nord fails.
+      applyColorTheme(root, { ...base, colorTheme: 'gruvbox' });
+      startup.dispatchEvent(new Event('error'));
+      expect(root.hasAttribute('data-color-theme')).toBe(false);
+      expect(themeColor()).toBeNull();
+      applyColorTheme(root, {
+        ...base,
+        theme: 'light',
+        colorTheme: 'gruvbox',
+      });
+      expect(themeColor()).toBeNull();
+      settleSheets(outcome);
+      if (outcome === 'load') {
+        expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
+        expect(root.hasAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe(false);
+      } else {
+        expect(root.hasAttribute('data-color-theme')).toBe(false);
+        expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('gruvbox');
+        expect(themeColor()).toBeNull();
+      }
+    },
+  );
+
   test('a mode change while another family is loading re-stamps the theme-color in force', () => {
     const themeColor = () =>
       document.head

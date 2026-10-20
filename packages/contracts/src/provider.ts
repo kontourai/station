@@ -571,9 +571,12 @@ export function modelLaunchTelemetryAttributes(
  *   the effective mode falls through to the engine connection's
  *   configured default, and then to the adapter's own built-in default.
  *
- * Adapters that expose no native approval knob (ACP, Ollama, Bedrock, the
+ * Adapters that expose no native approval knob (Ollama, Bedrock, the
  * Station agent runtime) simply never read this field — it has no effect
  * for them, and UI surfaces should render read-only for those providers.
+ * An ACP connection has the knob only when Station sets the engine's
+ * approval rules at launch (`acpApprovalControl` in
+ * `engine-capability-matrix.ts`, #3290).
  */
 export type ApprovalMode = 'ask' | 'auto' | 'never' | 'connection-default';
 
@@ -630,8 +633,13 @@ export const PROVIDER_MUSE = 'muse';
  *   session catalog — `setConfigOption` when a `category: "mode"` option
  *   exists, otherwise `session/set_mode`. Display-only
  *   `effectiveModelMetadata` echoes still exist and do not add keys.
- *   ACP's per-tool `session/request_permission` handshake is unrelated
- *   to Station `approvalMode`, which remains unsupported here.
+ *   #3290: `approvalMode` is not listed because it depends on the
+ *   connection, not the provider. On a connection whose approval rules
+ *   Station sets at launch (`acpApprovalControl` is `station`, OpenCode
+ *   today) the adapter reads it to decide how Station answers the engine's
+ *   `session/request_permission` calls, and the server admits it there
+ *   (`approvalKnobSupported`). Any other ACP engine decides which calls ask
+ *   itself, so the option stays unsupported and the adapter refuses it too.
  * - `ollama`/`bedrock`: read only `modelOptions.systemPrompt` — system-prompt
  *   passthrough is explicitly excluded from archive#978's scope, so it is
  *   NOT added to either provider's support list; a caller-supplied
@@ -748,6 +756,17 @@ export function unsupportedModelOptionError(
  */
 export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
   'approval-escalation-requires-restart';
+
+/**
+ * #3290: `RuntimeWarningEvent.code` published when Station could not move an
+ * ACP engine (OpenCode) onto the launch rules a picked approval mode needs.
+ * The session kept its engine process and its posture (`details.
+ * appliedApprovalMode`, absent while the engine's own settings decide);
+ * `details.requestedApprovalMode` names the mode that did not apply. The
+ * same turn's `turn.started` metadata carries `approvalTakeoverFailed:
+ * true`, so the composer chip does not show the pick as applied.
+ */
+export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
 
 /** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
@@ -904,6 +923,17 @@ export const CLIENT_TURN_INPUT_UNSUPPORTED_CODE =
  * retry — the user has to remove the attachments or pick another engine.
  */
 export const ATTACHMENT_INPUT_UNSUPPORTED_CODE = 'attachment_input_unsupported';
+
+/**
+ * #3290: a start or send refused because Station cannot apply its approval
+ * mode to the ACP engine: the engine's resolved rules (the user's or an
+ * organisation's configuration, or the binary itself) override Station's, or
+ * the chat runs an agent Station does not govern. Deterministic, NOT
+ * retryable: the same send is refused until that configuration or the
+ * chat's mode changes, so clients name that next step instead of a retry.
+ */
+export const ACP_APPROVAL_GOVERNANCE_REFUSED_CODE =
+  'acp_approval_governance_refused';
 
 /**
  * Whether Station owns an orchestration session or only follows it.
