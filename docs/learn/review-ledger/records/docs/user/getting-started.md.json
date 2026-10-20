@@ -230,7 +230,15 @@
 
     "src-server/routes/orchestration/tasks.ts",
 
-    "src-ui/src/contexts/active-chats-state.ts"
+    "src-ui/src/contexts/active-chats-state.ts",
+
+    "src-ui/src/views/SessionsView.tsx",
+
+    "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx",
+
+    "src-ui/src/views/activity/openActivityReview.ts",
+
+    "tests/activity-related-review.spec.ts"
   ],
 
   "checks": [

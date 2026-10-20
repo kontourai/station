@@ -26,6 +26,7 @@ import { createContext, type ReactNode, useContext } from 'react';
  */
 export interface ActivityWorkspacePaneBinding {
   apiBase: string;
+  quickReview?: boolean;
   /** Deep-linked session id of whichever placement supplied it, if any. */
   sessionId?: string;
   /** Routed focus target, forwarded to the sessions surface untouched. */

@@ -25,7 +25,6 @@ import { usePaneRelations } from '../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
-import { WORKSPACE_CHAT_OPENER } from '../regions/pane-opener';
 import { reportRegionClearance } from '../regions/region-clearance';
 import {
   type DockRegionId,
@@ -341,6 +340,11 @@ const loadRegionPluginPane = () =>
     default: module.RegionPluginPane,
   }));
 
+const loadRegionActivityReviewPane = () =>
+  import('./RegionActivityReviewPane').then((module) => ({
+    default: module.RegionActivityReviewPane,
+  }));
+
 /**
  * What a region shows for a selected pane its dock cannot supply (#2047 D6:
  * a coding pane while the dock has no project). The tab and the record keep
@@ -532,10 +536,7 @@ export function RegionPaneHost({
     ? relations.relationOf(model.phoneLayer.surfaceId)
     : undefined;
   const layerBackLabel =
-    layerRelation &&
-    layerRelation.stationId === relations.stationId &&
-    (layerRelation.opener.occurrenceId === 'chat' ||
-      layerRelation.opener.occurrenceId === WORKSPACE_CHAT_OPENER)
+    layerRelation && layerRelation.stationId === relations.stationId
       ? layerRelation.opener.label
       : 'Chat';
   const region = regionId && model ? model.regions[regionId] : undefined;
@@ -901,7 +902,11 @@ export function RegionPaneHost({
                         load={
                           String(instance.instanceId).startsWith('plugin-pane:')
                             ? loadRegionPluginPane
-                            : loadRegionBuiltinPane
+                            : String(instance.instanceId).startsWith(
+                                  'activity-review:',
+                                )
+                              ? loadRegionActivityReviewPane
+                              : loadRegionBuiltinPane
                         }
                         componentProps={{ instance }}
                         pending={

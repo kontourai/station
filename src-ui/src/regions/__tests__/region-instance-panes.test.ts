@@ -61,6 +61,16 @@ const FAMILIES: readonly {
   refused: readonly string[];
 }[] = [
   {
+    prefix: 'activity-review:',
+    descriptorId: 'pane:builtin:activity-review',
+    admitted: [`activity-review:${NONCE}`],
+    refused: [
+      'activity-review:',
+      'activity-review:abc',
+      `activity-review:${'z'.repeat(32)}`,
+    ],
+  },
+  {
     prefix: 'pr:',
     descriptorId: 'pane:builtin:workspace-pull-request',
     admitted: [PR_ID, `${PR_ID.slice(0, -4)}1`],

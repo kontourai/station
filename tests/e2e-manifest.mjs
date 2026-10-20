@@ -908,6 +908,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/activity-related-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Activity',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Exercises Activity quick review through its real caller, Related shell host and SessionDetail: filtered sibling order, source selection/search/scroll preservation, durable Open and kept-target focus, changed results and real phone Back/Up.',
+    exceptions: [],
+  },
+  {
     path: 'tests/device-pane.spec.ts',
     bucket: 'product',
     surface: 'Device',

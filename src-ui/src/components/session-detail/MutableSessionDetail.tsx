@@ -100,8 +100,12 @@ export function MutableSessionDetail({
   visualViewport,
   evidenceReveal,
   historyNotices,
+  draftScope,
+  onOpenConversation,
 }: {
   apiBase: string;
+  draftScope?: string;
+  onOpenConversation?: () => void;
   session: OrchestrationSessionSummary;
   onTaskChanged: () => void;
   events: OrchestrationEvent[];
@@ -148,6 +152,7 @@ export function MutableSessionDetail({
     workflowMoreCount,
   } = useMutableSessionDetailState({
     apiBase,
+    draftScope,
     session,
     onTaskChanged,
     events,
@@ -197,7 +202,7 @@ export function MutableSessionDetail({
   const isPeerRecord = isPeerDelegationRecord(session);
   const chatOpenTarget = isPeerRecord ? null : sessionChatOpenTarget(session);
   const openInChat = chatOpenTarget
-    ? () => openChatsStore.focus(chatOpenTarget)
+    ? (onOpenConversation ?? (() => openChatsStore.focus(chatOpenTarget)))
     : undefined;
 
   // The evidence region lives inside the collapsed Details disclosure. A

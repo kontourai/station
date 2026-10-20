@@ -175,6 +175,32 @@ test('the phone layer’s way back names the conversation a related preview came
   expect(model?.regions.bottom.occupant).toBe('chat');
 });
 
+test('a delayed phone close leaves a replacement child alone', async () => {
+  await mount();
+  await openFile('a.ts');
+  const original = layerPane();
+  let proceed: (() => void) | undefined;
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('delayed close'),
+    (accept) => {
+      proceed = accept;
+    },
+    original,
+  );
+  await waitFor(() =>
+    expect(relations?.relationOf(original as string)?.kept).toBe(true),
+  );
+  act(() => model?.closePhoneLayer());
+  unregister();
+  await openFile('b.ts');
+  const replacement = layerPane();
+  expect(replacement).not.toBe(original);
+  await act(async () => {
+    proceed?.();
+  });
+  expect(layerPane()).toBe(replacement);
+});
+
 test('on a phone, Keep survives replacing the layer’s pane, Back, and an exact reopen', async () => {
   await mount();
   await openFile('a.ts');

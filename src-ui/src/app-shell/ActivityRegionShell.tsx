@@ -95,10 +95,10 @@ function useActivitySurfaceIntent(): ActivityWorkspacePaneBinding {
 }
 
 /** The Activity pane with its intent binding: what both placements render. */
-function ActivityPane() {
+function ActivityPane({ quickReview = false }: { quickReview?: boolean }) {
   const binding = useActivitySurfaceIntent();
   return (
-    <ActivityWorkspacePaneBindingProvider binding={binding}>
+    <ActivityWorkspacePaneBindingProvider binding={{ ...binding, quickReview }}>
       <LazyBoundary
         load={loadActivityWorkspacePane}
         componentProps={{
@@ -121,7 +121,7 @@ function ActivityPane() {
 export function ActivityRegionShell(_props: { regionId: 'main' }) {
   return (
     <PageFrame spec={ACTIVITY_MAIN_FRAME} routeIdentity="region:main:activity">
-      <ActivityPane />
+      <ActivityPane quickReview />
     </PageFrame>
   );
 }

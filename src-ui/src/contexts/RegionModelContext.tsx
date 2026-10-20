@@ -373,7 +373,10 @@ export interface RegionModelValue {
    * guard once, through this, rather than changing anything first. With no
    * layer nothing is asked and `then` runs at once.
    */
-  closePhoneLayer(then?: () => void): void;
+  closePhoneLayer(
+    then?: () => void,
+    canClose?: () => boolean,
+  ): Promise<boolean>;
 }
 
 /**
@@ -1467,23 +1470,41 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   }, [registerLayerEntry, restorePhoneLayer]);
   leavePhoneLayerByBackRef.current = leavePhoneLayerByBack;
   const closePhoneLayer = useCallback(
-    (then?: () => void) => {
-      // No layer, nothing to leave — and no guard to ask. Chat-focus intents
-      // call this on every device (`useDismissPhoneLayer`), so asking with no
-      // layer would put a "Discard?" in front of an unrelated dirty form
-      // whose answer changes nothing.
-      if (!phoneLayerRef.current) {
-        then?.();
-        return;
-      }
-      navigationStore.runNavigationGuards(
-        () => {
-          restorePhoneLayer();
-          then?.();
-        },
-        undefined,
-        { owner: phoneLayerRef.current.surfaceId },
-      );
+    (then?: () => void, canClose: () => boolean = () => true) => {
+      return new Promise<boolean>((resolve) => {
+        // No layer, nothing to leave — and no guard to ask. Chat-focus intents
+        // call this on every device (`useDismissPhoneLayer`), so asking with no
+        // layer would put a "Discard?" in front of an unrelated dirty form
+        // whose answer changes nothing.
+        if (!phoneLayerRef.current) {
+          const allowed = canClose();
+          if (allowed) then?.();
+          resolve(allowed);
+          return;
+        }
+        const layer = phoneLayerRef.current;
+        let superseded = false;
+        const stop = navigationStore.subscribeNavigationGuardOwners((owner) => {
+          if (owner === layer.surfaceId) superseded = true;
+        });
+        navigationStore.runNavigationGuards(
+          () => {
+            stop();
+            if (phoneLayerRef.current !== layer || superseded || !canClose()) {
+              resolve(false);
+              return;
+            }
+            restorePhoneLayer();
+            then?.();
+            resolve(true);
+          },
+          () => {
+            stop();
+            resolve(false);
+          },
+          { owner: layer.surfaceId },
+        );
+      });
     },
     [restorePhoneLayer],
   );

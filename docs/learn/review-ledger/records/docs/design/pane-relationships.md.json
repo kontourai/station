@@ -5,9 +5,9 @@
 
   "state": "partial",
 
-  "summary": "Accepted pane workspace contract, reviewed against the implemented part: the bounded relations side record and its locked, fresh-read transactions and bound (pane-relations.ts, PaneRelationsContext.tsx), the per-occurrence Station fence and reader gate (pane-fence.ts, RelatedPaneStrip.tsx), related file-preview opens and focus with their refusals (openRelatedFilePreview.ts), Up and Keep (RelatedPaneStrip.tsx), the phone layer (RegionModelContext.tsx), Left as advanced and the Files default (region-model.ts) and the footer account control (SidebarAccountControl.tsx).",
+  "summary": "Accepted pane workspace contract, reviewed against implemented file previews, the optional direct/frame plugin capability and Main Activity quick review: bounded locked relations, immutable Station fences, captured openers and exact targets, existing region and SessionDetail owners, source-preserving visible-row navigation, draft protection, Keep, guarded close and phone history.",
 
-  "limits": "Partial by design: Coding presentation, the phone inbox and conversation root, quick review, cold child links and the SDK capability are target behaviour with no implementation yet, and their sections were read for consistency only. Source review, not runtime or native acceptance; executed evidence is in the pull request.",
+  "limits": "Partial implementation and qualification. Coding presentation, the phone inbox/conversation root, selection-properties sheets, cold child links and closed built-in SDK targets remain planned. Source review and focused/browser evidence do not qualify native shells, hosted checks, publication or landing. A plugin opener label does not prove its Up route; the native finding is tracked for a standalone repair.",
 
   "sources": [
     "src-ui/src/regions/pane-relations.ts",
@@ -26,7 +26,47 @@
 
     "src-ui/src/workspace-panes/RelatedPaneStrip.tsx",
 
-    "src-ui/src/components/project-sidebar/SidebarAccountControl.tsx"
+    "src-ui/src/components/project-sidebar/SidebarAccountControl.tsx",
+
+    "src-ui/src/views/SessionsView.tsx",
+
+    "src-ui/src/views/activity/openActivityReview.ts",
+
+    "src-ui/src/contexts/ActivityReviewContext.tsx",
+
+    "src-ui/src/workspace-panes/activityReviewPane.ts",
+
+    "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx",
+
+    "src-ui/src/views/activity/__tests__/ActivityReview.test.tsx",
+
+    "tests/activity-related-review.spec.ts",
+
+    "src-ui/src/components/SplitPaneLayout.tsx",
+
+    "src-ui/src/components/session-detail/SessionDetail.tsx",
+
+    "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",
+
+    "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
+
+    "src-ui/src/hooks/useMutableSessionDetailState.ts",
+
+    "src-ui/src/app-shell/ActivityRegionShell.tsx",
+
+    "src-ui/src/workspace-panes/RegionPaneHost.tsx",
+
+    "src-ui/src/components/chat-dock/ImportedConversationPane.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/contexts/open-chats-store.ts",
+
+    "src-ui/src/lib/attached-continuation-handoff.ts",
+
+    "src-ui/src/__tests__/ActivityReview.lifecycle.test.tsx",
+
+    "src-ui/src/__tests__/ActivityReview.chatExit.test.tsx"
   ],
 
   "checks": []

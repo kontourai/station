@@ -48,7 +48,25 @@ not yet accepted.
   pane, including a per-occurrence Station fence and cross-window locked
   writes. Other related kinds wait for their slices.
 - [ ] Quick review preserves source selection/search/scroll; Open promotes.
-  Not started.
+  Follow-up #3986 repairs the true recipient continuation lifecycle, desktop
+  late-guard close and committed-model Chat/Up exits. The old review adoption
+  callback was dormant; baseline failures instead exercise the real Chat
+  SessionDetail recipient. Real browser journeys use canonical Chat at desktop
+  and phone widths and transfer the exact reply to its confirmation. Local
+  mutation/focused evidence is separate from independent/native/hosted acceptance.
+  Implemented in #3981, stacked on #3964, awaiting independent qualification:
+  the real Activity list offers Quick review in Related, reusing SessionDetail
+  with an exact Session/Project identity and Station fence. Previous/Next use
+  the list owner's current visible order, including pagination and collapsed
+  groups, without changing its selected item, search or filters. Open keeps
+  the target; an exact kept-target reopen focuses it. Draft replies register
+  the normal owner guard and protect the preview. The real Activity caller,
+  region host and SessionDetail browser journey passed at 1440px and 390px,
+  including keyboard/focus, filtered siblings, typed replies and Cancel, source
+  state, Keep/reopen, 44px navigation targets and real Back/Up. Five deliberate
+  source defects failed owner assertions, then the restored suites passed.
+  Independent/native acceptance and hosted checks are pending. Related reply
+  drafts are keyed to the verified Station as well as API and Session.
 - [ ] Source switching and cancelled guards preserve the right child and focus.
   In #3875 for file previews: source hide/restore, and Cancel on a covered,
   replaced or closed pane's guard leaves arrangement, selection, relation,
