@@ -303,7 +303,7 @@ describe('BackgroundTasksSheet', () => {
   );
 
   test('delegate usage is derived from the canonical persisted event stream', () => {
-    useOrchestrationSessionQuery.mockReturnValue({
+    const persisted = {
       data: {
         events: [
           {
@@ -355,6 +355,16 @@ describe('BackgroundTasksSheet', () => {
             status: 'success',
           },
         ],
+      },
+    };
+    useOrchestrationSessionQuery.mockReturnValue(persisted);
+    useOrchestrationSessionActivityQuery.mockReturnValue({
+      data: {
+        session: { threadId: 'task:delegate-2', provider: 'claude' },
+        events: persisted.data.events.slice(0, 3).map((event, index) => ({
+          sequence: index + 1,
+          event,
+        })),
       },
     });
     renderSheet({
