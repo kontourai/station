@@ -753,11 +753,31 @@ describe('installed-tree verification, exercised through the node-forge remediat
       },
     ],
     [
-      'snapshot edge',
-      /Unresolved dependency|unpatched or absent locked package/,
+      'snapshot edge to an absent variant',
+      /Unresolved dependency/,
       (f: ReturnType<typeof fixture>) => {
         f.lock.snapshots['argparse@1.0.10'].dependencies['node-forge'] =
           '1.4.0';
+        f.write('pnpm-lock.yaml', JSON.stringify(f.lock));
+      },
+    ],
+    [
+      'snapshot edge to an unpatched variant',
+      /unpatched or absent locked package/,
+      (f: ReturnType<typeof fixture>) => {
+        f.lock.snapshots['argparse@1.0.10'].dependencies['node-forge'] =
+          '1.4.0';
+        f.lock.snapshots['node-forge@1.4.0'] = {};
+        f.write('pnpm-lock.yaml', JSON.stringify(f.lock));
+      },
+    ],
+    [
+      'development-only dangling edge',
+      /Unresolved dependency/,
+      (f: ReturnType<typeof fixture>) => {
+        f.lock.importers['.'].devDependencies = {
+          'node-forge': { specifier: '1.4.0', version: '1.4.0' },
+        };
         f.write('pnpm-lock.yaml', JSON.stringify(f.lock));
       },
     ],
@@ -872,6 +892,21 @@ describe('installed-tree verification, exercised through the node-forge remediat
       );
       expectBlocked(f, /unaccounted module file shadow|unaccounted linked/);
       rmSync(join(f.root, shadow));
+      expect(f.evaluate().ok).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses any directory symlink under a module directory, because its target cannot be accounted',
+    () => {
+      const f = fixture('node-forge');
+      const vendor = 'node_modules/argparse/vendor/forge-copy';
+      const link = 'node_modules/argparse/node_modules/forge-alias';
+      writeForgeCopy(f, vendor, 'unpatched linked copy');
+      mkdirSync(join(f.root, link, '..'), { recursive: true });
+      symlinkSync(join(f.root, vendor), join(f.root, link), 'dir');
+      expectBlocked(f, /unaccounted linked dependency/);
+      rmSync(join(f.root, link));
       expect(f.evaluate().ok).toBe(true);
     },
   );
