@@ -1,5 +1,5 @@
 import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { Button } from '../components/Button';
 import { CheckGlyph } from '../components/icons/Glyph';
 import { PageCallout } from '../components/PageCallout';
@@ -9,6 +9,7 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../contexts/DeviceSettingsContext';
+import { useShortcutRegistry } from '../contexts/KeyboardShortcutsContext';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
@@ -22,6 +23,7 @@ import {
   COLOR_THEME_FAILED_ATTRIBUTE,
   COLOR_THEME_FLAVOR_ATTRIBUTE,
   retryColorTheme,
+  selectionKey,
 } from '../lib/color-theme-apply';
 import {
   type ColorThemeMode,
@@ -147,6 +149,12 @@ function ModeControl({
   onChange: (mode: ColorThemeMode) => void;
 }) {
   const shortcut = useShortcutDisplay('theme.toggle');
+  // A shortcut the person unbound is registered but disabled; it has no
+  // chord to advertise.
+  const unbound =
+    useShortcutRegistry()
+      .getAllShortcuts()
+      .find((candidate) => candidate.id === 'theme.toggle')?.disabled === true;
   // A phone or a touch screen has no ⌘H to press; the hint would be noise.
   const touch = useCoarsePointer();
   const mobile = useIsMobile();
@@ -174,7 +182,7 @@ function ModeControl({
           </label>
         ))}
       </div>
-      {!touch && !mobile && shortcut && shortcut !== 'Not set' && (
+      {!touch && !mobile && !unbound && shortcut && (
         <span className="appearance__hint">{shortcut} switches modes.</span>
       )}
     </div>
@@ -204,9 +212,18 @@ function sheetInFlight(): boolean {
 /** What the document root names now, and whether a sheet is in flight. */
 function readAppliedSelection(): string {
   const root = document.documentElement;
-  const named = APPLIED_ATTRIBUTES.map(
-    (name) => root.getAttribute(name) ?? '',
-  ).join('|');
+  const [id, darkFlavor, accent] = APPLIED_ATTRIBUTES.map((name) =>
+    root.getAttribute(name),
+  );
+  const named = appliedKey(
+    id
+      ? resolveColorThemeSelection({
+          colorTheme: id,
+          colorThemeFlavor: darkFlavor,
+          colorThemeAccent: accent,
+        })
+      : { id: 'station' },
+  );
   const failed = root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE) ?? '';
   return `${named}#${sheetInFlight() ? 'loading' : 'settled'}#${failed}`;
 }
@@ -226,10 +243,9 @@ function subscribeAppliedSelection(onChange: () => void): () => void {
   return () => observer.disconnect();
 }
 
-function selectionKey(resolved: ResolvedColorTheme): string {
-  return resolved.id === 'station'
-    ? '||'
-    : `${resolved.id}|${resolved.darkFlavor}|${resolved.accent}`;
+/** The applier's own selection key, with Station as itself. */
+function appliedKey(resolved: ResolvedColorTheme): string {
+  return resolved.id === 'station' ? 'station' : selectionKey(resolved);
 }
 
 export function AppearancePage() {
@@ -253,12 +269,12 @@ export function AppearancePage() {
     readAppliedSelection,
   );
   const [named, flight, failedFamily] = applied.split('#');
-  // Applied, on its way, or failed. A sheet in flight wins over the failure
-  // marker, because Try again requests the sheet again while the applier
-  // still names the earlier failure. With nothing in flight, the applier's
-  // marker says this family's latest sheet failed (lib/color-theme-apply.ts).
+  // Applied, on its way, or failed. A sheet in flight is loading (the applier
+  // also lifts its failure marker while a retry is in flight); with nothing in
+  // flight, the marker says this family's latest sheet failed
+  // (lib/color-theme-apply.ts).
   const sheetState =
-    named === selectionKey(resolved)
+    named === appliedKey(resolved)
       ? 'applied'
       : flight === 'loading'
         ? 'loading'
@@ -267,7 +283,14 @@ export function AppearancePage() {
           : 'loading';
   const loading = sheetState === 'loading';
   const failed = sheetState === 'failed';
-  const retry = () => retryColorTheme();
+  // Try again sits in the notice that goes away while the retry loads, so
+  // focus moves first to the choice being retried; it would otherwise drop to
+  // the page body.
+  const selectedRadio = useRef<HTMLInputElement | null>(null);
+  const retry = () => {
+    selectedRadio.current?.focus();
+    retryColorTheme();
+  };
 
   const setMode = useCallback(
     (next: ColorThemeMode) => setDeviceSetting('theme', next),
@@ -337,9 +360,9 @@ export function AppearancePage() {
               <label
                 key={option.id}
                 className={`appearance-theme${selected ? ' is-selected' : ''}${settling ? ' is-loading' : ''}${broken ? ' is-failed' : ''}`}
-                aria-busy={settling || undefined}
               >
                 <input
+                  ref={selected ? selectedRadio : undefined}
                   type="radio"
                   className="appearance__radio"
                   name="appearance-color-theme"

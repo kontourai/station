@@ -27,15 +27,17 @@
 }
 
 /* The visible focus ring belongs on the label, because the input is clipped.
-   Same colour rule as index.css's product-level :focus-visible. */
+   It is the text color, offset clear of the card, because a selected card is
+   already ringed in the accent: focus and selection must read differently.
+   A build or brand that chose a focus color keeps it (below). */
 :is(
   .appearance-mode__option,
   .appearance-theme,
   .appearance-choice,
   .appearance-accent
 ):has(.appearance__radio:focus-visible) {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
+  outline: 2px solid var(--k-text);
+  outline-offset: 3px;
 }
 
 :is(
@@ -168,7 +170,7 @@
   border-radius: 50%;
   background: var(--accent-primary);
   color: var(--text-on-accent);
-  font-size: 12px;
+  font-size: var(--k-text-xs);
 }
 
 .appearance-theme__preview {

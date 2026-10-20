@@ -117,7 +117,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
         contentType: 'text/html',
         // `--accent-primary` is defined so the focus ring has a colour to
         // resolve; without it the declaration is invalid and draws nothing.
-        body: `<!doctype html><html data-theme="dark"><head><style>:root{--accent-primary:#ff0000}${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
+        body: `<!doctype html><html data-theme="dark"><head><style>:root{--accent-primary:#ff0000;--k-text:#00ff00}${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
       });
     });
     await page.goto(`${ORIGIN}/`);
@@ -221,13 +221,13 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     await card(/^Rosé Pine/).click();
     await card(/^Nord/).click();
     // Chosen at once, applied only once Nord's sheet is in.
-    expect(await card(/^Nord/).getAttribute('aria-busy')).toBe('true');
+    expect(await card(/^Nord/).getAttribute('class')).toContain('is-loading');
     await untilTheme(page, 'nord');
     await page.waitForFunction(
       () =>
         !document
           .querySelector('.appearance-theme.is-selected')
-          ?.hasAttribute('aria-busy'),
+          ?.classList.contains('is-loading'),
     );
     expect(
       await card(/^Nord/).locator('.appearance-theme__check').count(),
@@ -334,6 +334,119 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     expect(await rootAttribute(page, 'data-color-theme-failed')).toBe(
       'catppuccin',
     );
+    await page.close();
+  });
+
+  // Try again lives in the notice that unmounts while the retry loads; the
+  // keyboard user must not be dropped onto <body>.
+  test('Try again keeps focus on the theme being retried through load and apply', async () => {
+    const page = await open({ catppuccin: 600 }, { catppuccin: 1 });
+    await page
+      .getByRole('radio', { name: /^Catppuccin/ })
+      .locator('xpath=ancestor::label[1]')
+      .click();
+    const tryAgain = page.getByRole('button', { name: 'Try again' });
+    await tryAgain.waitFor({ timeout: 10_000 });
+    await tryAgain.focus();
+    await page.keyboard.press('Enter');
+    const focused = () =>
+      page.evaluate(() => {
+        const active = document.activeElement as HTMLInputElement | null;
+        return `${active?.tagName}:${active?.name ?? ''}:${active?.value ?? ''}`;
+      });
+    // Mid-load: the notice is gone, focus is on the retried choice.
+    expect(await focused()).toBe('INPUT:appearance-color-theme:catppuccin');
+    await untilTheme(page, 'catppuccin');
+    expect(await focused()).toBe('INPUT:appearance-color-theme:catppuccin');
+    await page.close();
+  });
+
+  // Focus and selection must read differently on a selected card: selection is
+  // the accent border, focus a text-colored outline.
+  test('a focused selected card shows a focus outline distinct from its selected border', async () => {
+    const page = await open();
+    await page.getByRole('radio', { name: /^Station/ }).focus();
+    await page.keyboard.press('ArrowRight');
+    await untilTheme(page, 'catppuccin');
+    const ring = await page.evaluate(() => {
+      const label = document.activeElement!.closest('label')!;
+      const style = getComputedStyle(label);
+      return {
+        selected: label.classList.contains('is-selected'),
+        outlineStyle: style.outlineStyle,
+        outlineColor: style.outlineColor,
+        borderColor: style.borderColor,
+        offset: style.outlineOffset,
+        text: (() => {
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--k-text)';
+          document.body.append(probe);
+          const color = getComputedStyle(probe).color;
+          probe.remove();
+          return color;
+        })(),
+      };
+    });
+    expect(ring.selected).toBe(true);
+    expect(ring.outlineStyle).toBe('solid');
+    // The theme's own text color (the sheet sets `--k-text`), not the accent.
+    expect(ring.outlineColor).toBe(ring.text);
+    expect(ring.outlineColor).not.toBe(ring.borderColor);
+    expect(ring.offset).toBe('3px');
+    await page.close();
+  });
+
+  // Station's preset swatches and custom color are painted at 28px; each must
+  // still take a 44px touch target at phone width, without overlapping its
+  // neighbour.
+  test("Station's accent swatches each take a 44px hit area at 390px", async () => {
+    const page = await open();
+    await page.setViewportSize({ width: 390, height: 844 });
+    const hits = await page.evaluate(() => {
+      const targets = [
+        ...document.querySelectorAll<HTMLElement>(
+          '.settings__accent-swatch, .settings__accent-custom-hit',
+        ),
+      ];
+      return targets.map((target) => {
+        target.scrollIntoView({ block: 'center' });
+        const box = target.getBoundingClientRect();
+        const cx = box.left + box.width / 2;
+        const cy = box.top + box.height / 2;
+        const owns = (x: number, y: number) => {
+          const hit = document.elementFromPoint(x, y);
+          return hit === target || target.contains(hit);
+        };
+        const where = (x: number, y: number) => {
+          const hit = document.elementFromPoint(x, y);
+          return hit === target || target.contains(hit)
+            ? 'ok'
+            : `${hit?.tagName}.${hit?.className}`;
+        };
+        return {
+          // The painted circle: the swatch's content box, or the color input.
+          drawn: Math.round(
+            target.querySelector('input')?.getBoundingClientRect().width ??
+              box.width -
+                2 * Number.parseFloat(getComputedStyle(target).paddingLeft),
+          ),
+          debug: [
+            where(cx, cy - 21),
+            where(cx, cy + 21),
+            where(cx - 21, cy),
+            where(cx + 21, cy),
+          ].join(','),
+          ok:
+            owns(cx, cy - 21) &&
+            owns(cx, cy + 21) &&
+            owns(cx - 21, cy) &&
+            owns(cx + 21, cy),
+        };
+      });
+    });
+    expect(hits).toHaveLength(9);
+    for (const hit of hits)
+      expect(hit, hit.debug).toMatchObject({ drawn: 28, ok: true });
     await page.close();
   });
 

@@ -31,8 +31,8 @@ export const COLOR_THEME_ACCENT_ATTRIBUTE = 'data-color-theme-accent';
  * family's sheet failed (at startup or on a live switch). Removed when a new
  * request for it starts (it is retrying, not failed, until that settles),
  * when a later apply loads it, or when the selection moves to Station or
- * another family. Exposed so an Appearance page can offer `retryColorTheme`
- * instead of waiting forever; nothing on this branch reads it yet.
+ * another family. The Appearance page (pages/AppearancePage.tsx) reads it to
+ * show "Not loaded" and offer `retryColorTheme` instead of waiting forever.
  */
 export const COLOR_THEME_FAILED_ATTRIBUTE = 'data-color-theme-failed';
 
@@ -118,7 +118,8 @@ function dropPending(doc: Document): void {
  */
 const failedSelection = new WeakMap<HTMLElement, string>();
 
-function selectionKey(
+/** One comparable string for a family selection; shared with the picker. */
+export function selectionKey(
   resolved: Exclude<ResolvedColorTheme, { id: 'station' }>,
 ): string {
   return `${resolved.id}/${resolved.darkFlavor}/${resolved.accent}`;
