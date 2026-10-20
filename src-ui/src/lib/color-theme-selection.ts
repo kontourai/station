@@ -117,6 +117,8 @@ export interface ColorThemeBrandSurfaces {
   readonly '--k-panel-raised': string;
   /** The theme's own brand-contrast text, used where a brand override leaves it. */
   readonly brandContrast: string;
+  /** The theme's own action-contrast text (channels never change it). */
+  readonly actionContrast: string;
 }
 
 /**
@@ -156,5 +158,6 @@ export function colorThemeBrandSurfaces(
     brandContrast: effective
       ? entry.channelContrast[effective]
       : entry.accentContrast,
+    actionContrast: entry.accentContrast,
   };
 }

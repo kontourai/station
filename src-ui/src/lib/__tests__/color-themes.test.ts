@@ -383,6 +383,39 @@ describe('a white-label brand under every light flavor', () => {
     );
   });
 
+  test('an action without its text is rated against the theme text, like the brand', () => {
+    const root = document.createElement('div');
+    root.dataset.colorTheme = 'catppuccin';
+    const surfaces = colorThemeBrandSurfaces(root, 'light')!;
+    expect(surfaces.actionContrast).toBe(
+      catppuccin.light.accents.mauve.contrast,
+    );
+    // A fill dark enough for Latte's surfaces, with a theme text that cannot
+    // read on it: both members of each pair are judged the same way.
+    const muddy = {
+      ...surfaces,
+      actionContrast: '#2a2a2a',
+      brandContrast: '#2a2a2a',
+    };
+    const failing = colorThemeSurfaceViolations(
+      'light',
+      { '--k-brand': '#1e3a8a', '--k-action': '#1e3a8a' },
+      muddy,
+    ).map((v) => `${v.property} on ${v.surface}`);
+    expect(failing).toEqual([
+      '--k-brand-contrast on --k-brand',
+      '--k-action-contrast on --k-action',
+    ]);
+    // A text with no fill to rate it against yields, for either pair.
+    expect(
+      colorThemeSurfaceViolations(
+        'light',
+        { '--k-action-contrast': '#ffffff', '--k-brand-contrast': '#ffffff' },
+        surfaces,
+      ).map((v) => v.property),
+    ).toEqual(['--k-brand-contrast', '--k-action-contrast']);
+  });
+
   test('Station has no theme surfaces to re-rate against', () => {
     expect(
       colorThemeBrandSurfaces(document.createElement('div'), 'light'),
