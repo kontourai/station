@@ -45,7 +45,9 @@ references, cycles, oversized records and mismatched Station/generation. Old
 arrangements remain readable; unsupported metadata cannot erase kept work.
 
 Each related occurrence also carries its own Station fence, written once when it
-is minted and removed only with the occurrence. A gate outside the pane admits
+is minted and removed only with the occurrence: only once the occurrence's own
+record is confirmed gone, so a record whose removal failed stays fenced rather
+than reading as an unfenced legacy occurrence. A gate outside the pane admits
 its reader only on exactly that verified Station: while the Station is unknown
 it reads nothing, on another Station it shows a placeholder, and a fence this
 build cannot read stays closed. Losing, rolling back or outgrowing the side
@@ -55,8 +57,11 @@ Writes to the side record are transactions under an exclusive cross-window
 lock, over a fresh read of the record. Focusing an existing target writes too
 (its arrangement and a new line range), so it commits the same way. A
 contended or unavailable lock, a newer record, the bound, or a Station, source,
-target or covered pane that changed while a guard was answering refuses the
-open, and a refusal removes whatever it had written. At
+target or covered pane that changed while a guard was answering — the panes
+the model's own plan for the open takes off screen, read from its committed
+arrangement (on a phone, the pane a first related pane folds over in Chat's
+region), and including a pane that gained unsaved work meanwhile — refuses
+the open, and a refusal removes whatever it had written. At
 the bound a new relation is refused; nothing live or kept is evicted, and only
 relations whose occurrence no longer exists in shared storage are pruned.
 
