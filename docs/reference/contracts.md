@@ -417,6 +417,24 @@ field catalog, fixed feedback reasons and bounded outbox records. Lite bodies
 use the daily catalog; Full uses the version1 observation envelope.
 See [Usage telemetry](usage-telemetry.md) for consent, retry and privacy limits.
 
+## Allowance observations and recovery ordering
+
+Codex's nullable `primary` and `secondary` groups represent unavailable windows,
+not malformed data or zero usage. Nullable duration, reset and credit-balance
+metadata remains unknown; an explicitly unavailable reset cannot supply a
+qualified expiry deadline. Non-null malformed groups still refuse projection.
+
+`connection-quota` retains raw provider reset values and adds optional
+`resetDeadlineAt` only when an adapter can normalize a declared wire unit.
+`subscriptionEnd` carries its own observation time and explicit renewal state;
+missing lifecycle data is not inferred from a provider plan string. Sparse
+updates preserve prior lifecycle observations without refreshing their timestamp.
+
+`connection-recovery` owns optional `allowancePreference` (window ID and minimum
+remaining percentage). It ranks existing eligible recovery accounts, grants no
+new enrollment or execution authority, and preserves ordinary ordering when
+expiry facts are unknown. See [account recovery ordering](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery).
+
 ## Import examples
 
 The [package export map](../../packages/contracts/package.json) is the available

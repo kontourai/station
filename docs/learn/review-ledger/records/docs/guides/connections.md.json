@@ -336,7 +336,9 @@
 
     "src-ui/src/lib/device-settings-store.ts",
 
-    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx",
+
+    "src-server/services/connections/allowance-routing-policy.ts"
   ],
 
   "checks": [
