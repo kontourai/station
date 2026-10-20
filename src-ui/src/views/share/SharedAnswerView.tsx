@@ -396,7 +396,7 @@ function SharedAnswerContent({
 
       {/* Absent only when the payload came from a Station older than
           station#1598. Rendering a panel then would mean inventing a status
-          on the client, which is the read-time derivation this slice
+          on the client, which is the read-time derivation this view
           refuses. */}
       {result.channel !== undefined && (
         <SharedAnswerChannelPanel channel={result.channel} />

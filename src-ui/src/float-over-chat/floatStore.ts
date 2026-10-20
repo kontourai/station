@@ -155,7 +155,7 @@ export function openFloat(
    * `requested`: a person asked for this source (not the float following
    * its own read). A request naming another surface of the SAME source —
    * the device reopened as a new session while it floats — is a new float
-   * too, so it is not judged by the old session's cached list (LOW-1).
+   * too, so it is not judged by the old session's cached list (#2467).
    */
   options: { requested?: boolean } = {},
 ): void {

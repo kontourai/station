@@ -1,27 +1,5 @@
 /* ═══ Plugins View ═══ */
 
-/* ── Page Header ── */
-.plugins__header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 1.75rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border-primary);
-}
-.plugins__title {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.02em;
-}
-.plugins__subtitle {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  margin-top: 0.25rem;
-}
-
 /* ── Install Bar ── */
 .plugins__install {
   display: flex;
@@ -223,106 +201,12 @@
   font-weight: 600;
 }
 
-/* ── Section Headers ── */
-.plugins__section {
-  margin-bottom: 2rem;
-}
-.plugins__section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border-primary);
-}
-.plugins__section-title {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 0;
-}
-.plugins__section-count {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-.plugins__section-action {
-  font-size: 0.75rem;
-  color: var(--accent-primary);
-  background: none;
-  border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
-  border-radius: 0.25rem;
-  padding: 0.25rem 0.6rem;
-  cursor: pointer;
-  font-weight: 500;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard);
-}
-.plugins__section-action:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-primary);
-}
-
 /* ── Plugin Cards ── */
-.plugins__grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
 
-.plugins__card {
-  padding: 1rem 1.125rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 0.5rem;
-  border-left: 3px solid var(--border-primary);
-  transition:
-    border-color var(--motion-fast),
-    background var(--motion-fast);
-}
-.plugins__card:hover {
-  border-left-color: var(--accent-primary);
-  background: var(--bg-tertiary);
-}
-
-.plugins__card-top {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-.plugins__card-info {
-  flex: 1;
-  min-width: 0;
-}
-.plugins__card-actions {
-  display: flex;
-  gap: 0.35rem;
-  flex-shrink: 0;
-  align-items: flex-start;
-}
-
-.plugins__card-name {
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: var(--text-primary);
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  font-family: var(--font-sans);
-}
 .plugins__card-version {
   font-size: 0.7rem;
   font-weight: 400;
   color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-.plugins__card-update-hint {
-  font-size: 0.7rem;
-  color: var(--success-text);
   font-family: var(--font-mono);
 }
 .plugins__card-desc {
@@ -333,12 +217,6 @@
 }
 
 /* ── Capabilities ── */
-.plugins__provides {
-  display: flex;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  margin-top: 0.5rem;
-}
 .plugins__cap {
   font-size: 0.65rem;
   padding: 0.15rem 0.5rem;
@@ -399,59 +277,6 @@
 .plugins__filter-input:focus {
   border-color: var(--accent-primary);
 }
-.plugins__tools-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 0.5rem;
-  overflow: hidden;
-}
-.plugins__tools-th {
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border-primary);
-}
-.plugins__tools-td {
-  padding: 0.5rem 0.75rem;
-  font-size: 0.8rem;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-primary);
-}
-.plugins__tools-tr:last-child .plugins__tools-td {
-  border-bottom: none;
-}
-.plugins__tools-tr:hover .plugins__tools-td {
-  background: var(--bg-tertiary);
-}
-
-.plugins__tools-name {
-  font-weight: 500;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-}
-.plugins__tools-kind {
-  font-size: 0.65rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 3px;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-}
-.plugins__tools-desc {
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 400px;
-}
 
 /* ── Action Buttons ── */
 .plugins__btn {
@@ -472,48 +297,6 @@
 .plugins__btn:disabled {
   opacity: 0.35;
   cursor: default;
-}
-.plugins__btn--update {
-  background: var(--success-text);
-  border: none;
-  color: var(--bg-primary);
-}
-.plugins__btn--update:hover:not(:disabled) {
-  opacity: 0.85;
-}
-.plugins__btn--permissions {
-  background: transparent;
-  border: 1px solid var(--warning-text);
-  color: var(--warning-text);
-}
-.plugins__btn--remove {
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--error-text) 40%, transparent);
-  color: var(--error-text);
-}
-.plugins__btn--remove:hover:not(:disabled) {
-  border-color: var(--error-text);
-  background: color-mix(in srgb, var(--error-text) 6%, transparent);
-}
-
-/* ── Empty / Loading ── */
-.plugins__loading {
-  padding: 3rem;
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-}
-.plugins__install-cta {
-  display: block;
-  margin: 0.75rem auto 0;
-  padding: 0.5rem 1rem;
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  border: none;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-family: inherit;
-  cursor: pointer;
 }
 
 /* ── Registry Modal ── */
@@ -609,11 +392,6 @@
 .plugins__btn--install:hover:not(:disabled) {
   opacity: 0.85;
 }
-.plugins__btn--uninstall {
-  background: transparent;
-  border: 1px solid var(--error-text);
-  color: var(--error-text);
-}
 
 /* ── Confirm Modal ── */
 .plugins__confirm-overlay {
@@ -668,10 +446,6 @@
   cursor: pointer;
 }
 
-.plugins__providers {
-  padding: 0.5rem 1rem 0.75rem;
-  border-top: 1px solid var(--border-primary);
-}
 .plugins__providers-toggle {
   background: none;
   border: none;
@@ -747,16 +521,6 @@
 .detail-panel__body {
   padding: 1.5rem;
 }
-.detail-panel__title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-.detail-panel__desc {
-  margin: 0.5rem 0 0;
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-}
 .detail-panel__caps {
   margin: 1.25rem 0;
   display: flex;
@@ -764,28 +528,6 @@
   gap: 0.35rem;
 }
 .detail-panel__section {
-  margin-bottom: 1.25rem;
-}
-.detail-panel__field-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-.detail-panel__field-value {
-  font-size: 0.85rem;
-  margin-top: 0.15rem;
-}
-.detail-panel__field-value--mono {
-  font-family: var(--font-mono);
-}
-.detail-panel__actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border-primary);
-}
-.detail-panel__install {
   margin-bottom: 1.25rem;
 }
 
@@ -955,12 +697,6 @@
   margin: 0;
 }
 
-/* ── Registry Description Clamp ── */
-.plugins__registry-desc--clamp {
-  max-height: 60px;
-  overflow: hidden;
-}
-
 /* ── Preview Modal ── */
 .plugins__preview-header {
   margin-bottom: 1rem;
@@ -1075,100 +811,6 @@
   border-color: var(--accent-primary);
 }
 
-/* ── Environment Variables ── */
-.plugins__env-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.6rem 0.75rem;
-  border-radius: 0.5rem;
-  background: var(--bg-secondary);
-  border: 1px solid transparent;
-  transition: border-color var(--motion-fast) var(--ease-standard);
-}
-.plugins__env-field--missing {
-  border-color: color-mix(in srgb, var(--error-text) 40%, transparent);
-  background: color-mix(in srgb, var(--error-text) 4%, var(--bg-secondary));
-}
-.plugins__env-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.plugins__env-key {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-}
-.plugins__env-badge {
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 0.25rem;
-  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
-  color: var(--text-muted);
-}
-.plugins__env-badge--required {
-  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
-  color: var(--accent-primary);
-}
-.plugins__env-status {
-  margin-left: auto;
-  font-size: 0.7rem;
-  font-weight: 700;
-  width: 1.2rem;
-  height: 1.2rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-}
-.plugins__env-status--set {
-  background: color-mix(in srgb, var(--success-text, #22c55e) 14%, transparent);
-  color: var(--success-text, #22c55e);
-}
-.plugins__env-status--missing {
-  background: color-mix(in srgb, var(--error-text) 14%, transparent);
-  color: var(--error-text);
-}
-.plugins__env-desc {
-  font-size: 0.73rem;
-  color: var(--text-muted);
-  line-height: 1.35;
-}
-.plugins__env-input-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.15rem;
-}
-.plugins__env-input {
-  flex: 1;
-}
-.plugins__env-unsaved {
-  font-size: 0.65rem;
-  font-weight: 500;
-  color: var(--warning-text, #f59e0b);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  flex-shrink: 0;
-  animation: env-unsaved-pulse var(--motion-status-pulse) var(--ease-standard)
-    infinite;
-}
-@keyframes env-unsaved-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
 /* ── Changelog ── */
 .plugins__changelog-list {
   display: flex;
@@ -1232,10 +874,6 @@
     max-height: 90vh;
   }
 
-  .plugins__tools-desc {
-    max-width: none;
-  }
-
   /* Long names, sources, and git hashes must wrap instead of overflowing. */
   .plugins__registry-name,
   .plugins__preview-header {
@@ -1263,11 +901,6 @@
 
   .plugins__btn {
     min-height: 44px;
-  }
-
-  .plugins__section-action {
-    min-height: 44px;
-    min-width: 44px;
   }
 
   /* archive#3783: `.editor-btn`'s touch floor is the primitive's

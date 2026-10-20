@@ -1,0 +1,35 @@
+{
+  "revision": "f4b0527894a85537d1604c40e33b720a5ce21066",
+
+  "notes": [
+    {"path":"README.md","note":"Checked README deployment and development links after the deployment guide's monitoring paragraph changed; README makes no monitoring-stack claim and its links still resolve.","inputs":["README.md","docs/guides/deployment.md"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"monitoring/ was deleted. The recipe never ran or described that stack; dropped the stale source citation. No prose claim changed.","inputs":["deploy/gcp-dev/README.md","monitoring/docker-compose.yml"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"monitoring/ was deleted. The ingress recipe composes only the root docker-compose.yml and its own overlay, not the monitoring stack; dropped the stale source citation.","inputs":["deploy/public-ingress/README.md","monitoring/docker-compose.yml"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Checked the rendered Compose model: compose.yaml now includes compose.diagnostics.yaml and renders identically to the previous file except the dashboard bind path, which is now dashboards/station.json. The new developer profile section matches compose.dev.yaml (loopback ports 44482/44483/44484, required TELEMETRY_PRIVATE_DIR, non-internal diagnostics bridge because internal-only networks publish no host port).","inputs":["deployment/telemetry/README.md","deployment/telemetry/compose.yaml","docs/guides/deployment.md","monitoring/grafana/dashboards/station.json","deployment/telemetry/dashboards/station.json","deployment/telemetry/compose.diagnostics.yaml","deployment/telemetry/compose.dev.yaml"]},
+
+    {"path":"docs/architecture.md","note":"Removal of the unrecorded station.prompt.operations declaration does not affect the overview: it names no individual instrument and keeps OTel export optional.","inputs":["docs/architecture.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Monitoring findings still route to #2750, #2751, #2752 and #2755; dashboard panel removal for unrecorded metrics is consistent with #2751 remaining open. Deployment guide anchors it links are unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/guides/deployment.md","docs/guides/monitoring.md","docs/reference/metrics.md"]},
+
+    {"path":"docs/design/automations.md","note":"Only links the deployment guide's exposure advice, which this change does not touch.","inputs":["docs/design/automations.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Rewrote the Monitoring Stack paragraph: monitoring/ is gone; the developer profile in deployment/telemetry publishes loopback ports 44482/44483/44484, uses digest-pinned images and refuses to start without private credential files, checked against compose.dev.yaml and compose.diagnostics.yaml.","inputs":["docs/guides/deployment.md","monitoring/docker-compose.yml","deployment/telemetry/compose.dev.yaml"]},
+
+    {"path":"docs/guides/development.md","note":"Project-structure block now lists deployment/ (self-hosted broker and telemetry/monitoring Compose profiles) instead of the deleted monitoring/ directory; checked against the tree.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Links the deployment guide only for deployment ownership; the changed monitoring paragraph does not alter any claim here.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Quick Start, local endpoint, stack diagram, dashboard path and panel table now match deployment/telemetry: compose.dev.yaml ports, x-api-key Collector, Tempo instead of Jaeger, 26 non-row panels after removing Layout and Prompt panels (verified by parsing station.json). Corrected the stale or vector(0) Errors claim (removed from the query earlier). station.prompt.operations declaration removed from metrics.ts.","inputs":["docs/guides/monitoring.md","src-server/telemetry/metrics.ts","deployment/telemetry/dashboards/station.json","deployment/telemetry/compose.dev.yaml"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Replaced the deleted monitoring/ row with deploy/ and deployment/, pointing at the deployment guide for what each holds.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Removed metric was unrelated to Web Push; this guide's instrument references are unchanged.","inputs":["docs/guides/web-push-notifications.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"Regenerated with npm run docs:metrics:generate after removing station.prompt.operations: 311 creation calls.","inputs":["docs/reference/metrics.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Links development guidance only; the project-structure line change does not affect server instructions.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

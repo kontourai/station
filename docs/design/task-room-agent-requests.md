@@ -1,6 +1,6 @@
 # Task room agent requests
 
-Status: implementation in progress under [#3034](https://github.com/kontourai/station/issues/3034).
+Status (2026-10-09): implementation in progress under [#3034](https://github.com/kontourai/station/issues/3034) (open).
 This slice implements a durable request path and an explicit agent composer for
 the [shared channel](shared-task-channels.md). Local controlled tests verify
 selection and retry behavior; browser, actual-provider and invited/public

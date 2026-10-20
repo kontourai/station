@@ -590,12 +590,11 @@ describe('config-loader-app', () => {
     );
   });
 
-  // station#settings-revamp slice-1 review finding 1: a file polluted by
-  // the pre-fix GET→PUT round trip (persisted `managedChatOrchestration`/
-  // `mcpUiFrameOrigin`) self-heals on load — purged in memory AND
-  // re-persisted, so a stale runtime-derived value can never leak back out
-  // of `GET /config/app` again after the first load.
-  it('purges persisted runtime-derived fields on load and re-persists the clean file (finding 1)', async () => {
+  // A file polluted by the pre-sanitizer GET→PUT round trip (persisted
+  // `managedChatOrchestration`/`mcpUiFrameOrigin`) self-heals on load —
+  // purged in memory AND re-persisted, so a stale runtime-derived value can
+  // never leak back out of `GET /config/app` again after the first load.
+  it('purges persisted runtime-derived fields on load and re-persists the clean file', async () => {
     const configDir = join(tempDir, 'config');
     const appPath = join(configDir, 'app.json');
     mkdirSync(configDir, { recursive: true });
@@ -627,6 +626,36 @@ describe('config-loader-app', () => {
     // A second load of the now-clean file is a no-op (nothing left to purge).
     const reloaded = await loadAppConfigFile(tempDir);
     expect('managedChatOrchestration' in reloaded).toBe(false);
+  });
+
+  // `managedChatOrchestration` is no longer an AppConfig field (ADR 0014
+  // retired the flag), but files written by earlier releases can still
+  // carry it. They must keep loading, and the stale key must not survive.
+  it('loads a config file that still carries the retired managedChatOrchestration key', async () => {
+    const configDir = join(tempDir, 'config');
+    const appPath = join(configDir, 'app.json');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      appPath,
+      JSON.stringify({
+        defaultModel: 'x',
+        invokeModel: 'y',
+        structureModel: 'z',
+        systemPrompt: DEFAULT_SYSTEM_PROMPT,
+        templateVariables: [
+          { key: 'AGENT_NAME', type: 'static', value: 'Station' },
+        ],
+        managedChatOrchestration: true,
+      }),
+      'utf8',
+    );
+
+    const config = await loadAppConfigFile(tempDir);
+
+    expect(config.defaultModel).toBe('x');
+    expect('managedChatOrchestration' in config).toBe(false);
+    const persisted = JSON.parse(readFileSync(appPath, 'utf8'));
+    expect('managedChatOrchestration' in persisted).toBe(false);
   });
 
   // `mergeAppConfigUpdate` is the merge the real write path

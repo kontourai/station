@@ -111,7 +111,7 @@ function trimmed(value: string | null | undefined): string | undefined {
 
 /**
  * A malformed `AWS_REGION` is not a decision — it is discarded, exactly as a
- * whitespace-only one is (archive#1557 review round 2, HIGH).
+ * whitespace-only one is (archive#1557).
  *
  * This matters because of what routing the environment into the resolver
  * exposed: `BedrockModelCatalog`'s constructor calls `normalizeBedrockRegion`,

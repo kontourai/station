@@ -109,10 +109,6 @@ export interface LifecycleInstanceIdentityOptions {
   uiPort?: number;
 }
 
-export function getDefaultProjectHome(): string {
-  return defaultProjectHome();
-}
-
 export function normalizeHomePath(
   path: string,
   env: NodeJS.ProcessEnv = process.env,

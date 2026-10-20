@@ -51,7 +51,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
 }));
 
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));

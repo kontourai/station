@@ -1,0 +1,7 @@
+{
+  "revision": "f3b5ffacc8e206a0d104b7213272044e5a4370b8",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked the answer-assessment publish/read protocol against AnswerAssessmentModule: the only change is that its Station-home anchor is canonicalized once in the constructor, so a home reached through a symlinked ancestor no longer fails the symlink guard. Routes, wire types, 404 non-disclosure and the 503-means-storage-unavailable statement are unchanged and remain accurate.","inputs":["docs/reference/sdk.md","src-server/services/evidence/answer-assessment-module.ts"]}
+  ]
+}

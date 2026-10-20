@@ -146,9 +146,25 @@ async function start(input: {
    */
   reportedApprovalPolicy?: string;
   resume?: boolean;
+  /** Arguments the connection itself adds to the app-server spawn. */
+  connectionArgs?: string[];
 }) {
   const process = new FakeCodexProcess();
-  const adapter = new CodexAdapter({ processFactory: () => process as never });
+  let spawnArgs: string[] | undefined;
+  const adapter = new CodexAdapter({
+    processFactory: (_env, args) => {
+      spawnArgs = args;
+      return process as never;
+    },
+    ...(input.connectionArgs
+      ? {
+          getConnectionLaunch: async () => ({
+            env: undefined,
+            args: input.connectionArgs!,
+          }),
+        }
+      : {}),
+  });
   const events: CanonicalRuntimeEvent[] = [];
   const controller = new AbortController();
   void (async () => {
@@ -203,7 +219,7 @@ async function start(input: {
     await adapter.stopAll();
     controller.abort();
   };
-  return { outcome, request, sessionStarted, process, cleanup };
+  return { outcome, request, sessionStarted, process, spawnArgs, cleanup };
 }
 
 function threadIdOf(result: Record<string, unknown>): unknown {
@@ -588,5 +604,50 @@ describe('#2494: Codex confinement posture is read back from its response', () =
       );
       await run.cleanup();
     });
+  });
+});
+
+describe('#3800: workspace configuration cannot widen a confined Codex sandbox', () => {
+  const PIN = ['-c', 'sandbox_workspace_write.writable_roots=[]'];
+
+  test('a workspace session pins its writable roots on the app-server spawn, after the connection arguments', async () => {
+    const run = await start({
+      threadId: 'pinned-workspace',
+      approvalMode: 'auto',
+      confinement: 'workspace',
+      plan: NOT_REQUIRED_WORKSPACE,
+      connectionArgs: ['-c', 'sandbox_workspace_write.writable_roots=["/"]'],
+    });
+    expect(run.outcome).toEqual({ ok: true });
+    // Codex applies the last `-c` for a key, so the pin must come last.
+    expect(run.spawnArgs?.slice(-2)).toEqual(PIN);
+    expect(run.spawnArgs?.slice(0, 2)).toEqual([
+      '-c',
+      'sandbox_workspace_write.writable_roots=["/"]',
+    ]);
+    await run.cleanup();
+  });
+
+  test('a workspace session Station sends no mode to is pinned too', async () => {
+    const run = await start({
+      threadId: 'pinned-connection-default',
+      confinement: 'workspace',
+      plan: NOT_REQUIRED_WORKSPACE,
+    });
+    expect(run.outcome).toEqual({ ok: true });
+    expect(run.spawnArgs).toEqual(PIN);
+    await run.cleanup();
+  });
+
+  test("a host session keeps its workspace's configuration", async () => {
+    const run = await start({
+      threadId: 'unpinned-host',
+      approvalMode: 'auto',
+      confinement: 'host',
+      plan: NOT_REQUIRED_HOST,
+    });
+    expect(run.outcome).toEqual({ ok: true });
+    expect(run.spawnArgs).toBeUndefined();
+    await run.cleanup();
   });
 });

@@ -50,10 +50,8 @@ queue is part of it. What that means in practice:
   check status over REST (`gh api repos/...`).
 - **Arm, confirm once with the query above, then stop.** Never poll the queue;
   a red or conflicted dequeue shows only on the PR itself.
-- **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
-  `Dependency review`, `Windows PR portable floor`, `build-ios-verification`,
-  `Merge-queue regression`
-  (the ruleset is the authority: `gh api repos/kontourai/station/rules/branches/main`).
+- **Required checks**: the ruleset is authoritative —
+  `gh api repos/kontourai/station/rules/branches/main`.
   Branches are NOT required
   to be up to date (`strict: false`), so you do not have to rebase onto every
   intervening commit — but two independently green PRs can still break `main`
@@ -76,9 +74,9 @@ Commit and confirm a clean tree before mutation. Preserve intervening edits and 
 
 ## Issue references
 
-`archive#NNNN` is [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 history. Here, #27–#601 re-file archive issues under new numbers (most carry a "Migrated from the pre-public backlog" line), so low numbers exist in both repos.
+`archive#NNNN` is [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 history. Here, #27–#601 re-file archive issues under new numbers (see the [map](docs/migration/issue-number-map.json)), so low numbers exist in both repos.
 
-A bare `#NNNN` means this repo, except pre-reset text in areas the sweep skipped (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`). When unsure, check both repos. Write `#NNNN` for this repo, `archive#NNNN` for the archive.
+A bare `#NNNN` means this repo, except pre-reset text in areas the sweep skipped (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`, `docs/adr`). When unsure, check both repos. Write `#NNNN` for this repo, `archive#NNNN` for the archive.
 
 ## Read only the route you need
 

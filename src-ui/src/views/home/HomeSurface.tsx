@@ -34,7 +34,7 @@ const CONTINUE_SECTION_ID = 'home-continue';
 /**
  * The one Home (archive#3122's experiment, concluded).
  *
- * Reading order (design round 2026-10, V1-V6, Q3, U2): the start form, then
+ * Reading order (#3239): the start form, then
  * the work. With recent work on the page the lanes come right after the
  * form and the heading, the action cards and the chart wait below them —
  * someone with work does not need to be asked what they want to work on

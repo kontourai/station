@@ -1,3 +1,4 @@
+// UNWIRED(#495): no bootstrap installs this adapter; control-session transport will.
 import type { ProjectTaskRoomScope } from '@kontourai/station-contracts/project-task-room';
 import { plainDataObject } from './bounded-json.js';
 import {

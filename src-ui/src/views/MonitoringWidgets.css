@@ -334,39 +334,6 @@
 
 /* ── Filters ── */
 
-.active-filters {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.filter-badge {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 0.75rem;
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.filter-badge button {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 1.25rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-  margin-left: 0.25rem;
-}
-
-.filter-badge button:hover {
-  opacity: 0.8;
-}
-
 .active-filters-inline {
   display: flex;
   flex-wrap: wrap;
@@ -1565,14 +1532,6 @@
     min-height: 0;
   }
 
-  /* The metrics panel is a secondary readout — don't let it steal the feed's
-     vertical space. Keep it compact and scrollable on mobile. */
-  .metrics-panel {
-    flex: 0 0 auto;
-    max-height: 28vh;
-    overflow-y: auto;
-  }
-
   .monitoring-summary {
     width: 100%;
     flex-wrap: wrap;
@@ -1675,11 +1634,6 @@
     font-size: var(--text-base);
   }
 
-  .log-entry .log-meta {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
   .log-row {
     grid-template-columns: 1fr;
     gap: 0.25rem;
@@ -1711,106 +1665,12 @@
   color: white;
 }
 
-/* ── Metrics panel ── */
-
-.metrics-panel {
-  padding: 1rem;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-primary);
-}
-
-.metrics-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-}
-
-.metrics-header h3 {
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.metrics-range-tabs {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.metrics-range-tabs button {
-  padding: 0.25rem 0.5rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  font-size: 0.7rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.metrics-range-tabs button.active {
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  border-color: var(--accent-primary);
-}
-
-.metrics-summary {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.metrics-stat {
-  display: flex;
-  flex-direction: column;
-}
-
-.metrics-stat-value {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-}
-
-.metrics-stat-label {
-  font-size: 0.7rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.metrics-breakdown {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--border-primary);
-}
-
-.metrics-agent-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 0.75rem;
-}
-
-.metrics-agent-name {
-  font-weight: 500;
-  color: var(--text-primary);
-  min-width: 100px;
-}
-
-.metrics-agent-stat {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-}
-
 /* FleetRoutingReceipts shipped with twelve class names and no stylesheet at
    all (station#3157), so it rendered as raw <section>/<h3>/<ol>/<li> —
    default heading sizes, list bullets, no surface — inside this dashboard,
    where MonitoringView mounts it unconditionally.
-   Its rules live here, in the view's own stylesheet, and reuse the
-   .metrics-panel / .metrics-header idioms above rather than restating them. */
+   Its rules live here, in the view's own stylesheet, and are standalone:
+   they depend on no other panel or header rule. */
 .fleet-routing {
   padding: 1rem;
   background: var(--bg-secondary);

@@ -3,10 +3,7 @@ import type {
   WorkspacePaneHostDocumentV1,
   WorkspacePaneHostScope,
 } from '@kontourai/station-contracts/workspace-pane-host';
-import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { navigationStore } from '../contexts/navigation-store';
-
-export const WORKSPACE_PANE_ACTIVE_INSTANCE_QUERY_PARAM = 'pane';
 
 /** Delegates user selection to the existing navigation store's push-history owner. */
 export function writeWorkspacePaneHostSelection(
@@ -96,13 +93,4 @@ export function workspacePaneHostScopeKey(
       return unreachable;
     }
   }
-}
-
-export function isWorkspacePaneHostSelection(value: string | null): boolean {
-  return (
-    value !== null &&
-    value.length > 0 &&
-    value === value.trim() &&
-    value.length <= MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH
-  );
 }

@@ -67,7 +67,7 @@ interface ApprovalModeChipProps {
    * How far the engine has shown `sessionOverride` applied (#2436,
    * `SessionApprovalOverride.state`). Absent keeps the pre-#2334 behaviour.
    */
-  sessionOverrideState?: 'requested' | 'refused' | 'confirmed';
+  sessionOverrideState?: 'requested' | 'refused' | 'confirmed' | 'not-applied';
   onChange: (mode: ApprovalMode) => void;
 }
 
@@ -125,12 +125,17 @@ export function ApprovalModeChip({
   const policyExplanation = toolPolicyDeliveryExplanation(toolPolicyDelivery);
   const policyDisclosure = `${policyLabel}. ${policyExplanation}`;
 
+  // #3290: the engine could not be moved onto the rules the pick needs, so
+  // it runs what it ran before (its own settings, or the mode it reports).
+  // The chip shows that, never the pick or a default that did not apply.
+  const notApplied = sessionOverrideState === 'not-applied';
   const effective = resolveEffectiveApprovalMode({
     engineConnectionId,
-    sessionOverride,
-    agentDefault,
-    stationDefault,
+    sessionOverride: notApplied ? undefined : sessionOverride,
+    agentDefault: notApplied ? undefined : agentDefault,
+    stationDefault: notApplied ? undefined : stationDefault,
     personalDefault:
+      !notApplied &&
       isNewSession &&
       (engineConnectionId === 'codex' ||
         engineConnectionId === 'claude' ||
@@ -202,23 +207,40 @@ export function ApprovalModeChip({
       ? `${effective.label} — ${pendingNote}`
       : !isOverride && appliedMode
         ? approvalModeLabel(appliedMode)
-        : effective.label;
+        : // #3290: before Station takes over, OpenCode's own rules decide.
+          effective.mode === 'connection-default' &&
+            engineConnectionId === 'opencode'
+          ? "OpenCode's own settings"
+          : effective.label;
   const chipText = isPendingApply
     ? `${approvalModeChipLabel('never')} · pending`
     : isPendingRestrict || isRefused
       ? `${approvalModeChipLabel(displayedMode)} · ${isRefused ? 'needs restart' : 'pending'}`
       : isOverride
         ? approvalModeChipLabel(displayedMode)
-        : agentDefaultShown
-          ? `${approvalModeChipLabel(effective.mode)} (agent default)`
-          : displayedMode === 'connection-default'
-            ? 'Engine default'
-            : approvalModeChipLabel(displayedMode);
-  const accessibleLabel = isOverride
-    ? selectedLabel
-    : agentDefaultShown
-      ? `${chipText} — ${approvalModeLabel(effective.mode)}`
-      : `${chipText} — ${selectedLabel}`;
+        : notApplied
+          ? // #3290: visibly not the chip a mode Station applied shows.
+            appliedMode
+            ? `${approvalModeChipLabel(appliedMode)} · kept`
+            : 'Own settings'
+          : agentDefaultShown
+            ? `${approvalModeChipLabel(effective.mode)} (agent default)`
+            : displayedMode === 'connection-default'
+              ? 'Engine default'
+              : approvalModeChipLabel(displayedMode);
+  const notAppliedNote =
+    notApplied && isApprovalMode(sessionOverride)
+      ? ` — ${approvalModeLabel(sessionOverride)} was not applied: Station couldn't switch the engine to its approval rules`
+      : '';
+  const accessibleLabel = `${
+    isOverride
+      ? selectedLabel
+      : agentDefaultShown
+        ? `${chipText} — ${approvalModeLabel(effective.mode)}`
+        : notApplied && appliedMode
+          ? selectedLabel
+          : `${chipText} — ${selectedLabel}`
+  }${notAppliedNote}`;
   const sourceNote = isOverride
     ? 'Only this chat'
     : appliedMode
@@ -233,7 +255,7 @@ export function ApprovalModeChip({
         ref={triggerRef}
         type="button"
         className={`choice-trigger chat-input__approval-chip ${
-          isPendingApply || isPendingRestrict || isRefused
+          isPendingApply || isPendingRestrict || isRefused || notApplied
             ? 'chat-input__approval-chip--pending'
             : isOverride
               ? 'chat-input__approval-chip--override'

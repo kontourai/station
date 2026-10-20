@@ -335,9 +335,8 @@ export const STATION_CONTROL_TOOL_POLICY = {
 
   // ── agents + conversations ─────────────────────────────────────────────
   list_agents: { ...READ, routes: [get('/agents')] },
-  // Reaches `GET /agents/:slug`, which has no handler (404) — recorded as it
-  // is; routing it to `GET /api/agents/:slug` is a separate fix.
-  get_agent: { ...READ, routes: [get('/agents/:slug')] },
+  // Picks one agent out of the bare listing; no route serves `GET /agents/:slug`.
+  get_agent: { ...READ, routes: [get('/agents')] },
   create_agent: { ...OPERATOR_MUTATION, routes: [post('/agents')] },
   update_agent: { ...OPERATOR_MUTATION, routes: [put('/agents/:slug')] },
   delete_agent: { ...OPERATOR_MUTATION, routes: [del('/agents/:slug')] },

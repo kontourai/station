@@ -1042,7 +1042,7 @@ export type BudgetPrincipalSource =
   | 'loopback'
   | 'native-device';
 
-export const BUDGET_PRINCIPAL_VAR = 'stationBudgetPrincipal';
+const BUDGET_PRINCIPAL_VAR = 'stationBudgetPrincipal';
 
 export interface BudgetPrincipal {
   key: string;

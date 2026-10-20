@@ -10,6 +10,9 @@ const {
   createMcpUiFrameApp,
   resolveMcpUiFrameAncestors,
 } = await import('../mcp-ui-frame-server.js');
+const { resolveStationBrowserOrigins } = await import(
+  '../../../security/station-browser-origins.js'
+);
 
 interface ProxyFrame {
   title: string;
@@ -345,12 +348,12 @@ describe('MCP Apps sandbox proxy', () => {
       resolveMcpUiFrameAncestors({
         port: 3141,
         host: 'station.example.test',
-        additionalOrigins: [
+        allowedOriginsEnv: [
           'https://remote.example.test/path',
           'not an origin',
           'javascript:alert(1)',
           'tauri://attacker.example.test',
-        ],
+        ].join(','),
       }),
     ).toEqual([
       'https://remote.example.test',
@@ -362,6 +365,20 @@ describe('MCP Apps sandbox proxy', () => {
       'http://station.example.test:3141',
       'https://station.example.test:3141',
     ]);
+  });
+
+  test('frames exactly the CSP-expressible subset of the trusted browser origins', () => {
+    const input = {
+      port: 3141,
+      host: '192.0.2.10',
+      allowedOriginsEnv: 'https://ui.example.test,http://[::1]:5173',
+    };
+    const browserOrigins = resolveStationBrowserOrigins(input);
+    const expressible = browserOrigins.filter(
+      (origin) => !new URL(origin).hostname.startsWith('['),
+    );
+    expect(browserOrigins).toContain('http://[::1]:3141');
+    expect(resolveMcpUiFrameAncestors(input)).toEqual(expressible);
   });
 
   test('serves nothing else from the sandbox origin', async () => {
