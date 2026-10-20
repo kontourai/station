@@ -583,10 +583,12 @@ export function showSurfaceAlone(
 }
 
 /**
- * The panes on screen now that revealing `surfaceId` the way the model does
- * (`revealSurface`; `showSurfaceAlone` on a folded device, `alone`) would take
- * off screen: whose unsaved-changes guards a caller outside the model asks
- * before it reveals the surface.
+ * The dock panes on screen now that the model's own reveal of `surfaceId`
+ * would take off screen (`revealSurface`, or `showSurfaceAlone` on a folded
+ * device, `alone`: where the surface is, else `preferred`). The panes whose
+ * unsaved-changes guards a caller outside the model asks before it reveals
+ * the surface. A page change in `main` is a navigation, which asks its own
+ * guards; what the reveal does to a maximize hides no pane.
  */
 export function panesHiddenByReveal(
   arrangement: RegionArrangement,
@@ -595,7 +597,7 @@ export function panesHiddenByReveal(
   alone: boolean,
 ): string[] {
   const onScreen = (value: RegionArrangement) =>
-    REGION_IDS.flatMap((id) => {
+    DOCK_REGION_IDS.flatMap((id) => {
       const region = value[id];
       return region.visible && region.occupant ? [region.occupant] : [];
     });

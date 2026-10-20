@@ -4,7 +4,7 @@ import { type ReactNode, useRef, useState } from 'react';
 import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { navigationStore } from '../../contexts/navigation-store';
-import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import { useRegionModel } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import {
@@ -108,18 +108,19 @@ function QuoteSourceInspection({
           <Button
             onClick={() => {
               if (!scope?.isCurrent()) return;
-              revealChat(() => {
-                // A guard may have answered after the Station changed.
-                if (!scope.isCurrent()) return null;
-                onClose();
-                navigationStore.navigate(window.location.pathname, {
-                  chat: quote.sessionId,
-                });
-                return {
-                  after: () => {
-                    window.location.hash = `station-message=${encodeURIComponent(source.messageId)}`;
-                  },
-                };
+              revealChat({
+                // Asked again once any guard answered: the Station may have
+                // changed meanwhile.
+                admit: () => scope.isCurrent(),
+                open: () => {
+                  onClose();
+                  navigationStore.navigate(window.location.pathname, {
+                    chat: quote.sessionId,
+                  });
+                },
+                after: () => {
+                  window.location.hash = `station-message=${encodeURIComponent(source.messageId)}`;
+                },
               });
             }}
           >
@@ -163,53 +164,68 @@ function QuoteSourceInspection({
  * Show Chat for an explicit "open this conversation" from outside it — a
  * knowledge document, a Task's answer, a plan — through the canonical reveal
  * (`useShowSurface`: the Coding centre's Chat page where it owns Chat, else
- * Chat's region). Whatever that reveal would take off screen asks its own
- * unsaved-changes guard first, once: a phone layer over Chat through its own
- * close, a pane sharing Chat's region through its owner. Cancel changes
- * nothing. `open` runs only once the way is clear and returns null to
- * refuse, in which case Chat is not shown either; `after` runs once it is.
+ * Chat's region).
+ *
+ * Every pane that reveal would take off screen and that holds unsaved work —
+ * one sharing Chat's region, the pane a phone layer shows over Chat — asks
+ * its own guard first, once each, before anything changes. When the last one
+ * answers, the open is admitted again and the reveal derived again from the
+ * arrangement as it is then: a lost admission, or a guarded pane the reveal
+ * would now hide that was not asked, opens nothing. Cancel changes nothing.
+ * Nothing is asked where the reveal is no region reveal (the Coding centre's
+ * page, or no region shell rendered, when it is a deep link and navigation's
+ * own guards apply). Where a Chat workspace layout owns the viewport, Chat is
+ * already the page: selecting the conversation shows it, and no reveal runs —
+ * the deep link would leave that layout.
  */
 function useGuardedChatReveal() {
-  const model = useRegionModelOptional();
-  const modelRef = useRef(model);
-  modelRef.current = model;
-  const showSurface = useShowSurface();
-  const centerOwnsChat = useLayoutChatPlacement() === 'center';
-  const alone = useDockFoldsToOneRegion();
-  return (open: () => { after?: () => void } | null) => {
-    const show = () => {
-      const opened = open();
-      if (!opened) return;
-      showSurface('chat');
-      opened.after?.();
+  // A guard can answer long after the click: what it answers into is the
+  // shell as it is then, not as the click's render saw it.
+  const current = {
+    model: useRegionModel(),
+    showSurface: useShowSurface(),
+    placement: useLayoutChatPlacement(),
+    alone: useDockFoldsToOneRegion(),
+  };
+  const latest = useRef(current);
+  latest.current = current;
+  const guardedPanesHidden = (): string[] => {
+    const { model, placement, alone } = latest.current;
+    const chat = resolveRegionSurface('chat');
+    if (placement !== 'none' || !model.canRenderRegionSurfaces || !chat)
+      return [];
+    return panesHiddenByReveal(
+      model.regions,
+      'chat',
+      chat.defaultRegion,
+      alone,
+    ).filter((owner) => navigationStore.hasNavigationGuard(owner));
+  };
+  return (request: {
+    admit: () => boolean;
+    open: () => void;
+    after?: () => void;
+  }) => {
+    if (!request.admit()) return;
+    const asked = guardedPanesHidden();
+    const proceed = () => {
+      if (!request.admit()) return;
+      if (guardedPanesHidden().some((owner) => !asked.includes(owner))) return;
+      request.open();
+      if (latest.current.placement !== 'viewport')
+        latest.current.showSurface('chat');
+      request.after?.();
     };
-    const current = modelRef.current;
-    if (centerOwnsChat || !current) {
-      show();
-      return;
-    }
-    current.closePhoneLayer(() => {
-      const regions = modelRef.current?.regions ?? current.regions;
-      const chat = resolveRegionSurface('chat');
-      const guarded = chat
-        ? panesHiddenByReveal(
-            regions,
-            'chat',
-            chat.defaultRegion,
-            alone,
-          ).filter((owner) => navigationStore.hasNavigationGuard(owner))
-        : [];
-      const ask = (owners: readonly string[]) => {
-        const [owner, ...rest] = owners;
-        if (owner === undefined) {
-          show();
-          return;
-        }
-        navigationStore.runNavigationGuards(() => ask(rest), undefined, {
-          owner,
-        });
-      };
-      ask(guarded);
-    });
+    const ask = (owners: readonly string[]) => {
+      const [owner, ...rest] = owners;
+      if (owner === undefined) {
+        proceed();
+        return;
+      }
+      navigationStore.runNavigationGuards(() => ask(rest), undefined, {
+        owner,
+      });
+    };
+    ask(asked);
   };
 }

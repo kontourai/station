@@ -40,9 +40,11 @@ import {
   RegionModelProvider,
   useRegionModel,
 } from '../../../contexts/RegionModelContext';
+import { MOBILE_MEDIA_QUERY } from '../../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { quoteHref, type SavedAnswerQuote } from '../../../utils/answer-quotes';
 import { ProjectKnowledgeViewerModal } from '../ProjectKnowledgeViewerModal';
+import type { DocMeta } from '../types';
 
 const ORIGIN = 'http://station.test';
 const scope = vi.hoisted(() => ({
@@ -72,6 +74,13 @@ vi.mock('@kontourai/station-sdk/quote-source', () => ({
   })),
 }));
 
+const DOC: DocMeta = {
+  id: 'doc-decisions',
+  filename: 'decisions.md',
+  chunkCount: 1,
+  createdAt: '2026-10-19T00:00:00.000Z',
+};
+
 const QUOTE: SavedAnswerQuote = {
   version: 1,
   origin: ORIGIN,
@@ -83,12 +92,15 @@ const QUOTE: SavedAnswerQuote = {
 };
 
 let model: ReturnType<typeof useRegionModel> | null = null;
-function RegionShellProbe() {
+function RegionShellProbe({ regionShell }: { regionShell: boolean }) {
   const value = useRegionModel();
   // A region shell is mounted wherever the ambient dock is, which is what
   // makes a reveal a state write rather than a deep link.
   const register = value.registerRegionSurfaceHost;
-  useEffect(() => register(), [register]);
+  useEffect(
+    () => (regionShell ? register() : undefined),
+    [register, regionShell],
+  );
   useEffect(() => {
     model = value;
   }, [value]);
@@ -98,13 +110,14 @@ function RegionShellProbe() {
 function mount(
   quote: SavedAnswerQuote = QUOTE,
   around?: (node: ReactNode) => ReactNode,
+  { regionShell = true }: { regionShell?: boolean } = {},
 ) {
   const content = `See [the reviewed answer](${quoteHref(quote)}) for why.`;
   const tree = (
     <RegionModelProvider>
-      <RegionShellProbe />
+      <RegionShellProbe regionShell={regionShell} />
       <ProjectKnowledgeViewerModal
-        doc={{ filename: 'decisions.md', chunkCount: 1 } as never}
+        doc={DOC}
         content={content}
         loading={false}
         onClose={() => {}}
@@ -137,6 +150,44 @@ async function inspectAndOpen() {
 
 function params() {
   return new URLSearchParams(window.location.search);
+}
+
+function stubPhone() {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: 390,
+  });
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === MOBILE_MEDIA_QUERY || query === '(pointer: coarse)',
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+}
+
+/**
+ * An unsaved-changes guard for `owner` that answers LATER, as a person
+ * reading a prompt does: the test holds the answer and gives it.
+ */
+function deferredGuard(owner: string) {
+  const asked = vi.fn();
+  let pending: { proceed: () => void; cancel?: () => void } | null = null;
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol(`${owner} draft`),
+    (proceed, cancel) => {
+      asked();
+      pending = { proceed, cancel };
+    },
+    owner,
+  );
+  const answer = (choice: 'proceed' | 'cancel') =>
+    act(() => {
+      const current = pending;
+      pending = null;
+      if (choice === 'proceed') current?.proceed();
+      else current?.cancel?.();
+    });
+  return { asked, answer, unregister };
 }
 
 // The renderer chunk `LazyMarkdown` loads: imported once here so the waits
@@ -234,6 +285,30 @@ describe('Open source conversation from a knowledge document', () => {
     }
   });
 
+  // A Chat workspace layout owns the viewport and mounts no region shell, so
+  // the reveal's fallback is a deep link to `/` — which would leave the very
+  // layout Chat is shown in. Selecting the conversation is enough there.
+  test('where a Chat layout owns the viewport, it selects the conversation and stays on the layout', async () => {
+    window.history.replaceState({}, '', '/projects/station/layouts/chat');
+    navigationStore.navigate('/projects/station/layouts/chat', {
+      chat: null,
+    });
+    mount(
+      QUOTE,
+      (tree) => (
+        <LayoutChatPlacementContext.Provider value="viewport">
+          {tree}
+        </LayoutChatPlacementContext.Provider>
+      ),
+      { regionShell: false },
+    );
+    await inspectAndOpen();
+    await waitFor(() => expect(params().get('chat')).toBe('session-a'));
+    expect(window.location.pathname).toBe('/projects/station/layouts/chat');
+    expect(params().get('surface')).toBeNull();
+    expect(window.location.hash).toBe('#station-message=answer-a');
+  });
+
   test('a pane with unsaved work that the reveal would hide is asked once; Cancel changes nothing', async () => {
     navigationStore.navigate('/projects/station', { dock: 'open' });
     mount();
@@ -328,5 +403,92 @@ describe('Open source conversation from a knowledge document', () => {
     expect(params().get('chat')).toBeNull();
     expect(window.location.hash).toBe('');
     expect(model?.regions.bottom.visible).toBe(false);
+  });
+
+  test('on a phone, the pane a layer shows over Chat is asked once, and Continue shows the conversation', async () => {
+    stubPhone();
+    navigationStore.navigate('/projects/station', { dock: 'open' });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => {
+      model?.openSurfaceInRegion('activity');
+    });
+    await waitFor(() =>
+      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'activity' }),
+    );
+    const guard = deferredGuard('activity');
+    try {
+      const search = window.location.search;
+      await inspectAndOpen();
+      expect(guard.asked).toHaveBeenCalledTimes(1);
+      // Asked, not acted on: the layer and the URL wait for the answer.
+      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'activity' });
+      expect(window.location.search).toBe(search);
+      guard.answer('proceed');
+      await waitFor(() => expect(model?.phoneLayer).toBeNull());
+      expect(model?.regions.bottom.occupant).toBe('chat');
+      expect(params().get('chat')).toBe('session-a');
+      expect(window.location.hash).toBe('#station-message=answer-a');
+      expect(guard.asked).toHaveBeenCalledTimes(1);
+    } finally {
+      guard.unregister();
+    }
+  });
+
+  test('on a phone, a Station lost while the layer’s guard is up changes nothing', async () => {
+    stubPhone();
+    navigationStore.navigate('/projects/station', { dock: 'open' });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => {
+      model?.openSurfaceInRegion('activity');
+    });
+    await waitFor(() =>
+      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'activity' }),
+    );
+    const guard = deferredGuard('activity');
+    try {
+      const search = window.location.search;
+      const arrangement = structuredClone(model?.regions);
+      await inspectAndOpen();
+      scope.current = false;
+      guard.answer('proceed');
+      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'activity' });
+      expect(model?.regions).toEqual(arrangement);
+      expect(window.location.search).toBe(search);
+      expect(window.location.hash).toBe('');
+      expect(
+        screen.getByRole('dialog', { name: 'Quoted answer source' }),
+      ).toBeTruthy();
+    } finally {
+      guard.unregister();
+    }
+  });
+
+  test('a covered pane replaced by another unsaved one while its guard is up opens nothing', async () => {
+    navigationStore.navigate('/projects/station', { dock: 'open' });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => model?.placeSurface('activity', 'bottom'));
+    const first = deferredGuard('activity');
+    const second = deferredGuard('workspace-agents');
+    try {
+      await inspectAndOpen();
+      expect(first.asked).toHaveBeenCalledTimes(1);
+      // While Activity's prompt is up, the reader puts Agents — with its own
+      // unsaved work — where Activity was.
+      act(() => model?.placeSurface('workspace-agents', 'bottom'));
+      await waitFor(() =>
+        expect(model?.regions.bottom.occupant).toBe('workspace-agents'),
+      );
+      first.answer('proceed');
+      expect(second.asked).not.toHaveBeenCalled();
+      expect(model?.regions.bottom.occupant).toBe('workspace-agents');
+      expect(params().get('chat')).toBeNull();
+      expect(window.location.hash).toBe('');
+    } finally {
+      first.unregister();
+      second.unregister();
+    }
   });
 });
