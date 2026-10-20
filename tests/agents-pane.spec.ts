@@ -1,5 +1,3 @@
-import { copyFileSync, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { expect, type Page } from '@playwright/test';
 import { test } from './helpers/fixture-audit';
 import {
@@ -253,16 +251,6 @@ test.describe('Agents pane child work (#2459)', () => {
     await childRow.screenshot({
       path: testInfo.outputPath('agents-row-inline-actions.png'),
     });
-    if (process.env.STATION_E2E_GALLERY_DIR) {
-      mkdirSync(process.env.STATION_E2E_GALLERY_DIR, { recursive: true });
-      copyFileSync(
-        testInfo.outputPath('agents-row-inline-actions.png'),
-        resolve(
-          process.env.STATION_E2E_GALLERY_DIR,
-          'agents-row-inline-actions.png',
-        ),
-      );
-    }
 
     // The scope is remembered on this device.
     await page.reload();

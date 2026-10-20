@@ -1,6 +1,4 @@
-import { mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { expect, type Page, type TestInfo } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import capturedCodexEvents from '../src-ui/src/__tests__/fixtures/codex-subagent-transcript-events.json' with {
   type: 'json',
 };
@@ -22,13 +20,6 @@ import {
  * its outcome. Events arrive through the named orchestration SSE fixture
  * seam, in the shapes `claude-adapter-child-work.ts` publishes.
  */
-
-function capturePath(testInfo: TestInfo, name: string): string {
-  const directory = process.env.STATION_E2E_GALLERY_DIR;
-  if (!directory) return testInfo.outputPath(name);
-  mkdirSync(directory, { recursive: true });
-  return resolve(directory, name);
-}
 
 const SESSION_ID = 'session-1';
 const CONVERSATION_ID = 'conv-1';
@@ -250,7 +241,7 @@ test.describe('subagent transcript cards', () => {
     await expect(group.getByText('Review 1', { exact: true })).toBeVisible();
     await expect(group.getByTestId('subagent-card')).toHaveCount(6);
     await group.screenshot({
-      path: capturePath(testInfo, 'subagent-roster-expanded-desktop.png'),
+      path: testInfo.outputPath('subagent-roster-expanded-desktop.png'),
     });
     await heading.click();
     await emit(page, {
@@ -274,7 +265,7 @@ test.describe('subagent transcript cards', () => {
         theme,
       );
       await group.screenshot({
-        path: capturePath(testInfo, `subagent-roster-collapsed-${theme}.png`),
+        path: testInfo.outputPath(`subagent-roster-collapsed-${theme}.png`),
       });
     }
     await page.setViewportSize({ width: 390, height: 844 });
@@ -295,7 +286,7 @@ test.describe('subagent transcript cards', () => {
     expect(box!.x + box!.width).toBeLessThanOrEqual(390);
     expect((await heading.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await group.screenshot({
-      path: capturePath(testInfo, 'subagent-roster-expanded-mobile-light.png'),
+      path: testInfo.outputPath('subagent-roster-expanded-mobile-light.png'),
     });
   });
 
@@ -372,8 +363,7 @@ test.describe('subagent transcript cards', () => {
       expect(desktopBox!.x).toBeGreaterThanOrEqual(0);
       expect(desktopBox!.x + desktopBox!.width).toBeLessThanOrEqual(1280);
       await page.screenshot({
-        path: capturePath(
-          testInfo,
+        path: testInfo.outputPath(
           `subagent-card-codex${standalone ? '-standalone' : ''}-desktop.png`,
         ),
       });
@@ -395,8 +385,7 @@ test.describe('subagent transcript cards', () => {
       expect(box!.y).toBeGreaterThanOrEqual(0);
       expect(box!.y + box!.height).toBeLessThanOrEqual(844);
       await page.screenshot({
-        path: capturePath(
-          testInfo,
+        path: testInfo.outputPath(
           `subagent-card-codex${standalone ? '-standalone' : ''}-mobile-390.png`,
         ),
       });
@@ -482,7 +471,7 @@ test.describe('subagent transcript cards', () => {
     await expect(card.getByText('6:12')).toBeVisible();
     await expectDockFits(page);
     await card.screenshot({
-      path: capturePath(testInfo, 'subagent-card-running-desktop.png'),
+      path: testInfo.outputPath('subagent-card-running-desktop.png'),
     });
 
     const identity = {
@@ -533,7 +522,7 @@ test.describe('subagent transcript cards', () => {
     ).toBeVisible();
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: capturePath(testInfo, 'subagent-card-completed-desktop.png'),
+      path: testInfo.outputPath('subagent-card-completed-desktop.png'),
     });
 
     await card
@@ -544,7 +533,7 @@ test.describe('subagent transcript cards', () => {
       card.getByText('48,210 tokens · 37 tool uses · ran 17:04'),
     ).toBeVisible();
     await card.screenshot({
-      path: capturePath(testInfo, 'subagent-card-expanded-desktop.png'),
+      path: testInfo.outputPath('subagent-card-expanded-desktop.png'),
     });
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -577,14 +566,14 @@ test.describe('subagent transcript cards', () => {
     ).toBeVisible();
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: capturePath(testInfo, 'subagent-card-expanded-mobile-390.png'),
+      path: testInfo.outputPath('subagent-card-expanded-mobile-390.png'),
     });
     await card
       .getByRole('button', { name: /review station#3657 ADR freeze/ })
       .click();
     await expect(card.getByText('No further action needed.')).toHaveCount(0);
     await page.screenshot({
-      path: capturePath(testInfo, 'subagent-card-completed-mobile-390.png'),
+      path: testInfo.outputPath('subagent-card-completed-mobile-390.png'),
     });
   });
 });
