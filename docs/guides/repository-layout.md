@@ -30,9 +30,8 @@ Consume sibling Kontour products through published interfaces. The
 | `config/`, `schemas/` | Checked-in configuration and validation schemas |
 | `packaging/`, `patches/` | Distribution inputs and managed dependency patches |
 | `ops/` | Station-specific operational launch and release helpers |
-| `deploy/` | Operator recipes for running Station or its companion services somewhere: the private GCP development VM (`gcp-dev/`), the single-owner public HTTPS overlay (`public-ingress/`) and the push-notification gateway Worker (`push-gateway/`) |
-| `deployment/` | Configuration for separately deployed companion services that are not Station itself: the self-hosted routing broker (`self-hosted-broker/`) and the private telemetry companion (`telemetry/`) |
-| `monitoring/` | Optional observability stack |
+| `deploy/` | Operator recipes for running Station or its companion services somewhere: the single-owner public HTTPS overlay (`public-ingress/`) and the push-notification gateway Worker (`push-gateway/`) |
+| `deployment/` | Configuration for separately deployed companion services that are not Station itself: the self-hosted routing broker (`self-hosted-broker/`) and the private telemetry companion with its optional diagnostics and developer monitoring profiles (`telemetry/`). [Deployment](deployment.md) says which directory holds what |
 | `assets/` | Application assets |
 | `docs/` | Guides, references, decisions, and public-site sources |
 | `.github/`, `.githooks/` | Hosted workflows, contribution forms, local hooks |

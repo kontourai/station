@@ -77,8 +77,8 @@ at UTC midnight. Failed credential refresh beyond 60 seconds returns
 or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
 before interpreting received pings as activity estimates.
 
-The repository includes an optional Docker example for Collector → Prometheus
-→ Grafana metrics and Collector → Jaeger traces. Starting that example is not
+The repository includes an optional Docker profile for Collector → Prometheus
+→ Grafana metrics and Collector → Tempo traces. Starting that profile is not
 proof that Station recorded or delivered a measurement. The local event log is
 also separate from the canonical orchestration EventStore.
 
@@ -411,18 +411,25 @@ access or read failure.
 
 ## Quick Start
 
+The local stack is the [developer profile](../../deployment/telemetry/README.md#developer-profile)
+of the private telemetry deployment: the same pinned Collector, Prometheus,
+Tempo and Grafana, without the product receiver. Create its two private
+credential files as that section describes, then:
+
 ```bash
-cd monitoring && docker compose up -d
+export TELEMETRY_PRIVATE_DIR="$HOME/.station-telemetry-dev"
+docker compose -f deployment/telemetry/compose.diagnostics.yaml \
+  -f deployment/telemetry/compose.dev.yaml up -d
 ```
 
 | Service    | URL                        | Credentials     |
 |------------|----------------------------|-----------------|
-| Grafana    | http://localhost:3333      | admin/station   |
-| Prometheus | http://localhost:9090      | —               |
-| Jaeger     | http://localhost:16686     | —               |
-| Collector  | http://localhost:4318      | OTLP HTTP       |
+| Grafana    | http://127.0.0.1:44484     | `telemetry-admin` and the `grafana-password` file |
+| Prometheus | http://127.0.0.1:44483     | —               |
+| Collector  | http://127.0.0.1:44482     | OTLP HTTP, `x-api-key` from the `otel-key` file |
 
-The Grafana dashboard auto-provisions from `monitoring/grafana/dashboards/station.json`. No manual import needed.
+Grafana provisions `deployment/telemetry/dashboards/station.json`; traces are
+in its Tempo data source. No manual import is needed.
 
 ## Environment Variables
 
@@ -450,7 +457,8 @@ connection results describe the current Station process.
 To enable telemetry against the local stack:
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:44482
+export STATION_OTEL_API_KEY="$(cat "$HOME/.station-telemetry-dev/otel-key")"
 export OTEL_SERVICE_NAME=station
 ```
 
@@ -579,8 +587,8 @@ older Station overwrite a newer one's history.
 ```
 Station server
   └─ OTel SDK (src-server/telemetry.ts)
-       ├─ Traces  → OTLP HTTP :4318/v1/traces  → Collector → Jaeger
-       └─ Metrics → OTLP HTTP :4318/v1/metrics → Collector → Prometheus → Grafana
+       ├─ Traces  → OTLP HTTP /v1/traces  → Collector → Tempo → Grafana
+       └─ Metrics → OTLP HTTP /v1/metrics → Collector → Prometheus → Grafana
 ```
 
 `src-server/index.ts` imports `src-server/telemetry.ts` before runtime/instrument
@@ -687,12 +695,13 @@ runtime wiring supplies these map sizes:
 | `station.agents.active` | Loaded entries in `activeAgents`, not currently executing turns |
 | `station.mcp.connections` | Entries in `mcpConnectionStatus`, including failed entries, not only healthy connections |
 
-`station.tokens.context` and `station.prompt.operations` are declared, but this
-audit found no current production recording calls for them in the repository.
+`station.tokens.context` is declared, but this audit found no current
+production recording call for it in the repository.
 `station.layout.operations` and `station.voice.duration` have no current
-declaration. Historical retained series or a dashboard query do not establish
-a current producer. The dashboard follow-up is
-[#2751](https://github.com/kontourai/station/issues/2751).
+declaration; the dashboard has no layout operations query until
+[#2751](https://github.com/kontourai/station/issues/2751) adds the instrument.
+Historical retained series or a dashboard query do not establish a current
+producer.
 
 <a id="token-field-fallback-pattern"></a>
 
@@ -720,7 +729,7 @@ See [chat finalization](../../src-server/routes/chat/chat-lifecycle.ts) and
 
 ## Grafana Dashboard
 
-The dashboard (`monitoring/grafana/dashboards/station.json`) contains 28 non-row panels plus five section rows. The following numbers are
+The dashboard (`deployment/telemetry/dashboards/station.json`) contains 26 non-row panels plus five section rows. The following numbers are
 reading order, not Grafana JSON panel IDs:
 
 | # | Title | Type | Category |
@@ -736,49 +745,58 @@ reading order, not Grafana JSON panel IDs:
 | 9 | Requests by Agent | bargauge | General |
 | 10 | Tool Calls | bargauge | General |
 | 11 | Agent Operations | bargauge | CRUD Operations |
-| 12 | Layout Operations | bargauge | CRUD Operations |
-| 13 | Prompt Operations | bargauge | CRUD Operations |
-| 14 | Project Operations | bargauge | CRUD Operations |
-| 15 | Plugin Activity | bargauge | Plugins |
-| 16 | Plugin Events Over Time | timeseries | Plugins |
-| 17 | Notifications | bargauge | Notifications & Scheduler |
-| 18 | Scheduler Jobs | bargauge | Notifications & Scheduler |
-| 19 | Scheduler Job Duration | timeseries | Notifications & Scheduler |
-| 20 | Provider Operations | bargauge | Providers & MCP |
-| 21 | MCP Lifecycle | bargauge | Providers & MCP |
-| 22 | Knowledge Operations | bargauge | Providers & MCP |
-| 23 | Tool Duration (p95) | timeseries | Performance |
-| 24 | Chat Duration Distribution | timeseries | Performance |
-| 25 | Context Overhead vs Input Tokens | timeseries | Performance |
-| 26 | Error Rate | timeseries | Performance |
-| 27 | Cost by Agent | bargauge | Performance |
-| 28 | Token Usage | stat | Performance |
+| 12 | Project Operations | bargauge | CRUD Operations |
+| 13 | Plugin Activity | bargauge | Plugins |
+| 14 | Plugin Events Over Time | timeseries | Plugins |
+| 15 | Notifications | bargauge | Notifications & Scheduler |
+| 16 | Scheduler Jobs | bargauge | Notifications & Scheduler |
+| 17 | Scheduler Job Duration | timeseries | Notifications & Scheduler |
+| 18 | Provider Operations | bargauge | Providers & MCP |
+| 19 | MCP Lifecycle | bargauge | Providers & MCP |
+| 20 | Knowledge Operations | bargauge | Providers & MCP |
+| 21 | Tool Duration (p95) | timeseries | Performance |
+| 22 | Chat Duration Distribution | timeseries | Performance |
+| 23 | Context Overhead vs Input Tokens | timeseries | Performance |
+| 24 | Error Rate | timeseries | Performance |
+| 25 | Cost by Agent | bargauge | Performance |
+| 26 | Token Usage | stat | Performance |
 
 Current query limits matter when interpreting those panels:
 
-- Layout, Prompt, and Context queries do not have current recording sources as
-  described above. Notifications and Knowledge group by `operation`, but their
-  producers use `op`. Other mixed-label families need their populations separated.
+- The Context query has no current recording source as described above.
+  Notifications and Knowledge group by `operation`, but their producers use
+  `op`. Other mixed-label families need their populations separated.
 - Scheduler and chat request panels include operations beyond completed work.
   Tool-call and tool-duration populations differ. Gauge titles do not change
   the map-cardinality meanings above.
 - Chat p95 is calculated per histogram series without aggregating Agent/plugin
   buckets into a global p95. Cost panels show partial estimates.
-- `or vector(0)` in the Errors query can render zero when no series was observed.
-  That is not evidence that instrumentation ran and observed no errors.
+- The Errors query has no `or vector(0)` fallback, so an unobserved series shows
+  no data rather than a zero. A zero is still not evidence that instrumentation
+  ran and observed no errors.
 
 [#2751](https://github.com/kontourai/station/issues/2751) owns the query/producer
-reconciliation. The Compose files use `latest` images and do not pin host bind
-addresses; Grafana enables an anonymous Viewer and the example admin password.
-Treat this as an operator-configured development example, not a qualified
-production deployment. This audit did not start Docker or test collector,
-Prometheus, Grafana, or Jaeger delivery.
+reconciliation. The Compose profile pins the Collector, Prometheus, Tempo,
+Grafana and PostgreSQL images by digest. The receiver and cloudflared images
+are operator-selected: Compose requires a value but does not enforce a digest,
+so select an exact source-built tag or digest as the
+[profile README](../../deployment/telemetry/README.md) describes. Published
+ports bind to loopback, and the profile requires private credential files with
+no default password. It is still a development and private-operator profile,
+not a qualified production deployment. One local start of the developer profile
+provisioned this dashboard, refused unauthenticated Grafana and OTLP requests,
+and carried a synthetic authenticated OTLP counter into Prometheus. It did not
+exercise Station's own export, traces in Tempo, or rendered panel values.
 
-## Distributed Traces (Jaeger)
+## Distributed Traces (Tempo)
 
-Traces are exported via OTLP to the Collector, which forwards them to Jaeger over gRPC (port 4317, insecure).
+Traces are exported via OTLP to the Collector, which projects their attributes
+and forwards them to Tempo over OTLP HTTP on the internal diagnostics network.
 
-Access traces at **http://localhost:16686**. Select service `station` (or the value of `OTEL_SERVICE_NAME`) from the search dropdown.
+Open Grafana's **Explore** view, choose the **Tempo** data source and search for
+service `station` (or the value of `OTEL_SERVICE_NAME`). The Collector renames
+spans to `station.operation` and keeps only the attributes listed in the
+[telemetry profile](../../deployment/telemetry/README.md#diagnostic-semantics-and-retention).
 
 The primary-chat stream creates a `station.chat` span with `startSpan`.
 That call neither forces it to be a root span nor makes it the active context.
@@ -830,7 +848,7 @@ import { myCounter } from '../../../telemetry/metrics.js';
 myCounter.add(1, { label: 'value' });
 ```
 
-**3. Add a Grafana panel** by editing `monitoring/grafana/dashboards/station.json` or via the Grafana UI (save JSON back to the file to persist).
+**3. Add a Grafana panel** by editing `deployment/telemetry/dashboards/station.json`. The provisioned dashboard is read-only in Grafana; copy edited JSON back to the file to persist it.
 
 Define the observation and its owning caller before choosing a metric name.
 Test that caller with a registered in-memory meter, including missing-data and

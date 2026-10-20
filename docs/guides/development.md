@@ -292,7 +292,7 @@ packages/         Contracts, SDK, connect package, shared helpers, CLI
 examples/         Plugin and provider examples
 docs/             Strategy, guides, reference, design docs, Pages source
 tests/            Playwright E2E specs and manifest
-monitoring/       OTel collector, Prometheus, Grafana, Jaeger stack
+deployment/       Self-hosted broker and telemetry/monitoring Compose profiles
 ```
 
 ## CLI Reference
