@@ -76,7 +76,8 @@ keys; an active account overlays it without copying account values into the
 browser's device envelope. The mode and color theme this device last rendered are
 cached separately for first paint ([appearance cache](../../src-ui/src/lib/appearance-cache.ts));
 that cache is not a device setting and yields once the account answers or
-the page resolves to no person (signed out, a refused credential).
+the page gets a definite "no person" (signed out, a refused credential; not
+while a session or relay account is still being checked).
 
 Device scope retains microphone and output providers, push permission, haptics,
 Return behavior, keyboard shortcuts, panel dimensions/placement and navigation

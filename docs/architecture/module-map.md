@@ -555,8 +555,9 @@ the startup path never loads the catalog;
 [color-themes.ts](../../src-ui/src/lib/color-themes.ts) exposes
 `COLOR_THEME_OPTIONS` for a picker. [color-theme-apply.ts](../../src-ui/src/lib/color-theme-apply.ts)
 loads the selected family's stylesheet, stamps `data-color-theme*` and
-`theme-color` once it has loaded (a failed sheet is not claimed and is
-requested again on the next apply), records the rendered appearance in
+`theme-color` once it has loaded (a failed sheet is not claimed, is marked
+with `data-color-theme-failed` and is requested again on the next apply or
+`retryColorTheme()`), records the rendered appearance in
 [appearance-cache.ts](../../src-ui/src/lib/appearance-cache.ts), and stays
 bound to the settings store from `main.tsx`.
 [branding-theme.ts](../../src-ui/src/lib/branding-theme.ts) re-rates a
