@@ -417,10 +417,9 @@
      Those call sites mixed in literal `white`, which ignores the palette.
      Dark lifts toward the palette's own text colour; light lifts toward its
      panel, which is white for the built-in palette, so light renders as it
-     did with the literal. Measured for the lifted border
-     (--border-primary 82% / lift 18%): dark 2.15:1 on --bg-secondary and
-     2.08:1 on --bg-primary (white gave 2.22 / 2.16); light unchanged at
-     1.21 / 1.18. */
+     did with the literal. For the lifted border (--border-primary 82% /
+     lift 18%) dark lands about 4% below the white mix's contrast and light
+     matches it; absolute ratios depend on how the layers are composited. */
   --surface-lift: var(--k-text);
 
   --accent-light: color-mix(in srgb, var(--k-brand) 25%, transparent);
