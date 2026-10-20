@@ -143,6 +143,7 @@ describe('historical ledgers', () => {
     const full = readReviewStateAt(f.root, 'HEAD', {
       purpose: 'advisory-dependency-history',
     }).ledger;
+    if (!full) throw new Error('the fixture commits a review ledger');
     expect(Object.keys(full.records[0])).toEqual(
       expect.arrayContaining(['limits', 'checks', 'documentDigest']),
     );
