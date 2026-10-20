@@ -687,6 +687,12 @@ describe('color theme cascade', () => {
           colorTheme: null,
           themeColor: null,
         });
+        // The failure is exposed for the Appearance page.
+        expect(
+          await page.evaluate(() =>
+            document.documentElement.getAttribute('data-color-theme-failed'),
+          ),
+        ).toBe('nord');
         // A live switch to another failing family changes nothing either.
         await page.evaluate(() =>
           (window as unknown as { harness: any }).harness.store.set(

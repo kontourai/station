@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { colorThemeSurfaceViolations } from '../branding-theme';
 import {
   applyColorTheme,
+  COLOR_THEME_FAILED_ATTRIBUTE,
   COLOR_THEME_STYLESHEET_ID,
+  retryColorTheme,
   whenColorThemeStylesheetSettled,
 } from '../color-theme-apply';
 import { COLOR_THEME_FAMILIES } from '../color-theme-catalog';
@@ -303,6 +305,39 @@ describe('family stylesheets load on demand', () => {
     ]);
   });
 
+  test('a failed sheet is exposed on the root for a picker, and retryColorTheme asks again', () => {
+    const failed = () => root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE);
+    applySettled(root, { ...base, colorTheme: 'gruvbox' });
+    expect(failed()).toBeNull();
+    // A live switch whose sheet 404s.
+    applyColorTheme(root, { ...base, colorTheme: 'tokyo-night' });
+    settleSheets('error');
+    expect(failed()).toBe('tokyo-night');
+    expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
+    // Retrying the same settings requests it again; failing again keeps it.
+    retryColorTheme(root);
+    expect(sheets().map((s) => s.href)).toContainEqual(
+      expect.stringContaining('/tokyo-night.css'),
+    );
+    settleSheets('error');
+    expect(failed()).toBe('tokyo-night');
+    // A retry that loads clears it and claims the theme.
+    retryColorTheme(root);
+    settleSheets('load');
+    expect(failed()).toBeNull();
+    expect(root.getAttribute('data-color-theme')).toBe('tokyo-night');
+    // Moving to another family, or to Station, clears a failure too.
+    applyColorTheme(root, { ...base, colorTheme: 'nord' });
+    settleSheets('error');
+    expect(failed()).toBe('nord');
+    applyColorTheme(root, { ...base, colorTheme: 'rose-pine' });
+    expect(failed()).toBeNull();
+    settleSheets('error');
+    expect(failed()).toBe('rose-pine');
+    applyColorTheme(root, { ...base, colorTheme: 'station' });
+    expect(failed()).toBeNull();
+  });
+
   test('a startup sheet that fails is not claimed, and is requested again', () => {
     // What startup-theme.js leaves behind: attributes, theme-color and a
     // sheet request for the family.
@@ -320,10 +355,12 @@ describe('family stylesheets load on demand', () => {
     // It 404s while the app runs: the theme is un-claimed and re-requested.
     startup.dispatchEvent(new Event('error'));
     expect(root.hasAttribute('data-color-theme')).toBe(false);
+    expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
     expect(document.head.querySelector('meta[name="theme-color"]')).toBeNull();
     expect(sheets()).toEqual([{ id: '', href }]);
     settleSheets('load');
     expect(root.getAttribute('data-color-theme')).toBe('nord');
+    expect(root.hasAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe(false);
     expect(sheets()).toEqual([{ id: COLOR_THEME_STYLESHEET_ID, href }]);
     // A sheet already marked failed (it failed before the app loaded) is the
     // same: not claimed, asked again.
