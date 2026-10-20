@@ -79,16 +79,19 @@ export function latestChildTool(
       break;
     }
   }
+  let crossedStart = false;
   for (let index = events.length - 1; index >= 0; index--) {
     const event = events[index];
     if (event.threadId !== threadId) continue;
     if (
       event.method === 'tool.started' &&
-      (!turnId || !event.turnId || event.turnId === turnId)
+      (event.turnId ? !turnId || event.turnId === turnId : !crossedStart)
     )
       return event.toolName;
-    if (event.method === 'turn.started' && event.turnId !== turnId)
-      return undefined;
+    if (event.method === 'turn.started') {
+      crossedStart = true;
+      if (event.turnId !== turnId) return undefined;
+    }
   }
   return undefined;
 }

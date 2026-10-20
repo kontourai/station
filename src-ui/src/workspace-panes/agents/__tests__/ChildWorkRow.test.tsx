@@ -324,6 +324,16 @@ test('a collapsed delegate polls one bounded turn, shows its own tool, and clear
 
   events.push({
     ...base,
+    turnId: undefined,
+    eventId: 'untagged-old-tool',
+    method: 'tool.started',
+    toolName: 'UntaggedOldTool',
+    itemId: 'untagged-old',
+    toolCallId: 'untagged-old',
+    arguments: {},
+  });
+  events.push({
+    ...base,
     turnId: 'turn-next',
     eventId: 'reset',
     method: 'turn.started',
@@ -344,6 +354,7 @@ test('a collapsed delegate polls one bounded turn, shows its own tool, and clear
   });
   expect(screen.queryByText('Read')).toBeNull();
   expect(screen.queryByText('LateOldTool')).toBeNull();
+  expect(screen.queryByText('UntaggedOldTool')).toBeNull();
 
   latestTool = { turnId: 'turn-next', name: 'Write' };
   events.length = 0;
