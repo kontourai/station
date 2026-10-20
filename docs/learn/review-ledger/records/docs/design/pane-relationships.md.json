@@ -26,7 +26,23 @@
 
     "src-ui/src/workspace-panes/RelatedPaneStrip.tsx",
 
-    "src-ui/src/components/project-sidebar/SidebarAccountControl.tsx"
+    "src-ui/src/components/project-sidebar/SidebarAccountControl.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
+
+    "src-ui/src/workspace-panes/relatedPanesHost.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneDirectRoute.ts",
+
+    "src-ui/src/workspace-panes/RegionPaneHost.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/RelatedPaneStrip.up.test.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/relatedPanesHost.test.tsx",
+
+    "tests/related-panes.spec.ts",
+
+    "tests/related-panes-frame.spec.ts"
   ],
 
   "checks": []

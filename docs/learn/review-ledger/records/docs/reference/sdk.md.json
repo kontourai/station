@@ -678,7 +678,19 @@
 
     "src-server/routes/orchestration/attachment-staging.ts",
 
-    "packages/shared/src/delegation-files.ts"
+    "packages/shared/src/delegation-files.ts",
+
+    "src-ui/src/regions/pane-relations.ts",
+
+    "src-ui/src/workspace-panes/RelatedPaneStrip.tsx",
+
+    "src-ui/src/workspace-panes/relatedPanesHost.ts",
+
+    "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
+
+    "tests/related-panes.spec.ts",
+
+    "tests/related-panes-frame.spec.ts"
   ],
 
   "checks": [
