@@ -66,7 +66,7 @@ const PLACEHOLDER = /^#N+$/;
  * attempts; `TODO(...)` whose argument does not start with `#` or
  * `archive#` belongs to another convention (dated TODOs) and is ignored.
  */
-export function parseMarkers(text) {
+function parseMarkers(text) {
   const markers = [];
   const malformed = [];
   for (const match of text.matchAll(MARKER_PATTERN)) {
@@ -133,7 +133,7 @@ function readsFeatureEnv(node) {
  * sunset when a `SUNSET(#N):` comment leads the statement that tests it or
  * any statement or declaration enclosing that test.
  */
-export function featureFlagsInSource(path, text) {
+function featureFlagsInSource(path, text) {
   if (!text.includes(FEATURE_ENV)) return [];
   ts ??= require('typescript-api');
   const source = ts.createSourceFile(
@@ -215,11 +215,47 @@ export function featureFlagsInSource(path, text) {
   return flags;
 }
 
-/** @param {CheckContext} context @returns {CheckResult} */
-export function checkMarkers(context) {
-  const findings = [];
-  const located = [];
+/**
+ * `STATION_FEATURES` flags read by non-test `src-server` code, one finding
+ * per flag that no reading site marks with a sunset.
+ * @param {CheckContext} context
+ */
+function flagFindings(context) {
   const flags = new Map();
+  for (const path of filesOf(context)) {
+    if (
+      !path.startsWith(FLAG_ROOT) ||
+      !/\.(ts|tsx|mts|cts)$/.test(path) ||
+      isTestPath(path) ||
+      path.endsWith('.d.ts')
+    )
+      continue;
+    const text = readText(context.root, path);
+    if (text === null) continue;
+    for (const flag of featureFlagsInSource(path, text)) {
+      const entry = flags.get(flag.flag) ?? { sites: [], sunset: false };
+      entry.sites.push({ path, line: flag.line });
+      entry.sunset ||= flag.sunset;
+      flags.set(flag.flag, entry);
+    }
+  }
+  const findings = [...flags]
+    .filter(([, entry]) => !entry.sunset)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([flag, entry]) => ({
+      kind: 'flag-without-sunset',
+      path: entry.sites[0].path,
+      line: entry.sites[0].line,
+      detail: `${FEATURE_ENV} flag '${flag}' has no SUNSET(#N): comment leading the statement that reads it (${entry.sites.length} site${entry.sites.length === 1 ? '' : 's'})`,
+    }));
+  return { findings, count: flags.size };
+}
+
+/** @param {CheckContext} context @returns {CheckResult} */
+function checkMarkers(context) {
+  const flags = flagFindings(context);
+  const findings = [...flags.findings];
+  const located = [];
   for (const path of filesOf(context)) {
     if (isFixturePath(path)) continue;
     for (const { line, text } of scannableLines(context.root, path)) {
@@ -234,32 +270,6 @@ export function checkMarkers(context) {
           detail: `${bad.text}: ${bad.reason}`,
         });
     }
-    if (
-      path.startsWith(FLAG_ROOT) &&
-      /\.(ts|tsx|mts|cts)$/.test(path) &&
-      !isTestPath(path) &&
-      !path.endsWith('.d.ts')
-    ) {
-      const text = readText(context.root, path);
-      if (text === null) continue;
-      for (const flag of featureFlagsInSource(path, text)) {
-        const entry = flags.get(flag.flag) ?? { sites: [], sunset: false };
-        entry.sites.push({ path, line: flag.line });
-        entry.sunset ||= flag.sunset;
-        flags.set(flag.flag, entry);
-      }
-    }
-  }
-  for (const [flag, entry] of [...flags].sort(([a], [b]) =>
-    a.localeCompare(b),
-  )) {
-    if (entry.sunset) continue;
-    findings.push({
-      kind: 'flag-without-sunset',
-      path: entry.sites[0].path,
-      line: entry.sites[0].line,
-      detail: `${FEATURE_ENV} flag '${flag}' has no SUNSET(#N): comment leading the statement that reads it (${entry.sites.length} site${entry.sites.length === 1 ? '' : 's'})`,
-    });
   }
   const resolved = tryGithub(() =>
     context.github.resolve(located.map((marker) => marker.number)),
@@ -296,7 +306,7 @@ export function checkMarkers(context) {
     'Unfinished-work markers and feature flags',
     sortFindings(findings),
     resolved.unavailable ?? null,
-    `${located.length} markers, ${flags.size} ${FEATURE_ENV} flags`,
+    `${located.length} markers, ${flags.count} ${FEATURE_ENV} flags`,
   );
 }
 
@@ -315,7 +325,7 @@ const ISSUE_REF =
 const ISSUE_URL =
   /github\.com\/kontourai\/station\/(?:issues|pull)\/([1-9]\d{0,5})(?!\d)/g;
 
-export function issueReferences(text) {
+function issueReferences(text) {
   const out = [];
   for (const match of text.matchAll(ISSUE_REF))
     out.push({ number: Number(match[1]), text: match[0] });
@@ -348,7 +358,7 @@ function refiledNumbers(root) {
 }
 
 /** @param {CheckContext} context @returns {CheckResult} */
-export function checkIssueReferences(context) {
+function checkIssueReferences(context) {
   const refs = [];
   for (const path of filesOf(context)) {
     if (isFixturePath(path) || RELEASE_RECORD.test(path)) continue;
@@ -389,7 +399,7 @@ export function checkIssueReferences(context) {
 // 3. Private plan and review labels
 // ---------------------------------------------------------------------------
 
-export const LABEL_PATTERNS = Object.freeze([
+const LABEL_PATTERNS = Object.freeze([
   ['plan-id', /\bs\d{3}-[a-z][a-z0-9-]*/],
   ['plan-file', /--plan\.md\b/],
   ['wave', /\bWave \d+\b/],
@@ -407,7 +417,7 @@ const LABEL_EXEMPT = [
   '.changeset/',
 ];
 
-export function planLabels(text) {
+function planLabels(text) {
   const out = [];
   for (const [kind, pattern] of LABEL_PATTERNS) {
     const match = pattern.exec(text);
@@ -417,7 +427,7 @@ export function planLabels(text) {
 }
 
 /** @param {CheckContext} context @returns {CheckResult} */
-export function checkPlanLabels(context) {
+function checkPlanLabels(context) {
   const findings = [];
   let scanned = 0;
   for (const path of filesOf(context)) {
@@ -455,7 +465,7 @@ function escapeRegExp(value) {
 }
 
 /** @param {CheckContext} context @returns {CheckResult} */
-export function checkModuleOwnership(context) {
+function checkModuleOwnership(context) {
   const files = filesOf(context);
   const directories = new Set();
   for (const path of files)
@@ -513,7 +523,7 @@ const SETTLED_LEAD = /^(?:historical|superseded|retired|archived)\b/i;
  * the paragraphs of every status line in the header, plus the issues they
  * cite in this repository and in the archive.
  */
-export function parseStatus(text) {
+function parseStatus(text) {
   const lines = text.split('\n').slice(0, STATUS_WINDOW);
   let first = null;
   const blocks = [];
@@ -548,7 +558,7 @@ export function parseStatus(text) {
 }
 
 /** @param {CheckContext} context @returns {CheckResult} */
-export function checkDesignStatus(context) {
+function checkDesignStatus(context) {
   const findings = [];
   const pending = [];
   const documents = filesOf(context).filter(
@@ -631,7 +641,7 @@ const RETENTION_EXCLUDED = ['docs/learn/review-ledger/'];
 const RETENTION_LINE =
   /^Retention: (?:until (\d{4}-\d{2}-\d{2})|permanent — \S.*)$/;
 
-export function evidenceDirectories(files) {
+function evidenceDirectories(files) {
   const candidates = new Set();
   for (const path of files) {
     if (RETENTION_EXCLUDED.some((prefix) => path.startsWith(prefix))) continue;
@@ -662,7 +672,7 @@ function validDate(value) {
 }
 
 /** @param {CheckContext} context @returns {CheckResult} */
-export function checkEvidenceRetention(context) {
+function checkEvidenceRetention(context) {
   const files = filesOf(context);
   const tracked = new Set(files);
   const directories = evidenceDirectories(files);

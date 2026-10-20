@@ -59,7 +59,7 @@ const MARKDOWN = new Set(['.md', '.mdx']);
  * How a path's text is read: `markdown` (prose), a comment syntax, or `null`
  * when the file carries neither (JSON, images, lockfiles).
  */
-export function textKind(path) {
+function textKind(path) {
   const name = basename(path);
   const extension = extname(name).toLowerCase();
   if (MARKDOWN.has(extension)) return 'markdown';
@@ -129,7 +129,7 @@ export function readText(root, path) {
  * line (1-based). Strings are skipped so a literal that merely contains `//`
  * or `#` is not read as a comment.
  */
-export function commentLines(kind, text) {
+function commentLines(kind, text) {
   if (kind === 'hash') return hashComments(text);
   if (kind === 'markup') return markupComments(text);
   return slashComments(text, {
