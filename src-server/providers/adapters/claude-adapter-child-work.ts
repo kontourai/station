@@ -97,10 +97,15 @@ export interface ClaudeChildWorkState {
   pendingReplies: Map<string, Pick<ChildWorkItem, 'model' | 'latestTool'>>;
   /** Settled task id → observed top-level SendMessage call awaiting a start. */
   pendingResumes: Map<string, string>;
+  /** Bounded replay history; API message ids can span multiple SDK frames. */
+  seenReplyFrames: Set<string>;
+  seenReplyTools: Set<string>;
+  seenResumeCalls: Set<string>;
 }
 
 /** Bound on pending reply facts and corroborated resumes. */
 const CLAUDE_PENDING_REPLIES_MAX = 64;
+const CLAUDE_SEEN_IDENTITIES_MAX = 64;
 
 /** The slice of the adapter's per-session record this module reads. */
 export interface ClaudeChildWorkRecord {
@@ -131,6 +136,9 @@ function stateOf(record: ClaudeChildWorkRecord): ClaudeChildWorkState {
     closed: false,
     pendingReplies: new Map(),
     pendingResumes: new Map(),
+    seenReplyFrames: new Set(),
+    seenReplyTools: new Set(),
+    seenResumeCalls: new Set(),
   };
   return record.childWork;
 }
@@ -217,6 +225,19 @@ function readTaskUsage(usage: unknown): ChildWorkUsage | undefined {
 
 function nonEmpty(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** Admit each SDK frame/tool identity once within the bounded replay window. */
+function rememberNewIdentity(seen: Set<string>, value: unknown): boolean {
+  const id = nonEmpty(value);
+  if (!id) return true;
+  if (seen.has(id)) return false;
+  seen.add(id);
+  if (seen.size > CLAUDE_SEEN_IDENTITIES_MAX) {
+    const oldest = seen.values().next().value;
+    if (oldest !== undefined) seen.delete(oldest);
+  }
+  return true;
 }
 
 function emit(context: ClaudeChildWorkContext, delta: ChildWorkDelta): boolean {
@@ -396,6 +417,7 @@ export function observeClaudeSubagentReply(
     if (!Array.isArray(content)) return;
     for (const block of content) {
       if (block.type !== 'tool_use' || block.name !== 'SendMessage') continue;
+      if (!rememberNewIdentity(state.seenResumeCalls, block.id)) continue;
       const input = block.input;
       if (!input || typeof input !== 'object' || !('recipient' in input))
         continue;
@@ -428,21 +450,28 @@ export function observeClaudeSubagentReply(
     return;
   }
   if (!toolUseId) return;
+  if (!rememberNewIdentity(state.seenReplyFrames, message.uuid)) return;
   const id = replyModel(message);
   const model: ChildWorkModel | undefined = id
     ? { id, source: 'subagent-reply' }
     : undefined;
   let latestTool: string | undefined;
+  let hasTools = false;
+  let hasNewTools = false;
   if (Array.isArray(content)) {
     for (const block of content) {
+      if (block.type !== 'tool_use') continue;
+      hasTools = true;
+      if (!rememberNewIdentity(state.seenReplyTools, block.id)) continue;
+      hasNewTools = true;
       if (
-        block.type === 'tool_use' &&
         typeof block.name === 'string' &&
         isReportableChildWorkToolName(block.name)
       )
         latestTool = block.name.trim();
     }
   }
+  if (hasTools && !hasNewTools) return;
   if (!model && !latestTool) return;
   const reply = {
     ...(model ? { model } : {}),
@@ -692,5 +721,8 @@ export function settleOpenClaudeChildren(
   state.stopRequested.clear();
   state.pendingReplies.clear();
   state.pendingResumes.clear();
+  state.seenReplyFrames.clear();
+  state.seenReplyTools.clear();
+  state.seenResumeCalls.clear();
   return open.map((item) => taskIdOf(context.record, item.childId));
 }

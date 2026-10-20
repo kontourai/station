@@ -926,6 +926,263 @@ describe('#3163 Claude subagent model and transcript identity', () => {
     },
   );
 
+  test.each([
+    'same SDK frame',
+    'new SDK envelope',
+    'model-only SDK frame',
+  ] as const)(
+    'an already observed first-run frame cannot seed a resumed child: %s',
+    (replayIdentity) => {
+      const [, innerCall, rerunCall] = spawnCalls();
+      const [, inner, rerun] = expectedChildIds('nested-agent');
+      const { events } = replayClaudeTaskCapture('nested-agent', {
+        rewrite: (lines) => {
+          const firstReplyAt = lines.findIndex(
+            (line) =>
+              line.message?.type === 'assistant' &&
+              line.message.parent_tool_use_id === innerCall,
+          );
+          const startAt = lines.findIndex(
+            (line) => view(line).tool_use_id === rerunCall,
+          );
+          const first = lines[firstReplyAt];
+          if (first?.message?.type !== 'assistant')
+            throw new Error('capture has no first-run reply');
+          expect(startAt).toBeGreaterThan(firstReplyAt);
+          const observed = {
+            message: {
+              ...first.message,
+              message: {
+                ...first.message.message,
+                content:
+                  replayIdentity === 'model-only SDK frame'
+                    ? first.message.message.content
+                    : [
+                        {
+                          type: 'tool_use' as const,
+                          id: 'first-run-bash',
+                          name: 'Bash',
+                          input: {},
+                        },
+                      ],
+              },
+            },
+          };
+          const prefix = lines.slice(0, startAt);
+          prefix[firstReplyAt] = observed;
+          const replay =
+            replayIdentity !== 'new SDK envelope'
+              ? observed
+              : {
+                  message: {
+                    ...observed.message,
+                    uuid: '00000000-0000-4000-8000-0000000000ab' as const,
+                  },
+                };
+          return [...prefix, replay, lines[startAt], replay];
+        },
+      });
+      const items = itemsOf(events);
+      expect(items.find((item) => item.childId === inner)?.latestTool).toBe(
+        replayIdentity === 'model-only SDK frame' ? undefined : 'Bash',
+      );
+      const resumed = items.find((item) => item.childId === rerun);
+      expect(resumed?.latestTool).toBeUndefined();
+      expect(resumed?.model).toBeUndefined();
+    },
+  );
+
+  test.each(['same SDK frame', 'new SDK envelope'] as const)(
+    'replaying a superseded resume call cannot discard the current early tool reply: %s',
+    (replayIdentity) => {
+      const [, innerCall, rerunCall] = spawnCalls();
+      const [, , rerun] = expectedChildIds('nested-agent');
+      const { events } = replayClaudeTaskCapture('nested-agent', {
+        rewrite: (lines) => {
+          const resumeAt = lines.findIndex(
+            (line) =>
+              line.message?.type === 'assistant' &&
+              line.message.message.content.some(
+                (block) => block.type === 'tool_use' && block.id === rerunCall,
+              ),
+          );
+          const startAt = lines.findIndex(
+            (line) => view(line).tool_use_id === rerunCall,
+          );
+          const resume = lines[resumeAt];
+          const reply = lines
+            .slice(startAt + 1)
+            .find(
+              (line) =>
+                line.message?.type === 'assistant' &&
+                line.message.parent_tool_use_id === innerCall,
+            );
+          if (
+            resume?.message?.type !== 'assistant' ||
+            reply?.message?.type !== 'assistant'
+          )
+            throw new Error('capture has no resume or resumed reply');
+          expect(startAt).toBeGreaterThan(resumeAt);
+          const superseded = {
+            message: {
+              ...resume.message,
+              uuid: '00000000-0000-4000-8000-0000000000aa' as const,
+              message: {
+                ...resume.message.message,
+                content: resume.message.message.content.map((block) =>
+                  block.type === 'tool_use'
+                    ? { ...block, id: 'superseded-resume' }
+                    : block,
+                ),
+              },
+            },
+          };
+          const write = {
+            message: {
+              ...reply.message,
+              message: {
+                ...reply.message.message,
+                model: INNER_MODEL,
+                content: [
+                  {
+                    type: 'tool_use' as const,
+                    id: 'current-run-write',
+                    name: 'Write',
+                    input: {},
+                  },
+                ],
+              },
+            },
+          };
+          const replay =
+            replayIdentity === 'same SDK frame'
+              ? superseded
+              : {
+                  message: {
+                    ...superseded.message,
+                    uuid: '00000000-0000-4000-8000-0000000000ac' as const,
+                  },
+                };
+          return [
+            ...lines.slice(0, resumeAt),
+            superseded,
+            resume,
+            write,
+            replay,
+            ...lines.slice(resumeAt + 1, startAt + 1),
+            replay,
+          ];
+        },
+      });
+      expect(
+        itemsOf(events).find((item) => item.childId === rerun),
+      ).toMatchObject({
+        latestTool: 'Write',
+        model: { id: INNER_MODEL, source: 'subagent-reply' },
+      });
+    },
+  );
+
+  test('pending resume facts and replay identities stay bounded and clear at session close', () => {
+    const [, innerCall, rerunCall] = spawnCalls();
+    const lines = loadClaudeTaskCapture('nested-agent');
+    const resumeAt = lines.findIndex(
+      (line) =>
+        line.message?.type === 'assistant' &&
+        line.message.message.content.some(
+          (block) => block.type === 'tool_use' && block.id === rerunCall,
+        ),
+    );
+    const resume = lines[resumeAt];
+    const reply = lines.find(
+      (line) =>
+        line.message?.type === 'assistant' &&
+        line.message.parent_tool_use_id === innerCall,
+    );
+    const terminal = lines.find(
+      (line) =>
+        line.message?.type === 'system' &&
+        line.message.subtype === 'task_notification',
+    );
+    if (
+      resume?.message?.type !== 'assistant' ||
+      reply?.message?.type !== 'assistant' ||
+      terminal?.message?.type !== 'system' ||
+      terminal.message.subtype !== 'task_notification'
+    )
+      throw new Error('capture has no resume, reply or terminal');
+    const scenario = lines.slice(0, resumeAt);
+    for (let index = 0; index < 65; index++) {
+      const taskId = `bounded-child-${index}`;
+      scenario.push(
+        {
+          message: {
+            ...terminal.message,
+            task_id: taskId,
+            tool_use_id: `spawn-${index}`,
+          },
+        },
+        {
+          message: {
+            ...resume.message,
+            message: {
+              ...resume.message.message,
+              content: [
+                {
+                  type: 'tool_use',
+                  id: `resume-${index}`,
+                  name: 'SendMessage',
+                  input: { recipient: taskId },
+                },
+              ],
+            },
+          },
+        },
+        {
+          message: {
+            ...reply.message,
+            uuid: `00000000-0000-4000-8000-${(index + 1000).toString().padStart(12, '0')}`,
+            parent_tool_use_id: `spawn-${index}`,
+            message: {
+              ...reply.message.message,
+              content: [
+                {
+                  type: 'tool_use',
+                  id: `read-${index}`,
+                  name: 'Read',
+                  input: {},
+                },
+              ],
+            },
+          },
+        },
+      );
+    }
+    scenario.push({ probe: 'ITERATOR END' });
+    const { record } = replayClaudeTaskCapture('nested-agent', {
+      rewrite: () => scenario,
+      stopAfterLine: scenario.length - 2,
+    });
+    const state = record.childWork;
+    expect(state).toBeDefined();
+    expect(state?.pendingResumes.size).toBe(64);
+    expect(state?.pendingReplies.size).toBe(64);
+    expect(state?.pendingResumes.has('bounded-child-0')).toBe(false);
+    expect(state?.pendingReplies.get('resume-64')?.latestTool).toBe('Read');
+    expect(state?.seenReplyFrames.size).toBe(64);
+    expect(state?.seenReplyTools.size).toBe(64);
+    expect(state?.seenResumeCalls.size).toBe(64);
+    const closed = replayClaudeTaskCapture('nested-agent', {
+      rewrite: () => scenario,
+    }).record.childWork;
+    expect(closed?.closed).toBe(true);
+    expect(closed?.pendingResumes.size).toBe(0);
+    expect(closed?.pendingReplies.size).toBe(0);
+    expect(closed?.seenReplyFrames.size).toBe(0);
+    expect(closed?.seenReplyTools.size).toBe(0);
+    expect(closed?.seenResumeCalls.size).toBe(0);
+  });
+
   test('early tool-only replies retain the last block name through a later model-only reply', () => {
     const [outerCall] = spawnCalls();
     const { events } = replayClaudeTaskCapture('nested-agent', {
@@ -953,16 +1210,21 @@ describe('#3163 Claude subagent model and transcript identity', () => {
           {
             message: {
               ...reply.message,
+              uuid: '00000000-0000-4000-8000-0000000000a1',
               message: {
                 ...reply.message.message,
                 model: '<synthetic>',
-                content: [tool, { ...tool, name: 'Read' }],
+                content: [
+                  { ...tool, id: 'early-agent' },
+                  { ...tool, id: 'early-read', name: 'Read' },
+                ],
               },
             },
           },
           {
             message: {
               ...reply.message,
+              uuid: '00000000-0000-4000-8000-0000000000a2',
               message: {
                 ...reply.message.message,
                 model: OUTER_MODEL,
