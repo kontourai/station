@@ -181,7 +181,7 @@ Unverified-public plugin IDs become `custom`. Pane-open events belong to the UI;
 setup abandonment, safe mode, crash disables and engine connection-failure
 producers remain unwired rather than guessed from unrelated events.
 
-Inline tier-lowering reasons and standalone feedback share one persisted budget per publisher per UTC day, reserved before sending. A failed send still consumes that day’s budget.
+Inline tier-lowering reasons and standalone feedback share one persisted budget per publisher per UTC day, reserved after validation and before sending. A failed send still consumes that day’s budget. Invalid feedback does not consume it.
 
 ## Local ledger and feedback
 
@@ -217,8 +217,10 @@ reason for that change, and no inline or standalone reason for that publisher th
 day. Otherwise it returns 409. It can send the explicitly requested reason
 while the resulting tier is Off; DNT always refuses it. Plugin uninstall feedback
 is unavailable until a publisher-specific uninstall action records authority.
-Skip sends nothing. IDs, extra fields and free text are rejected. Feedback and
-shown-notice writes require `access:manage`; agents cannot send them. Ledger
+Skip sends nothing; the standalone endpoint rejects it with 400. IDs, extra fields
+and free text are rejected with 400. Direct service rejection returns false;
+a recorded rejection contains only a content-free dropped count with reason
+`invalid`, never the raw payload. Feedback and shown-notice writes require `access:manage`; agents cannot send them. Ledger
 reads require `orchestration:read`, under the authenticated usage-telemetry route
 family. Feedback contains no installation ID.
 

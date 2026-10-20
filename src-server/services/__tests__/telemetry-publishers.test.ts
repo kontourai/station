@@ -808,7 +808,7 @@ test('notice is recorded once per inventory and desktop/web must record the show
   expect(daily(sink.payloads)).toHaveLength(1);
 });
 
-test('feedback route rejects free text, targets one publisher, skips silently, and filters outbox', async () => {
+test('feedback route rejects free text and skip, targets one publisher, and filters outbox', async () => {
   const operator = await receiver();
   const author = await receiver();
   build.endpoint = author.endpoint;
@@ -871,11 +871,15 @@ test('feedback route rejects free text, targets one publisher, skips silently, a
     { publisher: 'operator', action: 'tier-lowered', reason: 'privacy' },
   ]);
   expect(author.payloads).toEqual([]);
-  await submit({
-    publisher: 'kontour',
-    action: 'plugin-uninstalled',
-    reason: 'skip',
-  });
+  expect(
+    (
+      await submit({
+        publisher: 'kontour',
+        action: 'plugin-uninstalled',
+        reason: 'skip',
+      })
+    ).status,
+  ).toBe(400);
   expect(author.payloads).toEqual([]);
   const result = await app.request('/outbox?publisher=operator');
   expect(result.headers.get('cache-control')).toBe('private, no-store');
@@ -900,10 +904,20 @@ test('the feedback sender refuses extra fields from a direct service caller', as
     reason: 'privacy' as const,
     detail: 'private text must never leave the sender',
   };
-  expect(await live.submitFeedback(feedback)).toBe(true);
+  expect(await live.submitFeedback(feedback)).toBe(false);
   expect(sink.payloads).toEqual([]);
-  expect(await live.outbox('operator')).toMatchObject([
-    { outcome: 'dropped', reason: 'transport' },
+  const outbox = await live.outbox('operator');
+  expect(outbox).toMatchObject([{ outcome: 'dropped', reason: 'invalid' }]);
+  expect(JSON.stringify(outbox)).not.toContain(feedback.detail);
+  expect(
+    await live.submitFeedback({
+      publisher: 'operator',
+      action: 'tier-lowered',
+      reason: 'privacy',
+    }),
+  ).toBe(true);
+  expect(sink.payloads).toEqual([
+    { publisher: 'operator', action: 'tier-lowered', reason: 'privacy' },
   ]);
 });
 

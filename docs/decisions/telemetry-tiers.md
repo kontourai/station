@@ -214,8 +214,9 @@ decision before changing a deployed privacy claim.
 
 The server's build banner supplies `STATION_AUTHOR_TELEMETRY_ENDPOINT`; source
 execution has an empty constant, and runtime environment cannot enable it.
-Official release workflows may inject an owner-managed repository variable in
-a later lane. Fork, development and Docker workflows must leave it empty unless
+Official release workflows inject an owner-managed repository variable when
+configured; see [author telemetry in official builds](../guides/release-rings.md#author-telemetry-in-official-builds).
+Fork, development and Docker workflows must leave it empty unless
 the owner deliberately changes their distribution policy. There is no hardcoded
 Kontour URL. An empty build constant leaves the author sender inert.
 
@@ -299,4 +300,5 @@ and operator within the month. This disclosed envelope change also resets Full
 receipts independently of wording revision 2. Tier-change requests can include an
 optional fixed-enum reason, sent once before the lower choice is applied,
 including Off. Standalone feedback requires a lowering within 10 minutes and is
-limited to one per publisher per UTC day. DNT permits neither path.
+limited to one per publisher per UTC day, sharing that budget with inline
+tier-lowering reasons. DNT permits neither path.

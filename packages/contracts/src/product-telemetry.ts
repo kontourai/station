@@ -224,7 +224,8 @@ export interface TelemetryOutboxEntry {
     | 'unconfigured'
     | 'overflow'
     | 'expired'
-    | 'transport';
+    | 'transport'
+    | 'invalid';
   payload:
     | StationDailyPing
     | ProductTelemetryBatch

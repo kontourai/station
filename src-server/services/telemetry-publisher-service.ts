@@ -370,7 +370,20 @@ export class TelemetryPublisherService {
       );
   }
   async feedback(payload: TelemetryFeedback): Promise<boolean> {
-    if (payload.reason === 'skip') return true;
+    try {
+      payload = parseTelemetryFeedback(payload);
+    } catch {
+      if (payload.publisher === 'kontour' || payload.publisher === 'operator')
+        await this.local.record({
+          publisher: payload.publisher,
+          tier: 'lite',
+          recordedAt: new Date().toISOString(),
+          outcome: 'dropped',
+          reason: 'invalid',
+          payload: { event: 'telemetry_dropped', count: 1 },
+        });
+      return false;
+    }
     if (payload.publisher !== 'kontour' && payload.publisher !== 'operator')
       return false;
     const publisher = payload.publisher;
