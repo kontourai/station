@@ -15,11 +15,20 @@ import {
   opendirSync,
   openSync,
   readFileSync,
+  realpathSync,
   renameSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
-import { dirname, join, parse, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  join,
+  parse,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import {
   isCanonicalTaskAnswerSupportId,
   MAX_TASK_REFERENCE_TARGET_LENGTH,
@@ -153,6 +162,26 @@ export function enumerateOwnedAncestors(
     result.push(current);
   }
   return result;
+}
+
+/**
+ * Canonicalize an operator-chosen ownership anchor once, at the boundary that
+ * receives it. Symlinks in the anchor's ANCESTORS (macOS `/tmp` ->
+ * `/private/tmp`) are operator layout, so they are resolved here; the final
+ * component stays lexical so a symlinked anchor itself is still refused by
+ * `assertNoSymlinkAncestors`, and everything beneath the anchor is still
+ * checked component by component. An anchor whose parent cannot be resolved
+ * is returned as-is and fails closed at the first guarded read.
+ */
+export function canonicalOwnedAnchor(path: string): string {
+  const absolute = resolve(path);
+  const parent = dirname(absolute);
+  if (parent === absolute) return absolute;
+  try {
+    return join(realpathSync(parent), basename(absolute));
+  } catch {
+    return absolute;
+  }
 }
 
 /** @internal Makes the no-follow fallback independently testable. */
@@ -305,8 +334,14 @@ export class CanonicalProjectTrustReportReader
     // collection. It is distinct from an OS failure while enumerating one.
     if (!locations) return { state: 'found', sources: [] };
     const result: Source[] = [];
-    if (locations.workspacePath) {
-      const root = resolve(locations.workspacePath);
+    const lexicalWorkspace = locations.workspacePath
+      ? resolve(locations.workspacePath)
+      : undefined;
+    const canonicalWorkspace = lexicalWorkspace
+      ? canonicalOwnedAnchor(lexicalWorkspace)
+      : undefined;
+    if (canonicalWorkspace) {
+      const root = canonicalWorkspace;
       const dir = ownedChild(root, '.station', 'trust-bundles');
       const files = this.files(dir, (fileName) => ({
         kind: 'workspace',
@@ -317,7 +352,7 @@ export class CanonicalProjectTrustReportReader
       result.push(...files.sources);
     }
     if (locations.pluginDataDir) {
-      const root = resolve(locations.pluginDataDir);
+      const root = canonicalOwnedAnchor(locations.pluginDataDir);
       const plugins = safeDirectoryEntries(root);
       if (plugins.state === 'unavailable') return { state: 'unavailable' };
       for (const entry of plugins.entries) {
@@ -338,7 +373,16 @@ export class CanonicalProjectTrustReportReader
       .flat()
       .filter(Boolean)
       .entries() as IterableIterator<[number, string]>) {
-      const dir = resolve(root);
+      // Evidence roots are derived from the workspace: rebase them onto its
+      // canonical form rather than resolving them, so a `.veritas` symlink
+      // inside the workspace is still refused instead of followed.
+      const lexical = resolve(root);
+      const dir =
+        lexicalWorkspace &&
+        canonicalWorkspace &&
+        lexical.startsWith(`${lexicalWorkspace}${sep}`)
+          ? join(canonicalWorkspace, relative(lexicalWorkspace, lexical))
+          : canonicalOwnedAnchor(lexical);
       const files = this.files(
         dir,
         (fileName) => ({
@@ -492,7 +536,7 @@ export class TaskAnswerSupportStore {
     homeDir: string,
     private readonly io: StoreIo = {},
   ) {
-    this.home = resolve(homeDir);
+    this.home = canonicalOwnedAnchor(homeDir);
     this.root = ownedChild(this.home, 'task-answer-support');
     this.path = ownedChild(this.root, 'index.json');
   }
