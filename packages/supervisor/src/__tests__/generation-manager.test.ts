@@ -6,9 +6,6 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  CATCH_QUIET_CAP_MS,
-  CATCH_QUIET_MS,
-  type CatcherFactory,
   type Clock,
   FAILED_TRIAL_TERM_GRACE_MS,
   type GenerationLauncher,
@@ -17,9 +14,16 @@ import {
   type GenerationProcess,
   type HeldConnection,
   type ListenerHandle,
-  SPARE_ANSWER_TIMEOUT_MS,
 } from '../generation-manager.ts';
 import type { SupervisorToCoreMessage } from '../protocol.ts';
+
+type CatcherFactory = NonNullable<
+  GenerationManagerOptions['catchConnections']
+>['createCatcher'];
+/** The manager's catching timings (not exported). */
+const SPARE_ANSWER_TIMEOUT_MS = 2_000;
+const CATCH_QUIET_MS = 50;
+const CATCH_QUIET_CAP_MS = 1_000;
 
 const clock: Clock = {
   now: () => Date.now(),
@@ -1094,8 +1098,6 @@ describe('GenerationManager', () => {
     });
 
     it('keeps catchers open until none has accepted for the quiet window, or until the cap', async () => {
-      expect(CATCH_QUIET_MS).toBe(50);
-      expect(CATCH_QUIET_CAP_MS).toBe(1_000);
       for (const busy of [false, true]) {
         const { manager, log, catchers } = setupCatching(undefined, true, () =>
           Date.now(),

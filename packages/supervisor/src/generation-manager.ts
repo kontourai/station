@@ -61,7 +61,7 @@ export interface ListenerCatcher {
   close(): HeldConnection[];
 }
 
-export type CatcherFactory = (
+type CatcherFactory = (
   name: string,
   handle: ListenerHandle,
   now: () => number,
@@ -121,7 +121,7 @@ export interface GenerationManagerOptions {
 }
 
 /** How long a handoff waits for the draining generation's `listener.spare` answers. */
-export const SPARE_ANSWER_TIMEOUT_MS = 2_000;
+const SPARE_ANSWER_TIMEOUT_MS = 2_000;
 /**
  * Catchers for a listener close once none has accepted for CATCH_QUIET_MS
  * after the next generation listens on it, or after CATCH_QUIET_CAP_MS.
@@ -130,8 +130,8 @@ export const SPARE_ANSWER_TIMEOUT_MS = 2_000;
  * catcher resets a connection completed into one of its accepts, as closing
  * a generation's listener would.
  */
-export const CATCH_QUIET_MS = 50;
-export const CATCH_QUIET_CAP_MS = 1_000;
+const CATCH_QUIET_MS = 50;
+const CATCH_QUIET_CAP_MS = 1_000;
 
 interface Generation {
   id: number;

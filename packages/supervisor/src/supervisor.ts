@@ -72,7 +72,7 @@ const INHERITED_SUPERVISOR_BIRTH_ENV = 'STATION_SUPERVISOR_BIRTH';
  * clients, one spare still left a reset in a third of handoffs; eight left
  * none in 700 handoffs.
  */
-export const CATCH_SPARES = 8;
+const CATCH_SPARES = 8;
 
 /**
  * Whether handoffs catch connections: on Windows only, the one platform that
