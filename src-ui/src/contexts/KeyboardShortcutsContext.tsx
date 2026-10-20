@@ -96,7 +96,7 @@ export function activateShortcutScope(key: ShortcutScopeKey): () => void {
 /** Prefix of every shortcut id a plugin registers through the SDK. */
 export const PLUGIN_SHORTCUT_ID_PREFIX = 'plugin.';
 
-export function isPluginShortcutId(id: string): boolean {
+function isPluginShortcutId(id: string): boolean {
   return id.startsWith(PLUGIN_SHORTCUT_ID_PREFIX);
 }
 
