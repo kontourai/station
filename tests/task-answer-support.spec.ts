@@ -1,5 +1,6 @@
 import { copyFile } from 'node:fs/promises';
 import { buildStationTaskBasisMcpAppResource } from '@kontourai/station-basis-pane/task-basis-mcp-app';
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import { buildStationTaskBasisMcpPage } from '@kontourai/station-contracts/task-basis-mcp';
 import { encodeTaskToolResultReference } from '@kontourai/station-contracts/task-graph';
 import {
@@ -296,6 +297,43 @@ function json(data: unknown) {
   return { contentType: 'application/json', body: JSON.stringify(data) };
 }
 
+/** Whether no part of any matched element is inside the viewport. */
+function outOfView(target: Locator): Promise<boolean> {
+  return target.evaluateAll((nodes) =>
+    nodes.every((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.bottom <= 0 || rect.top >= window.innerHeight;
+    }),
+  );
+}
+
+/**
+ * #3883: Open Basis lands the reader on the opened pane: focus on its tab
+ * (the pane's name in the room's strip, selected) and the viewport on the
+ * pane, wherever on the page the button was pressed.
+ */
+async function expectOpenedPaneRevealed(page: Page, pane: Locator) {
+  const focused = page.locator(':focus');
+  await expect(focused).toHaveAttribute('role', 'tab');
+  await expect(focused).toHaveAttribute('aria-selected', 'true');
+  await expect
+    .poll(() =>
+      focused.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom <= window.innerHeight;
+      }),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      pane.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.top >= 0 && rect.top < window.innerHeight;
+      }),
+    )
+    .toBe(true);
+}
+
 /** Same-origin browser-access bootstrap, matching project-lifecycle's fixture. */
 async function seedStationAccess(page: Page) {
   const stationUrl = process.env.PW_BASE_URL;
@@ -386,6 +424,38 @@ async function seedStationAccess(page: Page) {
         }),
       );
     if (path === '/api/plugins') return route.fulfill(json({ plugins: [] }));
+    // The Task conversation's composer asks which engines it may delegate
+    // to; none is offered in this fixture.
+    if (
+      route.request().method() === 'POST' &&
+      path === '/api/orchestration/delegations/options'
+    )
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            environment: {
+              id: '11111111-1111-4111-8111-111111111111',
+              name: 'Current environment',
+              kind: 'current',
+            },
+            project: { slug: 'project-ui' },
+            targets: [],
+          },
+        }),
+      );
+    // The app shell reads the account's saved preferences before it renders.
+    if (route.request().method() === 'GET' && path === '/api/me/preferences')
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            schemaVersion: 1,
+            values: {},
+            revision: 'task-answer-support-fixture',
+          } satisfies AccountPreferencesView,
+        }),
+      );
     if (route.request().method() === 'GET' && path === '/api/projects') {
       await route.fulfill(
         json({
@@ -909,9 +979,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
 
   await page.goto(`/tasks/${taskId}`);
   await expect(
-    page
-      .getByRole('button', { name: /^Manage Stations/ })
-      .getByLabel('connected'),
+    page.getByRole('button', { name: /^Choose Station — Connected/ }),
   ).toBeVisible();
   const answerReference = page.locator('.task-workspace__answer-reference');
   await expect(answerReference).toHaveCount(1);
@@ -944,9 +1012,15 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
     page.getByRole('region', { name: 'Task room workspace' }),
   ).toBeVisible();
   const openBasis = page.getByRole('button', { name: 'Open Basis' });
+  // #3883: the room the pane opens in is far above Kept answers.
+  await openBasis.scrollIntoViewIfNeeded();
+  expect(
+    await outOfView(page.getByRole('tablist', { name: 'Workspace panes' })),
+  ).toBe(true);
   await openBasis.click();
   const nativeBasis = page.locator('.station-basis-pane');
   await expect(nativeBasis).toBeVisible();
+  await expectOpenedPaneRevealed(page, nativeBasis);
   await expect(nativeBasis.getByRole('status')).toContainText('Unassessed');
   await expect(nativeBasis).toContainText('<img src=x onerror=alert(1)>');
   await expect(nativeBasis.locator('img')).toHaveCount(0);
@@ -1017,11 +1091,19 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   // owner-projected as the retained receipt's current standing: Station does
   // not substitute the later receipt for the exact kept identity.
   flowReevaluated = true;
-  await page.getByRole('button', { name: 'Open Whole Task Basis' }).click();
+  const openWholeTask = page.getByRole('button', {
+    name: 'Open Whole Task Basis',
+  });
+  await openWholeTask.scrollIntoViewIfNeeded();
+  expect(
+    await outOfView(page.getByRole('tablist', { name: 'Workspace panes' })),
+  ).toBe(true);
+  await openWholeTask.click();
   const wholeTaskBasis = page.locator('.station-basis-pane').filter({
     hasText: 'Whole Task has no aggregate standing.',
   });
   await expect(wholeTaskBasis).toBeVisible();
+  await expectOpenedPaneRevealed(page, wholeTaskBasis);
   await expect(wholeTaskBasis).toContainText(
     'Some kept answer context is restricted.',
   );

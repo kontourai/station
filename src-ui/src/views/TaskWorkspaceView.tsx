@@ -1,5 +1,6 @@
 import { resolveWorkspaceBasisMcpPaneOccurrence } from '@kontourai/station-basis-pane/workspace-basis-mcp-pane';
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
+import type { WorkspacePaneInstanceId } from '@kontourai/station-contracts/workspace-pane';
 import {
   WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID,
   WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR_ID,
@@ -529,6 +530,51 @@ function TaskRoomWorkspaceSection({
   onOpenActionChange(action: WorkspacePaneHostOpenAction | null): void;
 }) {
   const discovery = useProjectTaskRoomDiscoveryQuery(task.id);
+  const roomRef = useRef<HTMLElement>(null);
+  // #3883: a pane opened from further down the page (Kept answers' Open
+  // Basis) lands in this room, which can be far above the reader. The host
+  // selects the pane and focuses its tab, the pane's name in the strip; the
+  // tab's group is then scrolled to the top so the pane itself is in view,
+  // not only its tab.
+  const revealPane = useCallback(
+    (
+      host: WorkspacePaneHostOpenAction,
+      instanceId: WorkspacePaneInstanceId,
+    ) => {
+      if (!host.focusExisting?.(instanceId)) return;
+      // After the host's own focus frame, which is scheduled first.
+      requestAnimationFrame(() => {
+        const room = roomRef.current;
+        if (!room) return;
+        const tab = room.contains(document.activeElement)
+          ? document.activeElement
+          : null;
+        (tab?.closest('.workspace-pane-host__group') ?? room).scrollIntoView?.({
+          block: 'start',
+        });
+      });
+    },
+    [],
+  );
+  const publishOpenAction = useCallback(
+    (action: WorkspacePaneHostOpenAction | null) =>
+      onOpenActionChange(
+        action && {
+          ...action,
+          open(instance, preparation, placement) {
+            const outcome = action.open(instance, preparation, placement);
+            if (outcome.ok) revealPane(action, instance.instanceId);
+            return outcome;
+          },
+          focusExisting(instanceId) {
+            const found = action.focusExisting?.(instanceId) ?? false;
+            if (found) revealPane(action, instanceId);
+            return found;
+          },
+        },
+      ),
+    [onOpenActionChange, revealPane],
+  );
   const runtime = useRef<WorkspacePaneHostRuntime | null>(null);
   if (!runtime.current) runtime.current = new WorkspacePaneHostRuntime();
   const hostRuntime = runtime.current;
@@ -569,7 +615,11 @@ function TaskRoomWorkspaceSection({
   if (!composition.document)
     return <p role="status">Task room document is unavailable.</p>;
   return (
-    <section className="task-workspace__room" aria-label="Task room workspace">
+    <section
+      ref={roomRef}
+      className="task-workspace__room"
+      aria-label="Task room workspace"
+    >
       {composition.degradedCapabilities.length ? (
         <p role="status">
           Task room degraded: {composition.degradedCapabilities.join(', ')}.
@@ -580,7 +630,7 @@ function TaskRoomWorkspaceSection({
         <WorkspacePaneHost
           document={composition.document}
           runtime={hostRuntime}
-          onOpenActionChange={onOpenActionChange}
+          onOpenActionChange={publishOpenAction}
           presentationLabel={(instance) =>
             resolveWorkspaceBasisMcpPaneOccurrence(instance)?.descriptor.name ??
             null
