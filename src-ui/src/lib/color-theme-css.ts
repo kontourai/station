@@ -8,8 +8,9 @@
  *   family is selected (by `startup-theme.js` before first paint, and by the
  *   applier on a live switch). Nothing here is in the entry bundle.
  * - `color-themes.startup.generated.css`, the splash's subset for every
- *   family (surfaces, text and focus), imported by the splash stylesheet so
- *   the first paint is themed while the family sheet is still loading.
+ *   family (surfaces, text and focus), scoped to the splash element and
+ *   imported by the splash stylesheet, so the first paint is themed while the
+ *   family sheet is still loading and the app is never part-themed.
  * - `lib/color-theme-index.generated.json`, the small index the runtime
  *   resolves selections against (ids, defaults, canvases and each sheet's URL
  *   with a content digest), so the applier never loads the full catalog.
@@ -307,9 +308,13 @@ const STARTUP_ROLES: readonly ColorThemeRoleProperty[] = [
 ];
 
 /**
- * The splash's subset, plus the focus ring of its recovery button. Same
- * selectors as the full sheet's role rules, so it resolves exactly as the
- * app will.
+ * The splash's subset, plus the focus ring of its recovery button, scoped to
+ * the splash element itself (`.station-startup`, which the startup HTML,
+ * StartupScreen and the boot recovery all use). Scoped so the app is never
+ * part-themed: until the family sheet has loaded, everything outside the
+ * splash is wholly Station; once it loads, wholly the theme. Same root
+ * conditions as the full sheet's role rules, so the splash resolves the flavor
+ * the app will.
  */
 export function renderColorThemeStartupStylesheet(): string {
   const parts = [HEADER];
@@ -318,12 +323,17 @@ export function renderColorThemeStartupStylesheet(): string {
       const scope = scopeFor(flavor.mode, flavor);
       parts.push(
         `\n/* ${family.label} ${flavor.label} (${flavor.mode}) */\n`,
-        block(roleSelectors(family.id, scope), [
-          ...STARTUP_ROLES.map(
-            (property) => `${property}: ${flavor.roles[property]}`,
+        block(
+          roleSelectors(family.id, scope).map(
+            (selector) => `${selector} .station-startup`,
           ),
-          `--k-focus: ${flavor.accents[family.defaultAccent].brand}`,
-        ]),
+          [
+            ...STARTUP_ROLES.map(
+              (property) => `${property}: ${flavor.roles[property]}`,
+            ),
+            `--k-focus: ${flavor.accents[family.defaultAccent].brand}`,
+          ],
+        ),
       );
     }
   }

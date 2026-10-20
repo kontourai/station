@@ -4,7 +4,7 @@
    Selectors and precedence: see the renderer's header comment. */
 
 /* Catppuccin Latte (light) */
-:root[data-color-theme="catppuccin"][data-color-theme-flavor][data-theme="light"] {
+:root[data-color-theme="catppuccin"][data-color-theme-flavor][data-theme="light"] .station-startup {
   --k-bg: #e6e9ef;
   --k-panel: #eff1f5;
   --k-line-strong: #bcc0cc;
@@ -14,7 +14,7 @@
 }
 
 /* Catppuccin Frappé (dark) */
-:root[data-color-theme="catppuccin"][data-color-theme-flavor="frappe"]:not([data-theme="light"]) {
+:root[data-color-theme="catppuccin"][data-color-theme-flavor="frappe"]:not([data-theme="light"]) .station-startup {
   --k-bg: #292c3c;
   --k-panel: #303446;
   --k-line-strong: #626880;
@@ -24,7 +24,7 @@
 }
 
 /* Catppuccin Macchiato (dark) */
-:root[data-color-theme="catppuccin"][data-color-theme-flavor="macchiato"]:not([data-theme="light"]) {
+:root[data-color-theme="catppuccin"][data-color-theme-flavor="macchiato"]:not([data-theme="light"]) .station-startup {
   --k-bg: #1e2030;
   --k-panel: #24273a;
   --k-line-strong: #5b6078;
@@ -34,7 +34,7 @@
 }
 
 /* Catppuccin Mocha (dark) */
-:root[data-color-theme="catppuccin"][data-color-theme-flavor="mocha"]:not([data-theme="light"]) {
+:root[data-color-theme="catppuccin"][data-color-theme-flavor="mocha"]:not([data-theme="light"]) .station-startup {
   --k-bg: #181825;
   --k-panel: #1e1e2e;
   --k-line-strong: #585b70;
@@ -44,7 +44,7 @@
 }
 
 /* Rosé Pine Dawn (light) */
-:root[data-color-theme="rose-pine"][data-color-theme-flavor][data-theme="light"] {
+:root[data-color-theme="rose-pine"][data-color-theme-flavor][data-theme="light"] .station-startup {
   --k-bg: #faf4ed;
   --k-panel: #fffaf3;
   --k-line-strong: #cecacd;
@@ -54,7 +54,7 @@
 }
 
 /* Rosé Pine Main (dark) */
-:root[data-color-theme="rose-pine"][data-color-theme-flavor="main"]:not([data-theme="light"]) {
+:root[data-color-theme="rose-pine"][data-color-theme-flavor="main"]:not([data-theme="light"]) .station-startup {
   --k-bg: #191724;
   --k-panel: #1f1d2e;
   --k-line-strong: #524f67;
@@ -64,7 +64,7 @@
 }
 
 /* Rosé Pine Moon (dark) */
-:root[data-color-theme="rose-pine"][data-color-theme-flavor="moon"]:not([data-theme="light"]) {
+:root[data-color-theme="rose-pine"][data-color-theme-flavor="moon"]:not([data-theme="light"]) .station-startup {
   --k-bg: #232136;
   --k-panel: #2a273f;
   --k-line-strong: #56526e;
@@ -74,7 +74,7 @@
 }
 
 /* Gruvbox Light (light) */
-:root[data-color-theme="gruvbox"][data-color-theme-flavor][data-theme="light"] {
+:root[data-color-theme="gruvbox"][data-color-theme-flavor][data-theme="light"] .station-startup {
   --k-bg: #f2e5bc;
   --k-panel: #fbf1c7;
   --k-line-strong: #bdae93;
@@ -84,7 +84,7 @@
 }
 
 /* Gruvbox Dark (dark) */
-:root[data-color-theme="gruvbox"][data-color-theme-flavor="dark"]:not([data-theme="light"]) {
+:root[data-color-theme="gruvbox"][data-color-theme-flavor="dark"]:not([data-theme="light"]) .station-startup {
   --k-bg: #1d2021;
   --k-panel: #282828;
   --k-line-strong: #665c54;
@@ -94,7 +94,7 @@
 }
 
 /* Nord Snow Storm (light) */
-:root[data-color-theme="nord"][data-color-theme-flavor][data-theme="light"] {
+:root[data-color-theme="nord"][data-color-theme-flavor][data-theme="light"] .station-startup {
   --k-bg: #e5e9f0;
   --k-panel: #eceff4;
   --k-line-strong: #616e88;
@@ -104,7 +104,7 @@
 }
 
 /* Nord Polar Night (dark) */
-:root[data-color-theme="nord"][data-color-theme-flavor="polar-night"]:not([data-theme="light"]) {
+:root[data-color-theme="nord"][data-color-theme-flavor="polar-night"]:not([data-theme="light"]) .station-startup {
   --k-bg: #2e3440;
   --k-panel: #3b4252;
   --k-line-strong: #616e88;
@@ -114,7 +114,7 @@
 }
 
 /* Tokyo Night Day (light) */
-:root[data-color-theme="tokyo-night"][data-color-theme-flavor][data-theme="light"] {
+:root[data-color-theme="tokyo-night"][data-color-theme-flavor][data-theme="light"] .station-startup {
   --k-bg: #d0d5e3;
   --k-panel: #e1e2e7;
   --k-line-strong: #8990b3;
@@ -124,7 +124,7 @@
 }
 
 /* Tokyo Night Night (dark) */
-:root[data-color-theme="tokyo-night"][data-color-theme-flavor="night"]:not([data-theme="light"]) {
+:root[data-color-theme="tokyo-night"][data-color-theme-flavor="night"]:not([data-theme="light"]) .station-startup {
   --k-bg: #16161e;
   --k-panel: #1a1b26;
   --k-line-strong: #545c7e;
@@ -134,7 +134,7 @@
 }
 
 /* Tokyo Night Storm (dark) */
-:root[data-color-theme="tokyo-night"][data-color-theme-flavor="storm"]:not([data-theme="light"]) {
+:root[data-color-theme="tokyo-night"][data-color-theme-flavor="storm"]:not([data-theme="light"]) .station-startup {
   --k-bg: #1f2335;
   --k-panel: #24283b;
   --k-line-strong: #545c7e;
