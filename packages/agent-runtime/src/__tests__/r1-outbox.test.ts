@@ -1,8 +1,22 @@
+import { mkdtempSync, writeFileSync, writeSync } from 'node:fs';
+import { Session } from 'node:inspector/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { normalizePart, tapeBytes } from '../codecs.js';
 import { encode } from '../encoding.js';
-import { DEFAULT_MODEL_POLICY, drainModelOutbox } from '../index.js';
+import {
+  DEFAULT_MODEL_POLICY,
+  drainModelOutbox,
+  type ModelCommand,
+  type ModelResult,
+} from '../index.js';
 import { openSqliteRuntimeProjection } from '../sqlite.js';
+import type {
+  ModelContext,
+  ModelStorage,
+  RuntimeProjectionSink,
+} from '../types.js';
 import { finish, fixture, key, operation } from './fixture.js';
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -10,100 +24,285 @@ afterEach(async () => {
   for (const c of cleanup.splice(0).reverse()) await c();
 });
 it('R1.6 one drain applies more than 1024 real settled projections and reaches ready', async () => {
-  const f = await fixture();
-  cleanup.push(() => f.close());
-  const sink = openSqliteRuntimeProjection({
-    database: f.database,
-    bodies: f.bodies,
-    host: f.host,
-    policy: DEFAULT_MODEL_POLICY,
-  });
-  cleanup.push(() => sink.close());
-  const pin = await f.storage.execute(
-    operation({
-      type: 'pin',
-      key,
-      expected: f.opened.snapshot.fence,
-      pin: f.pin,
-    }),
-    f.context,
-  );
-  if (pin.kind === 'refused') throw Error('pin prerequisite');
-  const begun = await f.storage.execute(
-    operation({
-      type: 'begin',
-      key,
-      expected: pin.fence,
-      requestId: f.pin.requestId,
-    }),
-    f.context,
-  );
-  if (begun.kind !== 'execute') throw Error('begin prerequisite');
-  let fence = begun.fence;
-  const wire = [
-    normalizePart({ type: 'text-start', id: 'text' }),
-    ...Array.from({ length: 1024 }, () =>
-      normalizePart({ type: 'text-delta', id: 'text', delta: 'x' }),
+  const started = performance.now();
+  const cpuStarted = process.cpuUsage();
+  const microseconds = () => Number(process.hrtime.bigint() / 1000n);
+  const phaseMarks: {
+    phase: string;
+    atUs: number;
+    elapsedMs: number;
+    cpuUserMs: number;
+    cpuSystemMs: number;
+    completedPartials?: number;
+  }[] = [];
+  const trace = (phase: string, completedPartials?: number) => {
+    const cpu = process.cpuUsage(cpuStarted);
+    const mark = {
+      phase,
+      atUs: microseconds(),
+      elapsedMs: Math.round((performance.now() - started) * 1000) / 1000,
+      cpuUserMs: cpu.user / 1000,
+      cpuSystemMs: cpu.system / 1000,
+      completedPartials,
+    };
+    phaseMarks.push(mark);
+    writeSync(1, `\n[r1-outbox-phase] ${JSON.stringify(mark)}\n`);
+  };
+  const observations: {
+    operation: string;
+    ordinal: number;
+    startUs: number;
+    endUs: number;
+    resolved: boolean;
+  }[] = [];
+  let bookkeepingUs = 0;
+  const observe = async <T>(
+    operation: string,
+    call: () => Promise<T>,
+  ): Promise<T> => {
+    const startUs = microseconds();
+    let resolved = false;
+    try {
+      const result = await call();
+      resolved = true;
+      return result;
+    } finally {
+      const endUs = microseconds();
+      observations.push({
+        operation,
+        ordinal: observations.length,
+        startUs,
+        endUs,
+        resolved,
+      });
+      bookkeepingUs += microseconds() - endUs;
+    }
+  };
+  const profileDirectory = mkdtempSync(
+    join(
+      process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir(),
+      'r1-outbox-prefix-cpu-',
     ),
-    normalizePart({ type: 'text-end', id: 'text' }),
-  ];
-  const start = await f.bodies.put('runtime-ai-sdk-v3-part/1', encode(wire[0]));
-  const delta = await f.bodies.put('runtime-ai-sdk-v3-part/1', encode(wire[1]));
-  const end = await f.bodies.put(
-    'runtime-ai-sdk-v3-part/1',
-    encode(wire.at(-1)),
   );
-  for (let sequence = 0; sequence < wire.length; sequence++) {
-    const body =
-      sequence === 0 ? start : sequence === wire.length - 1 ? end : delta;
-    const ack = await f.storage.execute(
-      operation({
-        type: 'partial',
-        key,
-        expected: fence,
-        attempt: begun.attempt,
-        sequence,
-        body,
-      }),
-      f.context,
-    );
-    if (ack.kind === 'refused') throw Error('partial prerequisite');
-    fence = ack.fence;
+  const profiler = new Session();
+  writeSync(
+    1,
+    `\n[r1-outbox-profile] ${JSON.stringify({ profileDirectory })}\n`,
+  );
+  writeFileSync(
+    join(profileDirectory, 'start.json'),
+    JSON.stringify({
+      node: process.version,
+      defaultSamplingInterval: true,
+      setupStartUs: microseconds(),
+      scope: 'fixture-through-partial-prefix-drain-ready',
+    }),
+    { flag: 'wx' },
+  );
+  profiler.connect();
+  try {
+    await profiler.post('Profiler.enable');
+    const startBeforeUs = microseconds();
+    await profiler.post('Profiler.start');
+    const startAfterUs = microseconds();
+    let workFailure: { error: unknown } | undefined;
+    try {
+      trace('case:enter');
+      trace('fixture:enter');
+      const f = await fixture();
+      trace('fixture:exit');
+      cleanup.push(() => f.close());
+      const actualStorage = f.storage;
+      const observedStorage: ModelStorage = {
+        execute<C extends ModelCommand>(
+          command: C,
+          context: ModelContext,
+        ): Promise<ModelResult<C>> {
+          return observe(command.type, () =>
+            actualStorage.execute(command, context),
+          );
+        },
+        close() {
+          return actualStorage.close();
+        },
+      };
+      trace('sink:enter');
+      const sink = openSqliteRuntimeProjection({
+        database: f.database,
+        bodies: f.bodies,
+        host: f.host,
+        policy: DEFAULT_MODEL_POLICY,
+      });
+      cleanup.push(() => sink.close());
+      const observedSink: RuntimeProjectionSink = {
+        ...sink,
+        apply(entry) {
+          return observe('apply', () => sink.apply(entry));
+        },
+      };
+      trace('sink:exit');
+      trace('pin:enter');
+      const pin = await observedStorage.execute(
+        operation({
+          type: 'pin',
+          key,
+          expected: f.opened.snapshot.fence,
+          pin: f.pin,
+        }),
+        f.context,
+      );
+      if (pin.kind === 'refused') throw Error('pin prerequisite');
+      trace('pin:exit');
+      trace('begin:enter');
+      const begun = await observedStorage.execute(
+        operation({
+          type: 'begin',
+          key,
+          expected: pin.fence,
+          requestId: f.pin.requestId,
+        }),
+        f.context,
+      );
+      if (begun.kind !== 'execute') throw Error('begin prerequisite');
+      trace('begin:exit');
+      trace('part-bodies:enter');
+      let fence = begun.fence;
+      const wire = [
+        normalizePart({ type: 'text-start', id: 'text' }),
+        ...Array.from({ length: 1024 }, () =>
+          normalizePart({ type: 'text-delta', id: 'text', delta: 'x' }),
+        ),
+        normalizePart({ type: 'text-end', id: 'text' }),
+      ];
+      const start = await f.bodies.put(
+        'runtime-ai-sdk-v3-part/1',
+        encode(wire[0]),
+      );
+      const delta = await f.bodies.put(
+        'runtime-ai-sdk-v3-part/1',
+        encode(wire[1]),
+      );
+      const end = await f.bodies.put(
+        'runtime-ai-sdk-v3-part/1',
+        encode(wire.at(-1)),
+      );
+      trace('part-bodies:exit');
+      trace('partials:enter');
+      for (let sequence = 0; sequence < wire.length; sequence++) {
+        const body =
+          sequence === 0 ? start : sequence === wire.length - 1 ? end : delta;
+        const ack = await observedStorage.execute(
+          operation({
+            type: 'partial',
+            key,
+            expected: fence,
+            attempt: begun.attempt,
+            sequence,
+            body,
+          }),
+          f.context,
+        );
+        if (ack.kind === 'refused') throw Error('partial prerequisite');
+        fence = ack.fence;
+        if ((sequence + 1) % 128 === 0 || sequence + 1 === wire.length)
+          trace('partials:progress', sequence + 1);
+      }
+      trace('partials:exit', wire.length);
+      trace('tape:enter');
+      const tape = await f.bodies.put(
+        'runtime-ai-sdk-v3-tape/1',
+        tapeBytes(f.pin.requestId, 1, [...wire, normalizePart(finish)]),
+      );
+      trace('tape:exit');
+      trace('complete:enter');
+      const complete = await observedStorage.execute(
+        operation({
+          type: 'complete',
+          key,
+          expected: fence,
+          attempt: begun.attempt,
+          tape,
+          lastPartialSequence: wire.length - 1,
+        }),
+        f.context,
+      );
+      if (complete.kind === 'refused') throw Error('complete prerequisite');
+      trace('complete:exit');
+      trace('finish:enter');
+      await observedStorage.execute(
+        operation({
+          type: 'finish',
+          key,
+          expected: complete.fence,
+          status: 'completed',
+        }),
+        f.context,
+      );
+      trace('finish:exit');
+      trace('drain:enter');
+      await drainModelOutbox(observedStorage, observedSink, key, f.context);
+      trace('drain:exit');
+      trace('audit:enter');
+      expect((await sink.readAudit(key)).map((p) => p.sequence)).toEqual([
+        ...Array.from({ length: 1026 }, (_, i) => i),
+        0,
+      ]);
+      trace('audit:exit');
+      trace('ready:enter');
+      expect(await sink.readModelContext(key)).toEqual({
+        kind: 'ready',
+        tapes: [tape],
+      });
+      trace('ready:exit');
+      trace('case:exit');
+    } catch (error) {
+      workFailure = { error };
+    }
+    const stopBeforeUs = microseconds();
+    let profileFailure: { error: unknown } | undefined;
+    try {
+      const { profile } = await profiler.post('Profiler.stop');
+      const stopAfterUs = microseconds();
+      const saveStartUs = microseconds();
+      writeFileSync(
+        join(profileDirectory, 'prefix-and-drain.cpuprofile'),
+        JSON.stringify(profile),
+        { flag: 'wx' },
+      );
+      writeFileSync(
+        join(profileDirectory, 'observations.json'),
+        JSON.stringify({
+          startBeforeUs,
+          startAfterUs,
+          stopBeforeUs,
+          stopAfterUs,
+          bookkeepingUs,
+          workFailed: workFailure !== undefined,
+          phaseMarks,
+          observations,
+        }),
+        { flag: 'wx' },
+      );
+      writeFileSync(
+        join(profileDirectory, 'saved.json'),
+        JSON.stringify({ saveUs: microseconds() - saveStartUs }),
+        { flag: 'wx' },
+      );
+    } catch (error) {
+      profileFailure = { error };
+    }
+    if (workFailure) {
+      if (profileFailure)
+        writeSync(
+          2,
+          `\n[r1-outbox-profile-error] ${String(profileFailure.error)}\n`,
+        );
+      throw workFailure.error;
+    }
+    if (profileFailure) throw profileFailure.error;
+  } finally {
+    profiler.disconnect();
   }
-  const tape = await f.bodies.put(
-    'runtime-ai-sdk-v3-tape/1',
-    tapeBytes(f.pin.requestId, 1, [...wire, normalizePart(finish)]),
-  );
-  const complete = await f.storage.execute(
-    operation({
-      type: 'complete',
-      key,
-      expected: fence,
-      attempt: begun.attempt,
-      tape,
-      lastPartialSequence: wire.length - 1,
-    }),
-    f.context,
-  );
-  if (complete.kind === 'refused') throw Error('complete prerequisite');
-  await f.storage.execute(
-    operation({
-      type: 'finish',
-      key,
-      expected: complete.fence,
-      status: 'completed',
-    }),
-    f.context,
-  );
-  await drainModelOutbox(f.storage, sink, key, f.context);
-  expect((await sink.readAudit(key)).map((p) => p.sequence)).toEqual([
-    ...Array.from({ length: 1026 }, (_, i) => i),
-    0,
-  ]);
-  expect(await sink.readModelContext(key)).toEqual({
-    kind: 'ready',
-    tapes: [tape],
-  });
 });
 it('R1.6 initial outbox window leaves a legitimate same-run concurrent append for the next drain', async () => {
   const f = await fixture();
