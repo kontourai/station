@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings you may not have found | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/user/settings.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <h1 id="settings-you-may-not-have-found">Settings you may not have found</h1>
+<p>Most Settings rows explain themselves. This page covers four sections that change what Station offers rather than how it looks. Open <strong>Settings</strong>, pick a page in the left rail, or search for a setting by name. You can also find any Settings row from the <a href="../guides/keyboard-shortcuts.html#command-palette">command palette</a> (⌘K or Ctrl+K).</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Section</th><th>Page</th><th>Saved</th></tr></thead><tbody><tr><td>Feature previews</td><td><strong>Advanced</strong></td><td>On this Station</td></tr>
+<tr><td>Developer tools</td><td><strong>Advanced</strong></td><td>To your account when you are signed in, otherwise on this device</td></tr>
+<tr><td>Shared answers</td><td><strong>Privacy &amp; sharing</strong></td><td>On this Station</td></tr>
+<tr><td>Device hosts</td><td><strong>Devices</strong></td><td>On this Station</td></tr></tbody></table></div>
+<h2 id="feature-previews">Feature previews</h2>
+<p>Feature previews are features that are still being evaluated. Each one has a switch, a name and a description of what turning it on does. A preview is listed only when this Station's build can run it; if none is, the section says &quot;No previews are currently offered&quot;. Previews start off.</p>
+<p>The current preview is <strong>Fleet consumer probes</strong>: before routing work to a model that another Station contributes, Station sends a test request to it. That test can spend a completion on the other Station.</p>
+<p>Turning a preview on affects everyone who uses this Station.</p>
+<h2 id="developer-tools">Developer tools</h2>
+<p><strong>Enable developer tools</strong> shows the <strong>Developer</strong> page in <strong>Customize</strong> and the command palette, and its <strong>Monitoring</strong> page in the command palette. It is off by default. Turning it off only hides them; a direct <code>/developer</code> link still opens.</p>
+<h2 id="shared-answers">Shared answers</h2>
+<p>This section lists the answer links you have created, with their state and expiry, and lets you revoke them. See <a href="sharing-answers.html">Share an answer</a>.</p>
+<h2 id="device-hosts">Device hosts</h2>
+<p>A device host is another Mac or Linux computer that runs iOS simulators or Android emulators for Station over SSH. Station uses your SSH agent and configuration and never stores a key. Only the Station operator sees this section, and only on a personal Station.</p>
+<ol>
+<li>Confirm the host key once in a terminal: <code>ssh user@host</code>.
+</li>
+<li>Choose <strong>Add device host</strong> and enter a <strong>Name</strong> and an <strong>SSH target</strong>, such as <code>me@build-host.example</code> or an alias from your SSH config.
+</li>
+<li>Choose <strong>Test connection</strong>. Station checks that it can reach the host and that Node.js, Xcode simulators and the Android SDK are available.
+</li>
+<li>Choose <strong>Enable device hub</strong> and confirm <strong>Install and enable</strong>. Station installs its device hub on the host under <code>~/.station-device-host</code>.
+</li>
+</ol>
+<p>Each host's menu also offers <strong>Share devices…</strong>, <strong>Disable hub</strong>, <strong>Edit</strong> and <strong>Remove</strong>. A Station can have up to 32 hosts. The <a href="https://github.com/kontourai/station/blob/main/docs/guides/mobile-device-workspace.md">mobile device workspace guide</a> explains what you can do with the devices once a host is ready.</p>
+<h2 id="link-to-a-setting">Link to a setting</h2>
+<p>Every Settings row has a stable address of the form <code>/settings?view=&lt;section&gt;&amp;highlight=&lt;row&gt;</code>, for example <code>/settings?view=feature-previews&amp;highlight=feature-previews</code>. See <a href="https://github.com/kontourai/station/blob/main/docs/reference/settings-deep-links.md">Settings deep links</a>.</p>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>

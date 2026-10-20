@@ -58,6 +58,7 @@
 <li>On your phone, open Station, choose <strong>Pair with a code</strong>, and use the invitation from the computer. Keep the computer running.
 </li>
 </ol>
+<p>Station's phone apps are not in public app stores yet. Android builds reach testers in a Google Play internal testing group and iOS builds reach invited TestFlight testers. Without one of those, open the Station's reachable address (see below) in your phone's browser instead; the browser offers the same <strong>Pair with a code</strong> step and <strong>Request access</strong>.</p>
 <p>A browser opened with the host's one-time sign-in link can create invitations and manage paired devices. Choose Read-only, Standard or Full device access before creating the invitation; anyone holding it can pair once before it expires, without another approval. Cancel an unused invitation to prevent it being redeemed. Revoking a paired device removes access it already received.</p>
 <p>For a terminal-only host, run <code>station-nightly environment offer</code> on the computer running your Nightly install (or <code>./station environment offer</code> from a source checkout). This prints a single-use invitation with Standard access. Use <code>--scope=orchestration:read</code> for read-only access or <code>--require-approval</code> to review the recipient before granting access.</p>
 <p>A browser that arrives without an invitation can choose <strong>Request access</strong>. Approve that request in a trusted session or with the displayed command on the Station host. Bare host-approval commands discover the running Station in the selected local home before consulting saved Station defaults, so a saved remote Station does not override that local instance. Use the same home and channel that started Station; a remote host requires running the command there, such as over SSH.</p>
@@ -299,6 +300,8 @@ STATION_CHANNEL=stable &quot;${STATION_ROOT:-$HOME/.station}/installs/stable/cur
 <li>Read <a href="concepts.html">Station concepts</a>.
 </li>
 <li>Customize <a href="../guides/keyboard-shortcuts.html">keyboard shortcuts</a>.
+</li>
+<li>Find <a href="settings.html">settings you may not have found</a>, such as feature previews and developer tools, and learn how to <a href="sharing-answers.html">share an answer</a>.
 </li>
 <li>Review the <a href="https://kontourai.io/privacy/station/">Station privacy policy</a>.
 </li>

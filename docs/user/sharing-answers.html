@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Share an answer | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/user/sharing-answers.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <h1 id="share-an-answer">Share an answer</h1>
+<p>You can send someone a link to one answer from a chat. Anyone who has the link can read that answer, without signing in, until it expires or you revoke it.</p>
+<h2 id="create-a-link">Create a link</h2>
+<ol>
+<li>Under the answer, open <strong>More answer actions</strong> and choose <strong>Turn provenance</strong>.
+</li>
+<li>In the <strong>Provenance</strong> dialog, choose <strong>Share answer</strong>.
+</li>
+<li>Station copies the link and says it expires in 7 days. If the browser does not allow copying, the link stays on screen so you can copy it yourself. Station keeps no second copy of the link, so copy it before you close the dialog.
+</li>
+</ol>
+<p><strong>Share answer</strong> appears only for answers that carry provenance. You cannot share from the desktop or phone app, or from an address that is not an ordinary <code>http</code> or <code>https</code> address; open Station in a browser at a reachable address first. A browser that is not paired yet is offered pairing first, and pairing gives that browser full access to your Station.</p>
+<h2 id="what-the-reader-sees">What the reader sees</h2>
+<p>The link opens a page that shows the answer's text as plain paragraphs and a summary of how it was produced, such as which engine and tools were used.</p>
+<ul>
+<li>Only the answer's text is shared, up to 40 paragraphs of 20,000 characters each; the page says how many paragraphs were left out.
+</li>
+<li>Tool inputs and results, attachments and the rest of the conversation are not shared. Tools appear only by name.
+</li>
+<li>The page also shows the share's label and the conversation and turn identifiers.
+</li>
+</ul>
+<p>The page reads the answer from your Station each time it is opened, so the reader needs to reach the same address you used when you created the link. If the answer has changed, the conversation is deleted, or you no longer have access to it, the page says the answer is no longer available. A Station that runs on your own computer is reachable only by people who can reach that computer.</p>
+<h2 id="revoke-a-link">Revoke a link</h2>
+<p>Open <strong>Settings → Privacy &amp; sharing → Shared answers</strong>. Each link shows its label (or &quot;Answer from turn …&quot;), whether it is live, revoked or expired, and when it was created and expires. Choose <strong>Revoke</strong>, then <strong>Confirm</strong>. The link stops working immediately and its page says it was revoked.</p>
+<p>Revoked and expired links stay in the list. You cannot copy a link again, rename it, or extend it from Settings.</p>
+<h2 id="limits">Limits</h2>
+<ul>
+<li>A link lasts 7 days by default. Through the API you can set a label and a lifetime of up to 90 days.
+</li>
+<li>A Station keeps at most 500 links, including revoked and expired ones.
+</li>
+<li>A hosted Station does not offer answer sharing yet.
+</li>
+<li>Opening links is rate limited, so a page that is opened very often may ask the reader to try again later.
+</li>
+</ul>
+<p>For the API and the security design, see <a href="https://github.com/kontourai/station/blob/main/docs/design/answer-share-permalinks.md">answer share permalinks</a>.</p>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>
