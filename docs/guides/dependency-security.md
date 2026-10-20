@@ -516,6 +516,37 @@ reproduced remote exploit against Station. Runtime Axios consumers include
 transitive SAP HTTP clients, localtunnel, and PostHog; their configuration and
 network reachability determine which advisory conditions apply.
 
+## 2026-10 Axios redirect credential boundary
+
+The workspace pins `axios>follow-redirects` to 1.16.1 for
+[GHSA-q3jh-wrc6-jgq8](https://github.com/advisories/GHSA-q3jh-wrc6-jgq8) and
+[GHSA-8r9p-f939-6h3c](https://github.com/advisories/GHSA-8r9p-f939-6h3c).
+Both affect 1.16.0. The threat is an attacker-controlled redirect destination
+receiving credential headers that the caller expected the library to strip:
+array-form built-in headers could bypass removal, and custom sensitive names
+containing regular-expression characters could be matched incorrectly.
+The override is limited to Axios's child dependency and preserves both locked
+debug peer contexts. Axios itself remains 1.20.0.
+
+Bounded tests against the installed library observed both credential vectors
+stripped across different loopback origins, with harmless and collateral-name
+headers retained. A public Axios control also observed credentials on an
+initial direct request and the expected cross-origin removal. On a same-origin
+redirect Axios retains ordinary and configured custom headers but removes
+`Proxy-Authorization` through its own existing proxy callback. The first
+external harness expected that proxy header to survive and failed; the
+source-backed successor corrected that expectation without changing Axios.
+
+These are local synthetic dependency controls, not a reproduced Station exploit
+or qualification of every SAP, localtunnel, PostHog, proxy, TLS, or native path.
+Callbacks that add headers after stripping and caller configuration remain
+separate review cases. The single recorded advisory-floor run evaluated all six
+views and passed with the existing braces exception, installed-byte Forge
+remediation and tracked moderate residuals retained. Its raw registry JSON was
+not retained. That audit was mistakenly launched after the first harness
+failure; the result does not erase that sequencing failure or upgrade the
+original failed harness. No exception, deadline or release-age rule changed.
+
 ## 2026-09 gRPC floor
 
 The workspace override requires `@grpc/grpc-js` 1.14.5 or newer compatible
