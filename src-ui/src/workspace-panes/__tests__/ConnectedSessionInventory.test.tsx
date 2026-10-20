@@ -341,6 +341,52 @@ describe('ConnectedSessionInventory', () => {
     );
   });
 
+  test('keeps an inventory on screen when only its refresh failed, and offers Retry', () => {
+    configure();
+    const refetch = vi.fn();
+    hooks.inventory.mockReturnValue({
+      data: projection,
+      isLoading: false,
+      error: new Error('Session inventory unavailable'),
+      refetch,
+    });
+    render(
+      <ConnectedSessionInventory
+        sessionId="session"
+        currentProjectId="project"
+      />,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain(
+      'Couldn’t refresh this inventory',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  test('names a first read that failed as unavailable, with Retry', () => {
+    configure();
+    const refetch = vi.fn();
+    hooks.inventory.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Session inventory unavailable'),
+      refetch,
+    });
+    render(
+      <ConnectedSessionInventory
+        sessionId="session"
+        currentProjectId="project"
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toContain('unavailable');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
   test('fails closed and retries when an authorized page is denied', async () => {
     configure();
     const refetch = vi.fn();
@@ -547,7 +593,7 @@ describe('ConnectedSessionInventory', () => {
     );
     expect(screen.queryByText('Grounded')).toBeNull();
     expect(screen.getByText('What this session contains')).toBeTruthy();
-    expect(screen.getByText('Session inventory')).toBeTruthy();
+    expect(screen.getByText('Chat inventory')).toBeTruthy();
   });
 });
 
