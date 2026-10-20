@@ -39,7 +39,7 @@ export function createNetCatcher(
   );
   // Listening on a raw handle posts its accepts synchronously, so they are in
   // place before the caller drains the generation that sent the spare.
-  server.listen(handle as unknown as Parameters<typeof server.listen>[0]);
+  server.listen(handle);
   return {
     name,
     get lastCaughtAt() {
