@@ -13,6 +13,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ShellSurfaceSuspension } from '../../app-shell/ShellSurfaceSuspension';
+import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { readPaneFence, writePaneFence } from '../../regions/pane-fence';
 import {
@@ -785,4 +786,169 @@ describe('focusing a kept target while a guard is answering', () => {
     expect(outcome).toEqual({ ok: false, reason: 'contended' });
     expect(unchanged).toBe(true);
   });
+});
+
+function stubPhone() {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: 390,
+  });
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === MOBILE_MEDIA_QUERY || query === '(pointer: coarse)',
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+}
+
+describe('on a phone, what a related preview folds over is what it asks', () => {
+  test.each(['cancel', 'proceed'] as const)(
+    'a first preview over Chat asks the guarded pane Chat’s region shows, once, and %s',
+    async (answer) => {
+      stubPhone();
+      await mount();
+      act(() => probe.model?.placeSurface('chat', 'bottom'));
+      act(() => probe.model?.placeSurface('workspace-agents', 'bottom'));
+      expect(probe.model?.regions.bottom.occupant).toBe('workspace-agents');
+      expect(probe.model?.phoneLayer).toBeNull();
+      const asked = vi.fn();
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('agents draft'),
+        (proceed, cancel) => {
+          asked();
+          if (answer === 'cancel') cancel?.();
+          else proceed();
+        },
+        'workspace-agents',
+      );
+      try {
+        const before = await settledStorageSnapshot();
+        const arrangement = structuredClone(probe.model?.regions);
+        const outcome = await open('src/a.ts');
+        expect(asked).toHaveBeenCalledTimes(1);
+        if (answer === 'cancel') {
+          expect(outcome).toEqual({ ok: false, reason: 'guard-cancelled' });
+          expect(await settledStorageSnapshot()).toEqual(before);
+          expect(probe.model?.regions).toEqual(arrangement);
+        } else expect(outcome).toMatchObject({ ok: true });
+      } finally {
+        unregister();
+      }
+    },
+  );
+});
+
+describe('what a guard was asked about is what a preview commits over', () => {
+  /** A kept preview of src/a.ts in Related, with Activity in front of it. */
+  async function keptPreviewUnderActivity() {
+    await mount();
+    await open('src/a.ts');
+    const [kept] = previewsInRight();
+    await act(async () => {
+      await probe.relations?.keep(kept as string);
+    });
+    act(() => probe.model?.placeSurface('activity', 'right'));
+    expect(right().occupant).toBe('activity');
+  }
+
+  const requests: Array<[string, string]> = [
+    ['a new preview', 'src/b.ts'],
+    ['the kept preview again', 'src/a.ts'],
+  ];
+
+  test.each(requests)(
+    'opening %s over a guard that moves other unsaved work in before it answers opens nothing',
+    async (_name, path) => {
+      await keptPreviewUnderActivity();
+      const agentsAsked = vi.fn();
+      const unregisterAgents = navigationStore.registerNavigationGuard(
+        Symbol('agents draft'),
+        (_proceed, cancel) => {
+          agentsAsked();
+          cancel?.();
+        },
+        'workspace-agents',
+      );
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('activity draft'),
+        (proceed) => {
+          // Before answering, in the same event and before any render:
+          // another pane with unsaved work takes the region's front.
+          probe.model?.placeSurface('workspace-agents', 'right');
+          proceed();
+        },
+        'activity',
+      );
+      try {
+        const relations = localStorage.getItem(PANE_RELATIONS_STORAGE_KEY);
+        const previews = Object.keys({ ...localStorage })
+          .filter((key) => key.includes('file-preview'))
+          .sort();
+        expect(await open(path)).toMatchObject({ ok: false });
+        expect(agentsAsked).not.toHaveBeenCalled();
+        expect(right().occupant).toBe('workspace-agents');
+        expect(localStorage.getItem(PANE_RELATIONS_STORAGE_KEY)).toBe(
+          relations,
+        );
+        expect(
+          Object.keys({ ...localStorage })
+            .filter((key) => key.includes('file-preview'))
+            .sort(),
+        ).toEqual(previews);
+      } finally {
+        unregister();
+        unregisterAgents();
+      }
+    },
+  );
+
+  test.each(requests)(
+    'opening %s while more unsaved work is registered for the asked pane opens nothing',
+    async (_name, path) => {
+      await keptPreviewUnderActivity();
+      const firstAsked = vi.fn();
+      let answerFirst: (() => void) | null = null;
+      const unregisterFirst = navigationStore.registerNavigationGuard(
+        Symbol('activity draft'),
+        (proceed) => {
+          firstAsked();
+          answerFirst = proceed;
+        },
+        'activity',
+      );
+      const secondAsked = vi.fn();
+      let unregisterSecond: (() => void) | null = null;
+      try {
+        const before = await settledStorageSnapshot();
+        const arrangement = structuredClone(probe.model?.regions);
+        let pending!: Promise<RelatedOpenOutcome>;
+        act(() => {
+          const openPreview = probe.open;
+          if (!openPreview) throw new Error('no opener');
+          pending = openPreview({ ...PROJECT, path });
+        });
+        await waitFor(() => expect(firstAsked).toHaveBeenCalledTimes(1));
+        unregisterSecond = navigationStore.registerNavigationGuard(
+          Symbol('more activity work'),
+          (_proceed, cancel) => {
+            secondAsked();
+            cancel?.();
+          },
+          'activity',
+        );
+        act(() => answerFirst?.());
+        let outcome!: RelatedOpenOutcome;
+        await act(async () => {
+          outcome = await pending;
+        });
+        expect(outcome).toEqual({ ok: false, reason: 'superseded' });
+        expect(secondAsked).not.toHaveBeenCalled();
+        expect(await settledStorageSnapshot()).toEqual(before);
+        expect(probe.model?.regions).toEqual(arrangement);
+      } finally {
+        unregisterFirst();
+        unregisterSecond?.();
+      }
+    },
+  );
 });
