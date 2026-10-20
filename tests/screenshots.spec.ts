@@ -2033,14 +2033,54 @@ function telemetryConsentScreens(): Screen[] {
             });
             await expect(save).toBeInViewport();
             await save.click({ trial: true });
+            if (mode === 'settings-dnt-after-fix') {
+              await main
+                .getByText('Changes wait until you select Save.')
+                .hover();
+              await page.mouse.wheel(0, 180);
+              const explanation = main.getByText(
+                'Feature use. Monthly code. No account or content.',
+                { exact: true },
+              );
+              await expect
+                .poll(async () => {
+                  const [text, bar] = await Promise.all([
+                    explanation.boundingBox(),
+                    page.locator('.settings__save-pill').boundingBox(),
+                  ]);
+                  if (!text || !bar)
+                    throw new Error(
+                      'Choice description or Save bar did not render.',
+                    );
+                  return text.y + text.height <= bar.y - 4;
+                })
+                .toBe(true);
+            }
             if (mode === 'settings-detailed-expanded') {
               const included = main.getByRole('region', {
                 name: "What's included",
               });
-              await included.scrollIntoViewIfNeeded();
-              await expect(
-                included.getByText(/Review what's included, then select Save/),
-              ).toBeVisible();
+              await included
+                .getByRole('heading', { name: "What's included" })
+                .hover();
+              await page.mouse.wheel(0, 180);
+              const confirmation = included.getByText(
+                /Review what's included, then select Save/,
+              );
+              await expect(confirmation).toBeVisible();
+              await expect
+                .poll(async () => {
+                  const [text, bar] = await Promise.all([
+                    confirmation.boundingBox(),
+                    page.locator('.settings__save-pill').boundingBox(),
+                  ]);
+                  if (!text || !bar)
+                    throw new Error(
+                      'Detailed confirmation or Save bar did not render.',
+                    );
+                  return text.y + text.height <= bar.y - 4;
+                })
+                .toBe(true);
               await expect(
                 included.locator('.usage-telemetry-disclosure__technical'),
               ).not.toHaveAttribute('open', '');
