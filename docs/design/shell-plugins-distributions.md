@@ -1,16 +1,22 @@
 # Shell kernel, plugin contributions and distribution manifests
 
 > **Reading status: accepted direction, not built.** This record holds the
-> owner decisions of 2026-09-29 and the delivery plan that implements them.
-> Nothing below is shipped behavior unless the text says it **exists** and
-> cites the source that establishes it. The "Current state" section was
-> checked by source inspection against `origin/main` at `2e8ddc0f7` on
-> 2026-09-29. No test was executed for this record. For current plugin
-> installation and grants, read [plugins](../guides/plugins.md) and the
+> owner decisions of 2026-09-29 and 2026-10-20 and the delivery plan that
+> implements them. Nothing below is shipped behavior unless the text says it
+> **exists** and cites the source that establishes it. The "Current state"
+> section was checked by source inspection against `origin/main` at
+> `2e8ddc0f7` on 2026-09-29 and has not been re-checked since. The
+> [Coding capability map](#coding-capability-map-condensed) was checked by
+> source inspection at `e880e9c92` on 2026-10-20. No test was executed for
+> this record. The Sigstore claims under
+> [OPEN-4's resolution](#decision-1-open-4-signing-is-sigstore-keyless) are
+> reasoned from Sigstore's published bundle format, not from a verification
+> Station has run. For current plugin installation and grants, read
+> [plugins](../guides/plugins.md) and the
 > [installation lifecycle](plugin-installation-lifecycle.md).
 
-Status: **accepted direction** (owner decisions, 2026-09-29). This record
-amends three earlier records without rewriting them:
+Status: **accepted direction** (owner decisions, 2026-09-29 and
+2026-10-20). This record amends three earlier records without rewriting them:
 
 - [pane-or-shell.md](pane-or-shell.md), where the runtime tiers become a
   per-install trust grant;
@@ -162,6 +168,284 @@ plugins leave no Home"; under decision 11 that state cannot occur, because
 still covers the rest of decision 2: no working layout, or a default filler
 that itself fails to load.
 
+## Owner decisions (2026-10-20): Coding as a plugin
+
+The owner's direction is that Station exposes its core functionality through
+the SDK and plugin interface, so plugins can extend and build on the core.
+Coding is the forcing function: it ships as a plugin from
+`kontourai/station-plugins` (slice j). The owner pulled j's whole dependency
+chain forward and made four decisions on 2026-10-20. Each is recorded as
+given, followed by this record's engineering reading. Where the reading adds
+a rule or finds a conflict, it says so.
+
+1. **OPEN-4 signing: Sigstore keyless.** There is no long-lived Kontour
+   plugin key. station-plugins' release workflow signs with its GitHub OIDC
+   identity through Sigstore. Station pins the expected workflow identity
+   (repository, workflow path, ref pattern) and verifies the bundle,
+   including the transparency-log inclusion proof.
+2. **Everything in Coding moves into the plugin.** That includes the diff,
+   file preview, terminal pane UI, PR review and the plan/readiness/trust
+   composition, not only the Coding-only panes. Core keeps the capabilities:
+   data queries, the terminal session store and view in the SDK (per
+   [terminal.md](terminal.md)), permissions and server routes. Other core
+   surfaces that use these panes today consume them by pane descriptor
+   through the plugin, or use SDK view components. Pane descriptor ids and
+   stateKeys are kept so saved layouts keep working; only provenance
+   changes.
+3. **Pinning: `plugins.lock`.** Station commits a lock naming each plugin's
+   name, version, artifact URL, sha256 and Sigstore identity. CI installs the
+   released artifacts, verifies them, and fails if one is missing. A bot PR
+   bumps the lock. The same lock defines the offline bundled default set,
+   installed at first run with no network (slice i0). station-plugins' CI
+   tests against Station's published preview build.
+4. **UI kit: upstream to `@kontourai/ui`.** Tabs, IconButton, an overflow
+   menu, relative time and the glyph set are added to the public
+   `@kontourai/ui` package. Station adopts them, and `@kontourai/ui/react`
+   joins `SHARED_EXTERNALS`. Behavioural dialogs become host capabilities
+   (`host.confirm` exists; add `host.prompt` and `host.menu`). The
+   `@kontourai/station-components` virtual module is deprecated.
+
+The same day the owner also adopted OPEN-5's proposal (a project-scoped
+"manage layouts" permission) and the research recommendations recorded in
+the delivery plan: j is **[security]**, j's acme acceptance moves to a
+fixture replacement layout, and a growth-only import ratchet guards
+`coding-layout/` while #3039 work continues.
+
+### Decision 1: OPEN-4 signing is Sigstore keyless
+
+**What Station pins.** For each Kontour plugin, the expected signer is an
+identity, not a key:
+
+- the OIDC issuer, GitHub Actions' token issuer;
+- the certificate's workflow identity: repository
+  `kontourai/station-plugins`, the release workflow's path, and a ref
+  pattern for release tags;
+- the certificate's numeric repository and owner identifiers, so a deleted
+  and re-created repository of the same name does not inherit trust;
+- the trigger event and a GitHub-hosted runner, so a `workflow_dispatch` or
+  self-hosted run of the same workflow does not match.
+
+The owner named repository, workflow path and ref pattern; this record adds
+the numeric identifiers, trigger event and runner, which Fulcio certificates
+for GitHub Actions also carry.
+
+Station verifies the Sigstore bundle against Sigstore's trusted root: the
+Fulcio certificate chain, the signature over the artifact digest, and the
+Rekor entry's inclusion proof against its signed checkpoint. The
+certificate lives about ten minutes, so validity is judged at the log's
+integrated time, not at the verifier's clock. A bundle without a
+transparency-log entry and inclusion proof is refused.
+
+**d1 (trust records).** The install trust record pins a **signer plus
+digest** instead of a key plus digest:
+
+```text
+signer: { kind: 'sigstore', issuer, identity, repositoryId, ownerId }
+      | { kind: 'ed25519', keyId }      // registry-trust-policy keys, unchanged
+      | null                            // unsigned
+```
+
+- `provenance: kontour` means the bundle verified **and** its identity
+  matched the identity Station pins. A valid Sigstore bundle from any other
+  identity is `publisher`.
+- The owner's 2026-09-29 rule "an update signed by a different key does not
+  inherit trust" reads, for Sigstore, as "an update whose verified identity
+  differs". The rest of the pinning rules stand.
+- d1 adds a Sigstore verifier with an embedded trusted root to `src-server`.
+  That is a new dependency on the installer path and part of d1's security
+  review.
+
+**Offline verification.** Keyless verification can run with no network, under
+three conditions:
+
+- Station embeds a snapshot of Sigstore's trusted root (Fulcio certificates
+  and Rekor, certificate-transparency and timestamp keys) at build time.
+- Each bundled plugin carries its Sigstore bundle, and that bundle includes
+  the inclusion proof and signed checkpoint, not only a log timestamp.
+- The verifier is configured with the embedded root and makes no TUF or
+  Rekor request.
+
+Every bundled artifact was signed before the Station release that ships it,
+so that release's embedded root always covers it. What offline verification
+**cannot** do:
+
+- refresh Sigstore's own root, which therefore moves only with a Station
+  release;
+- check log consistency (detect a split view by a compromised log), which
+  needs an online read;
+- learn of a revocation published after the installed release.
+
+The honest consequence for i0 is that the stronger anchor for the bundled
+set is the sha256 in `plugins.lock`. It reaches the user inside the Station
+release, whose integrity is that release channel's own (for desktop, ADR
+0020's signed updater). The offline Sigstore check adds two things: it
+confirms which workflow built the bytes, and it gives a bundled plugin the
+same `kontour` provenance a downloaded install gets. i0 therefore needs no
+"bundled" exception in the trust rules. **Conclusion: Sigstore keyless works
+for the offline first-run install, with these stated limits.**
+
+**Rotation.** There is no key to rotate. A change of signer identity (a
+renamed repository, a moved workflow file, a new ref pattern) ships as a
+Station release that pins both the old and the new identity for an overlap
+window, then drops the old one. Sigstore's own root rotation reaches online
+Stations through the embedded root of each release.
+
+**Revocation.** Each Station release ships a denylist of digests (one bad
+release) and of identities or identity-plus-time windows (a compromised
+workflow period). The installer refuses a denylisted digest or identity at
+install and on every activation. An offline Station learns of a revocation
+only when it updates.
+
+**What keyless moves, not removes.** Whoever can make station-plugins' release
+workflow run on a matching ref can produce a `kontour`-provenance plugin. The
+release workflow's protections (protected release tags, a release environment
+with required reviewers, no `pull_request_target` path to the signing job)
+are part of i1's acceptance, not an afterthought.
+
+**Third-party publishers.** A publisher who signs keylessly from their own CI
+gets `publisher` provenance with the verified identity shown at install, for
+example a repository and workflow. Station pins that identity on first trust
+(trust on first use) plus the digest, and an update from a different
+identity is a new decision. A verified identity proves which repository's
+workflow built the bytes, not that the publisher is vetted, so OPEN-3's
+proposed tier-3 default for publisher-signed plugins still matters. Registry
+ed25519 keys under [registry-trust-policy.md](registry-trust-policy.md)
+remain a second signer kind.
+
+**What stays open after OPEN-4** (see [OPEN-4](#open-items)):
+
+- a revocation feed between releases, and what signs it;
+- whether online Stations refresh Sigstore's root through TUF or use only
+  the embedded root (proposed: embedded only, refreshed per release);
+- whether online installs also query Rekor for consistency (proposed: no);
+- the operator UX for reading and pinning a third-party identity;
+- support for issuers other than GitHub Actions, and for a private Sigstore
+  deployment.
+
+ADR 0020's updater keys are unaffected. They sign Station binaries, a
+different artifact on a different path.
+
+### Decision 2: everything in Coding moves into the plugin
+
+Core keeps capabilities; the plugin owns every Coding pane and its
+composition. This replaces the research recommendation that diff, file
+preview, terminal and PR review stay core panes the plugin references.
+
+**This record's reading of "plan/readiness/trust composition".** The Coding
+inspector's arrangement of those three panes moves. The panes themselves
+(`workspace-plan`, `workspace-readiness`, `workspace-trust`) stay core:
+the server lists them as general pane declarations any layout may place
+([workspace-pane-known-declarations.ts](../../src-server/services/projects/workspace-pane-known-declarations.ts)).
+Today their content components live in
+`coding-layout/CodingInspectorPanel.tsx`; they move to their core domains
+(`flow/`, `readiness/`, `trust/`) before j.
+
+**Pane ids.** The descriptor ids are `pane:builtin:coding:file-browser`,
+`pane:builtin:coding:diff` and `pane:builtin:coding:terminal`
+([workspace-coding-panels.ts](../../packages/contracts/src/workspace-coding-panels.ts)).
+The `workspace-coding-*` strings, including `workspace-coding-terminal`, are
+their instance ids, stateKeys and renderer names. Both are kept. A plugin's
+layout panes normally get a minted id of the form `pane:plugin%3A<plugin>:…`
+(see `layout-pane-reference.ts`), so keeping the `pane:builtin:coding:*` ids
+needs an explicit **legacy-id adoption** rule. The rule is security-relevant,
+because any plugin that could claim a `pane:builtin:*` id could stand in for
+a core pane. It belongs to slice jG: a fixed table maps each legacy id to the
+Coding plugin, honoured only when that plugin's trust record carries the
+pinned Kontour identity. The same applies to the file-preview descriptor
+(`pane:builtin:workspace-preview:file-preview`) and the `pr:` instance
+family.
+
+**Core sites that use Coding panes today, and the recommendation for each**
+(verified at `e880e9c92`):
+
+| Site | Uses today | Recommendation | With the Coding plugin absent |
+| --- | --- | --- | --- |
+| `views/TaskWorkspaceView.tsx:31-32` | `DiffPanel`, `FileContentViewer` inline in a task | **SDK view components** (`DiffView`, `FileView`). A task embeds content, not panes | No change: Tasks keeps its diff and file views |
+| `workspace-panes/FilePreviewPane.tsx` (its diff mode lazily imports `DiffPanel` at :1023) | The file-preview pane itself | Moves into the plugin; its diff mode uses SDK `DiffView` | — (moves) |
+| Callers that open file preview: chat dock and its view model, `SessionsView`, navigation store and `useOpenInRegion`, the region `file-preview:` family | Open a file link in the preview pane | **By descriptor** through the pane-open capability (SDK-4) | The open answers `unavailable`. File links in chat and Sessions show the path with a copy action and no preview |
+| `workspace-panes/builtinWorkspacePaneRegistry.tsx:75-83, 756` | Registers the Coding panes, the evidence-pane content, `selectWorkflowPlanSession`, and the lazy PR review panel | Drop the Coding registrations: those panes come from the plugin under the adopted ids. Move the evidence-pane content and `planSession` to core | Plan, readiness and trust panes keep working. Coding panes in saved layouts render `unavailable` with a reason |
+| Region `pr:` family and the dock's PR chips (`region-surface-panes.ts:321`, `region-model.ts`) | Open PR review from chat | **By descriptor** (SDK-4) | PR chips open the pull request externally (`host.openExternal`) instead of the review pane |
+| Region `coding:terminal`, `coding:diff`, `coding:file-browser` families (`region-surface-panes.ts:305-309`) | Dock placements of Coding panes | By descriptor; the architecture ratchet's source map points at the plugin | Those dock placements render `unavailable` with a reason |
+| `components/modals/NewChatModal.tsx:82` | Helpers from `coding-layout/chatContextDraft.ts` that compose a start message (not a pane) | Move the helpers into core chat start. The plugin supplies its context draft through SDK-3 | New chat works. The "start with coding context" entry exists only when the plugin supplies it |
+| `app-shell/ProjectLayoutRenderer.tsx:60-68` | `CodingWorkbench`, `codingPanels`, `codingStackPage` | Slice a's generic host and a2's generic panel record | No Coding layout in the catalog; a stored Coding layout renders `unavailable` with a reason and offers reinstall from the bundled set |
+
+**Consequence, stated plainly.** Because i0 installs Coding by default, the
+plugin is absent only when an operator uninstalls or disables it, or a
+distribution manifest leaves it out. Then: no Coding layout; stored Coding
+layouts and docked Coding panes show `unavailable`; chat and Sessions file
+links lose their preview; PR chips open the pull request externally; the
+"Open in Coding" entries disappear. Tasks, the evidence panes and the
+terminal *runtime* are unaffected.
+
+**Pushback recorded with the decision.** File preview and PR review are
+also the general targets for links in chat, not only Coding panes. If the
+loss of in-app preview without Coding is unwanted, the cheaper fix is to
+ship them as their own small plugins in the default set, the pattern
+already planned for the browser-preview pane, rather than moving them back
+into core (OPEN-13).
+
+**Terminal.** The terminal pane UI moves; the session store and
+`TerminalView` are SDK capabilities owned by [terminal.md](terminal.md)
+(the store is in that design's phase 2; the view export is proposed in
+#3894). Its Ghostty phases are the long pole. If j is otherwise ready before
+the SDK terminal view exists, the owner chooses between waiting and an
+interim in which the terminal pane stays core under its existing id; see
+OPEN-12.
+
+### Decision 3: `plugins.lock` and the offline default set
+
+- **The lock.** A committed JSON file. Each entry holds name, version,
+  artifact URL, sha256, and the Sigstore identity from decision 1. Entries
+  are sorted by name, so two bumps touching different plugins merge
+  cleanly.
+- **CI.** Installs every entry from its released artifact, checks the sha256
+  and the Sigstore bundle, and fails when an artifact is missing or
+  unverifiable. CI never installs workspace sources of a plugin.
+- **Bumps.** A bot PR changes the lock. Its review is the review of what
+  Kontour code ships by default.
+- **Cross-repository testing.** station-plugins' CI runs against Station's
+  published preview build, so the two repositories never move in lock-step.
+- **The offline default set (slice i0).** The Station release carries every
+  locked artifact and its Sigstore bundle. At first run, with no network,
+  the installer installs the set from that payload and verifies it as in
+  decision 1. Release size grows by the bundled plugins.
+
+**How the `BUILTIN_CODING_LAYOUT` promise survives.** Its docstring calls it
+"the safe starter that every Station installation can create without a
+registry, plugin, or network dependency"
+([layout.ts](../../packages/contracts/src/layout.ts)). After j, Coding *is*
+a plugin, so the words "or plugin" become false and must change in j. The
+substance holds: no registry and no network, because the Coding plugin is
+in the bundled set and installs from the release payload. If an operator
+uninstalls it, reinstalling from the same payload is still offline. The
+catalog entry stops being `source: 'builtin'` and becomes the bundled
+plugin's contribution.
+
+### Decision 4: UI kit upstream
+
+- Tabs, IconButton, an overflow menu, RelativeTime and the glyph set go into
+  `@kontourai/ui/react`. That package (1.20.1 on npm and installed at
+  `e880e9c92`) has none of them today.
+- Station moves its own Button, IconButton, Tabs, Empty, ErrorState and
+  Skeleton onto the package, so there is one source.
+  `@kontourai/station-sdk` already imports `@kontourai/ui/react`
+  (`packages/sdk/src/components/ErrorState.tsx`).
+- `@kontourai/ui/react` joins `SHARED_EXTERNALS`
+  ([build.ts](../../packages/shared/src/build.ts)). Tier-2 plugins then use
+  the host's exact version, theme and CSS. A plugin declares a peer range;
+  a tier-3 frame bundles the package and its token CSS.
+- Behavioural dialogs are host capabilities, because they depend on kernel
+  chrome and limit 1 requires kernel prompts to stay distinguishable:
+  `host.confirm` exists on the pane host contract
+  ([workspace-pane-host-contract.ts](../../packages/contracts/src/workspace-pane-host-contract.ts));
+  `host.prompt` and `host.menu` are added in SDK-1.
+- `@kontourai/station-components` is deprecated. It is a runtime-only
+  virtual module exposing only `UserDetailModal`
+  ([pluginSharedRuntime.ts](../../src-ui/src/core/pluginSharedRuntime.ts)),
+  and the `station dev` mock stubs it to `null`. It stays in
+  `SHARED_EXTERNALS` through a deprecation window, because existing plugins
+  may import it; the plugin build warns on that import.
+
 ## Current state (verified 2026-09-29, source inspection at `2e8ddc0f7`)
 
 What each item below establishes is location and code shape, not executed
@@ -204,6 +488,10 @@ behavior.
   - [LayoutWorkspacePane.tsx](../../src-ui/src/workspace-panes/LayoutWorkspacePane.tsx)
   - [workspacePaneDirectRoute.ts](../../src-ui/src/workspace-panes/workspacePaneDirectRoute.ts)
   - [builtinWorkspacePaneCanonical.ts](../../src-ui/src/workspace-panes/builtinWorkspacePaneCanonical.ts)
+
+  *2026-10-20:* this list was incomplete. It omitted the sites in
+  `packages/contracts` and `src-server`. The complete list is in the
+  [Coding capability map](#coding-capability-map-condensed).
 - Only a `chat`-kind layout suspends the ambient chat dock (`App.tsx`). ⌘D is
   `dock.toggle` in [region-model.ts](../../src-ui/src/regions/region-model.ts).
 - The Coding chat-centre and navigation-stack work lives on the
@@ -336,7 +624,7 @@ filler. Candidates are Home and the primary chat and approval surface.
 | Scope | Who installs or attaches | Examples |
 | --- | --- | --- |
 | Instance | operator | plugins themselves, Home override, distribution manifest |
-| Project | project member holding `manage-extensions` (today: `owner`; see OPEN-5) | project layouts such as Coding |
+| Project | project member holding the new project-scoped "manage layouts" permission: `owner` and `admin` (OPEN-5, adopted 2026-10-20; today only `owner`, through `manage-extensions`) | project layouts such as Coding |
 | Principal | the person | Boards, personal project layouts, personal templates |
 
 A member may hide or disable an installed plugin for their own session. That
@@ -368,6 +656,8 @@ An **install trust record** is kept per installed plugin:
   that the iframe does nothing for them. They remain separately derived,
   trusted-tier grants.
 - **Pinning.** The record pins publisher key plus content digest.
+  *2026-10-20:* for a Sigstore-signed plugin, "key" reads as the verified
+  signer identity ([decision 1](#decision-1-open-4-signing-is-sigstore-keyless)).
   - An update with the same key, a new digest and no new capabilities keeps
     the tier and grants. Today's rebind already moves grants to the new
     digest.
@@ -633,14 +923,16 @@ slot's default filler covers a broken Home override.
 
 `kontourai/station-plugins`:
 
-- `plugins/<name>/`: one package each, released independently and signed with
-  Kontour's key;
+- `plugins/<name>/`: one package each, released independently and signed
+  keylessly by the repository's release workflow through Sigstore (OPEN-4,
+  resolved 2026-10-20);
 - `distributions/kontour-default/`: the default manifest;
 - the `acme-distribution` example, in that repository's examples folder: extends kontour-default, swaps the Coding
   layout and Home, and sets branding and SSO configuration;
 - `templates/plugin-starter/`.
 
-Station's CI installs pinned released versions, never workspace sources. The
+Station's CI installs pinned released versions, never workspace sources,
+through `plugins.lock` ([decision 3](#decision-3-pluginslock-and-the-offline-default-set)). The
 repository is public, so its fixtures use generic names and hosts.
 
 ## Threat notes: what operator discretion cannot cover
@@ -712,6 +1004,68 @@ repository is public, so its fixtures use generic names and hosts.
     replaced by the Home slot.
   - Its non-goal "No new plugin contribution types" is lifted for the
     `distribution` contribution and the layout contract fields.
+- **[terminal.md](terminal.md)** owns the terminal session store and
+  `TerminalView` that the Coding plugin's terminal pane consumes (decision 2
+  of 2026-10-20). Its phase 4 places the terminal pane and the Coding
+  drawer; under that decision the Coding drawer is plugin code. That record
+  does not yet carry a dated cross-reference to this one.
+
+## Coding capability map (condensed)
+
+Source inspection at `e880e9c92` on 2026-10-20.
+`src-ui/src/components/coding-layout/` has 40 non-test source files that
+import **60** distinct app-internal modules. Plugins cannot supply a layout
+renderer today: every contributed layout renders through `LayoutView`, and a
+contributed layout typed `coding` is deliberately refused the built-in host
+([project-layout-kind.ts](../../src-ui/src/app-shell/project-layout-kind.ts)).
+So Coding cannot ship as "a plugin that renders CodingWorkbench". The
+workbench chrome becomes slice a's generic host in core, and the plugin
+contributes a layout declaration and its panes.
+
+Disposition codes: **HOST** (absorbed by slice a's generic host), **SDK**
+(an existing or new SDK capability; the slice is named), **REF** (a core pane
+opened by descriptor), **KIT** (the UI kit), **SHARED** (a pure helper moving
+to `@kontourai/station-shared` or into the plugin).
+
+| Family | What `coding-layout/` imports today | Disposition |
+| --- | --- | --- |
+| Layout host, navigation, chat placement | navigation store, chat placement, `CodingChatPane`, `ChatDock`, pane-host reducer, commands and open context, region chrome slots | HOST (a). Plugin-initiated opens go through SDK-4 (#3875) |
+| Pane head actions | `PaneHeadSlots` (a React portal) | SDK-1: a declarative `usePaneHeadActions`, because #3875 bars React slots from crossing the capability |
+| Panel and device state | `coding-panels-record`, device settings, `transcriptMeasure` | a2 (a generic panel record keyed by layout, migrating the `codingPanels` device-settings key); SDK-6 for the plugin's own per-device state |
+| Device facts | `useIsMobile`, `useDockSlotDevice`, mobile viewport, menu focus | SDK-1 (`useHostFacts`); viewport and menu focus are HOST or KIT |
+| Shortcuts | `useKeyboardShortcut`, `KeyboardShortcutsContext` | SDK-1. The SDK's `useKeyboardShortcut(s)` exist but throw for plugins: `SDKAdapter.tsx` passes `hooks: {}` and wires no shortcuts context |
+| Chat interop | `ActiveChatsContext` drafts, `CodingFilesContextProvider`, `ACPChatPanel`, `useACPConnections`, `useRecentAgents` | SDK-3 (`useChatComposer`, `useChatContextAttachments`); the chat pane by descriptor (SDK-4); ACP connections are already in the SDK; recent agents become plugin-local on SDK-6 |
+| Git and repositories | `useGitActions`, `useGitStatus` | SDK-2 (repositories, branches, checkout, commit, push). `useGitStatusQuery` already exists. Commit and push stay operator-only on the server |
+| Files and preview | `FilePreviewPane`, the file-preview intent, the browser-preview launcher, clipboard, `PromptModal` | SDK views (`FileView`); browser preview by descriptor (REF, slated to become its own plugin); SDK-1 (`host.clipboard`, `host.prompt`) |
+| Diff | `DiffPanel` and its performance hooks; diff-comment data | SDK views (`DiffView`); the diff and diff-comment queries are already public |
+| Terminal | `browserWebSocketAuth`, `@xterm/*`, `errorText` | SDK-5, owned by [terminal.md](terminal.md) **[security]**; `errorText` is SHARED |
+| PR review | `pull-requests/*` components, `openExternalLink`, `useUnsavedGuard`, `useTickingNow`, request-authority scope | SDK views (PR review data hooks); SDK-1 (`host.openExternal`, `useRequestAuthorityScope`); SDK-4 (`useUnsavedGuard` bound to #3875's close guard); KIT (row, chips, relative time) |
+| Evidence | `WorkflowPlanPanel`, `ReadinessPanel`, `TrustPanel` | REF: the core plan, readiness and trust panes. Only the inspector composition moves |
+| UI primitives | `Button`, `IconButton`, `Tabs`, `ActionOverflowMenu`, `LazyBoundary`, `ResponsiveDialogSurface`, `state`, `icons/Glyph`, `ConfirmModal`, `isComposingKeyEvent` | KIT; dialogs become `host.confirm`, `host.prompt` and `host.menu`; `isComposingKeyEvent` is SHARED |
+
+**Every `type === 'coding'` special case** and its equivalents, to be
+deleted or replaced in j:
+
+| Site | Replacement |
+| --- | --- |
+| `src-ui/src/app-shell/project-layout-kind.ts:32, :87, :130` | Derive the kind and chat placement from `primary` and `presentation`. Keep the rule that a contributed layout cannot claim a built-in host |
+| `src-ui/src/app-shell/ProjectLayoutRenderer.tsx:521, :1719`, with `BuiltinCodingLayoutHost` (:437, about 1,200 lines) and its imports at :8-22 and :60-68 | Slice a's generic stack host |
+| `src-ui/src/components/chat-dock/useChatDockViewModel.ts:266` (read by `ChatDock.tsx` as `sessionCodingLayout`) | A contracts helper, `findPrimaryChatLayout(layouts)` |
+| `src-ui/src/views/ProjectPage.tsx:271` | The same helper |
+| `src-ui/src/views/home/useHomeViewModel.ts:251` | The same helper |
+| `src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx:271` | The layout's own icon field |
+| `src-ui/src/workspace-panes/LayoutWorkspacePane.tsx:318` | "Main only" derived from `presentation: 'stack'` |
+| `src-ui/src/workspace-panes/workspacePaneDirectRoute.ts:18` | A descriptor flag such as `directRoute` |
+| `src-ui/src/workspace-panes/builtinWorkspacePaneCanonical.ts:89-91, :480` | Deleted with the built-in `coding` renderer |
+| `src-ui/src/regions/region-surface-panes.ts:305-309, :321` (the architecture ratchet's source map, not a type check) | Repointed at the plugin's panes |
+| `packages/contracts/src/layout.ts:268-275` (`BUILTIN_CODING_LAYOUT`) | Replaced by the bundled plugin's contribution (i0); the docstring's promise is restated |
+| `packages/contracts/src/workspace-pane-builtin-renderers.ts:31-34` | Remove `coding` and the three Coding pane renderer names |
+| `packages/contracts/src/workspace-coding-{file,diff,evidence}-composition.ts` (`resolveBuiltinCoding*Grant`) | These grant only when `provenance.origin === 'builtin'`, so a plugin pane would be **denied**. Replaced by install-time capability grants (jG) **[security]** |
+| `src-server/routes/projects/layout-working-directory.ts:61` (and `codingLayoutRepoId` at :79), `project-layout-admission.ts:114`, `projects.ts:627` | A layout field, `workspaceBinding?: 'repository'`, so admission derives from the declaration (a2) **[security]** |
+| `scripts/coding-composition-inventory-gate.mjs` | Retired or repointed in j |
+
+`App.tsx:464` mentions `'coding'` only in a comment. It consumes
+`resolveLayoutChatPlacement` and changes with it.
 
 ## Open items
 
@@ -741,15 +1095,29 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
   publisher identity ([registry-trust-policy.md](registry-trust-policy.md)).
   *Proposed:* publisher-signed plugins start sandboxed; only Kontour's key
   starts trusted.
-- **OPEN-4. Kontour key custody.** "Kontour-signed" needs a shipped anchor key,
-  a rotation rule and a revocation path. Today's anchors are per-registry
-  operator configuration. The relationship to ADR 0020's split updater keys
-  is undecided. Release signing for station-plugins lands wherever this is
-  decided.
-- **OPEN-5. Who installs project layouts.** The owner said "admin or
-  operator", but `manage-extensions` belongs only to `owner` today.
-  *Proposed:* add a project-scoped "manage layouts" permission for project
-  admins; instance installs stay owner-only.
+- **OPEN-4. Kontour key custody: resolved 2026-10-20.** Sigstore keyless:
+  no long-lived Kontour plugin key. station-plugins' release workflow signs
+  with its GitHub OIDC identity, and Station pins that identity and verifies
+  the bundle with its inclusion proof. Rotation is identity pinning with an
+  overlap window; revocation is a digest and identity denylist shipped in
+  each release. ADR 0020's updater keys are unaffected. See
+  [decision 1](#decision-1-open-4-signing-is-sigstore-keyless). The
+  original question ("'Kontour-signed' needs a shipped anchor key, a
+  rotation rule and a revocation path") is answered by the pinned identity
+  and the embedded Sigstore root. **Still open:**
+  - a revocation feed between releases, and what signs it;
+  - whether online Stations refresh Sigstore's root through TUF
+    (*proposed:* no; embedded root only, refreshed per release);
+  - whether online installs also query Rekor for log consistency
+    (*proposed:* no);
+  - the operator UX for reading and pinning a third-party identity;
+  - issuers other than GitHub Actions, and private Sigstore deployments.
+- **OPEN-5. Who installs project layouts: adopted 2026-10-20.** The owner
+  said "admin or operator", but `manage-extensions` belongs only to `owner`
+  today. The owner adopted the proposal: add a project-scoped "manage
+  layouts" permission held by project `owner` and `admin`; instance installs
+  stay owner-only. It is delivered with slice b or j, whichever lands first,
+  and needs its own route tests for the refusal path.
 - **OPEN-6. Sign-in in a manifest.** A manifest may configure the kernel's
   OIDC adapter. Selecting an authentication *module*
   (`STATION_AUTHENTICATION_MODULE`) loads code into the kernel's sign-in
@@ -788,6 +1156,19 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
 
   *This record's proposal* is (b), with (d)'s disclosure in every raise
   prompt. It is not an owner decision.
+- **OPEN-12. Terminal sequencing for j (2026-10-20).** Decision 2 moves the
+  terminal pane UI into the Coding plugin, built on the SDK terminal store
+  and `TerminalView` that [terminal.md](terminal.md) delivers in its later
+  phases. If the rest of j is ready first, either j waits, or the terminal
+  pane stays core under `pane:builtin:coding:terminal` and the plugin opens
+  it by descriptor until the SDK view ships.
+  *Proposed:* the interim, with its removal as an acceptance item of
+  terminal.md's layout phase, so j does not wait on the Ghostty work.
+- **OPEN-13. File preview and PR review without Coding (2026-10-20).**
+  Decision 2 moves them into the Coding plugin, so chat and Sessions lose
+  in-app file preview and PR review when Coding is absent.
+  *Proposed:* accept for j; if that loss is unwanted later, split them into
+  their own default-set plugins rather than back into core.
 
 ## Delivery plan
 
@@ -807,26 +1188,40 @@ before merge.
 
 | Slice | Depends on | Security |
 | --- | --- | --- |
-| a. Layout contract fields and generic host | — | |
+| a. Layout contract fields and generic host | — (coordinate with #3875) | |
+| a2. Workspace binding field and a generic panel record | a | [security] |
 | b. Owner × subject | — | [security] |
 | c. Board UX | b (for save-as) | |
-| d1. Trust records, key and digest pinning, migration | #1521 | [security] |
+| d1. Trust records, signer and digest pinning, migration | #1521, OPEN-4 (resolved 2026-10-20) | [security] |
 | d2. Per-plugin capabilities, high-risk class, update re-prompt | d1 | [security] |
 | d3. Raise on the consent listener; retire the remote-bundle store | d1 | [security] |
 | d4. Cross-origin nonce fix | — | [security] |
 | e. Required-slot resolver | — | [security] |
 | f. Safe mode | e | [security] |
-| g. Distribution manifest, precedence, reset | d1, OPEN-4 | [security] |
+| g. Distribution manifest, precedence, reset | d1, OPEN-4 (resolved) | [security] |
 | h. Distribution branding and defaults | g | [security] |
-| i1. station-plugins repo scaffold and starter template | — | |
-| i2. Board extraction as an installed plugin, with migration | d1, i1 | [security] |
-| i3. kontour-default and acme manifests | g, h, i2, OPEN-4 | [security] |
-| j. Coding → plugin, with migration | a, i2 | |
+| SDK-1. Host services | — | [security] |
+| SDK-2. Git and repositories query domain | — | |
+| SDK-3. Chat composer and context attachments (shared with #3049) | — | [security] |
+| SDK-4. Pane open, reveal and close; unsaved guard | owned by #3875 | |
+| SDK-5. Terminal session store and `TerminalView` | owned by [terminal.md](terminal.md) | [security] |
+| SDK-6. Plugin device state | coordinate with #1359 | |
+| SDK-views. Diff view, file view, PR review data | — | |
+| KIT. UI kit upstream to `@kontourai/ui` | a `@kontourai/ui` release | |
+| i0. Offline bundled default set from `plugins.lock` | d1, i1 | [security] |
+| i1. station-plugins repo scaffold and starter template | — | [security] (release signing) |
+| i2. Board extraction as an installed plugin, with migration | d1, i1, i0 | [security] |
+| i3. kontour-default and acme manifests | g, h, i2 | [security] |
+| R. Growth-only ratchet on `coding-layout/` app-internal imports | — | |
+| jG. Coding capability grants and legacy pane-id adoption | d1 | [security] |
+| j. Coding → plugin, with migration | a, a2, i0, i2, jG, SDK-1, SDK-2, SDK-3, SDK-4, SDK-5 (or OPEN-12's interim), SDK-6, SDK-views, KIT | [security] |
 | k. Home → plugin, with migration | e, i2 | [security] |
 | l. Inbox/Chat → plugin, approval decisions | a, d2, e, j, OPEN-11 | [security] |
-| m. Plugin authoring | docs part: —; signing and registry: d1, OPEN-4 | [security] (signing) |
+| m. Plugin authoring | docs part: —; signing and registry: d1 | [security] (signing) |
 
-Browser and Device panes follow i2's pattern as their own slices.
+Browser and Device panes follow i2's pattern as their own slices. SDK-4 is
+built by the #3875 lane and SDK-5 by [terminal.md](terminal.md)'s phases;
+this plan consumes them and does not build a second version of either.
 
 ### a. Layout contract fields and a generic host
 
@@ -851,6 +1246,190 @@ Acceptance:
 Proof: a real-browser parity spec that runs the same assertions against
 built-in Coding and against the fixture layout. Reverting the generic
 derivation (so only `type === 'coding'` works) must fail the fixture half.
+
+### a2. Workspace binding field and a generic panel record [security]
+
+- Add `workspaceBinding?: 'repository'` to the layout contract. A layout
+  declaring it gets the working directory derived from its project, and a
+  write that sets `config.workingDirectory` is refused. This replaces the
+  three server checks of `type === 'coding'`
+  (`layout-working-directory.ts`, `project-layout-admission.ts`,
+  `projects.ts`).
+- The declaration derives a path; it grants no file access. File, diff and
+  terminal authority stay with the grants in jG.
+- Replace the `codingPanels` device-settings record with a generic panel
+  record keyed by layout, which slice a's host owns.
+- **Migration:** a stored `type: 'coding'` layout without the field reads
+  as `workspaceBinding: 'repository'`, whether or not the Coding plugin is
+  installed, so the plugin's absence never loosens admission. A stored
+  `codingPanels` record migrates once into the generic record.
+
+Acceptance:
+
+- A fixture layout declaring `workspaceBinding: 'repository'` receives the
+  project's derived working directory. A write setting
+  `config.workingDirectory` on it is refused with today's error.
+- A stored `type: 'coding'` layout in today's exact shape, with no
+  `workspaceBinding`, is still refused a `config.workingDirectory` write
+  with the Coding plugin uninstalled.
+- A `codingPanels` record in today's exact shape migrates and the
+  workbench reopens with the same panels.
+
+Proof: server route tests for the derivation and both refusals, and a
+migration test from today's device-settings fixture. Reverting the
+derivation to `type === 'coding'` must fail the fixture-layout test.
+
+### SDK-1. Host services [security]
+
+- Wire keyboard shortcuts for plugins: `useShortcut({ id, keys, when, run })`
+  registers in the host registry, so the palette and help list it and an
+  open modal suppresses it; `useShortcutScope(name)` sets scopes such as
+  terminal focus. Today `SDKAdapter.tsx` passes `hooks: {}`, so the SDK's
+  `useKeyboardShortcut(s)` throw for plugins.
+- `useHostFacts()`, exposing the pane host's device facts such as
+  `isMobile`.
+- `host.clipboard.writeText`, `host.openExternal(url)` (routed through the
+  native opener on desktop and mobile, with a scheme allowlist),
+  `host.prompt({ title, label, initial })` returning a string or `null`,
+  and `host.menu(items)`.
+- `usePaneHeadActions([{ id, label, icon, overflow? }], onAction)`: plain
+  data, so it can cross a frame boundary. #3875 bars React slots from
+  crossing the capability.
+- `useRequestAuthorityScope()`.
+- Every new capability joins the `station dev` SDK mock and its parity
+  test (#3895).
+
+Acceptance:
+
+- A fixture plugin's shortcut appears in the palette and the shortcut help,
+  and does not fire while a modal is open.
+- `host.openExternal('javascript:…')` and other non-allowlisted schemes are
+  refused. On desktop an allowed URL goes to the native opener, not
+  `window.open`.
+- `host.prompt` resolves `null` on cancel.
+- Head actions render in the pane head and move to the overflow menu as
+  width shrinks.
+
+Proof: component tests in the host for each capability, a real-browser spec
+for the shortcut and head-action fixture, and the mock parity test. Removing
+the shortcut wiring must fail the palette assertion.
+
+### SDK-2. Git and repositories query domain
+
+- Move `useGitActions` into an SDK query domain: `useReposQuery`,
+  `useGitBranchesQuery`, `useGitCheckoutMutation`, `useGitCommitMutation`,
+  `useGitPushMutation`, with `DiscoveredRepo` and `GitBranch` types. They
+  call the existing `/api/coding/repos` and `/api/coding/git/*` routes.
+- The server routes and their authority are unchanged: commit and push stay
+  operator-only.
+
+Acceptance:
+
+- A fixture plugin lists repositories and branches and checks out a branch.
+- A commit from a principal who is not the operator is refused by the
+  server, exactly as from the app today.
+- The app's own Git UI uses the SDK hooks (no second client).
+
+Proof: SDK hook tests against a test server, and a route test of the
+refused commit through the SDK path.
+
+### SDK-3. Chat composer and context attachments [security]
+
+Shared with #3049, which needs the same surface for diff comments that
+become agent context.
+
+- `useChatComposer(): { activeChatId, getDraft(), appendToDraft(text, { source }) }`.
+  The host applies its redaction to appended text and labels it with its
+  source.
+- `useChatContextAttachments(): { attach(file), detach(id), list }`.
+- Wire or remove the unwired `useActiveChatState`.
+
+Acceptance:
+
+- Text appended by a fixture plugin appears in the active chat's composer
+  with its source label.
+- A secret-shaped string in appended text is redacted by the host before it
+  reaches the draft.
+- A plugin cannot read or write a draft other than the active chat's.
+
+Proof: host tests for redaction and the active-chat bound, and a
+real-browser spec for append and attach. Bypassing redaction must fail the
+redaction test.
+
+### SDK-4. Pane open, reveal and close; unsaved guard
+
+Owned by the #3875 lane: `host.panes.open/reveal/close(target)` answering
+`opened`, `focused`, `replaced` or `unavailable`, and `useUnsavedGuard(dirty)`
+bound to its close guard. This plan consumes it. Core callers that open file
+preview, PR review or Coding panes switch to it in j.
+
+### SDK-5. Terminal session store and `TerminalView` [security]
+
+Owned by [terminal.md](terminal.md): the store is its transport phase, and
+the view export and the `terminal` pane target are proposed in #3894. The
+Coding plugin's terminal pane is built on them. See OPEN-12 for the interim.
+
+### SDK-6. Plugin device state
+
+- `usePluginDeviceState<T>(key, parse)`: per plugin and per device,
+  namespaced by plugin identity. A failed parse returns the default.
+- Coordinate with #1359's persistent data service, so there is one storage
+  owner with a bounded lifecycle.
+
+Acceptance:
+
+- Two plugins using the same key do not see each other's values.
+- A stored value that fails `parse` yields the default and does not throw.
+- Uninstalling the plugin removes its device state.
+
+Proof: host tests for isolation, parse failure and uninstall cleanup.
+
+### SDK-views. Diff view, file view, PR review data
+
+- Host-implemented components exported from the SDK: `DiffView` (with diff
+  comments) and `FileView`. They run on the host's syntax-highlighting
+  worker and performance hooks, which a plugin bundle cannot carry.
+- PR review data hooks over the existing routes in
+  `src-server/routes/pull-requests/` (review guide and conversation links),
+  beside the existing `usePullRequestsQuery` and
+  `usePullRequestContextQuery`.
+- `TaskWorkspaceView` adopts `DiffView` and `FileView` and stops importing
+  `coding-layout/`.
+
+Acceptance:
+
+- With the Coding plugin uninstalled, a task workspace still renders its
+  diff and file views.
+- A fixture plugin renders `DiffView`, and a diff comment it adds reaches
+  the same store the app uses.
+
+Proof: a real-browser spec of a task workspace with Coding uninstalled, and
+a fixture-plugin component test. Re-importing `DiffPanel` from
+`coding-layout/` in `TaskWorkspaceView` must fail the R ratchet's companion
+scan.
+
+### KIT. UI kit upstream to `@kontourai/ui`
+
+- In the public `kontourai/ui` repository: add Tabs, IconButton, an overflow
+  menu, RelativeTime and the glyph set to `@kontourai/ui/react`, and release.
+- In Station: move Button, IconButton, Tabs, Empty, ErrorState and Skeleton
+  onto the package; add `@kontourai/ui/react` to `SHARED_EXTERNALS`; load
+  its styles once from the host.
+- Mark `@kontourai/station-components` deprecated: the plugin build warns on
+  an import of it, and it stays resolvable through a deprecation window.
+
+Acceptance:
+
+- A plugin built with the starter marks `@kontourai/ui/react` external, and
+  at runtime its import is the same module object the host uses.
+- A plugin importing `@kontourai/station-components` builds with a
+  deprecation warning and still runs.
+- Station's own components render from the package (no duplicate
+  implementations remain for the moved primitives).
+
+Proof: a build test asserting the external, a runtime identity test in the
+shared-runtime suite, and a structural scan paired with those behavioral
+tests.
 
 ### b. Owner × subject [security]
 
@@ -896,12 +1475,17 @@ Acceptance:
 Proof: a real-browser spec for the first-Board path and add-pane, and route
 tests for instance-Board authority. Hiding the `+` again must fail the first.
 
-### d1. Trust records, key and digest pinning, migration [security]
+### d1. Trust records, signer and digest pinning, migration [security]
 
 - Add the install trust record, with provenance from verified signatures.
-  This depends on #1521 consuming verified claims, and on OPEN-4 for what
-  "Kontour-signed" verifies against.
-- Pin to key plus digest.
+  This depends on #1521 consuming verified claims, and on OPEN-4, resolved
+  on 2026-10-20 as Sigstore keyless
+  ([decision 1](#decision-1-open-4-signing-is-sigstore-keyless)).
+- Pin to signer plus digest. A signer is a verified Sigstore identity or a
+  registry ed25519 key.
+- Add a Sigstore bundle verifier with an embedded trusted root, the pinned
+  Kontour identity, and the release-shipped denylist. Verification makes no
+  network request.
 - **Migration:** every plugin installed before d1 gets a grandfathered record
   at its current effective tier, marked `grandfathered`, with its current
   digest and the tier it runs at today. The plugin manager surfaces
@@ -911,15 +1495,23 @@ tests for instance-Board authority. Hiding the `+` again must fail the first.
 Acceptance:
 
 - A new unsigned install records tier 3.
-- A new Kontour-signed install records tier 2.
-- A changed digest on the same key keeps the tier.
-- A different key produces a new, untrusted decision.
+- A new install whose Sigstore bundle verifies against the pinned Kontour
+  identity records `kontour` provenance and tier 2.
+- A valid bundle from any other identity records `publisher`. So does one
+  from a repository with the pinned name but a different repository id.
+- A bundle without an inclusion proof, or with a proof that does not verify,
+  is refused.
+- A denylisted digest or identity is refused at install and at activation.
+- A changed digest from the same signer keeps the tier.
+- A different signer produces a new, untrusted decision.
 - A Station upgraded with an in-process plugin already installed still
   mounts that plugin in-process, and lists it as grandfathered.
 
-Proof: installer unit tests per rule, and a migration test that starts from
-today's installation and grant files (exact writer shape) and asserts the
-pane still selects `trusted-plugin-react`.
+Proof: installer unit tests per rule, using real Sigstore bundles recorded
+from a test signing run (not hand-built shapes), with the network
+unavailable during verification. A migration test starts from today's
+installation and grant files (exact writer shape) and asserts the pane still
+selects `trusted-plugin-react`.
 
 ### d2. Per-plugin capabilities, high-risk class, update re-prompt [security]
 
@@ -1019,7 +1611,7 @@ fail it.
 ### g. Distribution manifest, precedence and reset [security]
 
 - Add the `distribution` contribution kind:
-  - plugins with pins and keys;
+  - plugins with pinned versions and signers (identity or key);
   - extends or replaces;
   - a policy section that produces a `DistributionProfile`;
   - trust proposals shown item by item at install.
@@ -1036,8 +1628,8 @@ Acceptance:
   the manifest.
 - Reset clears local choices for the chosen sections and leaves trust
   records unchanged.
-- A manifest pinning a key that does not match the fetched plugin is refused
-  before any tree write.
+- A manifest pinning a signer that does not match the fetched plugin is
+  refused before any tree write.
 - The legacy inline profile fixture produces the same catalog as before.
 
 Proof: installer and precedence unit tests, one route test with a mismatched
@@ -1070,22 +1662,65 @@ Acceptance:
 Proof: a real-browser spec asserting the computed values above, and unit
 tests for the two refusals.
 
+### i0. Offline bundled default set from `plugins.lock` [security]
+
+- Commit `plugins.lock`: per plugin, name, version, artifact URL, sha256 and
+  Sigstore identity
+  ([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
+- The Station release build fetches every locked artifact and its Sigstore
+  bundle, checks both, and carries them in the release payload. A missing or
+  unverifiable artifact fails the build.
+- At first run, with no network, the installer installs the set from the
+  payload, verifies each digest and bundle against the embedded trusted root
+  and pinned identity, and writes ordinary d1 trust records (`kontour`,
+  tier 2). There is no "bundled" exception in the trust rules.
+- An operator who uninstalls a bundled plugin can reinstall it from the
+  payload, also offline.
+- A bot PR bumps the lock.
+
+Acceptance:
+
+- A fresh Station with all outbound network refused at first run installs
+  the locked set, and a project can create the Coding layout.
+- That first run makes zero outbound requests, including to Sigstore and
+  the plugin registry.
+- A tampered artifact in the payload is refused, and Station still boots:
+  the affected layout is `unavailable` with a reason (safe mode only when a
+  required-slot default filler is affected, per slice e).
+- CI fails when a locked artifact is missing.
+
+Proof: an end-to-end first run in an environment with outbound network
+refused, asserting the request count and the installed set; a tampered-
+payload test; and a CI run against a lock entry whose artifact is missing.
+Removing the bundle verification from the first-run path must fail the
+tamper test.
+
 ### i1. station-plugins repo scaffold and starter template
 
 - Create `kontourai/station-plugins` with `plugins/`, `distributions/`,
   `examples/` and `templates/plugin-starter`, plus its CI.
+- Its release workflow signs each artifact keylessly through Sigstore (OPEN-4)
+  and publishes the bundle beside the artifact. Release tags are protected,
+  the signing job runs in an environment with required reviewers, and no
+  `pull_request_target` or `workflow_dispatch` path reaches it.
+- Its CI tests plugins against Station's published preview build.
 
 Acceptance:
 
 - The starter template builds and installs into a test Station through the
   ordinary consent install.
+- A released artifact's bundle verifies against the identity Station pins.
+- A run of the release workflow from an unprotected ref produces a bundle
+  that Station does not accept as `kontour`.
 
-Proof: the repo's CI builds the starter, and a Station e2e test installs it.
+Proof: the repo's CI builds the starter, a Station e2e test installs it, and
+a verification test runs against a bundle from a non-matching ref.
 
 ### i2. Board extraction as an installed plugin, with migration [security]
 
 - Move `board-pane` to station-plugins; `src-ui` no longer imports it.
-- Station CI installs a pinned released version.
+- Station CI installs the version pinned in `plugins.lock`, and the Board
+  plugin is part of i0's bundled set.
 - **Migration:** D2 fails closed on plugin panes. Existing Boards, project
   layouts and dock placements that reference the Board pane keep rendering:
   the extracted Board plugin gets a grandfathered visibility grant for every
@@ -1108,7 +1743,8 @@ Proof:
 ### i3. kontour-default and acme manifests [security]
 
 - Publish `distributions/kontour-default` and the `acme-distribution` example.
-- Release signing uses whatever OPEN-4 decides.
+- Release signing is Sigstore keyless (OPEN-4, resolved 2026-10-20). The
+  manifests pin signer identities, not keys.
 
 Acceptance:
 
@@ -1121,24 +1757,97 @@ Acceptance:
 Proof: e2e install of both manifests, and a CI run against a tampered
 artifact.
 
-### j. Coding → plugin, with migration
+### R. Growth-only ratchet on `coding-layout/` app-internal imports
 
-- Coding ships from station-plugins using slice a's fields.
-- Delete every `type === 'coding'` site.
-- **Migration:** persisted project layouts with `type: 'coding'` are read
-  as the Coding plugin's layout, with their configuration preserved. The
-  mapping is one explicit rule, not a remaining special case, and it is
-  removed only after a recorded migration of stored records.
+While #3039's Coding work continues, every new app-internal import into
+`coding-layout/` adds to what j must replace.
+
+- A scan in the style of the existing ratchets (`scripts/*-ratchet.mjs`
+  with a checked-in baseline) records each (importing file, imported
+  app-internal module) pair under `src-ui/src/components/coding-layout/`.
+- It fails only when a pair is added. Removing a pair never fails, and the
+  baseline is keyed on module paths, never on line numbers, so it cannot
+  fail whoever merges next under the merge queue.
+- Retired in j, when the directory leaves `src-ui`.
+
+Acceptance: adding an import of a new app-internal module to a
+`coding-layout/` file fails the check with the pair named; removing one
+passes.
+
+Proof: the ratchet run as a child process against a fixture tree with one
+added pair (non-zero exit, pair named) and one removed pair (zero exit).
+
+### jG. Coding capability grants and legacy pane-id adoption [security]
+
+- Replace the `resolveBuiltinCoding*Grant` checks in
+  `workspace-coding-{file,diff,evidence}-composition.ts`, which grant only
+  when `provenance.origin === 'builtin'`, with install-time capability
+  grants for file read, Git diff, evidence and terminal.
+- A minimal piece of d2: the Coding plugin requests these capabilities in
+  its manifest and the operator approves them at install.
+- Legacy-id adoption: a fixed table maps `pane:builtin:coding:file-browser`,
+  `pane:builtin:coding:diff`, `pane:builtin:coding:terminal`, the
+  file-preview descriptor and the `pr:` family to the Coding plugin's panes,
+  keeping their instance ids and stateKeys. It is honoured only when the
+  contributing plugin's trust record carries the pinned Kontour identity.
+
+Acceptance:
+
+- The Coding plugin, installed with the grants, mounts its file, diff,
+  evidence and terminal panes.
+- The same plugin installed without a grant gets that pane denied with its
+  reason.
+- Built-in provenance alone no longer grants anything.
+- Another plugin declaring a `pane:builtin:coding:*` id is refused at
+  install, and the same artifact with a non-matching signer is not adopted.
+
+Proof: contracts and installer tests per rule, and a real-browser spec with
+a grant withheld. Restoring the provenance check must fail the plugin-pane
+test; removing the identity condition must fail the spoofing test.
+
+### j. Coding → plugin, with migration [security]
+
+Marked **[security]** because it moves file, diff, terminal and execution
+authority from built-in provenance to grants (jG), and changes server
+admission (a2).
+
+- Coding ships from station-plugins using slice a's fields, built only on
+  public packages: the SDK, `@kontourai/station-shared`,
+  `@kontourai/station-contracts` and `@kontourai/ui`. It owns every Coding
+  pane and its composition ([decision 2](#decision-2-everything-in-coding-moves-into-the-plugin)).
+- Core surfaces that used Coding panes switch to SDK views or open them by
+  descriptor, per the decision 2 table.
+- Delete every site in the
+  [capability map's list](#coding-capability-map-condensed), restate the
+  `BUILTIN_CODING_LAYOUT` promise, and retire or repoint
+  `coding-composition-inventory-gate.mjs` and slice R.
+- **Migration:** persisted project layouts with `type: 'coding'` and
+  `source: 'builtin'` are read as the Coding plugin's layout, with their
+  configuration preserved. The mapping is one explicit rule, not a remaining
+  special case, and it is removed only after a recorded migration of stored
+  records. With the plugin absent, such a layout renders `unavailable` with
+  a reason and a reinstall action from the bundled set.
 
 Acceptance:
 
 - Slice a's parity spec passes with Coding installed as a plugin.
-- The acme replacement Coding layout renders in its place.
-- A project with a stored `type: 'coding'` layout from today opens unchanged.
+- A fixture replacement layout (a test plugin declaring `primary: 'chat'`,
+  `presentation: 'stack'` and its own drill-ins) renders in Coding's place
+  when the Coding plugin is disabled. The acme replacement stays i3's proof.
+- A project with a stored `type: 'coding'` layout from today opens
+  unchanged, including saved pane placements under the adopted ids.
+- With the Coding plugin uninstalled, the surfaces named in decision 2
+  degrade as stated there, and Tasks still renders diffs and files.
 
-Proof: the parity spec; a migration test from today's stored layout shape;
-a scan asserting no `type === 'coding'` in `src-ui` (structural, paired with
-the behavioral spec).
+Proof: the parity spec; a migration test from today's stored layout shape; a
+real-browser spec of the degraded surfaces; and two structural scans, paired
+with the behavioral specs:
+
+- no `type === 'coding'` (or the equivalents listed in the capability map)
+  in `src-ui`, `src-server` or `packages/contracts`, and no
+  `src-ui/src/components/coding-layout/` directory;
+- in station-plugins, the Coding plugin imports nothing outside the public
+  packages above.
 
 ### k. Home → plugin, with migration [security]
 
@@ -1190,15 +1899,16 @@ ordinary-approval behavior.
    preview pane, proposals in Needs attention, and Publish to git.
 2. One-click install from preview, still through the ordinary consent
    install.
-3. Signing at publish, per OPEN-4.
+3. Signing at publish: keyless Sigstore from the publisher's CI (OPEN-4),
+   with the registry ed25519 path kept for registries that use keys.
 4. Registry publish.
 
 Acceptance:
 
 - Preview's install action opens the same consent flow as the Plugins page
   and cannot skip it.
-- A published package verifies against the publisher key and installs with
-  publisher-signed provenance.
+- A published package verifies against the publisher's signer (a Sigstore
+  identity or a registry key) and installs with `publisher` provenance.
 
 Proof: a route test that the preview install carries a consent decision, and
 a publish-then-install test with signature verification. Parts 3 and 4 are
