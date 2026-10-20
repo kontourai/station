@@ -1508,6 +1508,39 @@ describe('changed verification selection', () => {
       expect(selection.relatedPaths, edge.pattern).toEqual([edge.pattern]);
     }
   });
+  test.each([
+    { files: [], globalTriggeredPaths: ['foreign.ts'] },
+    { files: [], globalTriggeredPaths: null },
+    { files: {}, globalTriggeredPaths: [] },
+    {
+      files: [],
+      globalTriggeredPaths: [
+        join(process.cwd(), 'scripts/run-changed-verification.mjs'),
+        join(process.cwd(), 'scripts/run-changed-verification.mjs'),
+      ],
+    },
+    [],
+  ])(
+    'refuses malformed hosted global-trigger metadata %j',
+    async (metadata) => {
+      await expect(
+        discoverRelatedTestFiles(
+          process.cwd(),
+          ['scripts/run-changed-verification.mjs'],
+          {
+            deferGlobalTriggers: true,
+            refine: (_root, paths) => ({ paths, decisions: [] }),
+            run: async () => ({
+              status: 0,
+              stdout: JSON.stringify(metadata),
+              stderr: '',
+            }),
+          },
+        ),
+      ).rejects.toMatchObject({ phase: 'related-discovery' });
+    },
+  );
+
   test('reads an empty related discovery array as an empty selection', () => {
     expect(parseRelatedTestDiscovery({ status: 0, stdout: '[]' })).toEqual([]);
   });
@@ -3380,9 +3413,14 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
           return {
             status: 0,
             signal: null,
-            stdout: JSON.stringify([
-              'scripts/__tests__/changed-verification.test.ts',
-            ]),
+            stdout: JSON.stringify(
+              args.includes('--defer-global-triggers')
+                ? {
+                    files: ['scripts/__tests__/changed-verification.test.ts'],
+                    globalTriggeredPaths: [],
+                  }
+                : ['scripts/__tests__/changed-verification.test.ts'],
+            ),
             stderr: '',
             launch: { attempted: true, started: true },
             cleanup: { status: 'passed', survivingOwnedChildren: 0 },

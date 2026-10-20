@@ -1,0 +1,35 @@
+{
+  "revision": "11f530fb53c897d047298b0bc3e94e45966735ec",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed hosted discovery delta from29c2: createVitest resolved forceRerunTriggers and picomatch loaded from Vitest package match installed Vitest relevant-specification matcher; defaults include nested package manifests. Hosted flag removes matching seeds before corpus discovery, validates unique real-path metadata against requested refined seeds, records globalTriggeredPaths and named test-full reasons, and retains other mapped groups. Local default false is unchanged. Guide accurately distinguishes deferred global-only plans from completed empty-test coverage and retains full queue fallback. Source review only; dry-plan counts, hosted latency and backlog benefit not established by this note.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/__tests__/fast-checks-shard-cli.test.ts","scripts/run-changed-verification.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-read Local CI pipeline and exact merge-group composition guidance against global-trigger deferral. Hosted plan remains zero-to-four receipt-bound shards with statics; configured whole-corpus discovery is now a named full obligation rather than fast execution. Local bounded lane and normal hooks unchanged. No timing or green-check guarantee is added; canonical testing route remains accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed slice acceptance testing/documentation obligations and historical source-state classification for selector delta. Named test-full obligation for configured Vitest seeds neither changes plugin trust/kernel/layout/distribution interfaces nor waives real named-test or persisted-state evidence; testing-guide ownership remains appropriate. No plugin implementation or runtime proof asserted.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed Components and evidence limits plus theme ownership for hosted global-trigger change. Selector discovery does not change theme startup, tokens, contrast or device/account preferences; deferred corpus does not replace real light/dark and geometry evidence. Existing guide remains accurate without prose update.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Re-read Logging and verification guidance: focused gate routing, meaningful keeper tests and independent real layout/native/provider evidence remain valid. Named hosted full obligations change no React Query/navigation/logger contract and do not establish caller execution merely through metadata. No frontend prose change required.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed discovery deadline/error and diagnostic/completion boundaries. Hosted globalTriggeredPaths is plan metadata and named deferred obligation, not a verification receipt schema/pass-condition change. Malformed/foreign metadata fails preparation, budget exhaustion remains infrastructure error, and global-only empty groups remain deferred rather than complete. Local receipt identity, counts and completion floor remain unchanged; no executed receipt claimed.","inputs":["docs/reference/verification-receipts.md","scripts/run-changed-verification.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Read full representative-demo description and scenario boundary reference. The demo remains local selector execution in disposable HEAD checkout; hosted deferGlobalTriggers defaults false outside hosted planning. elapsedMs versus checkout/cleanup wall time and120-second liveness bound remain accurate, not evidence of hosted backlog or latency improvement.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts","scripts/run-changed-verification.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Read full script instructions for global-trigger delta. Resolved matcher and requested-seed metadata validation preserve deterministic fail-closed selection; named full obligations prevent green truncation. Existing focused policy, child resource/process ownership, assertion-versus-infrastructure distinction and final exit-status requirements remain applicable. No generated lane catalog or reuse policy changed.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Read full server instructions. Hosted Vitest seed classification changes no route/service/logger, request-local batching or installed-integrity authority contract; exact focused server evidence and fixture/mutation routing remain correct. A deferred global obligation is not server runtime or performance evidence.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Read full UI instructions. Hosted configured-global seed deferral affects scheduling only, not navigation/unsaved guard, React Query, tokens or responsive controls. Real mounted/geometry/interaction evidence and exact focused routing remain mandatory; plan metadata cannot substantiate those claims.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Read full test instructions against named global deferrals. Existing warning that selector explanations/deferred selections are not completion is directly preserved: global-only plans have test-full obligations; remaining mapped execution cannot qualify global coverage. Hermetic fixtures, real actions, deadlines and resource classification remain unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/CLAUDE.md","note":"Read complete @AGENTS.md import; paired scripts instructions reviewed against hosted global-trigger deferral and remain accurate. This forwarding file contains no duplicate matcher, corpus-selection or completion claim to change.","inputs":["scripts/CLAUDE.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"Read complete @AGENTS.md import; paired src-server instructions reviewed against hosted global-trigger deferral and remain accurate. This forwarding file contains no duplicate matcher, corpus-selection or completion claim to change.","inputs":["src-server/CLAUDE.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Read complete @AGENTS.md import; paired src-ui instructions reviewed against hosted global-trigger deferral and remain accurate. This forwarding file contains no duplicate matcher, corpus-selection or completion claim to change.","inputs":["src-ui/CLAUDE.md"]},
+
+    {"path":"tests/CLAUDE.md","note":"Read complete @AGENTS.md import; paired tests instructions reviewed against hosted global-trigger deferral and remain accurate. This forwarding file contains no duplicate matcher, corpus-selection or completion claim to change.","inputs":["tests/CLAUDE.md"]}
+  ]
+}

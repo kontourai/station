@@ -9,7 +9,7 @@
 > the outage period; inspect live runs before making a present-state claim.
 
 
-> Status: **active while provider-hosted jobs fail at zero steps**. As of 2026-08-01,
+> Status when recorded (historical): **active while provider-hosted jobs failed at zero steps**. As of 2026-08-01,
 > the private self-hosted build fleet supplies post-merge operational detectors for
 > CI, container, Windows, and Android, while provider-hosted publish and
 > Pages jobs can still fail before executing because of organization billing. A green

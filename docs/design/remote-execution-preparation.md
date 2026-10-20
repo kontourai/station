@@ -1,6 +1,8 @@
 # Remote execution preparation
 
-> **Reading status: accepted direction; only slice 1 is built.** This record
+> **Reading status: accepted direction; slices 1 and 3 are built (#3244,
+> #3761).** Result return, the isolated guarantee and unpublished-work
+> transfer are not built. This record
 > holds the owner decisions of 2026-10-03 for
 > [#2875](https://github.com/kontourai/station/issues/2875) and the slices
 > that implement them. Nothing below is shipped behavior unless the text says
@@ -229,7 +231,7 @@ detached checkout at the exact commit that no other session shares.
 
 ## Slice plan
 
-1. **Slice 1, version-matched execution on an existing checkout (built).** Contract types, the adapter registry with the Git
+1. **Slice 1, version-matched execution on an existing checkout (built, #3244).** Contract types, the adapter registry with the Git
    `git-commit` adapter, the typed refusals above, refusal codes on the
    claim, and the optional preparation receipt. Evidence: unit tests for each
    refusal and the claim record, plus a two-Station live journey with one
@@ -240,7 +242,7 @@ detached checkout at the exact commit that no other session shares.
    sessions it started (decision 5). Needs a scope token, an ownership join
    from the claim's caller grant to the session, and refusal tests for a
    session another caller started.
-3. **CLI and SDK.** The CLI accepts an explicit full Git object id through
+3. **CLI and SDK (built, #3761).** The CLI accepts an explicit full Git object id through
    `--portable-project`, `--resource`, `--source-commit` and `--attempt-id`,
    and sends the existing SDK prepared target. It reads no caller checkout.
    `delegate attempt` exposes receiver-local, grant-bound lookup without
