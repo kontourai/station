@@ -2460,8 +2460,8 @@ describe('StationAgentAdapter', () => {
     ]);
   });
 
-  // archive#1207 review round 1, HIGH 2 — the actual production trigger
-  // under `managed-chat-orchestration`: before this fix, a silent stall on
+  // archive#1207 — the production trigger is managed chat, which runs
+  // through orchestration: before this fix, a silent stall on
   // the inner /chat bridge stream (server crash, dropped connection, no
   // error event) meant `reader.read()` inside `consumeChatStream` never
   // resolved, no terminal event was ever published, and the client's own

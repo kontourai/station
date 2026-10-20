@@ -981,9 +981,6 @@ export interface ConfigureRuntimeRoutesContext {
   // Origin of the isolated plugin-frame document, if the shared listener runs.
   getPluginFrameOrigin?: () => string | undefined;
   featurePreviews: FeaturePreviewRegistry;
-  // station#980: whether STATION_FEATURES=managed-chat-orchestration is on —
-  // threaded through to `GET /config/app` (see `createConfigRoutes`).
-  getManagedChatOrchestrationEnabled?: () => boolean;
   // station#1194 (epic #1191, slice B): re-applies the built-in default
   // agent's engine binding immediately after `PUT /config/app` touches
   // `builtinAgentEngineConnectionId` — Voice is deliberately NOT rebound
@@ -6735,7 +6732,6 @@ export function configureRuntimeRoutes(
       context.eventBus,
       context.applyAgentConfigurationMutation,
       context.getMcpUiFrameOrigin,
-      context.getManagedChatOrchestrationEnabled,
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
       // #2144 slice 2: one project record for `GET /config/app?project=`.
@@ -6773,7 +6769,6 @@ export function configureRuntimeRoutes(
             context.eventBus,
             context.applyAgentConfigurationMutation,
             context.getMcpUiFrameOrigin,
-            context.getManagedChatOrchestrationEnabled,
             context.rebindBuiltinAgents,
             context.getPluginFrameOrigin,
           ).request('/app')

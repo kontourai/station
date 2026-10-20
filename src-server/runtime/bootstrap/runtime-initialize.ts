@@ -160,7 +160,6 @@ import {
   isHostedTenantExecutionRequired,
   loadHostedTenantRegistryFromEnvironment,
 } from './runtime-tenant-context.js';
-import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js';
 
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
@@ -416,19 +415,6 @@ export async function initializeRuntime(
   if (features.includes('strands-runtime')) {
     appConfig.runtime = 'strands';
   }
-  // archive#980: default OFF. In-memory only (never persisted to
-  // config/app.json) — mirrors the `strands-runtime` flag just above.
-  // **Boot-time snapshot only — NOT the source of truth after this point.**
-  // `this.appConfig` (station-runtime.ts) is wholesale reassigned from a
-  // fresh disk load on every `reloadAgentsFromDisk()`/`reloadDefaultAgent()`
-  // (which never carries this non-persisted field), so any live reader must
-  // go through `isManagedChatOrchestrationFeatureEnabled()`
-  // (`station-features.ts`), never `appConfig.managedChatOrchestration`
-  // directly — see `createConfigRoutes`'s `getManagedChatOrchestrationEnabled`
-  // param, which does exactly that.
-  appConfig.managedChatOrchestration = isManagedChatOrchestrationFeatureEnabled(
-    process.env,
-  );
 
   const runtime = appConfig.runtime || 'voltagent';
   const framework: RuntimeFramework =
@@ -489,9 +475,9 @@ export async function initializeRuntime(
     // to resolve at registration is "known" to /chat, which returns a
     // specific 409 — not "unknown"). This is a strict widening (accept-more,
     // never accept-less), so it is safe for BOTH paths that reach this gate:
-    // the managed-chat-orchestration flip AND the always-on `delegateTask`
-    // Station-agent branch (which uses provider 'station-agent' regardless of
-    // the flag) — not flip-only, contrary to what the flag's name suggests.
+    // managed chat (which runs through orchestration unconditionally, ADR
+    // 0014) AND the `delegateTask` Station-agent branch (provider
+    // 'station-agent').
     // archive#1992: the active set keys the built-in default agent under the
     // internal runtime key 'default' (runtime-default-agent.ts), while every
     // caller reaching this gate uses the public slug 'station' — and the
