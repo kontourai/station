@@ -216,8 +216,9 @@ decision before changing a deployed privacy claim.
 
 The server's build banner supplies `STATION_AUTHOR_TELEMETRY_ENDPOINT`; source
 execution has an empty constant, and runtime environment cannot enable it.
-Official release workflows may inject an owner-managed repository variable in
-a later lane. Fork, development and Docker workflows must leave it empty unless
+Official release workflows inject an owner-managed repository variable when
+configured; see [author telemetry in official builds](../guides/release-rings.md#author-telemetry-in-official-builds).
+Fork, development and Docker workflows must leave it empty unless
 the owner deliberately changes their distribution policy. There is no hardcoded
 Kontour URL. An empty build constant leaves the author sender inert.
 
@@ -301,21 +302,29 @@ and operator within the month. This disclosed envelope change also resets Full
 receipts independently of wording revision 2. Tier-change requests can include an
 optional fixed-enum reason, sent once before the lower choice is applied,
 including Off. Standalone feedback requires a lowering within 10 minutes and is
-limited to one per publisher per UTC day. DNT permits neither path.
+limited to one per publisher per UTC day, sharing that budget with inline
+tier-lowering reasons. DNT permits neither path.
 
-### Lite notice and feedback presentation
+### Usage sharing presentation
 
-The kernel-owned desktop/web Lite notice is non-modal and records its current
-publisher/revision only after visible presentation, without adding a blocking
-first-run step. DNT hides it and refuses notice writes. An inline Off control
-remains available. Status projects persisted Lite receipts so reloads and
-server restarts do not cause a second notice for the same inventory.
+One first-run dialog presents Don't share, Anonymous usage counts (the default),
+and Detailed usage to help improve Station. It covers Kontour and a configured
+additional endpoint together; plugin destinations remain outside first-run.
+Closing or Not now keeps the current choice and records the shown notice, so
+anonymous counts remain suppressed until the notice was actually presented.
+DNT explains that nothing is shared and that the choice applies if it is disabled;
+existing notice-write and acknowledgement restrictions still apply.
 
-Settings derives publisher rows from status, preserving a separate draft choice
-and optional fixed-enum reason for each publisher. Save sends each edited
-publisher with its reason in the same config write; Skip transmits no feedback.
-The disclosure dialog uses the same optional prompt before its existing
-write-before-acknowledge order. DNT offers neither reason prompt. Kontour Full
-remains unavailable in the UI until its separate destination-bound disclosure
-journey is implemented. Registry publisher registration/storage remains another
-lane; generic presentation alone does not register one.
+Detailed begins with a readable summary. The complete field definitions remain
+under collapsed Technical details and acknowledgement binds the same server
+revision. Saving Detailed acknowledges the current destination and revision before
+saving the preference. The config route admits a new Kontour Full preference only
+when the runtime confirms that acknowledgement; absent capability refuses it.
+DNT or an absent destination can retain a pending preference without emission.
+Agent and paired-device authority checks remain independent of acknowledgement.
+
+Privacy & sharing uses the same combined primary choice, staged behind the
+standard Save/Discard actions. Advanced keeps independent destination choices and
+optional fixed-enum feedback. Skip sends nothing, and DNT offers no reason prompt.
+Registry registration/storage remains a separate owner; presentation does not
+register third-party destinations.

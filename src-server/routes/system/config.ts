@@ -465,6 +465,11 @@ export function createConfigRoutes(
     try {
       configOps.add(1, { op: 'update_app' });
       const body = getBody(c);
+      if (
+        Object.hasOwn(body as object, 'telemetryFeedbackReason') &&
+        requestMayBeAnAgent(c.req.raw)
+      )
+        throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
       const reason = (body as Record<string, unknown>).telemetryFeedbackReason;
       if (
         reason !== undefined &&

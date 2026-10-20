@@ -1221,8 +1221,9 @@ publisher disclosure remains effectively Lite. Agents also receive 403 from
 `POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
 Handler refusals from `PUT /config/app` log `App config update refused` with a
 stable `reason`, `principalKind`, and `deviceKind`. Telemetry choice refusals
-also include `telemetryChanges` with per-publisher `before`/`after` tier names;
-no credentials, destinations, or other config values are included.
+include `telemetryChanges` with per-publisher `before`/`after` tier names when
+the comparison was computed; agent feedback metadata is refused before validation.
+No credentials, destinations, or other config values are included.
 While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
 remains pending and needs confirmation after DNT is removed.
 A new Kontour Full preference at the mounted config route requires a current
@@ -1240,9 +1241,10 @@ returns the bounded local payload ledger with `orchestration:read` authority. Th
 for each actual lowering before the lower choice is applied, including Off. DNT
 suppresses feedback, and feedback failure never blocks lowering.
 `POST /api/usage-telemetry/feedback` accepts exactly publisher, action and a fixed
-enum reason. Non-skip feedback requires a recorded lowering within 10 minutes,
-no prior reason for that change, and at most one standalone reason per publisher
-per UTC day; unavailable feedback returns 409.
+enum reason; `skip` and malformed payloads return 400. Feedback requires a recorded
+lowering within 10 minutes, no prior reason for that change, and the shared inline
+and standalone budget of one reason per publisher per UTC day; unavailable feedback
+returns 409.
 `POST /api/usage-telemetry/lite-notices` records publisher and the
 shown inventoryRevision. A stale inventory, DNT, or an effective tier other than Lite returns 409 without recording a receipt. Both writes require `access:manage` and refuse agent
 principals. See the exact feedback enum and notice behavior in the usage reference.

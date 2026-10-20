@@ -1,8 +1,8 @@
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
-  TELEMETRY_FEEDBACK_REASONS,
   type TelemetryFeedback,
 } from '@kontourai/station-contracts/product-telemetry';
+import { parseTelemetryFeedback } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
@@ -72,30 +72,24 @@ export function createUsageTelemetryDisclosureRoutes(
   });
   app.post('/feedback', async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      Array.isArray(body) ||
-      Object.keys(body).sort().join(',') !== 'action,publisher,reason' ||
-      !('publisher' in body) ||
-      (body.publisher !== 'kontour' && body.publisher !== 'operator') ||
-      !('action' in body) ||
-      (body.action !== 'tier-lowered' &&
-        body.action !== 'plugin-uninstalled') ||
-      !('reason' in body) ||
-      !TELEMETRY_FEEDBACK_REASONS.some((reason) => reason === body.reason)
-    )
+    let feedback: TelemetryFeedback;
+    try {
+      feedback = parseTelemetryFeedback(body);
+      if (feedback.publisher !== 'kontour' && feedback.publisher !== 'operator')
+        throw new Error('Unsupported feedback publisher');
+    } catch {
       return c.json(
         { success: false, error: { code: 'telemetry_feedback_invalid' } },
         400,
       );
+    }
     const service = resolve();
     if (!service)
       return c.json(
         { success: false, error: { code: 'telemetry_not_ready' } },
         503,
       );
-    if (!(await service.submitFeedback(body as TelemetryFeedback)))
+    if (!(await service.submitFeedback(feedback)))
       return c.json(
         { success: false, error: { code: 'telemetry_feedback_not_available' } },
         409,
