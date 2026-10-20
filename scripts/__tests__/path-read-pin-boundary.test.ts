@@ -113,6 +113,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // bundles are children, not imports. The supervisor-link and protocol
   // imports select it for changes.
   'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
+  // Reads back the launch record its fake OpenCode engine writes into a temp
+  // directory (#3922), never repository source. Its imports of the approval
+  // mapping and ACP adapter select it for changes.
+  'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
   // Reads the receipt its child Playwright run writes into a temp root
   // (#577), never repository source. Its imports select it for changes.
   'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
