@@ -53,6 +53,11 @@ import { CI_FAST_BUDGET_EXCEEDED_CAUSE } from '../run-ci-fast.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
+// Keep the recovery fixture's minimum while inheriting host-adjusted budgets.
+vi.setConfig({
+  testTimeout: Math.max(45_000, vi.getConfig().testTimeout ?? 45_000),
+});
+
 const FULL_PHASE_IDS = FULL_REGRESSION_PHASES.map((phase) => phase.id);
 const ORDINARY_FULL_PHASE_IDS = FULL_PHASE_IDS.filter((id) =>
   id.startsWith('test-full-ordinary-'),
@@ -2224,7 +2229,7 @@ describe('verification coordinator', () => {
       await Promise.allSettled(pending);
       temp.remove();
     }
-  }, 30_000);
+  });
 
   test('recovers a killed cross-process completion owner, reaps its fixture group, and selects the next FIFO owner', async () => {
     if (process.platform === 'win32') return;
@@ -2438,7 +2443,7 @@ setInterval(() => {
       }
       temp.remove();
     }
-  }, 45_000);
+  });
 
   test('runs a real npm lifecycle node command with the bound Node runtime ahead of an ambient node shim', async () => {
     const temp = fixture();

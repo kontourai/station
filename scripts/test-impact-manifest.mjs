@@ -1538,6 +1538,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/documentation-foundations.test.ts',
       'scripts/__tests__/public-doc-contract-examples.test.ts',
+      'scripts/__tests__/install-script.test.ts',
     ],
     reason: 'getting-started runtime source contract',
   },
