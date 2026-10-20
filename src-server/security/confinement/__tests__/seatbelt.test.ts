@@ -121,9 +121,6 @@ describe('Seatbelt grants and profile', () => {
         `${COMMON}/logs/refs/heads/feat/x`,
       ],
       writeDenied: [
-        // The engines' project configuration (#3800).
-        `${WORKSPACE}/.codex`,
-        `${WORKSPACE}/.claude`,
         `${COMMON}/hooks`,
         `${COMMON}/config`,
         `${COMMON}/info`,
@@ -138,6 +135,8 @@ describe('Seatbelt grants and profile', () => {
         `${GIT.gitDir}/hooks`,
       ],
       writeDeniedExact: [],
+      // The engines' project configuration, at any depth (#3800).
+      writeDeniedNames: ['.codex', '.claude'],
       hidden: [`${HOME}/.ssh`],
       readable: [],
     });
@@ -156,8 +155,6 @@ describe('Seatbelt grants and profile', () => {
     expect(grants.writable).toEqual([WORKSPACE, TEMP, CONFIG]);
     expect(grants.writableFiles).toEqual([]);
     expect(grants.writeDenied).toEqual([
-      `${WORKSPACE}/.codex`,
-      `${WORKSPACE}/.claude`,
       `${dotGit}/hooks`,
       `${dotGit}/config`,
       `${dotGit}/info`,
@@ -191,6 +188,29 @@ describe('Seatbelt grants and profile', () => {
     expect(lines).toContain(
       `(allow file-read* file-write* (literal "${COMMON}/refs/heads/feat/x"))`,
     );
+  });
+
+  test('denies the engine configuration names at any depth of every writable grant, in any case (#3800)', () => {
+    const lines = seatbeltProfile(linkedGrants()).split('\n');
+    const named = lines.filter((line) => line.includes('(regex '));
+    expect(named).toHaveLength(5 * 2);
+    expect(named).toContain(
+      `(deny file-write* (regex #"^${WORKSPACE}/(.*/)?\\.[Cc][Oo][Dd][Ee][Xx](/|$)"))`,
+    );
+    expect(named).toContain(
+      `(deny file-write* (regex #"^${TEMP.replace(/\./g, '\\.')}/(.*/)?\\.[Cc][Ll][Aa][Uu][Dd][Ee](/|$)"))`,
+    );
+    // After every allow, so no grant re-opens them.
+    expect(lines.indexOf(named[0]!)).toBeGreaterThan(
+      lines.findLastIndex((line) => line.startsWith('(allow ')),
+    );
+    expect(() =>
+      seatbeltProfile({
+        writable: ['/tmp/w'],
+        readable: [],
+        writeDeniedNames: ['../x'],
+      }),
+    ).toThrow(/cannot express/);
   });
 
   test.each([
@@ -296,8 +316,8 @@ describe('Seatbelt breadth', () => {
           `a missing ${dir} deny`,
           (g: ReturnType<typeof linkedGrants>) => ({
             ...g,
-            writeDenied: (g.writeDenied ?? []).filter(
-              (path) => path !== `${WORKSPACE}/${dir}`,
+            writeDeniedNames: (g.writeDeniedNames ?? []).filter(
+              (name) => name !== dir,
             ),
           }),
         ] as const,
@@ -379,10 +399,8 @@ describe('Seatbelt breadth', () => {
         readable: [],
       });
       const { git: _git, ...bounds } = BOUNDS;
-      expect(grants.writeDenied).toEqual([
-        `${WORKSPACE}/.codex`,
-        `${WORKSPACE}/.claude`,
-      ]);
+      expect(grants.writeDenied).toEqual([]);
+      expect(grants.writeDeniedNames).toEqual(['.codex', '.claude']);
       expect(seatbeltWriteGrantKinds(grants, bounds)).toEqual([
         'station-config',
         'station-temp',
@@ -392,8 +410,8 @@ describe('Seatbelt breadth', () => {
         seatbeltWriteGrantKinds(
           {
             ...grants,
-            writeDenied: (grants.writeDenied ?? []).filter(
-              (path) => path !== `${WORKSPACE}/${dir}`,
+            writeDeniedNames: (grants.writeDeniedNames ?? []).filter(
+              (name) => name !== dir,
             ),
           },
           bounds,

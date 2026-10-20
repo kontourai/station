@@ -202,6 +202,8 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
       // No confinement given: confined, so its writable roots are pinned (#3800).
       '-c',
       'sandbox_workspace_write.writable_roots=[]',
+      '-c',
+      'approvals_reviewer="user"',
     ]);
     // The stale persisted port (9999) baked into the resolved record never
     // appears anywhere in the spawn call, and no env var carries it either

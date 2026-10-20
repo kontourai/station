@@ -821,16 +821,23 @@ or `thread/fork` response:
   configuration and honours `sandbox_workspace_write.writable_roots` from
   it, so a planted file widened the next session's sandbox. Every session not
   started as `host` therefore spawns `codex app-server` with
-  `-c sandbox_workspace_write.writable_roots=[]`, after the connection's own
-  arguments. A `-c` override outranks every file layer and applies to every
-  configuration load of that process, so rewriting the file mid-session
-  changes nothing. The user's own extra roots are dropped for these sessions
-  too. Marking the project untrusted would ignore the whole project layer,
-  but Codex then also drops the workspace's `AGENTS.md` and changes its
-  default approval policy, so it is not used. Codex's own sandbox keeps the
-  root `.codex` read-only; the Seatbelt profile does the same for Claude.
-  Other project keys (MCP servers, network access, approval policy) still
-  apply to a workspace Codex session.
+  `-c sandbox_workspace_write.writable_roots=[]` and
+  `-c approvals_reviewer="user"`, after the connection's own arguments. A
+  `-c` override outranks every file layer and applies to every configuration
+  load of that process, so rewriting the file mid-session changes nothing.
+  The user's own extra roots and reviewer are overridden for these sessions
+  too: with `auto_review` a model, not a person, would approve a sandbox
+  escalation. Marking the project untrusted would ignore the whole project
+  layer, but Codex then also drops the workspace's `AGENTS.md` and changes
+  its default approval policy, so it is not used.
+  - **Residual, not closed.** Every other project key still applies to a
+    workspace Codex session, including MCP server commands, which Codex runs
+    outside its sandbox, and network access (which Station does not judge;
+    Seatbelt leaves the network open too). Codex's own sandbox keeps only the
+    top-level `.codex` of its writable root read-only, so a confined Codex
+    session can write a `.codex` in a subdirectory, and a later session
+    started in that subdirectory loads it. The Seatbelt profile denies every
+    `.codex` (below), so a confined Claude session cannot plant one.
 - A required start that is not reported `confined` is refused
   (`confinement_not_observed`). The refusal runs before `session.started` is
   published (the `SessionStartRefusedError` contract depends on that), and the
@@ -936,12 +943,13 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
     also stash and switch branches. A linked worktree cannot stash, fetch or
     pull, by design: those write shared refs (`refs/stash`, remote-tracking
     refs, `packed-refs`).
-  - Writes are denied to the engines' project configuration at the
-    workspace root, `.codex` and `.claude`, whole (#3800). The directory
-    itself cannot be created, removed, renamed or replaced, so one prepared
-    elsewhere cannot be moved into place. The engine still reads them. A
-    nested one is not covered; it applies only to a session started in that
-    subdirectory.
+  - Writes are denied to every directory named `.codex` or `.claude`, in
+    any case and at any depth, inside every writable grant (#3800): a
+    session can start in a subdirectory, and Codex loads each `.codex` from
+    the project root down to it. Such a directory cannot be created, written,
+    linked, renamed or replaced, including one prepared in the session's
+    temp directory. The engine still reads them. Names that only share the
+    prefix (`.claude.json`, `.codex-notes`) stay writable.
   - Every path is symlink-resolved before it enters the profile (`/tmp` is
     `/private/tmp`). A path SBPL cannot spell (a quote, a backslash, a
     control character) is refused.
@@ -1009,10 +1017,9 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
     and attacks on the operator's other processes through Mach services.
   - The workspace is writable, so confined code can still write files a
     later unconfined session in that folder may load: `.mcp.json` servers,
-    a nested `.codex` or `.claude`, a nested repository's `.git`. Accepted:
-    inside the sandbox they do not widen it, but an unconfined session that
-    loads them runs them unconfined. The root `.codex` and `.claude` are
-    denied (above).
+    a nested repository's `.git`. Accepted: inside the sandbox they do not
+    widen it, but an unconfined session that loads them runs them
+    unconfined. Every `.codex` and `.claude` is denied (above).
   - The macOS `xcrun` git shim cannot write its cache in the per-user system
     temp folder, and a background `pack-refs` cannot write the shared
     `packed-refs`. Git prints warnings and carries on.

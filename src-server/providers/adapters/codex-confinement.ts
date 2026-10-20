@@ -70,15 +70,25 @@ function rootsConfined(
  * change its default approval policy. The user's own extra roots are
  * dropped too; a root outside the workspace was never a confinement
  * (`observeCodexSandboxPosture`), and one inside it adds nothing but can
- * re-open a path Codex keeps read-only, such as `.git`. Appended last, so
- * it also outranks a connection's own arguments.
+ * re-open a path Codex keeps read-only, such as `.git`.
+ *
+ * The approval reviewer is pinned to a person for the same reason: with
+ * `approvals_reviewer = "auto_review"` (from any layer) a model approves a
+ * sandbox escalation, and a confined session would leave its sandbox with
+ * no Station approval card. Appended last, so both also outrank a
+ * connection's own arguments.
  */
 export function codexConfinementConfigArgs(
   confinement: StationConfinement | undefined,
 ): string[] {
   return confinement === 'host'
     ? []
-    : ['-c', 'sandbox_workspace_write.writable_roots=[]'];
+    : [
+        '-c',
+        'sandbox_workspace_write.writable_roots=[]',
+        '-c',
+        'approvals_reviewer="user"',
+      ];
 }
 
 /**

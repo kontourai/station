@@ -112,14 +112,18 @@ A `workspace` session with no Station mode sends only `sandbox:
 workspace-write` and no `approvalPolicy`, so Codex's own approval
 configuration governs it ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
 These policies determine when Codex requests approval. They do not select who
-reviews a sandbox escalation. Station leaves Codex's `approvalsReviewer`
-unchanged on thread start, resume, native adoption by fork, and subsequent
-turns. Codex configuration and managed requirements therefore govern that
-reviewer. An untrusted-command prompt and a sandbox escalation can take
-different approval paths.
+reviews a sandbox escalation. For a `host` session Station leaves Codex's
+`approvalsReviewer` unchanged on thread start, resume, native adoption by
+fork, and subsequent turns, so Codex configuration and managed requirements
+govern that reviewer. Every other session's app-server is started with
+`approvals_reviewer="user"`, which outranks every configuration file: a
+confined session's escalation is never approved by a model (#3800). An
+untrusted-command prompt and a sandbox escalation can take different
+approval paths.
 
 With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
-escalations automatically without opening a Station approval card. The Ask
+escalations of a `host` session automatically without opening a Station
+approval card. The Ask
 chip confirms the approval-policy mapping only; Station does not currently
 report the effective reviewer. Its picker and chip disclosure name that gap.
 Ask alone is not evidence that a person must approve every sandbox escalation.
