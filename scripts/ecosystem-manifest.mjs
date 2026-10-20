@@ -41,6 +41,7 @@ import {
   validateCommonPayload,
   validateReleaseManifestPayloadV2,
 } from '../packages/shared/src/release-manifest.mjs';
+import { readPortableNodeRuntime } from './lib/portable-server-archive.mjs';
 
 const RELEASE = '(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)';
 // Schema v1 (stable/preview with a macOS cask) keeps its original grammar.
@@ -411,16 +412,26 @@ try {
       `${JSON.stringify(envelope, null, 2)}\n`,
     );
   } else if (command === 'assemble') {
-    // TODO(#2675): once config/portable-server-node-runtime.json lands with
-    // the archive build (#2705), default --node-version from it and refuse a
-    // value that differs.
+    // The archive build bundles the Node.js pinned in
+    // config/portable-server-node-runtime.json, so the manifest states that
+    // version. --node-version stays accepted for the workflows that pass it,
+    // and is refused when it names anything else.
+    const pinnedNodeVersion = readPortableNodeRuntime().version;
+    const requestedNodeVersion = optionalOption('--node-version');
+    if (
+      requestedNodeVersion !== undefined &&
+      requestedNodeVersion !== pinnedNodeVersion
+    )
+      throw new Error(
+        `--node-version ${requestedNodeVersion} differs from the pinned ${pinnedNodeVersion} in config/portable-server-node-runtime.json`,
+      );
     const payload = assemblePayload({
       descriptorsDir: option('--descriptors'),
       version: option('--version'),
       channel: option('--channel'),
       sourceSha: option('--source-sha'),
       baseUrl: option('--base-url'),
-      nodeVersion: option('--node-version'),
+      nodeVersion: pinnedNodeVersion,
       launcherProtocolMin: parsePositiveInteger(
         '--launcher-protocol-min',
         option('--launcher-protocol-min'),
