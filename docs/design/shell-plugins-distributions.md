@@ -1,6 +1,7 @@
 # Shell kernel, plugin contributions and distribution manifests
 
-> **Reading status: accepted direction, not built.** This record holds the
+> **Reading status: accepted direction, not built; tracked by
+> [#2993](https://github.com/kontourai/station/issues/2993).** This record holds the
 > owner decisions of 2026-09-29 and the delivery plan that implements them.
 > Nothing below is shipped behavior unless the text says it **exists** and
 > cites the source that establishes it. The "Current state" section was

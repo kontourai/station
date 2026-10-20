@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { SetApprovalModeResult } from '@kontourai/station-contracts/orchestration';
 import {
   type ApprovalMode,
@@ -29,6 +30,7 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
+import { ApprovalGovernanceRefusedError } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
@@ -43,6 +45,18 @@ class RecordingAdapter implements ProviderAdapterShape {
   readonly sessions = new Map<string, ProviderSession>();
   readonly starts: ProviderSessionStartInput[] = [];
   readonly turns: ProviderSendTurnInput[] = [];
+  /** Thrown by the next `sendTurn`, before it has any effect. */
+  nextTurnError: Error | undefined;
+  /**
+   * A start the engine refuses before any effect. Like the ACP adapter, the
+   * refusal is raised by the preflight AND by `startSession` itself, which
+   * re-checks when no preflight ran.
+   */
+  startRefusal: Error | undefined;
+
+  async preflightStart(): Promise<void> {
+    if (this.startRefusal) throw this.startRefusal;
+  }
   private turnCount = 0;
 
   constructor(readonly provider: 'claude' | 'codex' | 'acp') {
@@ -56,6 +70,7 @@ class RecordingAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    if (this.startRefusal) throw this.startRefusal;
     this.starts.push(input);
     const now = new Date().toISOString();
     // Like every real adapter: the start's metadata (the Agent slug the
@@ -83,6 +98,9 @@ class RecordingAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    const refusal = this.nextTurnError;
+    this.nextTurnError = undefined;
+    if (refusal) throw refusal;
     this.turns.push(input);
     this.turnCount += 1;
     return { threadId: input.threadId, turnId: `turn-${this.turnCount}` };
@@ -142,6 +160,7 @@ describe('server-ordered approval posture (#2436)', () => {
   let acp: RecordingAdapter;
   let stationDefault: ApprovalMode | undefined;
   let agentDefaults: Record<string, ApprovalMode | undefined>;
+  let acpControls: Record<string, AcpApprovalControl>;
   let service: OrchestrationService;
 
   function createService(): OrchestrationService {
@@ -149,6 +168,7 @@ describe('server-ordered approval posture (#2436)', () => {
       adapterRegistry: registry([claude, codex, acp]),
       eventBus: bus,
       eventStore: store,
+      acpApprovalControl: (connectionId) => acpControls[connectionId],
       resolveStationDefaultApprovalMode: async () => stationDefault,
       // #2494: Seatbelt available on any host, so Claude resolves the same.
       confinementProviders: confinementProvidersForTests(),
@@ -173,6 +193,7 @@ describe('server-ordered approval posture (#2436)', () => {
     acp = new RecordingAdapter('acp');
     stationDefault = undefined;
     agentDefaults = {};
+    acpControls = {};
     service = createService();
   });
 
@@ -554,6 +575,278 @@ describe('server-ordered approval posture (#2436)', () => {
     );
     await turn('t-acp');
     expect(acp.turns.at(-1)?.modelOptions).toBeUndefined();
+  });
+
+  describe("#3290: an ACP thread's approval control is its connection's", () => {
+    async function startOn(
+      threadId: string,
+      connectionId: string,
+      modelOptions?: Record<string, unknown>,
+    ) {
+      await service.dispatch({
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'acp',
+          metadata: { connectionId },
+          ...(modelOptions ? { modelOptions } : {}),
+        },
+      });
+      const deadline = Date.now() + 2000;
+      while (
+        !store
+          .listEvents(threadId)
+          .some((row) => row.payload.method === 'session.started')
+      ) {
+        if (Date.now() > deadline) throw new Error('session.started not seen');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    }
+
+    beforeEach(() => {
+      acpControls = { opencode: 'station', kiro: 'engine' };
+    });
+
+    test('a Station-governed engine starts in the default and takes each recorded change on its next turn', async () => {
+      stationDefault = 'auto';
+      await startOn('t-opencode', 'opencode');
+      expect(acp.starts.at(-1)?.modelOptions?.approvalMode).toBe('auto');
+
+      await expect(decide('t-opencode', 'ask')).resolves.toMatchObject({
+        recorded: true,
+        approvalMode: 'ask',
+      });
+      await turn('t-opencode');
+      expect(acp.lastTurnMode()).toBe('ask');
+
+      await decide('t-opencode', 'auto');
+      await turn('t-opencode');
+      expect(acp.lastTurnMode()).toBe('auto');
+      // Recorded exactly like any engine's decision.
+      expect(
+        store
+          .listEvents('t-opencode')
+          .filter((row) => row.payload.method === 'session.approval-mode-set')
+          .map(
+            (row) => (row.payload as { approvalMode?: string }).approvalMode,
+          ),
+      ).toEqual(['ask', 'auto']);
+    });
+
+    test("Default follows the engine's own configuration until Station takes over, then means Ask", async () => {
+      await startOn('t-opencode-native', 'opencode');
+      // Nothing configured: no mode, so OpenCode runs on its own rules.
+      expect(acp.starts.at(-1)?.modelOptions).toBeUndefined();
+      await turn('t-opencode-native');
+      expect(acp.lastTurnMode()).toBeUndefined();
+
+      await decide('t-opencode-native', 'auto');
+      await turn('t-opencode-native');
+      expect(acp.lastTurnMode()).toBe('auto');
+
+      await decide('t-opencode-native', 'connection-default');
+      await turn('t-opencode-native');
+      expect(acp.lastTurnMode()).toBe('ask');
+    });
+
+    test('a takeover survives the engine exiting: Default after it still means Ask (finding 4)', async () => {
+      await startOn('t-opencode-respawn', 'opencode');
+      await decide('t-opencode-respawn', 'ask');
+      await turn('t-opencode-respawn');
+      expect(acp.lastTurnMode()).toBe('ask');
+      // What the OpenCode adapter reports once it runs a Station mode.
+      const now = new Date().toISOString();
+      acp.events.push({
+        eventId: 't-opencode-respawn:turn-report',
+        provider: 'acp',
+        threadId: 't-opencode-respawn',
+        createdAt: now,
+        method: 'turn.started',
+        turnId: 'reported-turn',
+        prompt: 'go',
+        metadata: { approvalMode: 'ask' },
+      } as CanonicalRuntimeEvent);
+      // The engine exits (an idle park or a crash): Station's in-memory
+      // record of what it applied is cleared.
+      acp.events.push({
+        eventId: 't-opencode-respawn:exited',
+        provider: 'acp',
+        threadId: 't-opencode-respawn',
+        createdAt: now,
+        method: 'session.exited',
+        sessionId: 't-opencode-respawn',
+        reason: 'parked',
+      } as CanonicalRuntimeEvent);
+      const deadline = Date.now() + 2000;
+      while (
+        !store
+          .listEvents('t-opencode-respawn')
+          .some((row) => row.payload.method === 'session.exited')
+      ) {
+        if (Date.now() > deadline) throw new Error('session.exited not seen');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      await decide('t-opencode-respawn', 'connection-default');
+      await turn('t-opencode-respawn');
+      expect(acp.lastTurnMode()).toBe('ask');
+    });
+
+    test('Claude keeps its existing Default after an exit: the engine configuration', async () => {
+      await start('t-claude-respawn', 'claude');
+      await decide('t-claude-respawn', 'auto');
+      await turn('t-claude-respawn');
+      claude.events.push({
+        eventId: 't-claude-respawn:exited',
+        provider: 'claude',
+        threadId: 't-claude-respawn',
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: 't-claude-respawn',
+        reason: 'parked',
+      } as CanonicalRuntimeEvent);
+      const deadline = Date.now() + 2000;
+      while (
+        !store
+          .listEvents('t-claude-respawn')
+          .some((row) => row.payload.method === 'session.exited')
+      ) {
+        if (Date.now() > deadline) throw new Error('session.exited not seen');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      await decide('t-claude-respawn', 'connection-default');
+      await turn('t-claude-respawn');
+      expect(claude.lastTurnMode()).toBeUndefined();
+    });
+
+    test('a governance refusal keeps its code through the command seam, so clients withhold Retry', async () => {
+      await startOn('t-opencode-refused', 'opencode');
+      acp.nextTurnError = new ApprovalGovernanceRefusedError(
+        "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings, so this message was not sent: your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking).",
+      );
+      await expect(turn('t-opencode-refused')).rejects.toMatchObject({
+        code: 'acp_approval_governance_refused',
+      });
+    });
+
+    test('a governance refusal at start keeps its code, and is not reported as a start that may have happened', async () => {
+      acp.startRefusal = new ApprovalGovernanceRefusedError(
+        "Station can't apply its approval mode to OpenCode, so the chat was not started: your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking).",
+      );
+      try {
+        const startsBefore = acp.starts.length;
+        await expect(
+          service.dispatch({
+            type: 'startSession',
+            input: {
+              threadId: 't-opencode-start-refused',
+              provider: 'acp',
+              metadata: { connectionId: 'opencode' },
+              modelOptions: { approvalMode: 'ask' },
+            },
+          }),
+        ).rejects.toMatchObject({ code: 'acp_approval_governance_refused' });
+        expect(acp.starts).toHaveLength(startsBefore);
+      } finally {
+        acp.startRefusal = undefined;
+      }
+    });
+
+    describe('a governance refusal says truthfully what Default would do', () => {
+      const refusal = () =>
+        new ApprovalGovernanceRefusedError(
+          "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings, so this message was not sent: your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking).",
+        );
+      const KEEP_OWN = /Pick Default to keep using OpenCode's own settings\.$/;
+
+      test('with nothing configured and no takeover, Default keeps OpenCode on its own settings, and does', async () => {
+        await startOn('t-default-native', 'opencode');
+        await decide('t-default-native', 'ask');
+        acp.nextTurnError = refusal();
+        await expect(turn('t-default-native')).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(KEEP_OWN),
+        });
+        // The refused Ask never applied, so Default asks for nothing.
+        await decide('t-default-native', 'connection-default');
+        await turn('t-default-native');
+        expect(acp.turns.at(-1)?.modelOptions?.approvalMode).toBeUndefined();
+      });
+
+      test('with a Station default, the refusal says Default applies it too', async () => {
+        stationDefault = 'auto';
+        acp.startRefusal = refusal();
+        try {
+          await expect(
+            startOn('t-default-configured', 'opencode'),
+          ).rejects.toMatchObject({
+            code: 'acp_approval_governance_refused',
+            message: expect.stringMatching(
+              /Picking Default won't avoid this: it applies the approval mode set as this Agent's or this Station's default\.$/,
+            ),
+          });
+        } finally {
+          acp.startRefusal = undefined;
+        }
+      });
+
+      test('after Station took the chat over, the refusal says Default keeps Ask', async () => {
+        await startOn('t-default-takeover', 'opencode', {
+          approvalMode: 'ask',
+        });
+        await turn('t-default-takeover');
+        await decide('t-default-takeover', 'auto');
+        acp.nextTurnError = refusal();
+        await expect(turn('t-default-takeover')).rejects.toMatchObject({
+          message: expect.stringMatching(
+            /Picking Default won't avoid this: Station already applied its approval rules in this chat, so Default keeps them at Ask\.$/,
+          ),
+        });
+        await decide('t-default-takeover', 'connection-default');
+        await turn('t-default-takeover');
+        expect(acp.lastTurnMode()).toBe('ask');
+      });
+
+      test("a start refusal with nothing configured says Default starts on OpenCode's own settings", async () => {
+        acp.startRefusal = refusal();
+        try {
+          await expect(
+            startOn('t-default-start-native', 'opencode', {
+              approvalMode: 'ask',
+            }),
+          ).rejects.toMatchObject({ message: expect.stringMatching(KEEP_OWN) });
+        } finally {
+          acp.startRefusal = undefined;
+        }
+      });
+    });
+
+    test('full access on a confined Station-governed engine applies Auto', async () => {
+      await startOn('t-opencode-confined', 'opencode', {
+        approvalMode: 'never',
+      });
+      expect(acp.starts.at(-1)?.modelOptions?.approvalMode).toBe('auto');
+    });
+
+    test('an engine that decides for itself takes no posture, and a carried one is refused', async () => {
+      stationDefault = 'auto';
+      await startOn('t-kiro', 'kiro');
+      expect(acp.starts.at(-1)?.modelOptions).toBeUndefined();
+      await expect(decide('t-kiro', 'ask')).rejects.toThrow(
+        'This engine has no approval control.',
+      );
+      await turn('t-kiro');
+      expect(acp.turns.at(-1)?.modelOptions).toBeUndefined();
+      await expect(
+        startOn('t-kiro-carried', 'kiro', { approvalMode: 'ask' }),
+      ).rejects.toThrow("Unsupported option 'approvalMode'");
+    });
+
+    test('a connection this Station does not know has no approval control', async () => {
+      await startOn('t-unknown-acp', 'gone');
+      await expect(decide('t-unknown-acp', 'ask')).rejects.toThrow(
+        'This engine has no approval control.',
+      );
+    });
   });
 
   test('an unknown session refuses the command', async () => {

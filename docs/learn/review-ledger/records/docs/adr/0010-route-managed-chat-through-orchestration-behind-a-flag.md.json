@@ -18,8 +18,6 @@
 
     "src-server/routes/orchestration/orchestration.ts",
 
-    "src-server/runtime/bootstrap/station-features.ts",
-
     "src-ui/src/hooks/useActiveChatSessionMessaging.ts"
   ],
 

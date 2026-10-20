@@ -1,0 +1,25 @@
+{
+  "revision": "c1efe5429d9c370204a68b92da1ff713d79c9c15",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#1502 changed assertExistingPathInside to decide containment on realpathSync.native-resolved root and candidate (nearest existing ancestor for a missing leaf; dangling/cyclic links refused) and switched plugin-bundles' contained-file check to native resolution. Searched the map for containment/symlink claims about plugin module, prompt, layout or bundle paths; none describe the helper's resolution method, so no prose change.","inputs":["docs/architecture/module-map.md","src-server/utils/path-containment.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#1502 changed assertExistingPathInside to decide containment on realpathSync.native-resolved root and candidate (nearest existing ancestor for a missing leaf; dangling/cyclic links refused) and switched plugin-bundles' contained-file check to native resolution. The guide's symbolic-link mention concerns Project folders, not plugin containment; no claim affected.","inputs":["docs/guides/self-configuring-agent.md","src-server/utils/path-containment.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#1502 changed assertExistingPathInside to decide containment on realpathSync.native-resolved root and candidate (nearest existing ancestor for a missing leaf; dangling/cyclic links refused) and switched plugin-bundles' contained-file check to native resolution. Plugin bundle routes still serve only current, contained bytes and 404 otherwise; a bundle reached through an escaping symlink chain now reads as unavailable, which the existing wording covers.","inputs":["docs/reference/api.md","src-server/routes/plugins/plugin-bundles.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"#1502 changed assertExistingPathInside to decide containment on realpathSync.native-resolved root and candidate (nearest existing ancestor for a missing leaf; dangling/cyclic links refused) and switched plugin-bundles' contained-file check to native resolution. CLI symlink and Project containment text concerns other owners; no claim affected.","inputs":["docs/reference/cli.md","src-server/utils/path-containment.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#1502 changed assertExistingPathInside to decide containment on realpathSync.native-resolved root and candidate (nearest existing ancestor for a missing leaf; dangling/cyclic links refused) and switched plugin-bundles' contained-file check to native resolution. Session cwd symlink-resolution text concerns workspace admission, not plugin path containment; no claim affected.","inputs":["docs/reference/session-api.md","src-server/utils/path-containment.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#1502 changed assertExistingPathInside to decide containment on realpathSync.native-resolved root and candidate (nearest existing ancestor for a missing leaf; dangling/cyclic links refused) and switched plugin-bundles' contained-file check to native resolution. Shared builder containment and serverModule field text are unchanged by a stricter server-side resolution check; no claim affected.","inputs":["docs/reference/shared.md","src-server/routes/plugins/plugin-bundles.ts"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"#1502 added a symlink-chain refusal test to plugin-public-server tests; no runtime behavior described here changed. Example claims about symlinked artifact files are owned by the example; unaffected.","inputs":["examples/builder-delivery-viewer/README.md","src-server/services/plugins/__tests__/plugin-public-server.test.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"#1502 added a symlink-chain refusal test to plugin-public-server tests; no runtime behavior described here changed. Example storage symlink claims are unaffected.","inputs":["examples/fieldwork-review/README.md","src-server/services/plugins/__tests__/plugin-public-server.test.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#1502 changed assertExistingPathInside to decide containment on realpathSync.native-resolved root and candidate (nearest existing ancestor for a missing leaf; dangling/cyclic links refused) and switched plugin-bundles' contained-file check to native resolution. README makes no plugin path-containment claim; no change.","inputs":["examples/self-configuring-agent/README.md","src-server/utils/path-containment.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"#1502 added a symlink-chain refusal test to plugin-public-server tests; no runtime behavior described here changed. README makes no claim this test changes; no change.","inputs":["examples/survey-review-workbench/README.md","src-server/services/plugins/__tests__/plugin-public-server.test.ts"]}
+  ]
+}

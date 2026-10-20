@@ -51,6 +51,7 @@ import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useLocale } from '../i18n/LocaleContext';
 import { DeviceSettingsImportVersionError } from '../lib/device-settings-store';
+import { prefersReducedMotion } from '../lib/reduced-motion';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import type { AppConfig, NavigationView } from '../types';
 import {
@@ -500,9 +501,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       target.closest('details')?.setAttribute('open', '');
       target.scrollIntoView?.({
         block: 'center',
-        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-          ? 'auto'
-          : 'smooth',
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       });
       // Delayed mount must not pull focus away from a person who began typing
       // somewhere else while the target was becoming available. The palette's

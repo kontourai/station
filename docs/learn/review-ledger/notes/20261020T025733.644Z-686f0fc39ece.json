@@ -1,0 +1,7 @@
+{
+  "revision": "b1eaafdec35d7daa7d7234b6a8433c8f0c7cc1f5",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Review fixes: scanner now skips Rust character literals (with escapes) and treats lifetimes as code; YAML quotes open only at scalar start. Feature flags are followed from every STATION_FEATURES read; destructuring, aliasing, passing the list on or an exported list function make the check NOT_VERIFIED. Guide text checked against source-text.mjs and featureFlagsInSource in checks.mjs and the new CLI tests.","inputs":["docs/guides/code-hygiene.md","scripts/lib/hygiene/checks.mjs","scripts/lib/hygiene/source-text.mjs"]}
+  ]
+}

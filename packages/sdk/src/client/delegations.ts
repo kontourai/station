@@ -1,19 +1,17 @@
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { AgentProfileCapability } from '@kontourai/station-contracts/enriched-agent';
 /**
- * Canonical delegation fetchers (#977 Wave 2), inside the #167 DRY client
- * layer. Zero delegation fetchers existed on the portable client before this
- * file — the two already-wired routes (`POST /delegations`,
- * `POST /delegations/options`) had only a UI-facing, React-Query-wrapped
+ * Canonical delegation fetchers (archive#977), inside the shared client layer
+ * (archive#167). Before this file, `POST /delegations` and
+ * `POST /delegations/options` had only a UI-facing, React-Query-wrapped
  * caller (`packages/sdk/src/query-domains/chatRuntimeOrchestration.ts`) that
- * hand-rolls its own envelope-unwrap instead of a canonical `client/**`
- * fetcher; the other six routes had no HTTP exposure at all before #977
- * Wave 1.
+ * hand-rolls its own envelope-unwrap, and the other six routes had no HTTP
+ * client at all.
  *
  * Routes (`src-server/routes/orchestration/orchestration.ts`):
  * - `POST /api/orchestration/delegations` — `delegateTask`
  * - `POST /api/orchestration/delegations/options` — `discoverDelegationOptions`
- *   (already wired before #977; no new server route needed for this one)
+ *   (already wired before archive#977; no new server route needed for this one)
  * - `GET /api/orchestration/delegations` — `listDelegatedTasks`
  * - `GET /api/orchestration/delegations/:taskId` — `observeDelegatedTask`
  * - `GET /api/orchestration/delegations/:taskId/events` — `observeDelegatedTaskEvents`
@@ -33,7 +31,7 @@ import type { AgentProfileCapability } from '@kontourai/station-contracts/enrich
  * sequence number.
  *
  * Parses the response body before checking `response.ok` (parse-then-check,
- * the #167 iteration-2 H1 convention documented in `client/runs.ts`'s
+ * the archive#167 convention documented in `client/runs.ts`'s
  * `unwrapRunsResponse` and mirrored by `client/orchestration.ts`'s
  * `unwrapOrchestrationResponse`), so a non-2xx `{success:false,error}` body's
  * `error` text is preserved. Implemented locally rather than importing
@@ -354,7 +352,7 @@ export interface DelegationOptions {
 /**
  * `POST /api/orchestration/delegations/options` — discover ready Station
  * agents and External agents for one environment/project. Already wired
- * before #977 (finding #7); this is the missing SDK client fetcher.
+ * before archive#977; this is the missing SDK client fetcher.
  */
 export async function discoverDelegationOptions(
   apiBase: string,

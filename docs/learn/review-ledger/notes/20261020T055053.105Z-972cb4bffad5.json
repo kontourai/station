@@ -1,0 +1,7 @@
+{
+  "revision": "335585846eeee4ff3801e7991cabbbb6d4c3a65f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Qualified the Basis chip's caching sentence against useAnswerBasisQuery (refetchOnMount 'always' and the isFetchedAfterMount data gate in packages/sdk/src/answer-basis.ts) and the TranscriptVirtualizer: a mounted chip does not re-read, a remounted one does. The off-screen cancellation claim is pinned by MessageBubble.basisChipStanding.test.tsx (fling case, via cancelWhenInactive in query-core).","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

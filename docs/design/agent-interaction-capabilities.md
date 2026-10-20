@@ -1,6 +1,7 @@
 # Agent browser and computer access
 
-Status: proposal. The common capability layer below is not implemented.
+Status: Proposal — unscheduled; no tracking issue as of 2026-10-20.
+The common capability layer below is not implemented.
 
 ## User experience
 

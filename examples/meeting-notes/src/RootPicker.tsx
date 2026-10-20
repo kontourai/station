@@ -1,11 +1,10 @@
 /**
- * Root picker — R3's manual personal-vs-project root choice. Consumes the
- * K4 `useKnowledgeRootsQuery` hook (`@kontourai/station-sdk`, already
- * landed) rather than forking a fetch of `/api/knowledge/roots`, and never
- * auto-selects a root on the user's behalf (R3: manual choice only).
+ * Root picker: the person's manual choice between personal and project roots.
+ * Consumes the K4 `useKnowledgeRootsQuery` hook (`@kontourai/station-sdk`)
+ * rather than forking a fetch of `/api/knowledge/roots`, and never selects a
+ * root on the person's behalf.
  *
- * The relevant-root filter itself lives in `./roots.ts` (Wave 3 cleanup —
- * shared with `AskPane.tsx`, which duplicated this same filter).
+ * The relevant-root filter lives in `./roots.ts`, shared with `AskPane.tsx`.
  */
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { useKnowledgeRootsQuery, useNavigation } from '@kontourai/station-sdk';
