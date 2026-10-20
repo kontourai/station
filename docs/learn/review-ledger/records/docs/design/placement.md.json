@@ -160,7 +160,13 @@
 
     "src-ui/src/components/chat/SubagentTranscriptCard.css",
 
-    "src-ui/src/workspace-panes/agents/ChildWorkRow.css"
+    "src-ui/src/workspace-panes/agents/ChildWorkRow.css",
+
+    "src-ui/src/components/chat-dock/backgroundTaskRows.tsx",
+
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.css",
+
+    "src-ui/src/components/chat/BackgroundTaskNoticeCard.tsx"
   ],
 
   "checks": [
