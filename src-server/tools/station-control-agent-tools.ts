@@ -72,16 +72,27 @@ export function registerAgentTools(server: StationControlToolRegistry) {
     'get_agent',
     'Get agent details by slug',
     { slug: z.string() },
-    // No canonical `@kontourai/station-sdk/client` fetcher exists for this
-    // route: it targets bare `GET /agents/:slug`, distinct from
-    // `client/agents.ts`'s `getAgent` (enriched `GET /api/agents/:slug`,
-    // used only by the CLI's `agents get` verb). Checked against
-    // `src-server/routes/agents/agents.ts`: only `GET /` is registered on the
-    // bare `/agents` mount — there is no `GET /:slug` handler at all — so
-    // this tool already 404'd before archive#167. Left on the `api()`
-    // passthrough rather than silently rerouting it to a different endpoint,
-    // which would be a server-route/behavior decision, not a client swap.
-    async ({ slug }) => jsonToolResult(await api(`/agents/${slug}`)),
+    // No route serves one agent on the bare `/agents` mount (it registers
+    // only `GET /`), so this picks the agent out of that same listing
+    // `list_agents` reads. The enriched `GET /api/agents/:slug` would serve
+    // it directly, but it is a dispatch leaf: sharing it with this read
+    // would loosen every dispatch tool's guard on it.
+    async ({ slug }) => {
+      const listing = (await fetchAgentsBare(
+        controlApiBase(),
+        controlRequestOptions(),
+      )) as { success?: unknown; data?: unknown };
+      if (listing?.success !== true || !Array.isArray(listing.data))
+        return jsonToolResult(listing);
+      const agent = listing.data.find(
+        (entry) => (entry as { slug?: unknown } | null)?.slug === slug,
+      );
+      return jsonToolResult(
+        agent === undefined
+          ? { success: false, error: `Agent '${slug}' not found` }
+          : { success: true, data: agent },
+      );
+    },
   );
 
   server.tool(
