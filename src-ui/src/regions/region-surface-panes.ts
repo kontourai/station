@@ -101,6 +101,13 @@ import {
   WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-pull-request-pane';
 import {
+  ACTIVITY_REVIEW_DESCRIPTOR_ID,
+  ACTIVITY_REVIEW_PANE_ID,
+  activityReviewInstance,
+  readActivityReviewPane,
+  removeActivityReviewPane,
+} from '../workspace-panes/activityReviewPane';
+import {
   createBrowserPreviewPaneInstance,
   isCanonicalBrowserPreviewPaneInstance,
 } from '../workspace-panes/browserPreviewPaneInstance';
@@ -335,6 +342,7 @@ export const REGION_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
  * dropped from the build), where it cost every user one there (#90 D9).
  */
 export const INSTANCE_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
+  'activity-review:': 'src-ui/src/workspace-panes/RegionActivityReviewPane.tsx',
   'pr:': 'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx',
   'file-preview:': 'src-ui/src/workspace-panes/FilePreviewPane.tsx',
   'browser-preview:':
@@ -551,6 +559,22 @@ export function regionSurfacePane(
   if (surfaceId.startsWith('board:') || surfaceId.startsWith('layout:'))
     return layoutSurfacePane(surfaceId);
   if (PLUGIN_PANE_ID.test(surfaceId)) return pluginSurfacePane(surfaceId);
+  if (ACTIVITY_REVIEW_PANE_ID.test(surfaceId)) {
+    const state = filePreviewStorage();
+    const saved = state ? readActivityReviewPane(state, surfaceId) : null;
+    return {
+      surfaceId,
+      descriptorId: ACTIVITY_REVIEW_DESCRIPTOR_ID,
+      instanceId: toWorkspacePaneInstanceId(surfaceId),
+      ...(saved ? { title: saved.title } : {}),
+      instance: () => activityReviewInstance(surfaceId),
+      isCanonical: (instance) =>
+        String(instance.instanceId) === surfaceId &&
+        String(instance.stateKey) === surfaceId &&
+        instance.descriptorId === ACTIVITY_REVIEW_DESCRIPTOR_ID &&
+        instance.boundContext === undefined,
+    };
+  }
   return undefined;
 }
 
@@ -571,6 +595,8 @@ export function forgetRegionPaneState(surfaceId: string): void {
       removeBrowserPreviewPaneState(storage, surfaceId);
     else if (PLUGIN_PANE_ID.test(surfaceId))
       removePluginPaneState(storage, surfaceId);
+    else if (ACTIVITY_REVIEW_PANE_ID.test(surfaceId))
+      removeActivityReviewPane(storage, surfaceId);
   } catch {
     /* per-device storage is optional */
   }

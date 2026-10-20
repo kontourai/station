@@ -143,6 +143,7 @@ interface SplitPaneLayoutProps {
   emptySections?: readonly string[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onVisibleItemsChange?: (ids: readonly string[]) => void;
   onDeselect?: () => void;
   onSearch: (query: string) => void;
   searchValue?: string;
@@ -412,6 +413,7 @@ export function SplitPaneLayout({
   emptySections = [],
   selectedId,
   onSelect,
+  onVisibleItemsChange,
   onDeselect,
   onSearch,
   searchValue,
@@ -994,6 +996,13 @@ export function SplitPaneLayout({
       : selectedId !== null && navKeys.includes(`item:${selectedId}`)
         ? `item:${selectedId}`
         : (navKeys[0] ?? null);
+
+  const visibleItemsKey = JSON.stringify(
+    navKeys.filter((key) => key.startsWith('item:')).map((key) => key.slice(5)),
+  );
+  useIsomorphicLayoutEffect(() => {
+    onVisibleItemsChange?.(JSON.parse(visibleItemsKey));
+  }, [onVisibleItemsChange, visibleItemsKey]);
 
   tabStopKeyRef.current = tabStopKey;
 

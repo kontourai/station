@@ -44,6 +44,7 @@ import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBound
 import { NotificationContainer } from './components/notifications/NotificationContainer';
 import { StartupHandoff } from './components/StartupHandoff';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
+import { ActivityReviewProvider } from './contexts/ActivityReviewContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
 import { ApiBaseProvider } from './contexts/ApiBaseContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -323,8 +324,10 @@ function renderApp(): void {
                                                   >
                                                     <RegionModelProvider>
                                                       <PaneRelationsProvider>
-                                                        <BrandingThemeBridge />
-                                                        <App />
+                                                        <ActivityReviewProvider>
+                                                          <BrandingThemeBridge />
+                                                          <App />
+                                                        </ActivityReviewProvider>
                                                       </PaneRelationsProvider>
                                                     </RegionModelProvider>
                                                     <NotificationContainer />

@@ -1,0 +1,27 @@
+.activity-review__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  padding: var(--k-space-2);
+  border-bottom: 1px solid var(--k-line);
+}
+
+.activity-review__toolbar h2 {
+  margin: 0 auto 0 0;
+  font-size: var(--k-text-sm);
+}
+
+.activity-review__detail {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.activity-review__notice {
+  margin: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}

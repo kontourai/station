@@ -341,6 +341,11 @@ const loadRegionPluginPane = () =>
     default: module.RegionPluginPane,
   }));
 
+const loadRegionActivityReviewPane = () =>
+  import('./RegionActivityReviewPane').then((module) => ({
+    default: module.RegionActivityReviewPane,
+  }));
+
 /**
  * What a region shows for a selected pane its dock cannot supply (#2047 D6:
  * a coding pane while the dock has no project). The tab and the record keep
@@ -534,7 +539,8 @@ export function RegionPaneHost({
   const layerBackLabel =
     layerRelation &&
     layerRelation.stationId === relations.stationId &&
-    (layerRelation.opener.occurrenceId === 'chat' ||
+    (layerRelation.opener.occurrenceId === 'activity' ||
+      layerRelation.opener.occurrenceId === 'chat' ||
       layerRelation.opener.occurrenceId === WORKSPACE_CHAT_OPENER)
       ? layerRelation.opener.label
       : 'Chat';
@@ -901,7 +907,11 @@ export function RegionPaneHost({
                         load={
                           String(instance.instanceId).startsWith('plugin-pane:')
                             ? loadRegionPluginPane
-                            : loadRegionBuiltinPane
+                            : String(instance.instanceId).startsWith(
+                                  'activity-review:',
+                                )
+                              ? loadRegionActivityReviewPane
+                              : loadRegionBuiltinPane
                         }
                         componentProps={{ instance }}
                         pending={

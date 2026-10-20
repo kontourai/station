@@ -38,6 +38,11 @@ export type RelatedTargetScope = Readonly<
 /** What a related pane shows. Identity only: never a read grant. */
 export type PaneRelationTarget =
   | {
+      readonly kind: 'activity-session';
+      readonly threadId: string;
+      readonly projectSlug: string | null;
+    }
+  | {
       readonly kind: 'file';
       readonly projectId: string;
       readonly projectSlug: string;
@@ -76,6 +81,10 @@ export type PaneRelationTarget =
  *   preview per opening occurrence.
  */
 export type PaneOpenerSource =
+  | {
+      readonly kind: 'activity';
+      readonly selectedThreadId: string | null;
+    }
   | {
       readonly kind: 'conversation';
       readonly conversationId: string | null;
@@ -191,6 +200,15 @@ function isOpenerRoute(pathname: unknown, search: unknown): boolean {
 /** A closed projection: only the fields this version defines are kept. */
 function parseTarget(value: unknown): PaneRelationTarget | null {
   if (!isRecordObject(value)) return null;
+  if (value.kind === 'activity-session') {
+    if (!boundedText(value.threadId) || !nullableText(value.projectSlug, 256))
+      return null;
+    return {
+      kind: 'activity-session',
+      threadId: value.threadId,
+      projectSlug: value.projectSlug,
+    };
+  }
   if (value.kind === 'file') {
     if (
       !boundedText(value.projectId) ||
@@ -250,6 +268,11 @@ function parseTargetScope(value: unknown): RelatedTargetScope | null {
 
 function parseSource(value: unknown): PaneOpenerSource | null {
   if (!isRecordObject(value)) return null;
+  if (value.kind === 'activity') {
+    return nullableText(value.selectedThreadId, 1024)
+      ? { kind: 'activity', selectedThreadId: value.selectedThreadId }
+      : null;
+  }
   if (value.kind === 'conversation') {
     if (
       !nullableText(value.conversationId) ||
@@ -429,6 +452,8 @@ export function serializePaneRelations(record: PaneRelationsRecord): string {
 export function openerSelectionKey(opener: PaneOpener): string {
   const { source } = opener;
   switch (source.kind) {
+    case 'activity':
+      return `activity:${source.selectedThreadId ?? ''}`;
     case 'conversation':
       return source.threadId !== null
         ? `thread:${source.threadId}`
@@ -457,6 +482,13 @@ function sameOpenerSelection(a: PaneOpener, b: PaneOpener): boolean {
  */
 function paneTargetKey(stationId: string, target: PaneRelationTarget): string {
   switch (target.kind) {
+    case 'activity-session':
+      return JSON.stringify([
+        'activity-session',
+        stationId,
+        target.projectSlug,
+        target.threadId,
+      ]);
     case 'file':
       return JSON.stringify([
         'file',

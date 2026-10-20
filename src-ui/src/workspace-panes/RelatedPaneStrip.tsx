@@ -308,6 +308,34 @@ function RouteUp({ opener }: { opener: PaneOpener }) {
   return <UpButton label={opener.label} onUp={up} />;
 }
 
+function ActivityUp({
+  instanceId,
+  opener,
+}: {
+  instanceId: string;
+  opener: PaneOpener;
+}) {
+  const showSurface = useShowSurface();
+  const model = useRegionModelOptional();
+  const leaveFor = useLeaveFor(instanceId);
+  const relations = usePaneRelations();
+  const up = () => {
+    if (opener.source.kind !== 'activity') return;
+    const selected = opener.source.selectedThreadId;
+    const reveal = () => {
+      const unchanged =
+        relations.currentSelection('activity') === `activity:${selected ?? ''}`;
+      if (!unchanged && selected)
+        showSurface('activity', { session: selected });
+      else showSurface('activity');
+    };
+    if (model?.phoneLayer?.surfaceId === instanceId)
+      model.closePhoneLayer(reveal);
+    else leaveFor('activity', reveal);
+  };
+  return <UpButton label={opener.label} onUp={up} />;
+}
+
 function OpenerUp({
   instanceId,
   opener,
@@ -316,6 +344,8 @@ function OpenerUp({
   opener: PaneOpener;
 }) {
   switch (opener.source.kind) {
+    case 'activity':
+      return <ActivityUp instanceId={instanceId} opener={opener} />;
     case 'conversation':
       return <ConversationUp instanceId={instanceId} opener={opener} />;
     case 'files':

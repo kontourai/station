@@ -1203,6 +1203,15 @@ const PLUGIN_PANE_SURFACE_ID = /^plugin-pane:[0-9a-f]{32}$/;
 
 export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
   {
+    prefix: 'activity-review:',
+    matches: (id) => /^activity-review:[0-9a-f]{32}$/.test(id),
+    descriptorId: 'pane:builtin:activity-review',
+    title: 'Activity review',
+    icon: 'activity',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+  },
+  {
     prefix: 'pr:',
     matches: (id) => PULL_REQUEST_SURFACE_ID.test(id),
     descriptorId: 'pane:builtin:workspace-pull-request',

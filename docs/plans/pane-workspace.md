@@ -48,7 +48,14 @@ not yet accepted.
   pane, including a per-occurrence Station fence and cross-window locked
   writes. Other related kinds wait for their slices.
 - [ ] Quick review preserves source selection/search/scroll; Open promotes.
-  Not started.
+  Implemented in the Activity slice stacked on #3964, awaiting qualification:
+  the real Activity list offers Quick review in Related, reusing SessionDetail
+  with an exact Session/Project identity and Station fence. Previous/Next use
+  the list owner's current visible order, including pagination and collapsed
+  groups, without changing its selected item, search or filters. Open keeps
+  the target; an exact kept-target reopen focuses it. Draft replies register
+  the normal owner guard and protect the preview. Desktop and phone browser
+  journeys, failure injection and independent/native acceptance are pending.
 - [ ] Source switching and cancelled guards preserve the right child and focus.
   In #3875 for file previews: source hide/restore, and Cancel on a covered,
   replaced or closed pane's guard leaves arrangement, selection, relation,
