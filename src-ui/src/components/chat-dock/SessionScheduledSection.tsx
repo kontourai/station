@@ -88,7 +88,7 @@ export function SessionScheduledSection({
         </h3>
         <button
           type="button"
-          className="session-context-card__link"
+          className="session-context-card__link session-scheduled__all"
           onClick={() => wrap(() => navigate('/schedule'))}
         >
           Schedule
@@ -254,15 +254,20 @@ function JobRow({
           >
             <EditGlyph className="session-scheduled__glyph" />
           </Button>
-          <Toggle
-            size="sm"
-            checked={job.enabled}
-            disabled={toggleJob.isPending}
-            label={`${job.name} on`}
-            onChange={(enabled) =>
-              toggleJob.mutate({ target: job.name, enabled })
-            }
-          />
+          {/* Wrapped, so the phone touch floor for a row's direct
+              controls leaves the switch's own track alone; the wrapper
+              carries the 44px target instead. */}
+          <span className="session-scheduled__switch">
+            <Toggle
+              size="sm"
+              checked={job.enabled}
+              disabled={toggleJob.isPending}
+              label={`${job.name} on`}
+              onChange={(enabled) =>
+                toggleJob.mutate({ target: job.name, enabled })
+              }
+            />
+          </span>
         </>
       }
     />

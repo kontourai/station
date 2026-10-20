@@ -127,3 +127,16 @@
   align-items: center;
   gap: var(--k-space-1);
 }
+
+/* The header's link sizes to its text, at the row's far end (scoped so it
+   wins over the card's full-width link whichever sheet loads last). */
+.session-scheduled__header .session-scheduled__all {
+  width: auto;
+  margin-inline-start: auto;
+}
+
+.session-scheduled__switch {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
