@@ -53,7 +53,9 @@ export function AccentColorPicker({
             key={preset}
             type="button"
             className={`settings__accent-swatch${color === preset ? ' settings__accent-swatch--active' : ''}`}
-            style={{ background: preset }}
+            // backgroundColor, not the `background` shorthand: the shorthand resets
+            // background-clip and would paint the whole 44px target.
+            style={{ backgroundColor: preset }}
             onClick={() => apply(preset)}
             aria-label={`Accent color ${preset}`}
           />

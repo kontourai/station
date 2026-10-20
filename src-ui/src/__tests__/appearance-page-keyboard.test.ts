@@ -424,6 +424,12 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
             : `${hit?.tagName}.${hit?.className}`;
         };
         return {
+          // Only the content box is painted (a `background` shorthand in an
+          // inline style would reset this and paint the whole target).
+          clip:
+            target.querySelector('input') === null
+              ? getComputedStyle(target).backgroundClip
+              : 'content-box',
           // The painted circle: the swatch's content box, or the color input.
           drawn: Math.round(
             target.querySelector('input')?.getBoundingClientRect().width ??
@@ -446,7 +452,11 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     });
     expect(hits).toHaveLength(9);
     for (const hit of hits)
-      expect(hit, hit.debug).toMatchObject({ drawn: 28, ok: true });
+      expect(hit, hit.debug).toMatchObject({
+        drawn: 28,
+        clip: 'content-box',
+        ok: true,
+      });
     await page.close();
   });
 
