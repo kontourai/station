@@ -13,9 +13,11 @@ This records the whole program direction. The foundation supplies contracts,
 configuration, migration, policy, monthly Full identity, CLI status/choice, and
 disclosure inventories and per-publisher Settings controls. The daily sender lane
 adds completed-day Lite pings, the bounded local ledger, action-bound feedback and
-CLI/log notices. The UI lane adds Lite notices, ledger presentation, and optional lowering reasons.
-Author Full consent, plugin publishers, receiver
-changes, dashboards, release injection and deployment remain separate lanes. This decision does not assert that any of them is deployed.
+CLI/log notices. The UI lane adds one usage-sharing choice, current-revision author consent, ledger
+presentation, and optional lowering reasons. Official release workflows can inject
+the configured author endpoint. Plugin publishers, receiver changes, dashboards,
+endpoint enablement and deployment remain separate lanes. This decision does not
+assert that any of them is deployed.
 The numbered ADR directory is frozen; new decisions use this topic-keyed record.
 
 ## Consent and publishers
@@ -232,9 +234,10 @@ remain separate from local source/tests and from this decision's acceptance.
 
 Settings renders each status publisher's saved choice, with Off always
 available. Effective resolution is shown separately, including DO_NOT_TRACK
-and Full awaiting acknowledgement. Declining Full writes operator Off before
-acknowledging the inventory; acknowledging alone must not turn a pending saved
-Full choice into consent after an Off decision.
+and Full awaiting acknowledgement. The current combined Don't share action saves
+both built-in destinations Off without acknowledging Detailed. The legacy
+disclosure path retains its write-Off-before-acknowledge repair; acknowledging
+alone must not turn a pending saved Full choice into consent after an Off decision.
 
 Environment and baked defaults are policy, never explicit consent. Even
 `STATION_TELEMETRY_TIER=full` and legacy environment `true` resolve to at most
