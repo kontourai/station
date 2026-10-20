@@ -73,6 +73,17 @@ test.describe('Agents pane child work (#2459)', () => {
       (conversationId) =>
         conversationId === CONVERSATION_ID ? [SESSION_ID] : [],
     );
+    await page.route('**/api/agents', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            { slug: 'dev-agent', name: 'Dev Agent' },
+            { slug: 'owl', name: 'Owl', icon: '🦉' },
+          ],
+        },
+      }),
+    );
     delegateStarted = false;
     await page.route('**/api/orchestration/sessions/read-model', (route) =>
       route.fulfill({
@@ -88,6 +99,7 @@ test.describe('Agents pane child work (#2459)', () => {
               ? [
                   summary(CLI_DELEGATE, {
                     provider: 'codex',
+                    assignedAgentSlug: 'owl',
                     turnOrigin: {
                       latest: {
                         version: 1,
@@ -192,6 +204,33 @@ test.describe('Agents pane child work (#2459)', () => {
     });
     await expect(page.getByText('Nightly audit')).toBeVisible();
     await expect(page.getByText('Started from the CLI')).toBeVisible();
+    const delegateRow = page
+      .getByRole('listitem')
+      .filter({ hasText: 'Nightly audit' });
+    await expect(
+      delegateRow.getByRole('img', { name: 'Owl · Codex' }),
+    ).toContainText('🦉');
+    await expect(
+      delegateRow.locator(
+        '.child-work-identity__engine [data-brand-key="codex"]',
+      ),
+    ).toBeVisible();
+    await emit(page, {
+      provider: 'codex',
+      threadId: CLI_DELEGATE,
+      method: 'tool.started',
+      turnId: 'turn-cli-1',
+      itemId: 'cli-read',
+      toolCallId: 'cli-read',
+      toolName: 'Read',
+      arguments: {},
+    });
+    await expect(delegateRow.locator('.child-work-activity__name')).toHaveText(
+      'Read',
+    );
+    await delegateRow.screenshot({
+      path: testInfo.outputPath('agents-delegate-artwork-activity.png'),
+    });
 
     // A subagent reported by a session no chat has open arrives live.
     await emit(page, {
