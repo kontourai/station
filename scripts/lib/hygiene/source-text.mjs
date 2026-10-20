@@ -236,27 +236,59 @@ function quoteOpens(raw, column, yaml) {
   return before === '' || /[:\-?,[{]$/.test(before);
 }
 
+/** One line's comment under hash rules, or null. */
+function hashComment(raw, yaml) {
+  let quote = '';
+  for (let column = 0; column < raw.length; column += 1) {
+    const char = raw[column];
+    if (quote) {
+      if (char === '\\') column += 1;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if ((char === '"' || char === "'") && quoteOpens(raw, column, yaml)) {
+      quote = char;
+      continue;
+    }
+    if (char === '#' && (column === 0 || /\s/.test(raw[column - 1])))
+      return raw.slice(column + 1);
+  }
+  return null;
+}
+
+/**
+ * A YAML block scalar header (`key: |`, `- >-`, `run: |2 # note`): the
+ * key, if any, and the header line's indentation.
+ */
+const BLOCK_SCALAR_HEADER =
+  /^(\s*)(?:-\s+)?(?:([^\s#'"][^:#]*?)\s*:\s+)?[|>][+-]?\d*[+-]?\s*(?:#.*)?$/;
+/** Block scalars that hold shell scripts, whose `#` lines are comments. */
+const SCRIPT_KEYS = new Set(['run', 'script']);
+
 function hashComments(text, { yaml = false } = {}) {
   const out = [];
+  // Inside a YAML block scalar, lines indented past the header are content,
+  // not YAML. Content of a `run:`/`script:` block is a shell script and is
+  // read with shell quoting; any other block scalar is prose and is skipped.
+  let block = null;
   for (const [index, raw] of text.split('\n').entries()) {
-    let quote = '';
-    for (let column = 0; column < raw.length; column += 1) {
-      const char = raw[column];
-      if (quote) {
-        if (char === '\\') column += 1;
-        else if (char === quote) quote = '';
+    if (block) {
+      const indent = raw.length - raw.trimStart().length;
+      if (!raw.trim() || indent > block.indent) {
+        const comment = block.script ? hashComment(raw, false) : null;
+        if (comment?.trim()) out.push({ line: index + 1, text: comment });
         continue;
       }
-      if ((char === '"' || char === "'") && quoteOpens(raw, column, yaml)) {
-        quote = char;
-        continue;
-      }
-      if (char === '#' && (column === 0 || /\s/.test(raw[column - 1]))) {
-        const comment = raw.slice(column + 1);
-        if (comment.trim()) out.push({ line: index + 1, text: comment });
-        break;
-      }
+      block = null;
     }
+    const comment = hashComment(raw, yaml);
+    if (comment?.trim()) out.push({ line: index + 1, text: comment });
+    const header = yaml ? BLOCK_SCALAR_HEADER.exec(raw) : null;
+    if (header)
+      block = {
+        indent: header[1].length,
+        script: SCRIPT_KEYS.has(header[2] ?? ''),
+      };
   }
   return out;
 }

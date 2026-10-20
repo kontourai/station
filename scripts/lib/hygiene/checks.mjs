@@ -178,6 +178,15 @@ function membershipFlag(list) {
  * A flag has an adjacent sunset when a `SUNSET(#N):` comment leads the
  * statement that tests it or any statement or declaration enclosing it.
  */
+/** The key a destructuring element reads: `a`, `'a'`, `['a']` or `a: b`. */
+function propertyKeyText(element) {
+  const key = element.propertyName ?? element.name;
+  if (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) return key.text;
+  if (ts.isComputedPropertyName(key) && ts.isStringLiteralLike(key.expression))
+    return key.expression.text;
+  return undefined;
+}
+
 function featureFlagsInSource(path, text) {
   if (!text.includes(FEATURE_ENV)) return { flags: [], unsupported: [] };
   ts ??= require('typescript-api');
@@ -248,11 +257,30 @@ function featureFlagsInSource(path, text) {
       ts.getCombinedModifierFlags(node.parent.parent) &
         ts.ModifierFlags.Export);
   const visit = (node) => {
-    if (
-      ts.isBindingElement(node) &&
-      (node.propertyName ?? node.name)?.getText?.(source) === FEATURE_ENV
-    )
+    // Every mention of the name outside a recognised read is a read the
+    // check cannot follow: destructuring (`{ STATION_FEATURES }`,
+    // `{ 'STATION_FEATURES': f }`), a computed key, or an identifier.
+    if (ts.isBindingElement(node) && propertyKeyText(node) === FEATURE_ENV)
       refuse(node, `${FEATURE_ENV} is destructured`);
+    else if (
+      ts.isIdentifier(node) &&
+      node.text === FEATURE_ENV &&
+      !(
+        ts.isPropertyAccessExpression(node.parent) && node.parent.name === node
+      ) &&
+      !(
+        ts.isBindingElement(node.parent) &&
+        propertyKeyText(node.parent) === FEATURE_ENV
+      )
+    )
+      refuse(node, `${FEATURE_ENV} is read through an identifier`);
+    else if (
+      ts.isComputedPropertyName(node) &&
+      ts.isStringLiteralLike(node.expression) &&
+      node.expression.text === FEATURE_ENV &&
+      !ts.isBindingElement(node.parent)
+    )
+      refuse(node, `${FEATURE_ENV} is a computed key`);
     if (isFeatureEnvRead(node)) {
       const top = listChainTop(node);
       const parent = top.parent;
@@ -262,9 +290,14 @@ function featureFlagsInSource(path, text) {
         ts.isVariableDeclaration(parent) &&
         parent.initializer === top &&
         ts.isIdentifier(parent.name)
-      )
-        everyUseTests(parent.name.text, parent.name, (ref) => ref, 'list');
-      else {
+      ) {
+        if (isExported(parent))
+          refuse(
+            node,
+            `exported list '${parent.name.text}' holds the ${FEATURE_ENV} list`,
+          );
+        else everyUseTests(parent.name.text, parent.name, (ref) => ref, 'list');
+      } else {
         const fn = ts.isReturnStatement(parent)
           ? ts.findAncestor(parent, ts.isFunctionLike)
           : ts.isArrowFunction(parent) && parent.body === top

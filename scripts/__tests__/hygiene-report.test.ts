@@ -74,6 +74,7 @@ const DEFAULT_GITHUB = {
     '100': ISSUE('OPEN', 'open work'),
     '200': ISSUE('CLOSED', 'finished work'),
     '300': { __typename: 'PullRequest', state: 'MERGED', title: 'a change' },
+    '3909': ISSUE('OPEN', 'Decide when the strands-runtime flag ends'),
   } as Record<string, unknown>,
 };
 
@@ -312,15 +313,25 @@ describe('hygiene comment scanner edge cases', () => {
       "name: it's # SUNSET(#200): after a plain-scalar apostrophe.",
       "other: it's # see #9999 from Wave 2",
       "quoted: 'a # inside a quoted scalar is not a comment'",
+      'steps:',
+      '  - run: |',
+      "      echo it's # UNWIRED(#200): inside a quoted shell word",
+      '      # TODO(#200): a shell comment in a run block',
+      '  - with:',
+      '      body: >',
+      '        prose # SUNSET(#200): folded prose is not a comment',
+      '    name: x # TODO(#200): after the block ends',
       '',
     ].join('\n'),
   });
 
-  it('finds markers after Rust character literals and lifetimes and YAML apostrophes', () => {
+  it('finds markers after Rust character literals, lifetimes, YAML apostrophes and block scalars', () => {
     const { status, result } = runJson(root, 'markers');
     expect(status).toBe(0);
     expect(located(result.findings)).toEqual([
       'closed-issue:.github/workflows/x.yml:1',
+      'closed-issue:.github/workflows/x.yml:7',
+      'closed-issue:.github/workflows/x.yml:11',
       'closed-issue:src/main.rs:2',
       'closed-issue:src/main.rs:3',
       'closed-issue:src/main.rs:4',
@@ -366,6 +377,21 @@ describe('hygiene feature flag shapes', () => {
       ],
       "src-server/a/flags.ts:2 exported function 'features' returns the STATION_FEATURES list",
     ],
+    [
+      'a quoted destructuring key',
+      [
+        "const { 'STATION_FEATURES': raw } = process.env;",
+        "export const on = (raw || '').split(',').includes('quoted-flag');",
+      ],
+      'src-server/a/flags.ts:1 STATION_FEATURES is destructured',
+    ],
+    [
+      'an exported list with no local use',
+      [
+        "export const features = (process.env.STATION_FEATURES || '').split(',');",
+      ],
+      "src-server/a/flags.ts:1 exported list 'features' holds the STATION_FEATURES list",
+    ],
   ])('reports NOT_VERIFIED for %s', (_label, lines, message) => {
     const root = makeRepo({ 'src-server/a/flags.ts': `${lines.join('\n')}\n` });
     const { status, stdout } = run(root, ['--check', 'markers']);
@@ -373,6 +399,60 @@ describe('hygiene feature flag shapes', () => {
     expect(stdout).toContain(
       `[hygiene:markers] NOT_VERIFIED: STATION_FEATURES flags: ${message}`,
     );
+  });
+});
+
+describe('hygiene feature flags across the registry removal', () => {
+  // The inline read as runtime-initialize.ts has it once station-features.ts
+  // is deleted, with its sunset marker on the line above the test.
+  const runtimeInitialize = [
+    'export async function initialize(appConfig: { runtime?: string }) {',
+    "  const features = (process.env.STATION_FEATURES || '')",
+    "    .split(',')",
+    '    .filter(Boolean);',
+    '  // SUNSET(#3909): remove once the Strands runtime decision lands.',
+    "  if (features.includes('strands-runtime')) {",
+    "    appConfig.runtime = 'strands';",
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+  const stationFeatures = [
+    'function parseStationFeatures(env: NodeJS.ProcessEnv = process.env): string[] {',
+    "  return (env.STATION_FEATURES || '').split(',').filter(Boolean);",
+    '}',
+    '',
+    'export function isManagedChatOrchestrationFeatureEnabled(',
+    '  env: NodeJS.ProcessEnv = process.env,',
+    '): boolean {',
+    "  return parseStationFeatures(env).includes('managed-chat-orchestration');",
+    '}',
+    '',
+  ].join('\n');
+
+  it('finds the inline read and its sunset with station-features.ts present', () => {
+    const root = makeRepo({
+      'src-server/runtime/bootstrap/runtime-initialize.ts': runtimeInitialize,
+      'src-server/runtime/bootstrap/station-features.ts': stationFeatures,
+    });
+    const { status, result } = runJson(root, 'markers');
+    expect(status).toBe(0);
+    expect(result.notVerified).toBeNull();
+    expect(result.summary).toBe('1 markers, 2 STATION_FEATURES flags');
+    expect(located(result.findings)).toEqual([
+      'flag-without-sunset:src-server/runtime/bootstrap/station-features.ts:8',
+    ]);
+  });
+
+  it('finds the inline read and its sunset after station-features.ts is deleted', () => {
+    const root = makeRepo({
+      'src-server/runtime/bootstrap/runtime-initialize.ts': runtimeInitialize,
+    });
+    const { status, result } = runJson(root, 'markers');
+    expect(status).toBe(0);
+    expect(result.notVerified).toBeNull();
+    expect(result.summary).toBe('1 markers, 1 STATION_FEATURES flags');
+    expect(result.findings).toEqual([]);
   });
 });
 
