@@ -76,9 +76,9 @@ Commit and confirm a clean tree before mutation. Preserve intervening edits and 
 
 ## Issue references
 
-`archive#NNNN` is [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 history. Here, #27–#601 re-file archive issues under new numbers (most carry a "Migrated from the pre-public backlog" line), so low numbers exist in both repos.
+`archive#NNNN` is [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 history. Here, #27–#601 re-file archive issues under new numbers (see the [map](docs/migration/issue-number-map.json)), so low numbers exist in both repos.
 
-A bare `#NNNN` means this repo, except pre-reset text in areas the sweep skipped (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`, and the frozen `docs/adr` records). When unsure, check both repos. Write `#NNNN` for this repo, `archive#NNNN` for the archive. [`docs/migration/issue-number-map.json`](docs/migration/issue-number-map.json) maps each archive issue that was re-filed here to its number in this repo; cite the mapped number when one exists.
+A bare `#NNNN` means this repo, except pre-reset text in areas the sweep skipped (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`, `docs/adr`). When unsure, check both repos. Write `#NNNN` for this repo, `archive#NNNN` for the archive.
 
 ## Read only the route you need
 
