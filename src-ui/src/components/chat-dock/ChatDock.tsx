@@ -1639,6 +1639,27 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const [isSessionContextSheetOpen, setIsSessionContextSheetOpen] =
     useState(false);
   const sessionContextChipRef = useRef<HTMLButtonElement>(null);
+  // #3882: the card and its chip trade places as the transcript column's
+  // room changes (an open Chat inventory takes it). Focus on whichever is
+  // showing must not drop to the page when the other replaces it.
+  const focusSessionContextEntry = useCallback(() => {
+    const footer =
+      conversationSurfaceRef.current?.parentElement?.querySelector<HTMLElement>(
+        ':scope > .session-context-card .session-context-card__footer button',
+      );
+    (footer ?? sessionContextChipRef.current)?.focus();
+  }, []);
+  const sessionContextFocusHandoffRef = useRef(false);
+  // The chip left with focus on it (the card came back): the card's own
+  // Chat inventory button takes it, unless focus has gone somewhere since.
+  useEffect(() => {
+    if (!sessionContextCardShown || !sessionContextFocusHandoffRef.current)
+      return;
+    sessionContextFocusHandoffRef.current = false;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    focusSessionContextEntry();
+  }, [focusSessionContextEntry, sessionContextCardShown]);
   // On a phone the sheet opens from the ⋯ sheet's row, which is gone by the
   // time this one closes; focus returns to the ⋯ trigger it names.
   const [sessionContextReturnFocus, setSessionContextReturnFocus] =
@@ -2484,6 +2505,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           projectId: inventoryProjectId,
           executionRead: activeOrchestrationSessionRead,
           mountRef: sessionInventoryMountRef,
+          restoreFocusFallback: focusSessionContextEntry,
           dockMode: effectiveDockSlotPlacement,
           fullscreen: isFullscreenPlacement,
           isMobile,
@@ -2895,6 +2917,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     triggerRef={sessionContextChipRef}
                     expanded={isSessionContextSheetOpen}
                     onOpen={() => setIsSessionContextSheetOpen(true)}
+                    onUnmountWhileFocused={() => {
+                      sessionContextFocusHandoffRef.current = true;
+                    }}
                   />
                 ) : null
               }

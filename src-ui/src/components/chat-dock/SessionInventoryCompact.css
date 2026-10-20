@@ -65,6 +65,9 @@
   min-width: 0;
   overflow-wrap: break-word;
 }
+.chat-dock__conversation-surface > div:has(> .session-inventory-compact) {
+  display: contents;
+}
 .session-inventory-compact__intro,
 .session-inventory-compact__highlights > p,
 .session-inventory-compact__live {

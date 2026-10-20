@@ -1716,7 +1716,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: false,
     rationale:
-      '#3882: a real chat (one turn through a local model fixture) in a wide bottom dock opens Chat inventory from the session context card at 1600px and 1440px and measures the dock: the inventory aside sits flush against the transcript (no dead gutter), the transcript keeps its 640px floor, the card gives way to the inventory (its chip remains) and returns when the inventory closes.',
+      '#3882: a real chat (one turn through a local model fixture) in a wide bottom dock opens Chat inventory from the session context card at 1600px and 1440px and measures the dock: the inventory aside sits flush against the transcript (no dead gutter), the transcript keeps its 640px floor, the card gives way to the inventory (its chip remains) and returns when the inventory closes. Opened with Enter and closed with Close or Escape, focus moves into the panel and returns to the card\'s Chat inventory button, never the page.',
     exceptions: [],
   },
   {

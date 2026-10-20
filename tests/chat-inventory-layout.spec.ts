@@ -28,6 +28,8 @@ import {
  * instance, measured at both widths: the aside sits flush against the
  * transcript, the transcript keeps its 640px floor, the card gives way to the
  * inventory (its chip remains), and closing the inventory brings it back.
+ * Opened and closed from the keyboard, focus moves into the panel and comes
+ * back to the card's Chat inventory button, never to the page.
  */
 
 const CONNECTION_ID = 'e2e-chat-inventory-layout-fixture';
@@ -82,6 +84,22 @@ function dockColumns(page: Page) {
       card: box('.session-context-card:not(.session-context-card--sheet)'),
       chip: Boolean(document.querySelector('.session-context-chip')),
     };
+  });
+}
+
+/** Where keyboard focus is, in terms of the surfaces under test. */
+function focusedSurface(page: Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement;
+    if (!active || active === document.body) return 'page';
+    if (active.closest('.session-inventory-compact')) return 'inventory';
+    if (active.matches('.session-context-chip')) return 'chip';
+    if (
+      active.closest('.session-context-card__footer') &&
+      active.textContent?.trim() === 'Chat inventory'
+    )
+      return 'card-inventory';
+    return active.tagName.toLowerCase();
   });
 }
 
@@ -187,16 +205,24 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
       timeout: 30_000,
     });
 
-    for (const width of [1600, 1440]) {
+    // Closed with its Close button at 1600px and with Escape at 1440px.
+    for (const [width, closeWith] of [
+      [1600, 'Close'],
+      [1440, 'Escape'],
+    ] as const) {
       await page.setViewportSize({ width, height: 900 });
       // The wide dock shows the card beside the transcript.
       const card = dock.locator(
         '.session-context-card:not(.session-context-card--sheet)',
       );
       await expect(card).toBeVisible();
-      await card.getByRole('button', { name: 'Chat inventory' }).click();
+      // From the keyboard: the card folds as the inventory opens, taking
+      // the focused button with it, so focus must move into the panel.
+      await card.getByRole('button', { name: 'Chat inventory' }).focus();
+      await page.keyboard.press('Enter');
       const aside = dock.locator('.session-inventory-compact--aside');
       await expect(aside).toBeVisible();
+      await expect.poll(() => focusedSurface(page)).toBe('inventory');
 
       await expect
         .poll(async () => {
@@ -215,10 +241,17 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
         })
         .toEqual({ card: null, chip: true, floor: true, gutter: 0 });
 
-      await aside.getByRole('button', { name: 'Close Chat inventory' }).click();
+      if (closeWith === 'Close')
+        await aside
+          .getByRole('button', { name: 'Close Chat inventory' })
+          .press('Enter');
+      else await page.keyboard.press('Escape');
       await expect(aside).toHaveCount(0);
-      // Without the inventory the card has its room back.
+      // Without the inventory the card has its room back, and focus lands
+      // on its Chat inventory button (by way of the chip it replaced), not
+      // on the page.
       await expect(card).toBeVisible();
+      await expect.poll(() => focusedSurface(page)).toBe('card-inventory');
     }
     browserHealth.assertHealthy();
   });

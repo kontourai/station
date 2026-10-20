@@ -2601,8 +2601,9 @@ button:hover {
    div. Neither may box the inventory: as block boxes they made a flex item
    twice the aside's width, a dead gutter beside a narrowed transcript. Both
    step aside so the inventory is a flex item of the surface and takes its
-   own clamped width (SessionInventoryCompact.css). The earlier rule for the
-   wrapper named it a child of the surface, which it never was. */
+   own clamped width (SessionInventoryCompact.css). That file's rule for a
+   wrapper directly in the surface does not reach this one: the mount sits
+   between them. */
 .chat-dock__inventory-mount,
 .chat-dock__inventory-mount > div:has(> .session-inventory-compact) {
   display: contents;
