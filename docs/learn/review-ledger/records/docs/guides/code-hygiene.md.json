@@ -1,0 +1,29 @@
+{
+  "path": "docs/guides/code-hygiene.md",
+
+  "kind": "policy",
+
+  "state": "source-reviewed",
+
+  "summary": "UNWIRED/SUNSET/TODO marker convention, the six advisory hygiene checks, resolution steps, exit status and NOT_VERIFIED semantics, the nightly hygiene and hygiene-issue jobs, and promotion through the proof-family workflow. Checked against scripts/hygiene-report.mjs, scripts/lib/hygiene/*, the workflow jobs and package scripts.",
+
+  "limits": "Source review plus fixture tests and local runs against this repository. The nightly jobs have not run on GitHub; scanner limits (regular-expression literals, Markdown examples) are stated rather than proven absent.",
+
+  "sources": [
+    "scripts/hygiene-report.mjs",
+
+    "scripts/lib/hygiene/checks.mjs",
+
+    "scripts/lib/hygiene/github.mjs",
+
+    "scripts/lib/hygiene/source-text.mjs",
+
+    "scripts/lib/tracking-issue.mjs",
+
+    ".github/workflows/docs-freshness-sweep.yml",
+
+    "package.json#/scripts"
+  ],
+
+  "checks": []
+}

@@ -378,44 +378,10 @@ describe('Config Routes', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       () => 'http://127.0.0.1:4555',
     );
     const body = await json(await app.request('/app'));
     expect(body.data.pluginFrameOrigin).toBe('http://127.0.0.1:4555');
-  });
-
-  test('station#980: GET /app injects managedChatOrchestration when the flag is enabled', async () => {
-    const loader = createMockConfigLoader();
-    const app = createConfigRoutes(
-      loader as any,
-      mockLogger,
-      undefined,
-      undefined,
-      undefined,
-      () => true,
-    );
-    const body = await json(await app.request('/app'));
-    expect(body.data.managedChatOrchestration).toBe(true);
-  });
-
-  test('station#980: GET /app omits managedChatOrchestration when the flag is disabled or unset (default OFF, byte-identical response)', async () => {
-    const loaderOff = createMockConfigLoader();
-    const appOff = createConfigRoutes(
-      loaderOff as any,
-      mockLogger,
-      undefined,
-      undefined,
-      undefined,
-      () => false,
-    );
-    const bodyOff = await json(await appOff.request('/app'));
-    expect('managedChatOrchestration' in bodyOff.data).toBe(false);
-
-    const loaderUnset = createMockConfigLoader();
-    const appUnset = createConfigRoutes(loaderUnset as any, mockLogger);
-    const bodyUnset = await json(await appUnset.request('/app'));
-    expect('managedChatOrchestration' in bodyUnset.data).toBe(false);
   });
 
   test('PUT /app updates config', async () => {
@@ -501,17 +467,12 @@ describe('Config Routes', () => {
       undefined,
       undefined,
       () => 'http://127.0.0.1:4555',
-      () => true,
     );
     const body = await json(await app.request('/app'));
     expect(body.provenance.defaultModel).toEqual({ source: 'file' });
     expect(body.provenance.mcpUiFrameOrigin).toEqual({
       source: 'env',
       envVar: 'MCP_UI_FRAME_PORT',
-    });
-    expect(body.provenance.managedChatOrchestration).toEqual({
-      source: 'env',
-      envVar: 'STATION_FEATURES',
     });
   });
 
@@ -542,7 +503,6 @@ describe('Config Routes', () => {
     const app = createConfigRoutes(
       loader as any,
       mockLogger,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -612,7 +572,6 @@ describe('Config Routes', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
         () =>
           ({
             id: 'p',
@@ -659,7 +618,6 @@ describe('Config Routes', () => {
       createConfigRoutes(
         createMockConfigLoader() as any,
         mockLogger,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -729,7 +687,6 @@ describe('Config Routes', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       () => undefined,
     );
     const res = await app.request('/app?project=missing');
@@ -737,7 +694,7 @@ describe('Config Routes', () => {
     expect((await json(res)).success).toBe(false);
   });
 
-  test('PUT /app strips runtime-derived keys (managedChatOrchestration) and reports them as ignoredKeys, so a GET-then-PUT round trip cannot persist them', async () => {
+  test('PUT /app strips runtime-derived keys (mcpUiFrameOrigin) and retired keys, and reports them as ignoredKeys, so a GET-then-PUT round trip cannot persist them', async () => {
     const loader = createMockConfigLoader();
     const app = createConfigRoutes(loader as any, mockLogger);
     const res = await app.request('/app', {
@@ -745,6 +702,7 @@ describe('Config Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         defaultModel: 'gpt-4',
+        mcpUiFrameOrigin: 'http://127.0.0.1:4555',
         managedChatOrchestration: true,
       }),
     });
@@ -753,9 +711,11 @@ describe('Config Routes', () => {
     expect(loader.updateAppConfig).toHaveBeenCalledWith({
       defaultModel: 'gpt-4',
     });
+    expect('mcpUiFrameOrigin' in body.data).toBe(false);
     expect('managedChatOrchestration' in body.data).toBe(false);
     expect(body.ignoredKeys).toEqual([
-      { key: 'managedChatOrchestration', reason: 'runtime-derived' },
+      { key: 'mcpUiFrameOrigin', reason: 'runtime-derived' },
+      { key: 'managedChatOrchestration', reason: 'unknown' },
     ]);
   });
 
@@ -800,7 +760,6 @@ describe('Config Routes', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
         rebindBuiltinAgents,
       );
       const res = await app.request('/app', {
@@ -823,7 +782,6 @@ describe('Config Routes', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
         rebindBuiltinAgents,
       );
       await app.request('/app', {
@@ -840,7 +798,6 @@ describe('Config Routes', () => {
       const app = createConfigRoutes(
         loader as any,
         mockLogger,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -861,7 +818,6 @@ describe('Config Routes', () => {
       const app = createConfigRoutes(
         loader as any,
         mockLogger,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -1415,7 +1371,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     tempDir = makeTempDir('station-config-routes-');
   });
 
-  test('finding 1: GET /app never leaks a persisted runtime-derived field back when the live flag is off, even from a home polluted by the pre-fix round trip', async () => {
+  test('GET /app never leaks a persisted runtime-derived or retired field back, even from a home polluted by the pre-sanitizer round trip', async () => {
     const configDir = join(tempDir, 'config');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
@@ -1430,14 +1386,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       'utf8',
     );
     const loader = new ConfigLoader({ projectHomeDir: tempDir });
-    const app = createConfigRoutes(
-      loader as any,
-      mockLogger,
-      undefined,
-      undefined,
-      undefined,
-      () => false,
-    );
+    const app = createConfigRoutes(loader as any, mockLogger);
 
     const body = await json(await app.request('/app'));
     expect('managedChatOrchestration' in body.data).toBe(false);
@@ -1448,33 +1397,6 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     );
     expect('managedChatOrchestration' in persisted).toBe(false);
     expect('mcpUiFrameOrigin' in persisted).toBe(false);
-  });
-
-  test('finding 1: GET /app with the live flag ON still injects managedChatOrchestration: true, independent of what got purged from the file', async () => {
-    const configDir = join(tempDir, 'config');
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(
-      join(configDir, 'app.json'),
-      JSON.stringify({
-        defaultModel: 'x',
-        invokeModel: 'y',
-        structureModel: 'z',
-        managedChatOrchestration: true,
-      }),
-      'utf8',
-    );
-    const loader = new ConfigLoader({ projectHomeDir: tempDir });
-    const app = createConfigRoutes(
-      loader as any,
-      mockLogger,
-      undefined,
-      undefined,
-      undefined,
-      () => true,
-    );
-
-    const body = await json(await app.request('/app'));
-    expect(body.data.managedChatOrchestration).toBe(true);
   });
 
   test('finding 2: PUT { region: null } through the real route+loader clears the field from both the response and the persisted file (200, not a 400 from AJV)', async () => {
@@ -1537,7 +1459,6 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     const app = createConfigRoutes(
       loader as any,
       mockLogger,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -1763,7 +1684,6 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
       undefined,
       undefined,
       undefined,
-      undefined,
       authorizeContributionMutation,
     );
   }
@@ -1860,7 +1780,6 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
       createConfigRoutes(
         loader as any,
         mockLogger,
-        undefined,
         undefined,
         undefined,
         undefined,

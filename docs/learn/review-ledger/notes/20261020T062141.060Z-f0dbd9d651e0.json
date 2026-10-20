@@ -1,0 +1,7 @@
+{
+  "revision": "316ce8d8861f4619020f52c21bbf6d014b0141e4",
+
+  "notes": [
+    {"path":"docs/strategy/veritas/migration-0.5-record.md","note":"Re-read the two edited rows (refactor-shape-tombstones, repo-guardrails). The 2.3k-line figure matches wc -l (2255) after the retirement; the repo-map still declares the assertion-free migration-tombstones check, as the row says.","inputs":["docs/strategy/veritas/migration-0.5-record.md"]}
+  ]
+}

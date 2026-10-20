@@ -125,6 +125,7 @@ function stationSurfaceTextViolations(
   return violations;
 }
 
+// Not `utils/isRecord`'s `isPlainRecord`: this one also admits a null prototype.
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     return false;

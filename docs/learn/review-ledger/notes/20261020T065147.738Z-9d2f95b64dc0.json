@@ -1,0 +1,7 @@
+{
+  "revision": "aec973e725b8341f62a723f94fe09db1b9e32788",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Added the corrected basis (with the --json alias the handler reads), get-output and keep-output (--media) forms to the tasks usage block; they match the usage lines in packages/cli/src/help.ts, which tasks-help-parser-parity.test.ts runs through the real parser. docs:cli-parity:check passes.","inputs":["docs/reference/cli.md","packages/cli/src/help.ts"]}
+  ]
+}

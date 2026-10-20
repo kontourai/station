@@ -105,6 +105,35 @@ The [signing example](../../examples/registry/signed-package/README.md) uses a
 TS-aware loader, keeps private keys outside the signed package, and leaves host
 trust configuration to the host operator.
 
+## Subpaths without a reference section
+
+The [shared reference](../../docs/reference/shared.md) documents most helpers.
+These subpaths are exported but not described there yet. Several are Node-only;
+read the module before using one in a browser bundle.
+
+- Station home storage (Node): `/durable-json-file` (temp, fsync and rename
+  writes), `/regular-file` (non-blocking regular-file opens), `/temp-dir`
+  (Station-scoped temporary directories), `/checkpoints` (checkpoint refs and
+  retention audits), `/environment-security-record`,
+  `/tool-server-credential-store` (per-principal tool server credential
+  buckets).
+- SQLite integrity (Node): `/sqlite-integrity`, `/sqlite-corruption-marker`,
+  `/sqlite-corruption-watch`, `/sqlite-store-integrity`,
+  `/orchestration-store-quarantine`.
+- Runtime and packaging (Node): `/node-runtime` (supported Node range),
+  `/launch-path` (sanitized `PATH` for launched processes), `/source-watch`
+  (native watching with a bounded polling fallback), `/owned-dependency-installer`,
+  `/prebuilt-archive` (packaged release manifest and archive markers),
+  `/terminal-capability` (missing `node-pty` reasons).
+- Projections and formatting: `/thread-projection` (conversation to the portable
+  `@kontourai/thread` schema), `/usage-measurement` (measured tokens and cost,
+  and what was not reported), `/build-provenance` (build timestamp
+  presentation), `/portability` (guidance and MCP configuration export and
+  import helpers).
+- Browser and identifiers: `/return-focus` (focus restoration for dismissible
+  surfaces), `/native-shell-origin` (packaged shell origins), `/random-id`
+  (correlation ids outside a secure context), `/setup-import-bounds`.
+
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).

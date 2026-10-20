@@ -1,0 +1,7 @@
+{
+  "revision": "bbc84333bf60ee80c7762818f2298033af99ee49",
+
+  "notes": [
+    {"path":"scripts/CLAUDE.md","note":"scripts/CLAUDE.md imports scripts/AGENTS.md; that file gained one line routing marker conventions to docs/guides/code-hygiene.md. Nothing in scripts/CLAUDE.md changes.","inputs":["scripts/CLAUDE.md","scripts/AGENTS.md"]}
+  ]
+}

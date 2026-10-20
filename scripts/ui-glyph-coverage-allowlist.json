@@ -224,43 +224,13 @@
       "note": "Not a glyph of its own — the variation selector that puts the preceding character into emoji presentation."
     },
     {
-      "codepoint": "U+1F310",
-      "character": "🌐",
-      "category": "emoji"
-    },
-    {
       "codepoint": "U+1F389",
       "character": "🎉",
       "category": "emoji"
     },
     {
-      "codepoint": "U+1F3A8",
-      "character": "🎨",
-      "category": "emoji"
-    },
-    {
       "codepoint": "U+1F3C6",
       "character": "🏆",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F4C1",
-      "character": "📁",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F4CA",
-      "character": "📊",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F4DA",
-      "character": "📚",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F4F1",
-      "character": "📱",
       "category": "emoji"
     },
     {
@@ -271,26 +241,6 @@
     {
       "codepoint": "U+1F512",
       "character": "🔒",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F6E0",
-      "character": "🛠",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F916",
-      "character": "🤖",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F9E9",
-      "character": "🧩",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F9EA",
-      "character": "🧪",
       "category": "emoji"
     },
     {
