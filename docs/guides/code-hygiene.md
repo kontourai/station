@@ -70,7 +70,9 @@ records under `docs/reviews/`, `docs/strategy/`, `docs/adr/` and
 The comment scanner is not a parser. It handles Rust character literals and
 lifetimes, apostrophes inside YAML plain scalars, and YAML block scalars: the
 content of a `run:` or `script:` block is read as a shell script, and other
-block scalars are prose and are not scanned. A JavaScript regular-expression
+block scalars are prose and are not scanned. A block scalar ends at the first
+non-empty line indented less than its content, a comment line included, and
+its key may be quoted. A JavaScript regular-expression
 literal that contains a quote can still hide the rest of its line. A Markdown file that discusses the markers must put its examples in
 code spans or fences.
 
