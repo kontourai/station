@@ -1188,9 +1188,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         command: config.command,
         args: config.args,
         cwd,
-        // #3957: OpenCode's own tools write every edit; its client write is a
-        // redundant copy that cannot be refused safely (OpenCode 1.18.18 does
-        // not await it, so a refusal ends the engine). It is not offered.
+        // #3957: not offered, because OpenCode's own tools already write
+        // every edit; its client write would only be a redundant copy. The
+        // bridge refuses one it sends anyway (`fileMethodsOffered`).
         ...(approvalControl === 'station'
           ? {
               clientCapabilities: {

@@ -82,7 +82,7 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
 
 1. Receives the server-resolved ACP connection binding (the raw connection id never comes from the UI request)
 2. Spawns the configured command as a subprocess via `ACPProcess`
-3. Calls `connection.initialize()` with `clientCapabilities` (fs read/write, terminal)
+3. Calls `connection.initialize()` with `clientCapabilities`: terminal, plus fs read/write for every engine except OpenCode, which is offered no file methods ([why](#file-system-and-terminal-tools-station--runtime))
 4. For a fresh start, calls `connection.newSession()`. A restored Session uses
    its persisted resume cursor only after validating the connection identity
    and execution fingerprint, and that the engine advertises a way to
