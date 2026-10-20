@@ -3,6 +3,7 @@
  * processes into one supervisor process.
  */
 import { type ChildProcess, fork, type SendHandle } from 'node:child_process';
+import type { Socket } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import packageJson from '../package.json' with { type: 'json' };
 import { createNetCatcher } from './catcher.ts';
@@ -146,6 +147,30 @@ function createForkLauncher(options: {
         child.on('exit', () => options.registry.remove(pid));
       }
       child.on('exit', () => options.children.delete(child));
+      // Held connections sent to this generation, with their raw handles.
+      // Node queues a handle sent while an earlier one awaits the child's
+      // acknowledgement and drops that queue without calling back when the
+      // channel closes; the one in flight has already left its Socket (Node
+      // detaches `_handle` to send it) and is closed only on that
+      // acknowledgement. Either way one the generation never took would stay
+      // open here, so all are closed when it goes. Closing this process's
+      // copy of one it did take leaves the generation's own copy open. A
+      // generation is sent held connections only as it takes over, so this
+      // holds at most what one handoff held.
+      const adopting = new Map<Socket, { close(): void } | null>();
+      const closeAdopting = () => {
+        for (const [socket, raw] of adopting) {
+          try {
+            socket.destroy();
+            raw?.close();
+          } catch {
+            // Already closed.
+          }
+        }
+        adopting.clear();
+      };
+      child.on('disconnect', closeAdopting);
+      child.on('exit', closeAdopting);
       child.on('error', (error) =>
         options.log(`generation ${generation} process error: ${String(error)}`),
       );
@@ -168,6 +193,13 @@ function createForkLauncher(options: {
           if (!child.connected) {
             unsent();
             return;
+          }
+          if (message.type === 'connection.adopt' && handle) {
+            const socket = handle as Socket;
+            const raw = Reflect.get(socket, '_handle') as {
+              close(): void;
+            } | null;
+            adopting.set(socket, raw);
           }
           child.send(message, handle as SendHandle | undefined, (error) => {
             if (error) {

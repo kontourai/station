@@ -148,10 +148,12 @@ const CATCH_QUIET_CAP_MS = 1_000;
  */
 const HOLD_LIMIT_PER_LISTENER = 511;
 /**
- * A held connection still unclaimed this long after its catcher started is
- * closed. Longer than a handoff takes to reach a listening generation
- * (drain deadline, 10 s by default, then boot); a client still waiting
- * after a minute has usually given up.
+ * Held connections still unclaimed this long after their catcher started are
+ * closed, but only once the handoff that caught them has ended with no
+ * generation taking them (it fell back to crash restarts). While the handoff
+ * runs, a trial or the rollback is on its way, however long a live call
+ * extends the drain, so the deadline is checked again a period later; the
+ * count limit still bounds what is held meanwhile.
  */
 const HOLD_DEADLINE_MS = 60_000;
 
@@ -1020,7 +1022,11 @@ export class GenerationManager {
     this.armHoldDeadline();
   }
 
-  /** Past HOLD_LIMIT_PER_LISTENER, a listener's spares stop listening. */
+  /**
+   * Past HOLD_LIMIT_PER_LISTENER, a listener's spares stop listening. Only
+   * catchers in the list count: those being released are out of it, and
+   * uncapped, for up to CATCH_QUIET_CAP_MS while their quiet wait runs.
+   */
   private onCaught(name: string): void {
     const catchers = this.catchers.filter((c) => c.name === name);
     const held = catchers.reduce((sum, c) => sum + c.heldCount, 0);
@@ -1039,21 +1045,31 @@ export class GenerationManager {
     if (starts.length === 0) return;
     const due = Math.min(...starts) + HOLD_DEADLINE_MS - this.clock.now();
     this.holdTimer = this.clock.setTimeout(
-      () => {
-        this.holdTimer = null;
-        const now = this.clock.now();
-        const expired = this.catchers.filter(
-          (c) => now - (this.catcherSince.get(c) ?? 0) >= HOLD_DEADLINE_MS,
-        );
-        this.catchers = this.catchers.filter((c) => !expired.includes(c));
-        const dropped = this.dropCatchers(expired);
-        this.log(
-          `closed ${dropped} connection(s) held longer than ${HOLD_DEADLINE_MS}ms with no generation to take them`,
-        );
-        this.armHoldDeadline();
-      },
+      () => this.onHoldDeadline(),
       Math.max(0, due),
     );
+  }
+
+  private onHoldDeadline(): void {
+    this.holdTimer = null;
+    if (this.state === 'handoff') {
+      // A trial or the rollback is still on its way: look again later.
+      this.holdTimer = this.clock.setTimeout(
+        () => this.onHoldDeadline(),
+        HOLD_DEADLINE_MS,
+      );
+      return;
+    }
+    const now = this.clock.now();
+    const expired = this.catchers.filter(
+      (c) => now - (this.catcherSince.get(c) ?? 0) >= HOLD_DEADLINE_MS,
+    );
+    this.catchers = this.catchers.filter((c) => !expired.includes(c));
+    const dropped = this.dropCatchers(expired);
+    this.log(
+      `closed ${dropped} connection(s) held longer than ${HOLD_DEADLINE_MS}ms with no generation to take them`,
+    );
+    this.armHoldDeadline();
   }
 
   /** Closes catchers and destroys what they hold; returns how many. */

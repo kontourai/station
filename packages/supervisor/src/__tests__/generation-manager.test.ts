@@ -40,6 +40,8 @@ type Behavior = {
   ready?: boolean;
   /** Exit when drained. Default true. */
   exitOnDrain?: boolean;
+  /** Exit this long after `drain` instead (a live call keeping it). */
+  exitAfterDrainMs?: number;
   /** Ignore SIGTERM (only SIGKILL ends it). */
   ignoreTerm?: boolean;
   voiceSessions?: number;
@@ -163,7 +165,9 @@ class FakeGeneration implements GenerationProcess {
           type: 'drain.progress',
           voiceSessions: this.behavior.voiceSessions ?? 0,
         });
-        if (this.behavior.exitOnDrain !== false) this.exit(0, null);
+        const after = this.behavior.exitAfterDrainMs;
+        if (after !== undefined) setTimeout(() => this.exit(0, null), after);
+        else if (this.behavior.exitOnDrain !== false) this.exit(0, null);
       });
     }
   }
@@ -1248,21 +1252,49 @@ describe('GenerationManager', () => {
       await manager.stop();
     });
 
-    it('closes what it has held for the hold deadline with no generation to take it', async () => {
-      const { manager, lines, catchers } = setupCatching(
-        (_generation, entry) =>
-          entry === '/core/bad.js' ? { ready: false } : {},
+    it('holds through a drain a live call extends past the hold deadline, and delivers after promotion', async () => {
+      const drainMs = HOLD_DEADLINE_MS + 30_000;
+      const { manager, generations, catchers } = setupCatching((generation) =>
+        generation === 1 ? { voiceSessions: 1, exitAfterDrainMs: drainMs } : {},
       );
       await manager.start();
-      void manager.handoff({
-        entry: '/core/bad.js',
-        readinessTimeoutMs: HOLD_DEADLINE_MS * 2,
-      });
+      const handoff = manager.handoff({ entry: '/core/b.js' });
       await vi.advanceTimersByTimeAsync(0);
       expect(catchers).toHaveLength(2);
-      await vi.advanceTimersByTimeAsync(HOLD_DEADLINE_MS - 1);
+      await vi.advanceTimersByTimeAsync(drainMs - 1);
+      // Past the deadline, generation 1 still draining: nothing dropped.
+      expect(generations[0]?.exited).toBe(false);
       expect(heldConnections(catchers).some((c) => c.destroyed)).toBe(false);
-      expect(catchers.some(({ closed }) => closed)).toBe(false);
+      expect(await settle(handoff)).toMatchObject({
+        outcome: 'committed',
+        generation: 2,
+      });
+      expect(adopted(generations[1]).map(({ handle }) => handle)).toEqual(
+        heldConnections(catchers),
+      );
+      expect(heldConnections(catchers).some((c) => c.destroyed)).toBe(false);
+      await manager.stop();
+    });
+
+    it('closes what it holds at the deadline once the handoff has ended with no generation to take it', async () => {
+      // The trial fails, and so does every generation after it: the handoff
+      // ends in crash restarts with the connections still held.
+      const { manager, lines, catchers } = setupCatching((generation) =>
+        generation >= 2 ? { ready: false } : {},
+      );
+      await manager.start();
+      void manager.handoff({ entry: '/core/b.js', readinessTimeoutMs: 5_000 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(catchers).toHaveLength(2);
+      // At the first deadline the rollback generation is still on its way.
+      await vi.advanceTimersByTimeAsync(HOLD_DEADLINE_MS);
+      expect(manager.status().state).toBe('handoff');
+      expect(heldConnections(catchers).some((c) => c.destroyed)).toBe(false);
+      // It fails its readiness (60 s): crash restarts, and the next deadline
+      // closes what is held.
+      await vi.advanceTimersByTimeAsync(HOLD_DEADLINE_MS - 1);
+      expect(manager.status().state).toBe('restarting');
+      expect(heldConnections(catchers).some((c) => c.destroyed)).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
       expect(catchers.every(({ closed }) => closed)).toBe(true);
       expect(heldConnections(catchers).every((c) => c.destroyed)).toBe(true);

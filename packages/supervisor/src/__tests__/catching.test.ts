@@ -164,4 +164,42 @@ describe('connection catching during a handoff (real processes)', () => {
     expect(passedCounts(supervisor)).toEqual([]);
     expect((await getBoot(supervisor.port)).adoptedConnections).toBe(0);
   }, 120_000);
+
+  it('closes every held connection sent to a generation that dies before taking them', async () => {
+    const home = makeTempDir('sup-catch-unacked-');
+    const buildRoot = makeTempDir('sup-catch-unacked-build-');
+    const entry = realpathSync(writeCoreVariant(buildRoot, 'core', {}));
+    // Listens, then blocks past the supervisor's release (so the handles it
+    // is sent queue unacknowledged) and dies.
+    const dying = writeCoreVariant(buildRoot, 'dying-core', {
+      FAKE_CORE_SERVE_WITHOUT_READY: '1',
+      FAKE_CORE_BLOCK_THEN_DIE_MS: '2500',
+    });
+    const supervisor = await startSupervisor({ home, entry, env: CATCH_ON });
+    const load = startLoad(supervisor.port);
+    let stats: Awaited<ReturnType<typeof load.stop>> | undefined;
+    try {
+      await vi.waitFor(() => expect(load.stats.ok).toBeGreaterThan(20));
+      expect(
+        await supervisor.handoff({ entry: dying, readinessTimeoutMs: 10_000 }),
+        supervisor.output(),
+      ).toMatchObject({ outcome: 'rolled-back', generation: 3 });
+      // Several were sent to it, so all but the first queued in Node.
+      const sent = supervisor
+        .output()
+        .match(
+          /passed (\d+) connection\(s\) held during the handoff to generation 2/,
+        );
+      expect(Number(sent?.[1] ?? 0), supervisor.output()).toBeGreaterThan(1);
+      const servedBefore = load.stats.ok;
+      await vi.waitFor(() =>
+        expect(load.stats.ok).toBeGreaterThan(servedBefore + 20),
+      );
+    } finally {
+      stats = await load.stop();
+    }
+    // Each was closed when the generation died; none was left open for its
+    // client to wait out.
+    expect(stats.errors.TIMEOUT, supervisor.output()).toBeUndefined();
+  }, 120_000);
 });

@@ -20,6 +20,8 @@
  *   FAKE_CORE_EXIT_AFTER_READY=1    exit(1) in the same tick as reporting ready
  *   FAKE_CORE_IGNORE_DISCONNECT=1   keep running when the supervisor's IPC channel closes (a protocol violation)
  *   FAKE_CORE_CHILD_PID_FILE=<path> start a long-running child process and write its pid there
+ *   FAKE_CORE_BLOCK_THEN_DIE_MS=<n> after reporting listener.listening, block the event loop
+ *                                   for n ms (acknowledging no handle), then SIGKILL itself
  *   FAKE_CORE_PROTOCOL_1_0=1        speak protocol 1.0: no connection catching (parks without
  *                                   adoptsConnections, ignores listener.spares, closes an adopted
  *                                   connection as a stray handle)
@@ -129,6 +131,18 @@ server.on('connection', (/** @type {net.Socket} */ socket) => {
 
 function reportListening() {
   if (!protocol10) send({ type: 'listener.listening', name: 'api' });
+  const blockMs = Number(process.env.FAKE_CORE_BLOCK_THEN_DIE_MS ?? 0);
+  if (blockMs > 0) {
+    // Let the message go out, then hold the loop: handles the supervisor
+    // sends meanwhile are never acknowledged.
+    setTimeout(() => {
+      const until = Date.now() + blockMs;
+      while (Date.now() < until) {
+        // Blocked.
+      }
+      process.kill(process.pid, 'SIGKILL');
+    }, 0);
+  }
 }
 
 function reportReady() {
