@@ -41,7 +41,6 @@ import {
   validateCommonPayload,
   validateReleaseManifestPayloadV2,
 } from '../packages/shared/src/release-manifest.mjs';
-import { readPortableNodeRuntime } from './lib/portable-server-archive.mjs';
 
 const RELEASE = '(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)';
 // Schema v1 (stable/preview with a macOS cask) keeps its original grammar.
@@ -71,6 +70,26 @@ function optionalOption(name) {
 
 function readJson(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));
+}
+
+const PORTABLE_NODE_RUNTIME = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../config/portable-server-node-runtime.json',
+);
+
+/**
+ * The Node.js version the portable archive build bundles. Read here rather
+ * than through lib/portable-server-archive.mjs: this script runs from the
+ * release policy checkout against an older tag's install, and that module
+ * would pull build-time packages into the policy import graph (#2676).
+ */
+function pinnedPortableNodeVersion() {
+  const config = readJson(PORTABLE_NODE_RUNTIME);
+  if (config?.schemaVersion !== 1 || typeof config.version !== 'string')
+    throw new Error(
+      'config/portable-server-node-runtime.json must declare schemaVersion 1 and a version',
+    );
+  return config.version;
 }
 
 function validateArtifact(kind, artifact, name) {
@@ -416,7 +435,7 @@ try {
     // config/portable-server-node-runtime.json, so the manifest states that
     // version. --node-version stays accepted for the workflows that pass it,
     // and is refused when it names anything else.
-    const pinnedNodeVersion = readPortableNodeRuntime().version;
+    const pinnedNodeVersion = pinnedPortableNodeVersion();
     const requestedNodeVersion = optionalOption('--node-version');
     if (
       requestedNodeVersion !== undefined &&
