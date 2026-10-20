@@ -71,8 +71,13 @@
 
 .appearance-mode__option {
   position: relative;
+  display: inline-flex;
   flex: 1;
+  align-items: center;
+  justify-content: center;
   min-width: 4.5rem;
+  min-height: 32px;
+  box-sizing: border-box;
   padding: var(--k-space-1) var(--k-space-3);
   border-radius: var(--k-radius-sm);
   color: var(--k-text-muted);
