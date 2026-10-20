@@ -13,8 +13,11 @@ This records the whole program direction. The foundation supplies contracts,
 configuration, migration, policy, monthly Full identity, CLI status/choice, and
 disclosure inventories and per-publisher Settings controls. The daily sender lane
 adds completed-day Lite pings, the bounded local ledger, action-bound feedback and
-CLI/log notices. Publisher-specific consent UI, plugin publishers, receiver
-changes, dashboards, release injection and deployment remain separate lanes. This decision does not assert that any of them is deployed.
+CLI/log notices. The UI lane adds one usage-sharing choice, current-revision author consent, ledger
+presentation, and optional lowering reasons. Official release workflows can inject
+the configured author endpoint. Plugin publishers, receiver changes, dashboards,
+endpoint enablement and deployment remain separate lanes. This decision does not
+assert that any of them is deployed.
 The numbered ADR directory is frozen; new decisions use this topic-keyed record.
 
 ## Consent and publishers
@@ -103,7 +106,8 @@ means no feedback transmission; it must not create another background signal.
 The daily sender records sent payloads and coalesced dropped-observation counts
 with publisher, tier, outcome and reason in a local ledger. It retains at most
 30 days and 5 MiB, evicting oldest first, and is exposed through an authenticated
-API and `station telemetry outbox`. Settings presentation is a later UI lane.
+API and `station telemetry outbox`. Settings presents the latest 50 records per publisher, with sent JSON and
+reason/count-only presentation for suppressed or dropped records.
 `station telemetry status` and `station telemetry set <publisher> <tier>` use the
 running Station's authenticated APIs and report effective policy reasons.
 
@@ -228,11 +232,12 @@ remain separate from local source/tests and from this decision's acceptance.
 
 ## Consent repair after foundation review
 
-Settings exposes each built-in publisher's saved choice, with Off always
+Settings renders each status publisher's saved choice, with Off always
 available. Effective resolution is shown separately, including DO_NOT_TRACK
-and Full awaiting acknowledgement. Declining Full writes operator Off before
-acknowledging the inventory; acknowledging alone must not turn a pending saved
-Full choice into consent after an Off decision.
+and Full awaiting acknowledgement. The current combined Don't share action saves
+both built-in destinations Off without acknowledging Detailed. The legacy
+disclosure path retains its write-Off-before-acknowledge repair; acknowledging
+alone must not turn a pending saved Full choice into consent after an Off decision.
 
 Environment and baked defaults are policy, never explicit consent. Even
 `STATION_TELEMETRY_TIER=full` and legacy environment `true` resolve to at most
@@ -302,3 +307,30 @@ optional fixed-enum reason, sent once before the lower choice is applied,
 including Off. Standalone feedback requires a lowering within 10 minutes and is
 limited to one per publisher per UTC day, sharing that budget with inline
 tier-lowering reasons. DNT permits neither path.
+
+### Usage sharing presentation
+
+One first-run dialog presents Don't share, Anonymous usage counts (the default),
+and Detailed usage to help improve Station. It covers Kontour and a configured
+additional endpoint together; plugin destinations remain outside first-run.
+Closing or Not now keeps the current choice and records the shown notice, so
+anonymous counts remain suppressed until a visibly presented prompt is explicitly
+acted on. Merely viewing it or Privacy & sharing records nothing. Save persists
+the choice first, then records the notice; Off stays blocked throughout. Printed
+CLI/headless notices retain their existing shown semantics.
+DNT explains that nothing is shared and that the choice applies if it is disabled;
+existing notice-write and acknowledgement restrictions still apply.
+
+Detailed begins with a readable summary. The complete field definitions remain
+under collapsed Technical details and acknowledgement binds the same server
+revision. Saving Detailed acknowledges the current destination and revision before
+saving the preference. The config route admits a new Kontour Full preference only
+when the runtime confirms that acknowledgement; absent capability refuses it.
+DNT or an absent destination can retain a pending preference without emission.
+Agent and paired-device authority checks remain independent of acknowledgement.
+
+Privacy & sharing uses the same combined primary choice, staged behind the
+standard Save/Discard actions. Advanced keeps independent destination choices and
+optional fixed-enum feedback. Skip sends nothing, and DNT offers no reason prompt.
+Registry registration/storage remains a separate owner; presentation does not
+register third-party destinations.

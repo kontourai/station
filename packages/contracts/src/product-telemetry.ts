@@ -22,6 +22,8 @@ export interface TelemetryTierResolution {
 /** A publisher's effective resolution alongside its separately saved choice. */
 export interface TelemetryPublisherStatus extends TelemetryTierResolution {
   userChoice?: TelemetryTier;
+  /** Absent on older servers; consumers must wait for explicit availability. */
+  fullAvailable?: boolean;
 }
 
 /** Policies affect defaults only; an identifying stream is never a default. */

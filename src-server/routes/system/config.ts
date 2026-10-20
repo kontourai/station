@@ -262,6 +262,7 @@ export function createConfigRoutes(
     publisher: 'kontour' | 'operator',
     reason?: TelemetryFeedbackReason,
   ) => Promise<void>,
+  canSaveAuthorFull?: () => Promise<boolean>,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -832,10 +833,11 @@ export function createConfigRoutes(
               throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             if (
               next.telemetryTier?.kontour === 'full' &&
-              current.telemetryTier?.kontour !== 'full'
+              current.telemetryTier?.kontour !== 'full' &&
+              !(await canSaveAuthorFull?.())
             )
               throw new Error(
-                'Kontour Full is unavailable until a Kontour Full disclosure exists. Choose Off or Lite.',
+                "The current confirmation for sharing detailed usage with Kontour is missing. Review what's included and save your choice.",
               );
           }
           // A semantic contribution change needs the BOUND-OPERATOR verdict,

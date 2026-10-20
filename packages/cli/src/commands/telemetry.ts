@@ -1,7 +1,7 @@
 import { closeSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import {
   TELEMETRY_TIERS,
-  type TelemetryTierResolution,
+  type TelemetryPublisherStatus,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
   configureApiCredential,
@@ -272,10 +272,6 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       throw new Error(
         'Usage: station telemetry set <kontour|operator> <off|lite|full>',
       );
-    if (publisher === 'kontour' && tier === 'full')
-      throw new Error(
-        'Kontour Full is unavailable until a Kontour Full disclosure exists. Choose Off or Lite.',
-      );
     if (parsed.flags.offline)
       throw new Error(
         'Telemetry choices require a running Station; use its authenticated configuration API.',
@@ -316,7 +312,7 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       body: JSON.stringify({ telemetryTier: { [publisher]: tier } }),
     });
   const status = await requestJson<{
-    publishers: Record<'kontour' | 'operator', TelemetryTierResolution>;
+    publishers: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   }>(resolved.apiBase, '/api/usage-telemetry/status');
   if (!('publishers' in status))
     throw new Error('Telemetry status unavailable');
@@ -324,9 +320,9 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
   else
     for (const [name, value] of Object.entries(status.publishers))
       console.log(
-        `${name}: ${value.tier} (${value.reason})${
+        `${name === 'kontour' ? 'Kontour' : 'Additional destination'}: ${{ off: "Don't share", lite: 'Anonymous usage counts', full: 'Detailed usage to help improve Station' }[value.tier]} (${value.tier})${value.reason === 'DNT' ? '; Do Not Track is on, so nothing is shared' : name === 'kontour' && value.fullAvailable === false ? '; This build has no Station usage destination, so nothing is sent to Kontour' : value.reason === 'disclosure' ? '; Detailed sharing is waiting for your review in Privacy & sharing' : ''}${
           name === 'operator' && value.reason === 'environment'
-            ? '; environment defaults cannot enable Full. Choose Full in config (station telemetry set operator full) and acknowledge the disclosure in Settings to send Full events.'
+            ? '; environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.'
             : ''
         }`,
       );

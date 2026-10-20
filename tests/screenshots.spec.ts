@@ -2,10 +2,12 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
-import { expect, type Page, type Route } from '@playwright/test';
+import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
+import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
 import { contrastRatio } from './helpers/color-contrast';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
+import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
@@ -1758,57 +1760,201 @@ interface Screen {
   expectSkeleton?: boolean;
 }
 
+async function assertSharingRowRhythm(surface: Locator) {
+  const labels = surface.locator(
+    '.usage-telemetry-disclosure__choices > label',
+  );
+  await expect(labels).toHaveCount(3);
+  const boxes = await labels.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const { top, height, bottom } = node.getBoundingClientRect();
+      return { top, height, bottom };
+    }),
+  );
+  for (const box of boxes) expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(
+    Math.max(...boxes.map((box) => box.height)) -
+      Math.min(...boxes.map((box) => box.height)),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(boxes[1].top - boxes[0].bottom - (boxes[2].top - boxes[1].bottom)),
+  ).toBeLessThanOrEqual(1);
+  for (const label of await labels.all())
+    await expect(label.locator('small')).toBeVisible();
+}
+
 function telemetryConsentScreens(): Screen[] {
   return [DESKTOP, MOBILE].flatMap((viewport) =>
-    (['settings-dnt', 'pending-full', 'dialog-dnt'] as const).map((mode) => {
-      const pending = mode === 'pending-full';
-      const dialogVisible = mode !== 'settings-dnt';
+    (
+      [
+        'dialog-default',
+        'dialog-mixed',
+        'dialog-dnt',
+        'dialog-endpoint',
+        'dialog-detailed',
+        'dialog-light',
+        'settings',
+        'settings-dnt',
+        'outbox',
+        'feedback',
+        ...(viewport === MOBILE
+          ? (['settings-dnt-after-fix', 'settings-detailed-expanded'] as const)
+          : []),
+      ] as const
+    ).map((mode) => {
+      const dialogVisible = mode.startsWith('dialog-');
+      const dnt = mode.includes('dnt');
+      const endpoint =
+        mode === 'dialog-mixed' ||
+        mode === 'dialog-endpoint' ||
+        mode === 'dialog-detailed' ||
+        mode === 'dialog-dnt' ||
+        mode === 'settings-dnt-after-fix' ||
+        mode === 'settings-detailed-expanded';
       const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
       let ownPage: Page;
       const device = viewport === MOBILE ? 'mobile' : 'desktop';
       return {
         name: `telemetry-${mode}-${device}`,
-        title: `Telemetry — ${mode} (${device})`,
+        title: `Usage sharing — ${mode} (${device})`,
         path: '/settings?view=telemetry',
         viewport,
         beforeGoto: async (page) => {
           ownPage = page;
-          const configPattern = /\/config\/app(?:\?.*)?$/;
-          const disclosurePattern = /\/api\/usage-telemetry\/disclosure$/;
-          const configHandler = async (route: Route) => {
-            const response = await route.fetch();
-            const body = await response.json();
-            body.data.telemetryTier = { kontour: 'off', operator: 'full' };
-            delete body.data.telemetryEnabled;
-            // This fixture represents an upgraded home, outside guided setup.
-            delete body.data.firstRun;
-            await route.fulfill({ response, json: body });
-          };
-          const disclosureHandler = async (route: Route) => {
-            const response = await route.fetch();
-            const body = await response.json();
-            body.data.acknowledged = !dialogVisible;
-            body.data.telemetryEnabled = false;
-            body.data.endpointConfigured = pending || mode === 'dialog-dnt';
-            body.data.publishers = {
-              kontour: {
-                tier: 'off',
-                reason: pending ? 'user' : 'DNT',
-                userChoice: 'off',
-                source: 'config',
-              },
-              operator: {
-                tier: pending ? 'lite' : 'off',
-                reason: pending ? 'disclosure' : 'DNT',
-                userChoice: 'full',
-                source: 'config',
-              },
+          const apiBase = resolveE2EApiBase();
+          const request = createAuthenticatedE2ERequest(page.request);
+          const read = async (path: string) => {
+            const response = await request.get(new URL(path, apiBase).href);
+            expect(
+              response.ok(),
+              `Telemetry gallery prerequisite ${path}`,
+            ).toBe(true);
+            const body = (await response.json()) as {
+              success: boolean;
+              data: Record<string, unknown>;
             };
-            await route.fulfill({ response, json: body });
+            expect(body.success).toBe(true);
+            expect(body.data).toBeTruthy();
+            return body;
+          };
+          const [configSnapshot, disclosureSnapshot, statusSnapshot] =
+            await Promise.all([
+              read('/config/app'),
+              read('/api/usage-telemetry/disclosure'),
+              read('/api/usage-telemetry/status'),
+            ]);
+          expect(typeof disclosureSnapshot.data.inventoryRevision).toBe(
+            'string',
+          );
+          expect(typeof statusSnapshot.data.liteInventoryRevision).toBe(
+            'string',
+          );
+          const choices = {
+            kontour: mode === 'dialog-mixed' ? 'off' : 'lite',
+            operator: 'lite',
+          } as const;
+          const publishers = {
+            kontour: {
+              tier: dnt ? 'off' : choices.kontour,
+              reason: dnt ? 'DNT' : 'user',
+              userChoice: choices.kontour,
+              fullAvailable: false,
+              source: 'config',
+            },
+            operator: {
+              tier: dnt ? 'off' : 'lite',
+              reason: dnt ? 'DNT' : 'user',
+              userChoice: 'lite',
+              fullAvailable: true,
+              source: 'config',
+            },
           };
           routes.push(
-            [configPattern, configHandler],
-            [disclosurePattern, disclosureHandler],
+            [
+              /\/config\/app(?:\?.*)?$/,
+              async (route) => {
+                const body = structuredClone(configSnapshot);
+                body.data.telemetryTier = choices;
+                body.data.productTelemetryEndpoint = endpoint
+                  ? 'https://counts.example.test/events'
+                  : '';
+                delete body.data.telemetryEnabled;
+                delete body.data.firstRun;
+                await route.fulfill({ json: body });
+              },
+            ],
+            [
+              /\/api\/usage-telemetry\/disclosure$/,
+              async (route) => {
+                const body = structuredClone(disclosureSnapshot);
+                Object.assign(body.data, {
+                  acknowledged: !dialogVisible,
+                  telemetryEnabled: false,
+                  endpointConfigured: endpoint,
+                  publishers,
+                });
+                await route.fulfill({ json: body });
+              },
+            ],
+            [
+              /\/api\/usage-telemetry\/status$/,
+              async (route) => {
+                const body = structuredClone(statusSnapshot);
+                body.data.publishers = publishers;
+                body.data.liteNotices = dialogVisible
+                  ? {}
+                  : Object.fromEntries(
+                      ['kontour', 'operator'].map((publisher) => [
+                        publisher,
+                        {
+                          publisher,
+                          inventoryRevision: body.data.liteInventoryRevision,
+                          shownAt: '2026-10-19T00:00:00Z',
+                        },
+                      ]),
+                    );
+                await route.fulfill({ json: body });
+              },
+            ],
+            [
+              /\/api\/usage-telemetry\/lite-notices$/,
+              async (route) => {
+                await route.fulfill({ json: { success: true } });
+              },
+            ],
+            [
+              /\/api\/usage-telemetry\/outbox\?publisher=.+$/,
+              async (route) => {
+                await route.fulfill({
+                  json: {
+                    success: true,
+                    data: route.request().url().includes('publisher=kontour')
+                      ? []
+                      : [
+                          {
+                            publisher: 'operator',
+                            tier: 'lite',
+                            recordedAt: '2026-10-19T08:00:00Z',
+                            outcome: 'dropped',
+                            reason: 'notice',
+                            payload: { event: 'telemetry_dropped', count: 3 },
+                          },
+                          {
+                            publisher: 'operator',
+                            tier: 'lite',
+                            recordedAt: '2026-10-19T08:01:00Z',
+                            outcome: 'sent',
+                            reason: 'acknowledged',
+                            payload: {
+                              event: 'station_daily',
+                              platform: 'darwin',
+                            },
+                          },
+                        ],
+                  },
+                });
+              },
+            ],
           );
           for (const [pattern, handler] of routes)
             await page.route(pattern, handler);
@@ -1821,44 +1967,244 @@ function telemetryConsentScreens(): Screen[] {
         afterGoto: async (page) => {
           if (dialogVisible) {
             const dialog = page.getByRole('dialog', {
-              name: 'What Station sends',
+              name: 'Usage sharing',
             });
             await expect(dialog).toBeVisible();
-            await expect(
-              dialog.getByRole('button', {
-                name: pending
-                  ? 'Turn off usage telemetry'
-                  : 'Save operator choice as Full',
-              }),
-            ).toBeVisible();
-            if (!pending) {
-              for (const tier of ['Off', 'Lite', 'Full'])
-                await expect(
-                  dialog.getByRole('radio', { name: tier, exact: true }),
-                ).toBeVisible();
+            if (mode !== 'dialog-mixed') {
+              await expect(
+                dialog.getByRole('radio', {
+                  name: 'Anonymous usage counts',
+                  exact: true,
+                }),
+              ).toBeChecked();
+              await expect(
+                dialog.getByRole('radio', {
+                  name: 'Anonymous usage counts',
+                  exact: true,
+                }),
+              ).toBeFocused();
             }
-            await expect(
-              dialog
-                .getByText(
-                  pending
-                    ? /Your saved operator choice is Full, awaiting acknowledgement/
-                    : /DO_NOT_TRACK is active: nothing is sent/,
-                )
-                .first(),
-            ).toBeVisible();
-          } else {
-            const control = page.getByRole('combobox', {
-              name: 'Operator telemetry',
+            for (const name of [
+              "Don't share",
+              'Anonymous usage counts',
+              'Detailed usage to help improve Station',
+            ])
+              await expect(
+                dialog.getByRole('radio', { name, exact: true }),
+              ).toBeVisible();
+            if (dnt)
+              await expect(
+                dialog.getByRole('region', { name: 'Do Not Track' }),
+              ).toBeVisible();
+            if (endpoint)
+              await expect(
+                dialog.getByText('Also shared with: counts.example.test'),
+              ).toBeVisible();
+            if (mode === 'dialog-detailed') {
+              await dialog
+                .getByRole('radio', {
+                  name: 'Detailed usage to help improve Station',
+                })
+                .check();
+              const included = dialog.getByRole('region', {
+                name: "What's included",
+              });
+              await expect(
+                included.getByText(
+                  /A random installation code changes monthly/,
+                ),
+              ).toBeVisible();
+              const technical = included.locator(
+                '.usage-telemetry-disclosure__technical',
+              );
+              await expect(technical).not.toHaveAttribute('open', '');
+              await expect(technical.locator('li').first()).not.toBeVisible();
+              await technical
+                .getByText('Technical details', { exact: true })
+                .click();
+              await expect(technical.locator('li').first()).toBeVisible();
+              await technical
+                .getByText('Technical details', { exact: true })
+                .click();
+              await expect(technical.locator('li').first()).not.toBeVisible();
+            }
+            if (mode === 'dialog-light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            await assertSharingRowRhythm(dialog);
+            if (mode === 'dialog-mixed') {
+              await expect(
+                dialog.getByText(/current choices differ/),
+              ).toBeVisible();
+              for (const radio of await dialog.getByRole('radio').all())
+                await expect(radio).not.toBeChecked();
+              const first = dialog.getByRole('radio', {
+                name: "Don't share",
+                exact: true,
+              });
+              await expect(first).toBeFocused();
+              await first.press('Enter');
+              for (const radio of await dialog.getByRole('radio').all())
+                await expect(radio).not.toBeChecked();
+              await expect(
+                dialog.getByRole('button', {
+                  name: 'Save choice',
+                  exact: true,
+                }),
+              ).toBeDisabled();
+              await expect(
+                dialog.getByRole('button', { name: 'Not now', exact: true }),
+              ).toBeInViewport();
+              return;
+            }
+            for (const name of ['Not now', 'Save choice']) {
+              const button = dialog.getByRole('button', {
+                name,
+                exact: true,
+              });
+              await expect(button).toBeInViewport();
+              await button.click({ trial: true });
+            }
+            return;
+          }
+          if (dnt && endpoint) {
+            const dialog = page.getByRole('dialog', {
+              name: 'Usage sharing',
             });
-            await control.scrollIntoViewIfNeeded();
-            await expect(control).toHaveValue('full');
+            await dialog
+              .getByRole('button', { name: 'Not now', exact: true })
+              .click();
+            await expect(dialog).toHaveCount(0);
+          }
+          const choice = page
+            .getByRole('region', { name: 'Usage sharing choices' })
+            .getByRole('radio', {
+              name: 'Anonymous usage counts',
+              exact: true,
+            });
+          await choice.scrollIntoViewIfNeeded();
+          await expect(choice).toBeChecked();
+          const main = page.getByRole('region', {
+            name: 'Usage sharing choices',
+          });
+          await expect(
+            main.getByText('Changes wait until you select Save.'),
+          ).toBeVisible();
+          await expect(
+            main.getByText(/You can change this in Privacy & sharing/),
+          ).toHaveCount(0);
+          await assertSharingRowRhythm(main);
+          if (
+            mode === 'settings-dnt-after-fix' ||
+            mode === 'settings-detailed-expanded'
+          ) {
+            await main
+              .getByRole('radio', {
+                name:
+                  mode === 'settings-dnt-after-fix'
+                    ? "Don't share"
+                    : 'Detailed usage to help improve Station',
+                exact: true,
+              })
+              .check();
+            const save = page.getByRole('button', {
+              name: 'Save',
+              exact: true,
+            });
+            await expect(save).toBeInViewport();
+            await save.click({ trial: true });
+            if (mode === 'settings-dnt-after-fix') {
+              await main
+                .getByText('Changes wait until you select Save.')
+                .hover();
+              await page.mouse.wheel(0, 180);
+              const explanation = main.getByText(
+                'Feature use. Monthly code. No account or content.',
+                { exact: true },
+              );
+              await expect
+                .poll(async () => {
+                  const [text, bar] = await Promise.all([
+                    explanation.boundingBox(),
+                    page.locator('.settings__save-pill').boundingBox(),
+                  ]);
+                  if (!text || !bar)
+                    throw new Error(
+                      'Choice description or Save bar did not render.',
+                    );
+                  return text.y + text.height <= bar.y - 4;
+                })
+                .toBe(true);
+            }
+            if (mode === 'settings-detailed-expanded') {
+              const included = main.getByRole('region', {
+                name: "What's included",
+              });
+              await included
+                .getByRole('heading', { name: "What's included" })
+                .hover();
+              await page.mouse.wheel(0, 600);
+              const confirmation = included.getByText(
+                /Review what's included, then select Save/,
+              );
+              await expect(confirmation).toBeVisible();
+              await expect
+                .poll(async () => {
+                  const [text, bar] = await Promise.all([
+                    confirmation.boundingBox(),
+                    page.locator('.settings__save-pill').boundingBox(),
+                  ]);
+                  if (!text || !bar)
+                    throw new Error(
+                      'Detailed confirmation or Save bar did not render.',
+                    );
+                  return text.y + text.height <= bar.y - 4;
+                })
+                .toBe(true);
+              await expect(
+                included.locator('.usage-telemetry-disclosure__technical'),
+              ).not.toHaveAttribute('open', '');
+            }
+          }
+          if (dnt)
             await expect(
-              page.getByText(/Effective: Off — DO_NOT_TRACK is active/).first(),
+              page.getByRole('region', { name: 'Do Not Track' }),
             ).toBeVisible();
+          if (mode === 'outbox' || mode === 'feedback') {
+            await page
+              .locator(
+                '[data-catalog-id="usage-telemetry"] > details > summary',
+              )
+              .click();
+            if (mode === 'feedback') {
+              await page
+                .getByRole('combobox', { name: 'Operator telemetry' })
+                .selectOption('off');
+              await expect(
+                page.getByRole('heading', {
+                  name: /Changing sharing with Operator/,
+                }),
+              ).toBeFocused();
+              await page
+                .locator('.telemetry-feedback')
+                .scrollIntoViewIfNeeded();
+            } else {
+              await page
+                .getByText('What was sent to Operator', { exact: true })
+                .click();
+              const outbox = page.getByRole('region', {
+                name: 'What was sent to Operator',
+              });
+              await outbox.getByText('View sent payload JSON').click();
+              await outbox.scrollIntoViewIfNeeded();
+              await expect(outbox.locator('pre')).toContainText(
+                'station_daily',
+              );
+            }
           }
         },
         cleanup: async () => {
-          // Each route belongs only to this gallery state.
           for (const [pattern, handler] of routes)
             await ownPage.unroute(pattern, handler);
         },

@@ -11,6 +11,7 @@ import {
   type ProductTelemetryObservation,
   STATION_DAILY_FIELDS,
   type TelemetryFeedback,
+  type TelemetryLiteNoticeReceipt,
   type TelemetryOutboxEntry,
 } from '@kontourai/station-contracts/product-telemetry';
 import type {
@@ -359,16 +360,36 @@ export class UsageTelemetryService {
   get endpointConfigured(): boolean {
     return this.endpoint !== undefined;
   }
+  async canSaveAuthorFull(): Promise<boolean> {
+    await this.author?.loadDisclosureReceipt();
+    return (
+      !this.author ||
+      this.resolvedConfiguration().publishers.kontour.reason === 'DNT' ||
+      this.author.hasCurrentDisclosureReceipt
+    );
+  }
   async telemetryStatus(): Promise<
     ResolvedTelemetryConfiguration & {
+      liteNotices: Partial<
+        Record<'kontour' | 'operator', TelemetryLiteNoticeReceipt>
+      >;
       liteInventoryRevision: string;
       liteInventory: typeof STATION_DAILY_FIELDS;
       fullInventoryRevision: string;
     }
   > {
     await this.loadDisclosureReceipt();
+    const resolved = this.resolvedConfiguration();
     return {
-      ...this.resolvedConfiguration(),
+      ...resolved,
+      publishers: {
+        kontour: {
+          ...resolved.publishers.kontour,
+          fullAvailable: !!resolved.authorEndpoint,
+        },
+        operator: { ...resolved.publishers.operator, fullAvailable: true },
+      },
+      liteNotices: this.publishers.local.notices(),
       liteInventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
       liteInventory: STATION_DAILY_FIELDS,
       fullInventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
@@ -383,12 +404,19 @@ export class UsageTelemetryService {
     envelope: string;
     acknowledgementProtocol: number;
     endpointConfigured: boolean;
+    additionalHost?: string;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
     publishers: ReturnType<typeof resolveTelemetryConfiguration>['publishers'];
   }> {
     await this.loadDisclosureReceipt();
     const resolved = this.resolvedConfiguration();
+    const additionalHost =
+      this.publisher === 'operator' &&
+      this.endpoint &&
+      URL.canParse(this.endpoint)
+        ? new URL(this.endpoint).host
+        : undefined;
     if (publisher === 'kontour' && this.publisher === 'operator') {
       if (!this.author)
         throw new Error('Author telemetry destination is unconfigured.');
@@ -401,6 +429,7 @@ export class UsageTelemetryService {
       ...(this.publisher === 'kontour'
         ? { publisher: 'kontour' as const, destination: this.endpoint }
         : {}),
+      ...(additionalHost ? { additionalHost } : {}),
       acknowledged: this.hasCurrentDisclosureReceipt,
       inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       events: USAGE_TELEMETRY_EVENTS,

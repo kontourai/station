@@ -2320,9 +2320,9 @@ describe('lifecycle instance state', () => {
       });
       expect(
         stderr.mock.calls.filter(([message]) =>
-          String(message).includes('Lite sends'),
+          String(message).includes('Station usage sharing:'),
         ),
-      ).toHaveLength(fresh ? 2 : 0);
+      ).toHaveLength(fresh ? 1 : 0);
     },
   );
 

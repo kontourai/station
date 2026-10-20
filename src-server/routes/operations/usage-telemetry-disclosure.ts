@@ -51,6 +51,13 @@ export function createUsageTelemetryDisclosureRoutes(
         { success: false, error: { code: 'telemetry_publisher_invalid' } },
         400,
       );
+    const rawLimit = c.req.query('limit');
+    const limit = rawLimit === undefined ? 50 : Number(rawLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+      return c.json(
+        { success: false, error: { code: 'telemetry_outbox_limit_invalid' } },
+        400,
+      );
     const service = resolve();
     if (!service)
       return c.json(
@@ -58,7 +65,10 @@ export function createUsageTelemetryDisclosureRoutes(
         503,
       );
     c.header('Cache-Control', 'private, no-store');
-    return c.json({ success: true, data: await service.outbox(publisher) });
+    return c.json({
+      success: true,
+      data: (await service.outbox(publisher)).slice(-limit),
+    });
   });
   app.post('/feedback', async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
@@ -113,6 +123,11 @@ export function createUsageTelemetryDisclosureRoutes(
     if (body.inventoryRevision !== status.liteInventoryRevision)
       return c.json(
         { success: false, error: { code: 'telemetry_notice_changed' } },
+        409,
+      );
+    if (status.publishers[body.publisher].reason === 'DNT')
+      return c.json(
+        { success: false, error: { code: 'telemetry_notice_DNT' } },
         409,
       );
     await service.recordLiteNotice(body.publisher, body.inventoryRevision);

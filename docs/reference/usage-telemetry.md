@@ -2,22 +2,75 @@
 
 Station product telemetry is server-side only and sends no prompts, paths, repository names, hostnames, branches, account identities, or other free text. It does not read third-party vendor configuration or credential homes.
 
-Settings → Telemetry offers separate Kontour and Operator Off/Lite/Full
-choices. Off is always available. Effective state and its reason are shown
-separately from the saved choice: DO_NOT_TRACK forces Off, and a saved Full
-choice waits at Lite until the current disclosure is acknowledged. **Turn
-off usage telemetry** saves operator Off before acknowledging. Resetting
-Station settings preserves these choices. The current Settings control keeps
-Kontour Full unavailable until the UI lane connects its separate author disclosure;
-the server exposes that destination-bound disclosure API.
+First run asks one usage-sharing question, with three equally presented choices.
+A fresh install preselects Anonymous usage counts. Reopened prompts use the
+existing saved choices, including a Detailed preference awaiting renewed
+confirmation. If the two destinations differ, no option is selected and Save
+is disabled until an option is chosen; Not now keeps the separate choices.
+Initial keyboard focus goes to the selected radio, or the first radio when
+none is selected. If startup is still covering the app, that focus is applied
+after the launch dialog closes. Background section navigation yields to the
+open sharing dialog. Settings → Privacy & sharing uses the same labels:
 
-DO_NOT_TRACK itself leaves saved choices unchanged. Under DNT the disclosure
-offers visible Off, Lite, and Full radio choices and a **Save operator choice
-as** action for the selected tier. Saving replaces the operator tier without
-acknowledging; DNT keeps telemetry Off. Save closes the dialog and remembers the
-current revision for this host across reloads while DNT remains active. Removing
-DNT re-prompts only a saved Full choice awaiting confirmation; Off and Lite need
-no acknowledgement.
+| Display label | Config/API/CLI value | Meaning |
+| --- | --- | --- |
+| Don't share | `off` | No automatic usage sharing. |
+| Anonymous usage counts | `lite` | One daily aggregate, without an installation ID, account identity or content. A current shown-notice record is required. |
+| Detailed usage to help improve Station | `full` | Classified usage events with a monthly rotating installation code. Selecting this choice shows What's included; saving acknowledges that displayed revision before enabling detailed sharing. |
+
+Each choice has a short explanation and the same row spacing. Detailed's
+**What's included** begins with a short list: app/build and device information,
+feature and connection outcomes, a destination-specific monthly code, and the
+account/content/path information that is never collected. The full server-owned
+field definitions remain available in a nested, initially collapsed
+**Technical details** disclosure. Its position does not change the revision
+that Save acknowledges.
+
+Settings changes are drafts, not saves on selection. Choosing an option reveals
+the standard **Save / Discard** bar. Detailed shows the same inline explanation
+as first run and says to select **Save** to confirm. Only that Save action sends
+the required acknowledgements and writes the choice; the Settings intro does
+not send users back to the page they are already on.
+
+The primary choice applies to Kontour and the configured additional destination.
+Saving Detailed acknowledges each configured built-in destination separately
+before storing `full` for both. Kontour's acknowledgement is bound to its
+build-provided address as well as the displayed definition revision. Without a
+Kontour address, its stored choice cannot produce traffic; a newly configured
+or changed address requires review again. An additional configured endpoint is introduced as **Also shared with:
+&lt;host&gt;**, without its path, credentials or query. The disclosure projects only the additional host for environment-configured addresses too; full addresses stay out of that response. Third-party destinations
+are excluded from first run. Their separate controls, existing built-in choices,
+connection details and local history live in the collapsed **Advanced** section.
+Advanced retains independent choices and the same three option labels. Importing a `full` setting does not acknowledge unseen details. Settings requires an explicit Detailed choice bound to the displayed revision before it creates that acknowledgement; a changed revision requires choosing Detailed again.
+
+**Not now**, close, Escape and backdrop dismissal preserve the existing setting
+(the new-install default is `lite`). Merely displaying the dialog, even past
+its ten-second send interval, records nothing and does not enable daily counts.
+A notice is recorded only after an interaction with the visibly presented
+surface: Save choice, Not now, close, Escape or backdrop dismissal. Save first
+persists the chosen preference, then records the displayed notice revision;
+saving Don't share therefore cannot temporarily enable a count. Closing during
+a pending Save does not record early; that save owns the notice after persistence.
+A failed choice
+save records no notice. A failed notice write leaves the saved preference intact,
+reports that separate failure and keeps counts paused. Viewing Privacy & sharing
+also records nothing; its Save action records a notice only when the combined
+sharing question itself is visible. Advanced saves still persist preferences
+when that question is offscreen, but record no built-in notice. A visible plugin
+row cannot supply that evidence. Hidden or covered questions cannot supply it either.
+DNT still refuses notice writes. CLI/headless starts are unchanged: printing
+the notice counts as showing it. A status fetch alone never records presentation. A current
+notice prevents another prompt on remount; a changed notice revision prompts
+again. Off remains available in Settings. Resetting Station settings preserves
+sharing choices.
+
+When Do Not Track is on, the shared callout says: “Do Not Track is on, so nothing
+is shared. The choice below applies if you turn it off.” Saving records the
+chosen setting for both built-in destinations without creating an acknowledgement.
+A Detailed choice without a current acknowledgement remains pending after Do
+Not Track is removed; a previously valid acknowledgement retains its existing
+meaning. Save failures use the existing page-callout tone system and leave the
+choice available to retry or dismiss.
 
 The app-wide disclosure stays closed when both effective publishers are Off
 and no product endpoint is configured. After a successful Off/Lite save, a
@@ -60,21 +113,38 @@ no author address. Official release producers can bake the public endpoint only 
 leaving it unset preserves the empty constant. No real receiver is enabled by this change.
 The existing Full acknowledgement covers operator only. Author Full requires a
 separate receipt bound to Kontour, the current inventory and the displayed
-build destination; the UI lane presents that disclosure.
+build destination. The shared dialog and Settings save each required acknowledgement before
+changing either built-in preference to Full. A refusal prevents the preference
+write; an acknowledgement for one destination never authorizes the other.
 
 Every non-desktop server, including `station start`, `service run`, Docker and
-web servers with a UI port, prints a one-time Lite notice per publisher and
-inventory revision through the [unfiltered stderr notice path](../../src-server/utils/logger.ts)
-and records it before sending. The launching CLI prints the notice in the
-terminal after readiness when its pre-launch state lacks a current receipt. The server records its own log notice
-asynchronously; HTTP readiness does not imply that receipt is already written.
-Unattended services retain the notice in their logs. This first-start log notice is the fallback while the web notice
-UI is not wired; a UI port does not imply that a person saw a notice.
-Desktop sidecars (`STATION_STDOUT_HANDSHAKE=1`) defer to the UI. Until it records
-the shown revision with `POST /api/usage-telemetry/lite-notices`, daily payloads
-are suppressed with reason `notice`. A current receipt survives restart and the
-daily timer starts even without a new UI call. An inventory change requires a new
-notice. The body is `{ "publisher": "operator", "inventoryRevision": "<shown revision>" }`.
+web servers with a UI port, prints one combined anonymous-usage notice for the
+current revision through the [unfiltered stderr notice path](../../src-server/utils/logger.ts).
+It retains a separate shown-notice record for each built-in destination before
+sending. The launching CLI prints the combined notice after readiness when its
+pre-launch state lacks a current record. The server records its log notice
+asynchronously; HTTP readiness does not imply it is already written. Unattended
+services retain the notice in their logs. Logged and visibly rendered notices
+are distinct presentation paths. `station telemetry status` uses the same display
+labels, with `off|lite|full` shown in parentheses; accepted command values remain
+unchanged.
+
+Desktop sidecars (`STATION_STDOUT_HANDSHAKE=1`) defer to the single UI choice.
+Until it records the shown revision with `POST /api/usage-telemetry/lite-notices`,
+daily payloads stay suppressed with reason `notice`. A current record survives
+restart and the daily timer starts without another UI call. An updated field
+revision requires another notice. The body remains
+`{ "publisher": "operator", "inventoryRevision": "<shown revision>" }`.
+The status API exposes persisted `liteNotices` per destination. The UI records
+only after explicit interaction with a choice surface that is in the viewport,
+with the document visible and no other modal covering it. That visibility,
+revision and request authority are captured at the interaction, before awaiting
+a choice save. DNT still refuses notice records. Off and Full saves can record
+this presentation fact after persistence; it never grants Full consent, and Off
+still blocks all sending. A failed write leaves counts suppressed.
+No separate floating notice or JSON field dump is rendered. Detailed choices
+in first run and Settings share the readable What's included component.
+Distributions do not supply this copy or its controls.
 
 A saved legacy false migrates to Off for both built-in publishers. Saved true
 with a current receipt migrates to operator Full; without it, operator Lite.
@@ -94,6 +164,17 @@ Lite. These commands support the normal target/credential flags. The status API 
 returns the exact Lite field catalog alongside its revision so a notice consumer
 can display the server inventory rather than an older bundled copy. Use `station telemetry outbox` or
 `station telemetry outbox --publisher operator` to inspect the bounded ledger.
+Settings always exposes Kontour and Operator controls, plus any registered publisher. A failed status read is shown explicitly; Full stays disabled unless status reports `fullAvailable: true` for that publisher. Older servers without this field leave Full disabled.
+Settings exposes a collapsed **What was sent to {publisher}** section below each publisher’s tier row, showing
+the newest 50 records for that publisher and an explicit empty/error state.
+Sent entries have a collapsible JSON viewer. Unsent entries expose only their
+reason and observation count, with Off/DNT/disclosure/notice/unconfigured
+classified as suppressed and transport/overflow/expired as dropped. There is no
+payload viewer for either unsent category. Refresh reads the current ledger.
+Opening status/outbox views refetches their current data. Tier writes refresh
+both views, including after a partial Settings failure; Full acknowledgement
+refreshes effective status again, so a cached Lite label does not outlive Off
+or a newly admitted Full choice.
 
 `station telemetry producers` is unrelated to these tiers: it manages the
 tokens external programs use to add rows to this Station's local monitoring
@@ -189,10 +270,10 @@ Inline tier-lowering reasons and standalone feedback share one persisted budget 
 
 ## Local ledger and feedback
 
-`GET /api/usage-telemetry/outbox?publisher=operator` and the CLI show the payload,
+`GET /api/usage-telemetry/outbox?publisher=operator&limit=50` and the CLI show the payload,
 publisher, tier, timestamp, sent/dropped outcome, and classified reason. The ledger
 is `STATION_HOME/config/telemetry-outbox.json`, retained for at most 30 days and
-5 MiB of actual serialized bytes, oldest first. Reads also enforce retention.
+5 MiB of actual serialized bytes, oldest first. Reads also enforce retention. The HTTP API returns the newest 50 records by default; `limit` accepts integers from 1 to 200 and rejects values outside that range with 400. Publisher filtering happens before the limit. Settings requests 50 and uses the same authority scope as its status read.
 It is an audit log, not a retry spool. Dropped Full observations are coalesced
 in memory, then published at the flush interval, on outbox reads, and at shutdown
 as `telemetry_dropped` counts per publisher, reason and UTC day. A process crash
@@ -213,6 +294,15 @@ optional reason before the new choice is persisted and applied, including Off.
 Feedback persistence or transport failure never prevents applying the lower tier.
 An unchanged or raised choice sends no reason. A repeated request cannot replay
 the reason. DNT suppresses the signal and does not record a feedback window.
+Settings offers the fixed reasons and Skip when lowering a publisher's choice;
+the comparison uses the saved tier, so editing an unsaved raise back down is not a lowering. The pending tier stays visible in the selector and is named in the reason prompt. The reason is staged until Save. Cancel or Escape closes the Settings prompt, restores the prior draft tier and focus, and sends nothing. Each edited publisher is written independently,
+with its optional reason in that same config request, preserving omitted
+publishers. Successful writes are marked saved even if a later write fails; the error identifies a partial save and retry includes only unsaved changes. The Full disclosure dialog offers the same optional prompt before
+its write-then-acknowledge sequence. Skip sends no feedback, and no prompt is
+offered under DNT. Failed writes do not acknowledge. Feedback is action metadata,
+not a persisted setting. The optional prompt focuses its heading once when
+opened and returns keyboard focus to the Settings tier control after a reason
+or Skip is chosen. A failed dialog setting write focuses its error so keyboard users can find the retry actions.
 
 `POST /api/usage-telemetry/feedback` accepts exactly publisher (`kontour` or
 `operator`), action and a fixed-enum reason. Non-skip reasons require action
@@ -364,7 +454,14 @@ owns their atomic persistence and the ledger.
 real HTTP receivers and writer-shaped files, including restart and eviction.
 [Service tests](../../src-server/services/__tests__/usage-telemetry-service.test.ts)
 and the [disclosure route test](../../src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts)
-cover activation, inventory rejection, buffering and disclosure. They use
+cover activation, inventory rejection, buffering and disclosure.
+The [UI route-seam tests](../../src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx)
+mount the real components against config and telemetry routes with real local
+persistence, and observe feedback transport before Off is persisted. They also
+exercise hidden notices, stale revisions, and dropped-payload presentation.
+The [gallery](../../tests/screenshots.spec.ts) defines desktop and 390px mobile
+usage-sharing choices (including Do Not Track, additional-endpoint and light-theme variants), outbox and feedback scenes. These are controlled local evidence;
+they do not establish a packaged native-shell or live-receiver deployment. They use
 controlled endpoints; a live ingestion deployment needs its own delivery evidence.
 
 # Event inventory

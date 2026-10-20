@@ -1061,37 +1061,6 @@
   display: block;
 }
 
-/* ── Error banner with retry ── */
-.settings__error-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 0.75rem;
-  margin-bottom: 1rem;
-  border-radius: 0.375rem;
-  font-size: var(--k-text-sm);
-  background: var(--error-bg);
-  border: 1px solid var(--error-border);
-  color: var(--error-text);
-}
-.settings__error-banner-msg {
-  flex: 1;
-}
-.settings__error-banner-retry {
-  padding: 0.25rem 0.5rem;
-  font-size: var(--k-text-sm);
-  font-weight: 500;
-  background: transparent;
-  color: var(--error-text);
-  border: 1px solid var(--error-border);
-  border-radius: 0.25rem;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.settings__error-banner-retry:hover {
-  background: color-mix(in srgb, var(--error-text) 8%, transparent);
-}
-
 /* ── Validation errors ── */
 .settings__field-error {
   display: block;

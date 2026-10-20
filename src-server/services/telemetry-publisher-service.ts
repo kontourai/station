@@ -171,6 +171,13 @@ export class TelemetryPublisherService {
     });
     await this.local.daily((state) => {
       if (!state) throw new Error('Telemetry daily state is unavailable');
+      const outstanding = PUBLISHERS.filter(
+        (publisher) =>
+          state.notices[publisher]?.inventoryRevision !==
+          LITE_TELEMETRY_INVENTORY_REVISION,
+      );
+      if (headless && outstanding.length)
+        writeUserNotice(liteTelemetryNoticeText());
       for (const publisher of PUBLISHERS) {
         if (
           state.notices[publisher]?.inventoryRevision ===
@@ -180,7 +187,6 @@ export class TelemetryPublisherService {
           continue;
         }
         if (!headless) continue;
-        writeUserNotice(liteTelemetryNoticeText(publisher));
         this.shownNotices.add(publisher);
         state.notices[publisher] = {
           publisher,

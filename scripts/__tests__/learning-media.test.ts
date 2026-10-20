@@ -370,7 +370,15 @@ it('checks the actual capture manifest and recorded source bytes in the required
     phase = 'read-review-state';
     mark('enter');
     // media.json metadata joined with each capture's review (#2936).
-    const { ledger, media: manifest } = readReviewState(process.cwd());
+    let state = readReviewState(process.cwd(), { history: false });
+    const policy = resolveDocumentationFreshness({
+      root: process.cwd(),
+      env: JOB_ENV,
+      ledger: state.ledger,
+      media: state.media,
+    });
+    if (policy.mode !== 'scoped') state = readReviewState(process.cwd());
+    const manifest = state.media;
     if (!manifest) throw new Error('The repository has no capture manifest');
     mark('exit');
     // #2923: the same scoped/advisory/strict decision as the review ledger.
@@ -378,15 +386,7 @@ it('checks the actual capture manifest and recorded source bytes in the required
     mark('enter');
     // The real manifest runs in the job's own mode: scoped on a pull
     // request, advisory in the merge queue and repo-scans job.
-    const requireFresh = freshnessRequirement(
-      resolveDocumentationFreshness({
-        root: process.cwd(),
-        env: JOB_ENV,
-        ledger,
-        media: manifest,
-      }),
-      'capture',
-    );
+    const requireFresh = freshnessRequirement(policy, 'capture');
     mark('exit');
     phase = 'compile-media';
     mark('enter');

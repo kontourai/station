@@ -6849,6 +6849,8 @@ export function configureRuntimeRoutes(
           .getUsageTelemetry?.()
           ?.recordTierLowering(publisher, reason);
       },
+      async () =>
+        (await context.getUsageTelemetry?.()?.canSaveAuthorFull()) ?? false,
     ),
   );
   context.app.route(

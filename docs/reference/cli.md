@@ -711,16 +711,18 @@ station telemetry set operator full
 station telemetry outbox --publisher operator
 ```
 
-Status prints each publisher's tier and reason: `DNT`, `policy`, `default`,
-`user`, `disclosure`, or `environment`. Kontour Full is refused until a Kontour disclosure exists. The normal target and credential flags apply; `--json`
+Status prints each destination's plain sharing label with its `off`, `lite` or
+`full` configuration value. Do Not Track and pending review use readable
+explanations. Kontour Detailed saving requires its own current acknowledgement when its build
+destination is configured. The CLI does not create that acknowledgement. The normal target and credential flags apply; `--json`
 prints the status object. Full remains Lite until the current disclosure has
 been acknowledged. DNT forces Off. Changing one publisher preserves the other.
 Operator environment-limited status also explains that restoring Full delivery requires an
 explicit config choice (`station telemetry set operator full`) and acknowledgement
 in Settings; a legacy environment true plus a receipt no longer enables Full.
 The outbox command prints the local 30-day/5-MiB payload ledger, optionally
-filtered by publisher. Non-desktop `station start` and `service run` print Lite
-notices in the terminal after readiness when the pre-launch state lacks a current
+filtered by publisher. Non-desktop `station start` and `service run` print one combined anonymous-usage
+notice in the terminal after readiness when the pre-launch state lacks a current
 receipt; unattended starts retain the first-start notice in
 their logs. These commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
 

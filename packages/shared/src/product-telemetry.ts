@@ -380,9 +380,9 @@ export const LITE_TELEMETRY_INVENTORY_REVISION = createHash('sha256')
   .digest('hex');
 
 export function liteTelemetryNoticeText(
-  publisher: 'kontour' | 'operator',
+  _publisher?: 'kontour' | 'operator',
 ): string {
-  return `Station telemetry (${publisher}): Lite sends one identifier-free daily aggregate when a destination is configured. Turn off with station telemetry set ${publisher} off; DO_NOT_TRACK also forces Off. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.`;
+  return 'Station usage sharing: Anonymous usage counts are on by default when a destination is configured. One daily count. No ID, no account, no content. Turn sharing off in Privacy & sharing, or run station telemetry set kontour off and station telemetry set operator off. Do Not Track stops all sharing. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.';
 }
 
 /** A sender must show the new notice whenever this revision changes. */

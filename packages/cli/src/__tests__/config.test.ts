@@ -95,6 +95,44 @@ afterEach(() => {
 });
 
 describe('telemetry commands', () => {
+  test('a saved Detailed preference without an author destination explains that nothing can be sent', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: { telemetryTier: { kontour: 'full' } },
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          publishers: {
+            kontour: {
+              tier: 'lite',
+              reason: 'disclosure',
+              userChoice: 'full',
+              fullAvailable: false,
+            },
+            operator: { tier: 'off', reason: 'user', fullAvailable: true },
+          },
+        },
+      }),
+    );
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await runTelemetryCommand([
+      'set',
+      'kontour',
+      'full',
+      '--api-base=http://127.0.0.1:43129',
+    ]);
+    expect(consoleLog).toHaveBeenCalledWith(
+      'Kontour: Anonymous usage counts (lite); This build has no Station usage destination, so nothing is sent to Kontour',
+    );
+    expect(consoleLog.mock.calls.flat().join(' ')).not.toContain(
+      'waiting for your review',
+    );
+  });
+
   test('environment-limited status explains how to restore Full delivery', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -109,10 +147,12 @@ describe('telemetry commands', () => {
     );
     const { runTelemetryCommand } = await import('../commands/telemetry.js');
     await runTelemetryCommand(['status', '--api-base=http://127.0.0.1:43129']);
-    expect(consoleLog).toHaveBeenCalledWith('kontour: lite (environment)');
+    expect(consoleLog).toHaveBeenCalledWith(
+      'Kontour: Anonymous usage counts (lite)',
+    );
     expect(consoleLog).toHaveBeenCalledTimes(2);
     expect(consoleLog).toHaveBeenCalledWith(
-      'operator: lite (environment); environment defaults cannot enable Full. Choose Full in config (station telemetry set operator full) and acknowledge the disclosure in Settings to send Full events.',
+      'Additional destination: Anonymous usage counts (lite); environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.',
     );
   });
 
@@ -133,43 +173,52 @@ describe('telemetry commands', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(
       'http://127.0.0.1:43129/api/usage-telemetry/status',
     );
-    expect(consoleLog).toHaveBeenCalledWith('kontour: off (DNT)');
-    expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
-  });
-  test('set sends one publisher through the live configuration API then reports effective state', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        data: { telemetryTier: { kontour: 'off', operator: 'full' } },
-      }),
+    expect(consoleLog).toHaveBeenCalledWith(
+      "Kontour: Don't share (off); Do Not Track is on, so nothing is shared",
     );
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        data: {
-          publishers: {
-            kontour: { tier: 'off', reason: 'user' },
-            operator: { tier: 'lite', reason: 'disclosure' },
+    expect(consoleLog).toHaveBeenCalledWith(
+      'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
+    );
+  });
+  test.each(['operator', 'kontour'] as const)(
+    'set sends %s through the live configuration API then reports effective state',
+    async (publisher) => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          data: { telemetryTier: { kontour: 'off', operator: 'full' } },
+        }),
+      );
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          data: {
+            publishers: {
+              kontour: { tier: 'off', reason: 'user' },
+              operator: { tier: 'lite', reason: 'disclosure' },
+            },
           },
-        },
-      }),
-    );
-    const { runTelemetryCommand } = await import('../commands/telemetry.js');
-    await runTelemetryCommand([
-      'set',
-      'operator',
-      'full',
-      '--api-base=http://127.0.0.1:43129',
-    ]);
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      'http://127.0.0.1:43129/config/app',
-    );
-    expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
-      telemetryTier: { operator: 'full' },
-    });
-    expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
-  });
+        }),
+      );
+      const { runTelemetryCommand } = await import('../commands/telemetry.js');
+      await runTelemetryCommand([
+        'set',
+        publisher,
+        'full',
+        '--api-base=http://127.0.0.1:43129',
+      ]);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://127.0.0.1:43129/config/app',
+      );
+      expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
+      expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+        telemetryTier: { [publisher]: 'full' },
+      });
+      expect(consoleLog).toHaveBeenCalledWith(
+        'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
+      );
+    },
+  );
   test.each([['--publisher=operator'], ['--publisher', 'operator']])(
     'outbox prints the server ledger with publisher filter %j',
     async (...filter) => {
@@ -206,9 +255,6 @@ describe('telemetry commands', () => {
     await expect(
       runTelemetryCommand(['set', 'operator', 'true']),
     ).rejects.toThrow('Usage:');
-    await expect(
-      runTelemetryCommand(['set', 'kontour', 'full']),
-    ).rejects.toThrow('Kontour Full is unavailable');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
