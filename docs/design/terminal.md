@@ -286,20 +286,19 @@ regression. The emulator phase does not ship until this exists:
 - The Coding layout keeps a resizable lower drawer with tabs, groups, and up
   to four splits per group.
 - State has two owners, and no field is written by both:
-  - **Presentation** belongs to the pane workspace contract proposed in
-    #3875: whether the terminal pane or drawer is shown, where, its toggles,
-    and its size or height.
-    Coding's panel writer and the region arrangement keep these.
+  - **Presentation** belongs to the pane workspace contract (#3875): whether
+    the terminal pane or drawer is shown, where, its toggles, and its size or
+    height. Coding's panel writer and the region arrangement keep these.
   - **Content** belongs to the terminal server record, stored per binding and
     reconciled with the live session list: which terminals and groups exist,
     the split arrangement and sizes inside the terminal pane, and the active
-    terminal. This replaces
-    the unscoped `coding-terminal-tabs` sessionStorage key.
-- Terminal identity is the server's `terminalId`. The pane keys
+    terminal. This replaces the unscoped `coding-terminal-tabs`
+    sessionStorage key.
+- Terminal identity is the server's `terminalId`. Presentation state is keyed
+  by Station and `terminalId`, never by a pane key. The pane keys
   `workspace-coding-terminal` and `pane:builtin:coding:terminal` become
-  presentation identity only: an alias that resolves to the binding's
-  terminal group. Hosts that need one terminal owner key on the
-  terminal id; nothing infers a process from equal pane keys.
+  presentation aliases that resolve to the binding's terminal group; nothing
+  infers a process from equal pane keys.
 - Default shortcuts: toggle drawer, new terminal, split, split vertical,
   close, find. Registered in the shortcut registry so they appear in the
   shortcut list.
@@ -307,23 +306,27 @@ regression. The emulator phase does not ship until this exists:
 ### Plugins
 
 A plugin opens a terminal through the pane workspace's open, reveal, and
-close capability, which #3875 proposes and does not exist yet. The terminal
-is a closed built-in target rather than a plugin-supplied key:
+close capability. The pane relationships contract (#3875) specifies it; it is
+not yet implemented. The terminal is a closed built-in target rather than a
+plugin-supplied key:
 
 - The target shape is plain data declared in the pane host contract,
   `{ kind: 'terminal'; binding; terminalId?; new?: { profile? } }`, where
-  `binding` is a session's `bindingKey`. A `terminalId` whose session is in
-  another binding or project is reported unavailable. The
-  terminal contracts module re-exports it. It carries no working directory:
-  the server decides the cwd from the binding.
-- Station's terminal host binding validates the target against the caller's
-  own grants for the session's project, never a caller-supplied one. Creating a terminal (`new`) needs
-  `terminal:operate`. Opening an existing `terminalId` needs
-  `terminal:observe` and is read-only unless the caller also holds
-  `terminal:operate`. Holding a pane or plugin grant never implies terminal
-  access.
-- The pane host reports the outcome (opened, focused, replaced, or
-  unavailable) in the same form it uses for its other targets.
+  `binding` is a session's `bindingKey`. The terminal contracts module
+  re-exports it. It carries no working directory: the server decides the cwd
+  from the binding.
+- The pane host stamps the opener, the exact Station, and the occurrence's
+  captured context. The binding, and the session of any `terminalId`, must
+  fall inside that captured Project on that Station. Otherwise the open is
+  reported as the contract's context mismatch, so a plugin cannot name a
+  thread in another project even where it holds a grant.
+- Station's terminal host binding then checks the caller's own grants for
+  that project. Creating a terminal (`new`) needs `terminal:operate`. Opening
+  an existing `terminalId` needs `terminal:observe` and is read-only unless
+  the caller also holds `terminal:operate`. Holding a pane or plugin grant
+  never implies terminal access.
+- The pane host reports the outcome (opened, focused, replaced, unavailable,
+  or context mismatch) in the same form it uses for its other targets.
 
 ### Agent integration
 
@@ -375,7 +378,8 @@ verification.
    splits on the pane workspace's presentation seams, server-side content
    state, shortcuts, the SDK view export with its boundary test, the terminal
    pane target, and the sample plugin. The pane target and the sample plugin
-   depend on the pane workspace capability from #3875.
+   depend on the pane workspace capability specified in #3875, which is not
+   yet implemented.
 5. **Agent integration:** add to chat, script runner, agent tools.
 6. **Removal:** old listener, endpoints, client components, and the dead
    `.coding-terminal-fallback` end-to-end check; documentation and the
