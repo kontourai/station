@@ -3,12 +3,13 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   createStationAnswerBinding,
   type StationAnswerBinding,
@@ -136,6 +137,23 @@ describe('a Station home reached through a symlinked ancestor', () => {
     ).toContain(input.taskId);
   });
 
+  test('fails closed when an ancestor is swapped for a symlink after construction', async () => {
+    const { real, alias } = aliasedParent();
+    const base = dirname(real);
+    mkdirSync(join(real, 'home'));
+    const store = new TaskAnswerSupportStore(join(alias, 'home'));
+    await store.create(input);
+
+    // The canonical anchor was fixed at construction; replace one of its real
+    // ancestors with a symlink and the guard must refuse, not follow.
+    renameSync(real, join(base, 'real-old'));
+    symlinkSync(join(base, 'real-old'), real);
+
+    await expect(store.readForTask(input.taskId)).rejects.toBeInstanceOf(
+      TaskAnswerSupportUnavailableError,
+    );
+  });
+
   test('keeps answer-assessment publish and restart reads working', async () => {
     const { real, alias } = aliasedParent();
     mkdirSync(join(real, 'home'));
@@ -221,7 +239,9 @@ describe('project and plugin roots reached through a symlinked ancestor', () => 
       JSON.stringify(trustBundle()),
     );
     expect(
-      await readThrough(() => ({ pluginDataDir: join(alias, 'plugin-data') })),
+      // Plugin-data is lexical here: its Station home is canonicalized by the
+      // composition root (see runtime/__tests__/task-answer-support-symlinked-home).
+      await readThrough(() => ({ pluginDataDir: pluginData })),
     ).toBe('found');
 
     const evidence = join(workspace, '.veritas', 'evidence');
@@ -232,6 +252,8 @@ describe('project and plugin roots reached through a symlinked ancestor', () => 
     );
     expect(
       await readThrough(() => ({
+        // As production supplies it: evidence roots derive from the workspace.
+        workspacePath: join(alias, 'workspace'),
         veritasEvidenceDir: [join(alias, 'workspace', '.veritas', 'evidence')],
       })),
     ).toBe('found');
@@ -270,6 +292,46 @@ describe('project and plugin roots reached through a symlinked ancestor', () => 
       await readThrough(() => ({
         workspacePath: join(alias, 'workspace'),
         veritasEvidenceDir: [join(alias, 'workspace', '.veritas', 'evidence')],
+      })),
+    ).toBe('unavailable');
+  });
+
+  test('refuses a .veritas symlink when the evidence root has no matching workspace', async () => {
+    const { real } = aliasedParent();
+    const elsewhere = join(real, 'elsewhere');
+    mkdirSync(join(elsewhere, 'evidence'), { recursive: true });
+    writeFileSync(
+      join(elsewhere, 'evidence', 'veritas-run.json'),
+      JSON.stringify({ trust: { bundle: trustBundle() } }),
+    );
+    const checkout = join(real, 'checkout');
+    mkdirSync(checkout);
+    symlinkSync(elsewhere, join(checkout, '.veritas'));
+
+    expect(
+      await readThrough(() => ({
+        veritasEvidenceDir: [join(checkout, '.veritas', 'evidence')],
+      })),
+    ).toBe('unavailable');
+  });
+
+  test('treats plugin-data lexically: a symlink above it is refused', async () => {
+    const { real } = aliasedParent();
+    const elsewhere = join(real, 'elsewhere');
+    mkdirSync(join(elsewhere, 'plugin-data', 'demo', 'trust-bundles'), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(elsewhere, 'plugin-data', 'demo', 'trust-bundles', 'basis.json'),
+      JSON.stringify(trustBundle()),
+    );
+    const slug = join(real, 'home', 'projects');
+    mkdirSync(slug, { recursive: true });
+    symlinkSync(elsewhere, join(slug, 'project-a'));
+
+    expect(
+      await readThrough(() => ({
+        pluginDataDir: join(slug, 'project-a', 'plugin-data'),
       })),
     ).toBe('unavailable');
   });

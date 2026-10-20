@@ -352,7 +352,10 @@ export class CanonicalProjectTrustReportReader
       result.push(...files.sources);
     }
     if (locations.pluginDataDir) {
-      const root = canonicalOwnedAnchor(locations.pluginDataDir);
+      // Lexical on purpose: plugin-data lives INSIDE the Station home, which
+      // the composition root canonicalizes once. Canonicalizing here would
+      // follow a symlink planted at <home>/projects/<slug>.
+      const root = resolve(locations.pluginDataDir);
       const plugins = safeDirectoryEntries(root);
       if (plugins.state === 'unavailable') return { state: 'unavailable' };
       for (const entry of plugins.entries) {
@@ -382,7 +385,7 @@ export class CanonicalProjectTrustReportReader
         canonicalWorkspace &&
         lexical.startsWith(`${lexicalWorkspace}${sep}`)
           ? join(canonicalWorkspace, relative(lexicalWorkspace, lexical))
-          : canonicalOwnedAnchor(lexical);
+          : lexical;
       const files = this.files(
         dir,
         (fileName) => ({
