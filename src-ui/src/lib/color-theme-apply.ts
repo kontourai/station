@@ -26,6 +26,13 @@ import {
 export const COLOR_THEME_ATTRIBUTE = 'data-color-theme';
 export const COLOR_THEME_FLAVOR_ATTRIBUTE = 'data-color-theme-flavor';
 export const COLOR_THEME_ACCENT_ATTRIBUTE = 'data-color-theme-accent';
+/**
+ * Set on the root to the family id when the most recent request for that
+ * family's sheet failed (at startup or on a live switch); removed when a
+ * later apply loads it, or the selection moves to Station or another family.
+ * A picker reads it to offer `retryColorTheme` instead of waiting forever.
+ */
+export const COLOR_THEME_FAILED_ATTRIBUTE = 'data-color-theme-failed';
 
 type AppliedSettings = Pick<
   DeviceSettings,
@@ -99,7 +106,7 @@ function dropPending(doc: Document): void {
   pendingSheets.delete(doc);
 }
 
-function requestSheet(root: HTMLElement, href: string): void {
+function requestSheet(root: HTMLElement, family: string, href: string): void {
   const doc = root.ownerDocument;
   if (pendingSheets.get(doc)?.getAttribute('href') === href) return;
   dropPending(doc);
@@ -115,6 +122,7 @@ function requestSheet(root: HTMLElement, href: string): void {
       // next apply asks for the sheet again. Not re-applied from here, so a
       // sheet that keeps failing cannot loop.
       link.remove();
+      root.setAttribute(COLOR_THEME_FAILED_ATTRIBUTE, family);
       return;
     }
     activeSheet(doc)?.remove();
@@ -142,6 +150,9 @@ export function applyColorTheme(
   const resolved = resolveColorThemeSelection(settings);
   const mode = settings.theme === 'light' ? 'light' : 'dark';
   latestSettings.set(root, settings);
+  const failedFor = root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE);
+  if (failedFor !== null && failedFor !== resolved.id)
+    root.removeAttribute(COLOR_THEME_FAILED_ATTRIBUTE);
   if (resolved.id === 'station') {
     dropPending(doc);
     activeSheet(doc)?.remove();
@@ -153,16 +164,19 @@ export function applyColorTheme(
   if (active?.getAttribute('href') === href) {
     if (active.dataset.state !== 'failed') {
       dropPending(doc);
-      if (!active.dataset.state && !active.sheet) retryIfItFails(root, active);
+      const loading = !active.dataset.state && !active.sheet;
+      if (loading) retryIfItFails(root, active);
+      else root.removeAttribute(COLOR_THEME_FAILED_ATTRIBUTE);
       stamp(root, resolved, mode);
       return resolved;
     }
     // Its sheet failed (the startup script's request, say): the page shows
     // Station's colours, so the theme is not claimed until a retry loads.
     active.remove();
+    root.setAttribute(COLOR_THEME_FAILED_ATTRIBUTE, resolved.id);
     stamp(root, { id: 'station' }, mode);
   }
-  requestSheet(root, href);
+  requestSheet(root, resolved.id, href);
   return resolveColorThemeSelection({
     colorTheme: root.getAttribute(COLOR_THEME_ATTRIBUTE),
     colorThemeFlavor: root.getAttribute(COLOR_THEME_FLAVOR_ATTRIBUTE),
@@ -190,6 +204,17 @@ function retryIfItFails(root: HTMLElement, link: HTMLLinkElement): void {
 }
 
 /**
+ * Apply the latest settings again, which requests a failed family sheet once
+ * more (see `COLOR_THEME_FAILED_ATTRIBUTE`). No-op before the first apply.
+ */
+export function retryColorTheme(
+  root: HTMLElement = document.documentElement,
+): void {
+  const settings = latestSettings.get(root);
+  if (settings) applyColorTheme(root, settings);
+}
+
+/**
  * A promise that settles once the selected family's sheet has loaded or
  * failed, and after `timeoutMs` at the latest; `null` when nothing is
  * loading (no theme, or the sheet already settled). main.tsx waits on it
@@ -212,6 +237,28 @@ export function whenColorThemeStylesheetSettled(
     link.addEventListener('load', done, { once: true });
     link.addEventListener('error', done, { once: true });
   });
+}
+
+/**
+ * Run the app's first render once the selected family's sheet has settled
+ * (see `whenColorThemeStylesheetSettled`), or at once, synchronously, when
+ * nothing is loading. The returned promise rejects when a deferred `render`
+ * throws, so boot.ts can show its recovery; a synchronous throw (no sheet to
+ * wait for) propagates to the caller, as a module-evaluation failure. Only a
+ * throw from `render` itself counts (for main.tsx: `createRoot().render()`
+ * or a missing `#root`); errors inside React components surface through
+ * React, not here.
+ */
+export function renderWhenColorThemeSettled(
+  doc: Document,
+  render: () => void,
+): Promise<void> {
+  const settled = whenColorThemeStylesheetSettled(doc);
+  if (!settled) {
+    render();
+    return Promise.resolve();
+  }
+  return settled.then(render);
 }
 
 interface SettingsSource {

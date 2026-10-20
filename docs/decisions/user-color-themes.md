@@ -119,15 +119,25 @@ themed after, never theme surfaces with Station's accent. A sheet slower than
 the cap therefore shows the app in Station's colours until it arrives, while
 the attributes and `theme-color` already name the theme and a white-label
 brand is rated against the theme's surfaces. With no theme it renders
-synchronously as before. The first render is part of what `boot.ts` waits for,
-so a render that throws after that wait shows the same "could not finish
-loading" recovery as a failed module load. On a live switch the applier
-changes the attributes only once the new family's sheet has loaded. A sheet
-that fails is not claimed: on a live switch the previous selection stays in
-force, a failed startup request un-claims the theme, and the next apply
-requests the sheet again; failure never re-applies by itself, so a sheet that
-keeps failing cannot loop. `color-scheme` is already set per mode by the
-tokens.
+synchronously as before. The deferred first render is part of what `boot.ts`
+waits for, so if creating or rendering the React root throws after that wait
+(for example, a missing `#root`), the page shows the same "could not finish
+loading" recovery as a failed module load. Errors inside React components
+surface through React, not this path. The wiring is
+`renderWhenColorThemeSettled`, which a unit test covers; the one line in
+`main.tsx` that exports its promise is not imported by any unit test.
+
+On a live switch the applier changes the attributes only once the new
+family's sheet has loaded. A sheet that fails is not claimed: on a live switch
+the previous selection stays in force, and a failed startup request un-claims
+the theme. The startup script's request gets one automatic retry: if it fails
+while the app is running, the applier requests it once more. Otherwise a
+failure is retried only by the next apply (a settings change, or
+`retryColorTheme()`), so a sheet that keeps failing cannot loop. While the
+most recent request for a family has failed, the root carries
+`data-color-theme-failed="<family>"`, removed when a later apply loads it or
+the selection changes; the Appearance page reads it to offer a retry.
+`color-scheme` is already set per mode by the tokens.
 
 ### Signed-in people
 
@@ -141,12 +151,25 @@ settings store's boot snapshot:
 
 1. An account-sourced cache wins until the page knows whose appearance
    applies: the account's values arrive, the device's own appearance is
-   chosen, or the page resolves to no person. That last one is the session
-   gate's access check finding no session (the signed-out connect screen,
-   where the account boundary never mounts) and the account boundary seeing a
-   refused credential or no connection. An unverified authority (offline, an
-   older server) may still be the same person and keeps the cache. On release
-   the applier rewrites the cache as device-sourced.
+   chosen, or the page gets a definite "no person". That is the session
+   gate's direct access check answering no session (the signed-out connect
+   screen, where the account boundary never mounts) or, on a relay route, a
+   completed identity check refusing the current account; and the account
+   boundary seeing a refused credential (401) or a verified principal that is
+   not a person. States still resolving keep the cache: the relay connect
+   screen shown while the account is being checked, no connection yet, a
+   native relay account not ready, and an unverified authority (offline, an
+   older server). On release the applier rewrites the cache as device-sourced.
+   A relay user with no account selected at all is never told "no person", so
+   the connect screen there keeps the cached appearance.
+
+   The same hold applies inside a session: when the account boundary unmounts
+   (an authority re-check after a dropped connection, a switch, a sign-out)
+   the account's last mode and color theme stay in force until one of the
+   answers above arrives, so a network blip no longer shows the page in the
+   device's appearance while the account reconnects. The mode half of that
+   blip is inherited from main, where ending the binding resolved the
+   device's own light/dark until the preferences returned.
 2. Otherwise the device envelope, then the legacy `theme` key, as before. A
    device-sourced cache is never read; the envelope is its source.
 

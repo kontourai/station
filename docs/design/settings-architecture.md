@@ -76,7 +76,8 @@ keys; an active account overlays it without copying account values into the
 browser's device envelope. The mode and color theme this device last rendered are
 cached separately for first paint ([appearance cache](../../src-ui/src/lib/appearance-cache.ts));
 that cache is not a device setting and yields once the account answers or
-the page resolves to no person (signed out, a refused credential).
+the page gets a definite "no person" (signed out, a refused credential; not
+while a session or relay account is still being checked).
 
 Device scope retains microphone and output providers, push permission, haptics,
 Return behavior, keyboard shortcuts, panel dimensions/placement and navigation
@@ -98,6 +99,9 @@ closing the page can lose those pending changes. Errors belong to the authority
 that initiated the save. The client refreshes on activation, focus and reconnect.
 It reports loading and save failure separately from saved values. Account changes retire
 the in-memory overlay; late responses cannot populate the replacement authority.
+Only the rendered appearance (mode and color theme) outlives it: it is held
+until the next account answers or a definite no-person answer, so a reconnect
+does not flash the device's appearance.
 There is no cross-Station cloud synchronization.
 
 Migration is an explicit **Import previous preferences** action in Settings →

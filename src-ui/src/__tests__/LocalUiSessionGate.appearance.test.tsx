@@ -75,14 +75,15 @@ describe('signed-out appearance', () => {
         <div>Protected application mounted</div>
       </LocalUiSessionGate>,
     );
+    // The access screen's own section, not the lazily loaded connect form:
+    // the release belongs to the resolution, not to that chunk arriving.
     expect(
-      await screen.findByRole(
-        'button',
-        { name: 'See how Station works' },
-        { timeout: 5000 },
+      await screen.findByLabelText(
+        'Station access required',
+        {},
+        { timeout: 10_000 },
       ),
     ).toBeTruthy();
-
     expect(deviceSettingsStore.getAppearanceSource()).toBe('device');
     expect(deviceSettingsStore.getSnapshot()).toMatchObject({
       theme: 'dark',

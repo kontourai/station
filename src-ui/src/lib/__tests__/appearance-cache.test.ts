@@ -73,8 +73,19 @@ describe('the last-applied appearance cache', () => {
       colorThemeAccent: null,
     });
     expect(deviceSettingsStore.getAppearanceSource()).toBe('account');
-    // Signing out: the device's own values, never the stale cache.
+    // The boundary unmounting is not a sign-out by itself (an authority
+    // re-check after a dropped connection does it too): the account's
+    // appearance is held, not the stale boot cache...
     unbind();
+    expect(appearance()).toEqual({
+      theme: 'dark',
+      colorTheme: 'nord',
+      colorThemeFlavor: null,
+      colorThemeAccent: null,
+    });
+    expect(deviceSettingsStore.getAppearanceSource()).toBe('cache');
+    // ...until a definite no-person answer hands it to the device.
+    deviceSettingsStore.releaseBootAppearance();
     expect(appearance()).toEqual(DEVICE_VALUES);
     expect(deviceSettingsStore.getAppearanceSource()).toBe('device');
   });

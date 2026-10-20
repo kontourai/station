@@ -287,8 +287,23 @@ export function LocalUiSessionGate({
   // No session: the connect screen is this device's, not the account's whose
   // appearance the startup path painted from its cache (lib/appearance-cache.ts).
   // The protected tree, and with it the account boundary that otherwise
-  // releases that cache, never mounts here.
-  const noSession = effectiveResolution?.kind === 'access-required';
+  // releases that cache, never mounts here. Only a definite answer counts: on
+  // a relay route the gate shows the connect screen while the account and its
+  // Station identity are still being checked, which is "not checked yet", not
+  // "signed out". There the definite answer is a completed identity check
+  // for the current account that refused it.
+  const relayRefused = Boolean(
+    activeConnection &&
+      relayRoute &&
+      relayScope?.state === 'ready' &&
+      verifiedRelay !== null &&
+      verifiedRelay.connectionId === activeConnection.id &&
+      verifiedRelay.scopeKey === relayScope.scopeKey &&
+      !verifiedRelay.authenticated,
+  );
+  const noSession = relayRoute
+    ? relayRefused
+    : resolution?.kind === 'access-required';
   useLayoutEffect(() => {
     if (noSession) deviceSettingsStore.releaseBootAppearance();
   }, [noSession]);
