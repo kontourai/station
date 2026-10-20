@@ -10,6 +10,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -24,6 +25,7 @@ import {
   ActivityReviewProvider,
   useActivityReview,
 } from '../contexts/ActivityReviewContext';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
@@ -61,7 +63,7 @@ const session: OrchestrationSessionSummary = {
   displayTitle: 'Reviewed conversation',
   controlMode: 'station-owned',
   status: 'ready',
-  lifecycleState: 'completed',
+  lifecycleState: 'needs_input',
   isLoaded: false,
   isPersisted: true,
   eventCount: 0,
@@ -256,6 +258,10 @@ beforeEach(() => {
   localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   network.apiBase = 'http://station.test';
+  chatDraftsStore.clearActivityDraft(
+    JSON.stringify(['activity-review', 'station-a', network.apiBase]),
+    session.threadId,
+  );
   installFakeLocks();
   window.history.replaceState({}, '', '/');
 });
@@ -285,6 +291,41 @@ test('canonical Chat reveal leaves a desktop sibling visible without asking its 
     );
     expect(asked).not.toHaveBeenCalled();
     expect(model.readRegions().right.occupant).toBe(paneId);
+  } finally {
+    unregister();
+  }
+});
+
+test('real SessionDetail dirty Close cannot consume a newly registered review owner', async () => {
+  await mount();
+  const draft = screen.getByRole('textbox', { name: 'Send input to session' });
+  fireEvent.change(draft, { target: { value: 'Keep this real review reply' } });
+  await waitFor(() => expect(relations.relationOf(paneId)?.kept).toBe(true));
+  fireEvent.click(screen.getByRole('button', { name: 'Close review' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Unsaved Changes' });
+  const asked = vi.fn();
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('new review owner'),
+    (_proceed, cancel) => {
+      asked();
+      cancel?.();
+    },
+    paneId,
+  );
+  try {
+    const before = await settledStorageSnapshot();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Unsaved Changes' }),
+      ).toBeNull(),
+    );
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(model.readRegions().right.panes).toContain(paneId);
+    expect((draft as HTMLTextAreaElement).value).toBe(
+      'Keep this real review reply',
+    );
+    expect(asked).not.toHaveBeenCalled();
   } finally {
     unregister();
   }
