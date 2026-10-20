@@ -521,8 +521,21 @@ protected wire command before invoking an engine. The pending marker must save
 successfully before any native mutation; failed storage keeps the message held. The server journal
 retains digests rather than message bodies, and Session deletion removes it.
 
-The pending-message section starts collapsed, showing only its count and a
-Needs review indicator for failures or unconfirmed delivery. Its disclosure
+The open conversation also shows **Messages held by Station**, a separate
+[server inbox view](../../src-ui/src/components/chat/ConversationInboxMessages.tsx).
+It reads the existing [inbox API](../reference/session-api.md#let-station-hold-a-follow-up)
+for that conversation and verified Station identity, including messages submitted
+by another client. Waiting and sending rows contribute to its pending count;
+unknown or refused delivery remains visible separately. A failed read shows
+unavailable rather than zero. Foreground polling, event-driven invalidation,
+focus/reconnect and **Refresh** request fresh observations. **Remove** or
+**Dismiss** uses the original message key and the server's authorization and placement checks;
+rows without a permitted key are read-only. They offer no local edit, reorder,
+send-now or steer action. This view does not transfer ordinary busy-composer
+submissions from browser-local storage into the server inbox.
+
+The browser-local pending-message section starts collapsed, showing only its
+count and a Needs review indicator for failures or unconfirmed delivery. Its disclosure
 reveals message content, mode, status and actions; it does not auto-expand during
 a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
 stop override: Station waits for a settled interruption receipt before sending
