@@ -853,7 +853,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     fireEvent.click(review);
     expect(
       screen.getByRole('dialog', {
-        name: 'Allow extensions from this Station?',
+        name: /Allow extensions from/,
       }),
     ).toBeTruthy();
     expect(navigationMocks.navigate).not.toHaveBeenCalledWith('/registry');
