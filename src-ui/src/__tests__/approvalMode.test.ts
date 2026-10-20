@@ -99,7 +99,7 @@ describe('full-access copy does not overstate what a start without a grant gets'
 
   test('the OpenCode never copy is conditional on the grant', () => {
     expect(approvalModeDescription('never', 'opencode')).toBe(
-      'With full access granted, actions run without asking. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
+      'With full access granted, permitted actions run without approval prompts. Questions and plan exits may still ask. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
     );
   });
 });

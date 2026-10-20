@@ -132,7 +132,7 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // #3290: nothing asks; the built-in subagents may run (their rules cannot
     // ask either); plan mode's own edit block stays.
     opencode:
-      'With full access granted, actions run without asking. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
+      'With full access granted, permitted actions run without approval prompts. Questions and plan exits may still ask. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
   },
   'connection-default': {
     // #3290 (owner decision): Station sends OpenCode no mode until it takes
