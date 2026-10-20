@@ -6,6 +6,7 @@ import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
 import { contrastRatio } from './helpers/color-contrast';
+import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
@@ -1772,9 +1773,7 @@ function telemetryConsentScreens(): Screen[] {
         viewport,
         beforeGoto: async (page) => {
           ownPage = page;
-          const apiBase = process.env.PW_API_BASE_URL;
-          if (!apiBase)
-            throw new Error('Telemetry gallery requires its owned API origin.');
+          const apiBase = resolveE2EApiBase();
           const request = createAuthenticatedE2ERequest(page.request);
           const read = async (path: string) => {
             const response = await request.get(new URL(path, apiBase).href);
