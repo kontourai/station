@@ -1,0 +1,9 @@
+{
+  "revision": "ca152c04feb46124c7b8d0e9b1069d0681a24c90",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added the rule that a workspace package.json must not reach Vitest related discovery (default forceRerunTriggers select the whole corpus on hosted checkouts, nothing under a dot-directory) and that changed manifests get explicit readers. Checked against selectChangedVerification's related-edge branch, the new packages/basis-pane/package.json edge in test-impact-manifest.mjs, its changed-verification.test.ts regression test, and the CI plan for merge-group run 39350161193 (3,745 files, discovery 0.2s).","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"changed-verification.test.ts only adds a selection test for the Basis pane manifest; the narrow-diff fixture, demo and its 120-second liveness limit are unchanged.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}
