@@ -796,12 +796,7 @@ export class AttachedSessionAdoption {
         // folder the person chose) is admitted as itself.
         [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: sessionConfinementRoot(
           place.cwd,
-          (this.deps.listProjects?.() ?? []).map((project) => ({
-            ...project,
-            ...(project.workingDirectory
-              ? { workingDirectory: expandTilde(project.workingDirectory) }
-              : {}),
-          })),
+          this.deps.listProjects?.() ?? [],
           {
             ...(place.project ? { projectSlug: place.project.slug } : {}),
             admittedCwd: place.cwd,

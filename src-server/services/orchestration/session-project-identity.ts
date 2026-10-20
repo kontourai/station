@@ -1,4 +1,5 @@
 import { isAbsolute, relative, resolve } from 'node:path';
+import { expandTilde } from '../../utils/paths.js';
 
 /**
  * Station #90 lane D (station #122), review D5: the start-metadata key
@@ -53,8 +54,8 @@ function isWithin(root: string, path: string): boolean {
  *   `host` is ever checked, and such a session is never the operator's own,
  *   so nothing there is trusted.
  *
- * Paths are resolved and compared lexically, as Project containment is
- * everywhere else.
+ * Paths (stored with a literal `~`) are expanded, resolved and compared
+ * lexically, as Project containment is everywhere else.
  */
 export function sessionConfinementRoot(
   cwd: string | undefined,
@@ -62,18 +63,15 @@ export function sessionConfinementRoot(
   options: {
     projectSlug?: string;
     admittedCwd?: string;
-    resolveDirectory?: (path: string) => string;
   } = {},
 ): string {
   if (cwd === undefined) return '';
-  const resolveDir =
-    options.resolveDirectory ?? ((path: string) => resolve(path));
-  const target = resolveDir(cwd);
+  const target = resolve(expandTilde(cwd));
   const roots = projects
     .map((project) => ({
       slug: project.slug,
       root: project.workingDirectory
-        ? resolveDir(project.workingDirectory)
+        ? resolve(expandTilde(project.workingDirectory))
         : undefined,
     }))
     .filter(
@@ -86,7 +84,7 @@ export function sessionConfinementRoot(
   if (deepest) return deepest.root;
   if (
     options.admittedCwd !== undefined &&
-    resolveDir(options.admittedCwd) === target
+    resolve(expandTilde(options.admittedCwd)) === target
   )
     return target;
   return '';

@@ -1662,23 +1662,14 @@ function withSessionConfinementRoot(
 ): ProviderSessionStartInput {
   const { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: _untrusted, ...rest } =
     input.metadata ?? {};
-  const root = sessionConfinementRoot(
-    input.cwd ? expandTilde(input.cwd) : undefined,
-    (listProjects?.() ?? []).map((project) => ({
-      ...project,
-      ...(project.workingDirectory
-        ? { workingDirectory: expandTilde(project.workingDirectory) }
-        : {}),
-    })),
-    {
-      ...(typeof input.metadata?.projectSlug === 'string'
-        ? { projectSlug: input.metadata.projectSlug }
-        : {}),
-      ...(admittedWorkspace?.threadId === input.threadId
-        ? { admittedCwd: admittedWorkspace.cwd }
-        : {}),
-    },
-  );
+  const root = sessionConfinementRoot(input.cwd, listProjects?.() ?? [], {
+    ...(typeof input.metadata?.projectSlug === 'string'
+      ? { projectSlug: input.metadata.projectSlug }
+      : {}),
+    ...(admittedWorkspace?.threadId === input.threadId
+      ? { admittedCwd: admittedWorkspace.cwd }
+      : {}),
+  });
   return {
     ...input,
     metadata: { ...rest, [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: root },
