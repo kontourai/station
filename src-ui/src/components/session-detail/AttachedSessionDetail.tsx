@@ -134,7 +134,9 @@ export function AttachedSessionDetail({
    * its Agent's chat. A host that is not the dock passes this, and Send hands
    * the exact draft to the dock instead of continuing here.
    */
-  onContinueInChat?: (draft: string) => void | boolean | Promise<boolean>;
+  onContinueInChat?:
+    | ((draft: string) => void)
+    | ((draft: string) => boolean | Promise<boolean>);
   openingContinuation?: boolean;
   continuationCreated?: boolean;
   onLoadOlder?: () => Promise<void>;

@@ -341,7 +341,7 @@ test.each(['removed-target', 'station-changed', 'new-guard'])(
   },
 );
 
-test.each(['moved', 'new-guard'])(
+test.each(['moved', 'new-guard', 'unmounted'])(
   'a delayed Close cannot remove a review after %s',
   async (change) => {
     await mount();
@@ -364,6 +364,8 @@ test.each(['moved', 'new-guard'])(
     let unregisterNew = () => {};
     await act(async () => {
       if (change === 'moved') model.placeSurface(id, 'bottom');
+      else if (change === 'unmounted')
+        model.placeSurface('workspace-agents', 'right');
       else
         unregisterNew = navigationStore.registerNavigationGuard(
           Symbol('new draft'),

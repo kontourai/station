@@ -227,7 +227,11 @@ function ActivityReviewPane({ id }: { id: string }) {
             </Button>
           }
           secondary={
-            <Button variant="ghost" size="sm" onClick={() => review.close(id)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => review.close(id, () => mounted.current)}
+            >
               Close review
             </Button>
           }

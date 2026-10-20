@@ -1,5 +1,6 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -7,6 +8,7 @@ import {
   installMockOrchestrationSse,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 function summary(index: number): OrchestrationSessionSummary {
   const time = new Date(Date.now() - index * 60_000).toISOString();
@@ -119,6 +121,16 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   ).toHaveCount(0);
   await list.hover();
   await page.mouse.wheel(0, 200);
+  await main
+    .locator('.split-pane__item-row')
+    .filter({
+      has: page.getByRole('button', {
+        name: 'Review activity 04',
+        exact: true,
+      }),
+    })
+    .getByRole('button', { name: 'More actions', exact: true })
+    .focus();
   const scrollBefore = await list.evaluate((element) => element.scrollTop);
   await capture(page, testInfo, 'activity-review-before.png');
   await reviewItem(page, 'Review activity 04');
@@ -260,4 +272,129 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
     .click();
   await expect(review).toHaveCount(0);
   await expect(search).toBeVisible();
+  await reviewItem(page, 'Review activity 05');
+  const handoffDraft = review.getByRole('textbox', {
+    name: 'Message',
+    exact: true,
+  });
+  await handoffDraft.fill('Exact scoped review handoff');
+  await review
+    .getByRole('button', { name: 'Send message', exact: true })
+    .click();
+  const leave = page.getByRole('dialog', {
+    name: 'Unsaved Changes',
+    exact: true,
+  });
+  await leave.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(handoffDraft).toHaveValue('Exact scoped review handoff');
+  await review
+    .getByRole('button', { name: 'Send message', exact: true })
+    .click();
+  await leave.getByRole('button', { name: 'Discard', exact: true }).click();
+  const confirmation = page.getByRole('dialog', {
+    name: 'Continue here?',
+    exact: true,
+  });
+  await expect(confirmation).toBeVisible();
+  await expect(
+    page.locator('.imported-conversation-pane textarea'),
+  ).toHaveValue('Exact scoped review handoff');
+  await confirmation
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
 });
+
+for (const width of [1440, 390]) {
+  test(`review Open uses the real Chat owner with only the hidden guard at ${width}px`, async ({
+    page,
+  }) => {
+    const conversation = 'activity-review-owned';
+    const owned: OrchestrationSessionSummary = {
+      ...summary(21),
+      threadId: conversation,
+      conversationId: conversation,
+      displayTitle: 'Owned review destination',
+      assignedAgentSlug: agentId('dev-agent'),
+      controlMode: 'station-owned',
+      lifecycleState: 'needs_input',
+      attachedSource: undefined,
+      answerability: { answerable: true },
+    };
+    await seedOrchestrationRoutes(page);
+    await installMockOrchestrationSse(page);
+    await mockRuntimeConversation(page, {
+      id: conversation,
+      title: 'Owned review destination',
+      agentSlug: 'dev-agent',
+      provider: 'claude',
+      model: 'claude-sonnet',
+      projectSlug: 'dev',
+      canContinue: true,
+      turns: () => [],
+    });
+    await page.route('**/api/orchestration/sessions/read-model*', (route) =>
+      route.fulfill({ json: { success: true, data: [owned] } }),
+    );
+    await page.route(`**/api/orchestration/sessions/${conversation}`, (route) =>
+      route.fulfill({
+        json: { success: true, data: { session: owned, events: [] } },
+      }),
+    );
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto('/');
+    await page
+      .locator('.sidebar')
+      .getByRole('button', { name: 'Activity', exact: true })
+      .click();
+    await page.setViewportSize({ width, height: 1000 });
+    await reviewItem(page, 'Owned review destination');
+    const review = page.getByRole('region', {
+      name: 'Activity quick review',
+      exact: true,
+    });
+    const draft = review.getByRole('textbox', {
+      name: 'Send input to session',
+      exact: true,
+    });
+    await draft.fill('Keep this review draft');
+    await expect(
+      review.getByRole('button', { name: 'Opened', exact: true }),
+    ).toBeDisabled();
+    await review
+      .getByRole('button', { name: 'More review actions', exact: true })
+      .click();
+    await page
+      .getByRole('menuitem', { name: 'Open conversation', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', {
+      name: 'Unsaved Changes',
+      exact: true,
+    });
+    if (width === 390) {
+      await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(draft).toHaveValue('Keep this review draft');
+      await review
+        .getByRole('button', { name: 'More review actions', exact: true })
+        .click();
+      await page
+        .getByRole('menuitem', { name: 'Open conversation', exact: true })
+        .click();
+      await dialog
+        .getByRole('button', { name: 'Discard', exact: true })
+        .click();
+    }
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('chat'))
+      .toBe(conversation);
+    await expect(dialog).toHaveCount(0);
+    if (width === 1440)
+      await expect(draft).toHaveValue('Keep this review draft');
+    else await expect(review).toHaveCount(0);
+    await expect(
+      page
+        .locator('.chat-dock')
+        .getByRole('group', { name: 'Message composer', exact: true })
+        .getByRole('textbox'),
+    ).toBeVisible();
+  });
+}

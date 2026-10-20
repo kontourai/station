@@ -29,7 +29,9 @@ export function SessionDetail({
   onOpenConversation,
 }: {
   /** Activity hands an external conversation's message to the dock. */
-  onContinueInChat?: (draft: string) => void | boolean | Promise<boolean>;
+  onContinueInChat?:
+    | ((draft: string) => void)
+    | ((draft: string) => boolean | Promise<boolean>);
   onOpenConversation?: () => void;
   /** Where the detail is hosted: Activity's pane, or the chat dock. */
   presentation?: 'inspector' | 'chat';

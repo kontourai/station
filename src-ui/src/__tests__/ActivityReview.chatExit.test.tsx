@@ -315,7 +315,14 @@ test('a phone exit asks once before canonical Chat focus', async () => {
   }
 });
 
-test.each(['new guard', 'hidden owner', 'Station', 'relation', 'unmount'])(
+test.each([
+  'new guard',
+  'hidden owner',
+  'Station',
+  'relation',
+  'selection',
+  'unmount',
+])(
   'pending Chat exit refuses %s without navigation or storage changes',
   async (change) => {
     await mount(true);
@@ -341,6 +348,11 @@ test.each(['new guard', 'hidden owner', 'Station', 'relation', 'unmount'])(
         if (change === 'hidden owner')
           model.placeSurface('workspace-agents', 'bottom');
         if (change === 'Station') authoritySwitch.set?.('unverified');
+        if (change === 'selection')
+          relations.publishOpenerSelection(
+            'activity',
+            'activity:new-selection',
+          );
         if (change === 'relation')
           await relations.transact((tx) => ({
             ok: true,
@@ -367,3 +379,25 @@ test.each(['new guard', 'hidden owner', 'Station', 'relation', 'unmount'])(
     }
   },
 );
+
+test('a covered owner changed in the guard callback is read from the committed model', async () => {
+  await mount(true);
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('same event'),
+    (proceed) => {
+      model.placeSurface('workspace-agents', 'bottom');
+      proceed();
+    },
+    paneId,
+  );
+  try {
+    requestOpen();
+    await settledStorageSnapshot();
+    expect(navigationStore.getSnapshot().activeChat).not.toBe(
+      'conversation-review',
+    );
+    expect(model.readRegions().bottom.occupant).toBe('workspace-agents');
+  } finally {
+    unregister();
+  }
+});

@@ -23,7 +23,11 @@ import {
 } from '../contexts/__tests__/paneRelationsHarness';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { ToastProvider } from '../contexts/ToastContext';
-import { handOffAttachedContinuation } from '../lib/attached-continuation-handoff';
+import {
+  attachedContinuationScope,
+  handOffAttachedContinuation,
+  takeAttachedContinuationHandoff,
+} from '../lib/attached-continuation-handoff';
 
 const boundary = vi.hoisted(() => ({
   adopt: vi.fn(),
@@ -106,7 +110,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function mount() {
+function mount(station = 'station-a') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -116,7 +120,7 @@ function mount() {
   ) => (
     <QueryClientProvider client={client}>
       <ToastProvider>
-        <AuthorityHarness initial={{ station: 'station-a' }}>
+        <AuthorityHarness initial={{ station }}>
           <ImportedConversationPane
             threadId={threadId}
             apiBase={apiBase}
@@ -224,4 +228,33 @@ test('the real recipient takes a review handoff and continues only after confirm
     'child-conversation',
     'Exact review reply',
   );
+});
+
+test('a handoff waits for its exact Station reader and never fills the other Station draft', async () => {
+  const scope = attachedContinuationScope('station-a', 'http://station.test');
+  handOffAttachedContinuation({
+    threadId: source.threadId,
+    draft: 'Only Station A',
+    scope,
+  });
+  mount('station-b');
+  expect(
+    (
+      (await screen.findByRole('textbox', {
+        name: 'Message',
+      })) as HTMLTextAreaElement
+    ).value,
+  ).toBe('');
+  expect(screen.queryByRole('dialog', { name: 'Continue here?' })).toBeNull();
+  act(() => authoritySwitch.set?.({ station: 'station-a' }));
+  await screen.findByRole('dialog', { name: 'Continue here?' });
+  expect(
+    (
+      screen.getByRole('textbox', {
+        name: 'Message',
+        hidden: true,
+      }) as HTMLTextAreaElement
+    ).value,
+  ).toBe('Only Station A');
+  expect(takeAttachedContinuationHandoff(source.threadId, scope)).toBeNull();
 });

@@ -107,11 +107,12 @@ class OpenChatsStore {
         signal.addEventListener('abort', abort, { once: true });
       });
     }
-    if (signal?.aborted || isCurrent?.() === false) return false;
+    const current = () => !signal?.aborted && isCurrent?.() !== false;
+    if (!current()) return false;
     return (
       (await navigation?.openConversation?.(
         conversationId,
-        isCurrent,
+        signal ? current : isCurrent,
         options.revealDock === undefined
           ? undefined
           : { revealDock: options.revealDock },

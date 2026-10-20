@@ -43,7 +43,7 @@ interface ActivityReviewValue {
   source: ActivityReviewSource | null;
   readSource(): ActivityReviewSource | null;
   publish(source: ActivityReviewSource): () => void;
-  close(instanceId: string): void;
+  close(instanceId: string, callerCurrent?: () => boolean): void;
   reveal(
     instanceId: string,
     surface: 'chat' | 'activity',
@@ -98,68 +98,82 @@ export function ActivityReviewProvider({ children }: { children: ReactNode }) {
       setSource(null);
     };
   }, []);
-  const close = useCallback((instanceId: string) => {
-    const { model: initialModel, relations: initialRelations } = live.current;
-    const relation = initialRelations.relationOf(instanceId);
-    if (
-      !initialModel ||
-      !relation ||
-      relation.stationId !== initialRelations.stationId
-    )
-      return;
-    const restoreFocus = () => {
-      const source = sourceRef.current;
+  const close = useCallback(
+    (instanceId: string, callerCurrent: () => boolean = () => true) => {
+      const {
+        model: initialModel,
+        relations: initialRelations,
+        apiBase: initialApiBase,
+      } = live.current;
+      const relation = initialRelations.relationOf(instanceId);
       if (
-        source &&
-        openerSelectionKey(source.opener) ===
-          openerSelectionKey(relation.opener)
+        !initialModel ||
+        !relation ||
+        !callerCurrent() ||
+        relation.stationId !== initialRelations.stationId
       )
-        source.restoreFocus();
-    };
-    if (initialModel.phoneLayer?.surfaceId === instanceId) {
-      initialModel.closePhoneLayer(
-        restoreFocus,
-        () =>
-          alive.current &&
-          live.current.relations.stationId === relation.stationId &&
-          live.current.relations.relationOf(instanceId) === relation,
-      );
-      return;
-    }
-    const region = occupiedDockRegion(initialModel.readRegions(), instanceId);
-    if (!region) return;
-    const watch = watchGuardRegistrations();
-    void (async () => {
-      try {
-        if (!(await guardsAllow([instanceId]))) return;
-        const outcome = await live.current.relations.transact<void>(
-          (tx) => {
-            const current = live.current;
-            const held = paneRelationOf(tx.record, instanceId);
-            if (
-              !alive.current ||
-              watch.registered.has(instanceId) ||
-              JSON.stringify(held) !== JSON.stringify(relation) ||
-              !current.model ||
-              occupiedDockRegion(current.model.readRegions(), instanceId) !==
-                region
-            )
-              return { ok: false, reason: 'superseded' };
-            if (!tx.write(withoutPaneRelation(tx.record, instanceId)))
-              return { ok: false, reason: 'storage' };
-            if (!current.model.removePane(region, instanceId))
-              return { ok: false, reason: 'superseded' };
-            forgetRegionPaneState(instanceId);
-            return { ok: true, value: undefined };
-          },
-          { station: relation.stationId },
+        return;
+      const restoreFocus = () => {
+        const source = sourceRef.current;
+        if (
+          source &&
+          source.stationId === relation.stationId &&
+          source.apiBase === initialApiBase &&
+          openerSelectionKey(source.opener) ===
+            openerSelectionKey(relation.opener)
+        )
+          source.restoreFocus();
+      };
+      if (initialModel.phoneLayer?.surfaceId === instanceId) {
+        initialModel.closePhoneLayer(
+          restoreFocus,
+          () =>
+            alive.current &&
+            callerCurrent() &&
+            live.current.apiBase === initialApiBase &&
+            live.current.relations.stationId === relation.stationId &&
+            live.current.relations.relationOf(instanceId) === relation,
         );
-        if (outcome.ok && alive.current) restoreFocus();
-      } finally {
-        watch.stop();
+        return;
       }
-    })();
-  }, []);
+      const region = occupiedDockRegion(initialModel.readRegions(), instanceId);
+      if (!region) return;
+      const watch = watchGuardRegistrations();
+      void (async () => {
+        try {
+          if (!(await guardsAllow([instanceId]))) return;
+          const outcome = await live.current.relations.transact<void>(
+            (tx) => {
+              const current = live.current;
+              const held = paneRelationOf(tx.record, instanceId);
+              if (
+                !alive.current ||
+                !callerCurrent() ||
+                current.apiBase !== initialApiBase ||
+                watch.registered.has(instanceId) ||
+                JSON.stringify(held) !== JSON.stringify(relation) ||
+                !current.model ||
+                occupiedDockRegion(current.model.readRegions(), instanceId) !==
+                  region
+              )
+                return { ok: false, reason: 'superseded' };
+              if (!tx.write(withoutPaneRelation(tx.record, instanceId)))
+                return { ok: false, reason: 'storage' };
+              if (!current.model.removePane(region, instanceId))
+                return { ok: false, reason: 'superseded' };
+              forgetRegionPaneState(instanceId);
+              return { ok: true, value: undefined };
+            },
+            { station: relation.stationId },
+          );
+          if (outcome.ok && alive.current) restoreFocus();
+        } finally {
+          watch.stop();
+        }
+      })();
+    },
+    [],
+  );
   const reveal = useCallback(
     async (
       instanceId: string,
@@ -222,6 +236,10 @@ export function ActivityReviewProvider({ children }: { children: ReactNode }) {
         scopeCurrent() &&
         JSON.stringify(hidden()) === JSON.stringify(expected) &&
         asked.every((owner) => !watch.registered.has(owner));
+      const show = () => {
+        live.current.model?.showSurface(surface);
+        expected = hidden();
+      };
       try {
         if (initial.model.readPhoneLayer()?.surfaceId === instanceId) {
           if (
@@ -233,19 +251,16 @@ export function ActivityReviewProvider({ children }: { children: ReactNode }) {
           )
             return false;
           const closed = await initial.model.closePhoneLayer(
-            undefined,
+            show,
             () => callerCurrent() && current(),
           );
           if (!closed) return false;
-        } else if (
-          !(await guardsAllow(expected)) ||
-          !callerCurrent() ||
-          !current()
-        )
-          return false;
+        } else {
+          if (!(await guardsAllow(expected)) || !callerCurrent() || !current())
+            return false;
+          show();
+        }
         if (!scopeCurrent()) return false;
-        live.current.model?.showSurface(surface);
-        expected = hidden();
         if (!expected || !scopeCurrent()) return false;
         await commit(current, controller.signal);
         return current();
