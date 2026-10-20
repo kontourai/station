@@ -1,73 +1,102 @@
 import {
-  AnswerBasisRequestError,
+  type AnswerBasisQueryConfig,
   useAnswerBasisQuery,
 } from '@kontourai/station-sdk/answer-basis';
-import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
-import type { MouseEvent, ReactElement } from 'react';
+import {
+  type BasisPanelStanding,
+  buildBasisPanelViewModel,
+} from '@kontourai/surface/basis/view';
+import type { MouseEvent, ReactElement, Ref } from 'react';
 
 /**
- * #1536 B3: the route's 404 is an ANSWER, not a fault, and it keeps 503 for a
- * read it could not perform. The label collapsed both into "Unavailable", so a
- * healthy instance accused itself of a failure over a turn that simply has no
- * basis to show.
- *
- * Review H3: the wording must not claim WHY, either. The route answers 404 for
- * a missing basis AND for a denied or stale-principal read — deliberately, so
- * the two are indistinguishable to the caller (`orchestration.routes.test.ts`:
- * "makes missing and denied answers the same response"). "Not recorded" would
- * be a claim this client cannot make about the denied case, and would leak the
- * distinction the route refuses to leak. So it says only what is true of both:
- * there is no basis Station can show for this turn.
+ * The Surface standing codes an answer's Basis chip names on its face (owner
+ * decision on station#926, 2026-10-19; epic station#418). Execution-only
+ * ("Unassessed", nearly every ordinary answer) is the quiet default and
+ * stays plain "Basis"; an assessed result and every unresolved class are
+ * notable. A closed list on Surface's own code, so a standing Surface adds
+ * later stays plain until it is reviewed here. Surface does not yet export a
+ * "notable" cue of its own; kontourai/surface#348 asks for one
+ * (`basisStandingCue`), which should replace this list.
  */
-const BASIS_NOT_AVAILABLE_LABEL = 'Basis · Not available for this turn';
-const BASIS_NOT_AVAILABLE_TITLE =
-  'Station has no basis it can show you for this turn.';
+const NOTABLE_STANDING_CODES: ReadonlySet<BasisPanelStanding['code']> = new Set(
+  ['policy-met', 'assessed-with-gaps', 'unresolved'],
+);
 
-/**
- * Delta review DL5: the label and its explanation come back together. Deriving
- * the title by comparing the rendered label against a constant meant one
- * refusal state was described in two places, so a reworded label would silently
- * drop its own tooltip.
- */
-function basisErrorLabel(error: unknown): { label: string; title?: string } {
-  return error instanceof AnswerBasisRequestError && error.status === 404
-    ? { label: BASIS_NOT_AVAILABLE_LABEL, title: BASIS_NOT_AVAILABLE_TITLE }
-    : { label: 'Basis · Unavailable' };
+/** Surface's label for a notable standing; `null` when the chip stays plain. */
+export function answerBasisChipCue(
+  standing: BasisPanelStanding | null,
+): string | null {
+  return standing && NOTABLE_STANDING_CODES.has(standing.code)
+    ? standing.label
+    : null;
 }
 
 export interface AnswerBasisAffordanceProps {
   sessionId: string;
   turnId: string;
+  /**
+   * Whether to read this answer's Basis. A caller enables it only while the
+   * chip is on screen, so history scrolled out of view makes no request.
+   */
   enabled: boolean;
+  requestScope?: AnswerBasisQueryConfig['requestScope'];
+  /** Which answer, for the accessible name: e.g. `the answer “…”`. */
+  answerName?: string;
+  className?: string;
+  ref?: Ref<HTMLButtonElement>;
+  'aria-busy'?: boolean;
   onOpen(trigger: HTMLButtonElement): void;
 }
 
+/**
+ * An answer's Basis entry. It reads plain "Basis" unless Surface's standing
+ * for this exact answer is notable, when it adds Surface's own label. While
+ * the read is pending, failed or not yet made, it stays plain "Basis" and
+ * still opens: the opened view states what could not be read.
+ */
 export function AnswerBasisAffordance({
   sessionId,
   turnId,
   enabled,
+  requestScope,
+  answerName,
+  className,
+  ref,
+  'aria-busy': ariaBusy,
   onOpen,
 }: AnswerBasisAffordanceProps): ReactElement {
-  const query = useAnswerBasisQuery(sessionId, turnId, { enabled });
-  const model = query.data ? buildBasisPanelViewModel(query.data) : null;
-  const { label, title } = query.error
-    ? basisErrorLabel(query.error)
-    : {
-        label: model
-          ? `Basis · ${model.standing.label} · ${model.gaps.length} ${model.gaps.length === 1 ? 'gap' : 'gaps'}`
-          : 'Basis · Checking…',
-        title: undefined,
-      };
+  // Cached standings are not re-read as the chip scrolls back into view;
+  // assessment and narrative updates tombstone and invalidate this key.
+  const query = useAnswerBasisQuery(sessionId, turnId, {
+    enabled,
+    requestScope,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const standing = query.data
+    ? buildBasisPanelViewModel(query.data).standing
+    : null;
+  const cue = answerBasisChipCue(standing);
+  const text = cue ? `Basis · ${cue}` : 'Basis';
+  const target = answerName ?? 'this answer';
   return (
     <button
+      ref={ref}
       type="button"
-      className="station-basis-affordance"
-      title={title}
+      className={className ?? 'station-basis-affordance'}
+      title={standing?.description ?? 'Open the basis for this answer'}
+      aria-label={
+        cue
+          ? `${text} for ${target}`
+          : standing
+            ? `Basis for ${target}: ${standing.label}`
+            : `Basis for ${target}`
+      }
+      aria-busy={ariaBusy}
       onClick={(event: MouseEvent<HTMLButtonElement>) =>
         onOpen(event.currentTarget)
       }
     >
-      {label}
+      {text}
     </button>
   );
 }
