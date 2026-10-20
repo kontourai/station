@@ -16,7 +16,7 @@ when. Its schedule is generated from `scripts/verification-lanes.mjs`.
 | `scripts/*.mjs`, `*.mts`, `*.ts` | Entry points, run directly with `node` or `tsx`. |
 | `scripts/lib/` | Shared helpers imported by entry points and tests. Prefer extending one over writing a local copy: `bounded-capture.mjs` for child-process output, `canonical-json.mjs` for hashed JSON, `owned-process.mjs` for process-tree ownership. |
 | `scripts/__tests__/` | Vitest suites for the entry points and helpers above. A test that spawns a child process is classified in `scripts/vitest-resource-manifest.mjs`. |
-| `scripts/fixtures/` | Static inputs used by tests and by `region-grid-parity.mjs`. |
+| `scripts/fixtures/` | Inputs and small executable helpers (capture and probe servers) used by tests and by `region-grid-parity.mjs`. |
 | `scripts/templates/` | Android and iOS project templates copied by the native build scripts. |
 | `scripts/bench/` | Hand-run benchmarks. Not part of any gate. |
 
@@ -43,5 +43,8 @@ File names group by prefix, so a pattern finds the family.
 Put shared logic in `scripts/lib/`, give the entry point a test in
 `scripts/__tests__/`, classify a child-process test in the resource manifest, and
 wire the script in `package.json` or a workflow so it has a caller.
-`npm run hygiene:report` flags code with no production caller unless it carries an
-`UNWIRED(#N)` marker (see [code hygiene](../docs/guides/code-hygiene.md)).
+`npm run hygiene:report` runs six advisory checks: `UNWIRED`/`SUNSET` markers
+whose issue is closed, issue references that cannot be Station issues, private
+plan and review labels, unowned modules, stale design status, and dated evidence
+with no retention rule (see [code hygiene](../docs/guides/code-hygiene.md)). It
+does not find dead code; `npm run fallow` and `npm run audit:code-health` do.
