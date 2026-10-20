@@ -1,0 +1,7 @@
+{
+  "revision": "764b270379659c09cba29775a5eb939e489eae8f",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed against the responsive-action-surfaces inventory edit (MessageBubble entry extended with the Basis chip) and the chip's token-based colors: no theming claim changes; no prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

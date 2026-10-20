@@ -1,0 +1,7 @@
+{
+  "revision": "764b270379659c09cba29775a5eb939e489eae8f",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added the useSessionInventoryQuery lifecycle: mount withholds cached data until its own read, background refetch keeps loaded data, only 401/403/404 tombstone, 503/network/contract refusal are query errors with no automatic retry. Checked against packages/sdk/src/session-inventory.ts (lostAuthority, clearSessionInventoryCache, useProtected) and session-inventory-query-lifecycle.test.tsx.","inputs":["docs/reference/sdk.md","packages/sdk/src/session-inventory.ts"]}
+  ]
+}

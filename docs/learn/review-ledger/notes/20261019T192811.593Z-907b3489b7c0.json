@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed against the at-rest Basis chip: it stays one labelled action beside icon-only copy/overflow, 28px on a hover pointer and 44px under (hover: none) and in the phone meta row; no rule in the guide changes.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/chat/chat.css"]}
+  ]
+}

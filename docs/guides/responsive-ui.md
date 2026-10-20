@@ -113,6 +113,16 @@ corresponding CSS conditions aligned. The documentation token `--bp-mobile`
 cannot be substituted into a CSS media query. Dock placement has a different
 policy: a wide coarse-pointer device can be bottom-only without being mobile.
 
+Content whose room depends on the dock rather than the window measures the
+dock. The session context card beside the Chat transcript
+([sessionContextCardModel.ts](../../src-ui/src/components/chat-dock/sessionContextCardModel.ts))
+reads the conversation surface's width with a `ResizeObserver` and shows only
+when the transcript keeps its 640px floor beside it; the same answer hides
+the header items it repeats, which live outside the dock body, so a CSS
+container query on the body could not reach them. A phone never shows it
+inline; there it opens as a sheet from the Chat actions sheet, because the
+phone bar's edge reserve holds only its two 44px controls.
+
 Use [useMobileVisualViewport](../../src-ui/src/hooks/useMobileVisualViewport.ts)
 at the surface or workspace boundary that needs geometry, then size descendants
 from `--responsive-visual-viewport-height`. It combines Visual Viewport readings
