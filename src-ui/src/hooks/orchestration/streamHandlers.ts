@@ -218,7 +218,7 @@ function committedMessageIndexForTurn(
  * back to the streaming shell, which is what every pre-turn-id event and
  * every event for the turn actually streaming still gets.
  *
- * The durable side agrees (fix round, A): `runtime-event-projection.ts`'s
+ * The durable side agrees (#1594): `runtime-event-projection.ts`'s
  * `tool.started` case routes a start for an already-emitted turn onto that
  * turn's message and carries it, so a reload reproduces what this shows
  * rather than folding the start by stream position.
@@ -477,7 +477,7 @@ export function handleToolCompletedEvent(
   // anywhere else, so the streaming shell takes it — including when
   // `streamingTurnContradicts`, which is a disclosed gap rather than a
   // decision (station#1586 item 4). Two shapes reach it: a turn this client
-  // never received in its history, and (fix round, L4) a turn this client DID
+  // never received in its history, and (#1594) a turn this client DID
   // stream whose shell was discarded rather than committed —
   // `handleTurnAbortedEvent` (`turnHandlers.ts`) clears `streamingMessage`
   // and `openTurnId` outright, so an aborted turn's late terminal finds no

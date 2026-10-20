@@ -581,7 +581,7 @@ export function RegionPaneHost({
   // its own state initialiser, so a write after this render would be too
   // late. A ref rather than a `useState` initialiser because the run is
   // deferred while the project read is in flight AND that read is what is
-  // holding a pane out of the document (review M3): writing the pane set
+  // holding a pane out of the document (#2075): writing the pane set
   // derived then would drop a persisted pane on a premise the query has not
   // established. A document holding every pane the region does cannot change
   // when the project resolves, so Chat's own regions — adoption included —
@@ -740,7 +740,7 @@ export function RegionPaneHost({
   // Offered for every dock region under the model, project or not (#2154:
   // the rows that need a project list disabled with the reason), and for an
   // empty region too — both routes open the one chooser. Not while the
-  // project read is in flight (review M3): the rows would name a remedy for
+  // project read is in flight (#2174): the rows would name a remedy for
   // a state the user is not in, for the few frames before the read settles.
   const chooserRegion =
     regionId && model && isDockRegion(regionId) && !projectPending
@@ -794,7 +794,7 @@ export function RegionPaneHost({
             // whose rendering the project read could be holding up, so a
             // region emptied while that read is in flight must not sit on the
             // skeleton (it would never resolve into anything). The rows take
-            // the same rule as the "+" (review M3): while the read is in
+            // the same rule as the "+" (#2174): while the read is in
             // flight the context is projectless, and a coding row disabled
             // "until you choose a project" on a dock that HAS one would be a
             // remedy for a state the user is not in — and a disabled→enabled
@@ -876,7 +876,7 @@ export function RegionPaneHost({
           ) : projectPending ? (
             // The dock's project read is in flight: the pane is neither
             // rendered nor refused yet, so the region waits rather than
-            // telling the user to pick a project (review M3).
+            // telling the user to pick a project (#2075).
             <div className="dock-slot__body">
               <SkeletonBlock count={3} label="Loading pane" />
             </div>

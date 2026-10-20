@@ -3,8 +3,6 @@
  *
  * Wraps navigator.geolocation.watchPosition. Disabled by default; the user
  * must enable it in Settings (privacy-sensitive).
- *
- * Extracted from useLocationContext.ts.
  */
 import type { MessageContextProvider } from '@kontourai/station-sdk';
 import { ListenerManager } from '@kontourai/station-sdk';
