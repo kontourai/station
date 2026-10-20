@@ -162,6 +162,14 @@ settings store's boot snapshot:
    older server). On release the applier rewrites the cache as device-sourced.
    A relay user with no account selected at all is never told "no person", so
    the connect screen there keeps the cached appearance.
+
+   The same hold applies inside a session: when the account boundary unmounts
+   (an authority re-check after a dropped connection, a switch, a sign-out)
+   the account's last mode and color theme stay in force until one of the
+   answers above arrives, so a network blip no longer shows the page in the
+   device's appearance while the account reconnects. The mode half of that
+   blip is inherited from main, where ending the binding resolved the
+   device's own light/dark until the preferences returned.
 2. Otherwise the device envelope, then the legacy `theme` key, as before. A
    device-sourced cache is never read; the envelope is its source.
 
