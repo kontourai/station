@@ -114,7 +114,11 @@
 
     "src-ui/src/lib/color-theme-css.ts",
 
-    "scripts/gen-color-themes.ts"
+    "scripts/gen-color-themes.ts",
+
+    "src-ui/src/lib/color-theme-selection.ts",
+
+    "src-ui/src/lib/appearance-cache.ts"
   ],
 
   "checks": [
