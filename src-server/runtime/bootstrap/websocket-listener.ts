@@ -62,8 +62,8 @@ export function startWebSocketListener(
   // A bind failure reaches the WebSocket server's 'error' event, which `ws`
   // forwards from the HTTP server exactly as it does for a port it owns.
   void link.listen(name, server, address).catch((error: unknown) => {
-    // Said here as well, so a listener that never binds is never silent
-    // until a readiness timeout.
+    // Covers refusals that never reach the server's 'error' event, such as
+    // a listen requested after this generation began draining.
     logger.error('WebSocket listener failed to bind', {
       listener: name,
       port: address.port,

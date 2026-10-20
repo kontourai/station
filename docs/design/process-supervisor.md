@@ -575,4 +575,6 @@ verification, and fault injection.
   zero-reset and SIGTERM checks run on POSIX only. A failed trial drains for
   at most the kill grace, then gets SIGTERM and, 250 ms later, SIGKILL, so
   a frozen trial delays the rollback by about one kill grace and its process
-  group still gets a chance to clean up.
+  group still gets a chance to clean up. SIGKILL goes to the group only if
+  the leader is still running then; a group member that ignores SIGTERM can
+  outlive a trial whose leader exited, as it can after any SIGTERM stop.
