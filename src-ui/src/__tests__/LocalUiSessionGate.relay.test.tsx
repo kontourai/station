@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   },
   accountScope: null as {
     state: 'ready';
-    authorityKey: string;
+    authorityKey: string | null;
     scopeKey: string;
     version: number;
   } | null,
@@ -159,9 +159,60 @@ it('keeps the cached account appearance while the relay account is still being c
   release.mockRestore();
 });
 
+it.each([
+  'unreachable',
+  'timeout',
+  'identity-mismatch',
+  'unsupported-capability-version',
+  'unexpected-response',
+])(
+  'keeps it when the relay identity check fails without a refusal (%s)',
+  async (reason) => {
+    const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
+    mocks.probe.mockResolvedValue({ ok: false, reason });
+    render(
+      <LocalUiSessionGate apiBase="https://client.example.test">
+        <div>Protected Project work</div>
+      </LocalUiSessionGate>,
+    );
+    publishAccount('account-A', 1);
+    await waitFor(() => expect(mocks.probe).toHaveBeenCalled());
+    // Let the probe's answer land and the gate re-render.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(release).not.toHaveBeenCalled();
+    release.mockRestore();
+  },
+);
+
+it('releases it when the relay account scope settles with no account (signed out)', async () => {
+  const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
+  render(
+    <LocalUiSessionGate apiBase="https://client.example.test">
+      <div>Protected Project work</div>
+    </LocalUiSessionGate>,
+  );
+  expect(release).not.toHaveBeenCalled();
+  act(() => {
+    mocks.accountScope = {
+      state: 'ready',
+      authorityKey: null,
+      scopeKey: 'no-account:page:2',
+      version: 2,
+    };
+    for (const listener of mocks.listeners) listener();
+  });
+  await waitFor(() => expect(release).toHaveBeenCalled());
+  release.mockRestore();
+});
+
 it('releases it once the relay identity check refuses the current account', async () => {
   const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
-  mocks.probe.mockResolvedValue({ ok: false, reason: 'unauthorized' });
+  mocks.probe.mockResolvedValue({
+    ok: false,
+    reason: 'authentication-failed',
+  });
   render(
     <LocalUiSessionGate apiBase="https://client.example.test">
       <div>Protected Project work</div>

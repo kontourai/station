@@ -93,6 +93,7 @@ const HARNESS = `
 import { deviceSettingsStore } from './src-ui/src/lib/device-settings-store';
 import {
   bindColorThemeToSettings,
+  retryColorTheme,
   whenColorThemeStylesheetSettled,
 } from './src-ui/src/lib/color-theme-apply';
 import { applyBrandingTheme } from './src-ui/src/lib/branding-theme';
@@ -102,6 +103,7 @@ window.harness = {
   applyBrandingTheme,
   applyAccentColor,
   whenColorThemeStylesheetSettled,
+  retryColorTheme: () => retryColorTheme(),
   // What main.tsx does, plus the mode writers (AccountPreferencesProvider,
   // ThemeToggle), for a page that boots the live path.
   boot() {
@@ -687,12 +689,27 @@ describe('color theme cascade', () => {
           colorTheme: null,
           themeColor: null,
         });
-        // The failure is exposed for the Appearance page.
+        // The failure is exposed for the Appearance page once the automatic
+        // retry has failed too.
+        await page.waitForFunction(
+          () =>
+            document.documentElement.getAttribute('data-color-theme-failed') ===
+            'nord',
+        );
+        // A manual retry shows as retrying, then failed again.
+        await page.evaluate(() =>
+          (window as unknown as { harness: any }).harness.retryColorTheme(),
+        );
         expect(
           await page.evaluate(() =>
             document.documentElement.getAttribute('data-color-theme-failed'),
           ),
-        ).toBe('nord');
+        ).toBeNull();
+        await page.waitForFunction(
+          () =>
+            document.documentElement.getAttribute('data-color-theme-failed') ===
+            'nord',
+        );
         // A live switch to another failing family changes nothing either.
         await page.evaluate(() =>
           (window as unknown as { harness: any }).harness.store.set(

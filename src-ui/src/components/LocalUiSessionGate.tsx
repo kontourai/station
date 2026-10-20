@@ -100,6 +100,8 @@ export function LocalUiSessionGate({
     connectionId: string;
     scopeKey: string;
     authenticated: boolean;
+    /** The Station refused this account (not merely unreachable or unknown). */
+    refused: boolean;
   } | null>(null);
   const [relayOnboardingOpen, setRelayOnboardingOpen] = useState(false);
   const sessionCheck = useRef<{
@@ -175,6 +177,7 @@ export function LocalUiSessionGate({
     let current = true;
     void (async () => {
       let authenticated = false;
+      let refused = false;
       try {
         const result = await probeServerConnection(
           connection.url,
@@ -189,6 +192,13 @@ export function LocalUiSessionGate({
           result.ok &&
           typeof result.bootId === 'string' &&
           result.bootId.length > 0;
+        // Only an authentication refusal is a definite "not this person";
+        // unreachable, timeout, identity or version failures are not.
+        refused =
+          typeof result === 'object' &&
+          result !== null &&
+          !result.ok &&
+          result.reason === 'authentication-failed';
       } catch {
         // Missing or rejected account/Device authority keeps the access
         // screen visible. It is not evidence that the broker route is offline.
@@ -207,6 +217,7 @@ export function LocalUiSessionGate({
           connectionId: connection.id,
           scopeKey: scope.scopeKey,
           authenticated,
+          refused,
         });
     })();
     return () => {
@@ -290,16 +301,19 @@ export function LocalUiSessionGate({
   // releases that cache, never mounts here. Only a definite answer counts: on
   // a relay route the gate shows the connect screen while the account and its
   // Station identity are still being checked, which is "not checked yet", not
-  // "signed out". There the definite answer is a completed identity check
-  // for the current account that refused it.
+  // "signed out". There the definite answers are a settled account scope with
+  // no account (none selected, or signed out), or a completed identity check
+  // for the current account that the Station refused. An unreachable or
+  // otherwise failed check is not one.
   const relayRefused = Boolean(
     activeConnection &&
       relayRoute &&
       relayScope?.state === 'ready' &&
-      verifiedRelay !== null &&
-      verifiedRelay.connectionId === activeConnection.id &&
-      verifiedRelay.scopeKey === relayScope.scopeKey &&
-      !verifiedRelay.authenticated,
+      (!relayScope.authorityKey ||
+        (verifiedRelay !== null &&
+          verifiedRelay.connectionId === activeConnection.id &&
+          verifiedRelay.scopeKey === relayScope.scopeKey &&
+          verifiedRelay.refused)),
   );
   const noSession = relayRoute
     ? relayRefused

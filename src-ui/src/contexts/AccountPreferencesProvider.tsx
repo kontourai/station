@@ -208,8 +208,18 @@ export function AccountPreferencesProvider({
             );
           },
       available,
+      // Keys any appearance held after this binding ends to this account.
+      authority.namespace ?? undefined,
     );
-  }, [eligible, available, projected, query.isFetchedAfterMount, save, scope]);
+  }, [
+    eligible,
+    available,
+    projected,
+    query.isFetchedAfterMount,
+    save,
+    scope,
+    authority.namespace,
+  ]);
   useLayoutEffect(() => {
     if (authority.status !== 'verified' || !authority.namespace) return;
     for (const [sessionId, chat] of Object.entries(

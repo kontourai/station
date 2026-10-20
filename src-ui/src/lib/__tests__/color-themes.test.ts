@@ -297,8 +297,13 @@ describe('family stylesheets load on demand', () => {
     expect(sheets().map((s) => s.href)).toEqual([
       expect.stringContaining('/gruvbox.css'),
     ]);
-    // The next apply asks again, and this time it loads.
+    // The same selection does not ask again by itself (even with another
+    // mode); an explicit retry does, and this time it loads.
     applyColorTheme(root, { ...base, theme: 'light', colorTheme: 'rose-pine' });
+    expect(sheets().map((s) => s.href)).toEqual([
+      expect.stringContaining('/gruvbox.css'),
+    ]);
+    retryColorTheme(root);
     settleSheets('load');
     expect(root.getAttribute('data-color-theme')).toBe('rose-pine');
     expect(sheets().map((s) => s.href)).toEqual([
@@ -315,15 +320,18 @@ describe('family stylesheets load on demand', () => {
     settleSheets('error');
     expect(failed()).toBe('tokyo-night');
     expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
-    // Retrying the same settings requests it again; failing again keeps it.
+    // Retrying requests it again; while that request is in flight the family
+    // is retrying, not failed. Failing again marks it again.
     retryColorTheme(root);
     expect(sheets().map((s) => s.href)).toContainEqual(
       expect.stringContaining('/tokyo-night.css'),
     );
+    expect(failed()).toBeNull();
     settleSheets('error');
     expect(failed()).toBe('tokyo-night');
     // A retry that loads clears it and claims the theme.
     retryColorTheme(root);
+    expect(failed()).toBeNull();
     settleSheets('load');
     expect(failed()).toBeNull();
     expect(root.getAttribute('data-color-theme')).toBe('tokyo-night');
@@ -337,6 +345,39 @@ describe('family stylesheets load on demand', () => {
     expect(failed()).toBe('rose-pine');
     applyColorTheme(root, { ...base, colorTheme: 'station' });
     expect(failed()).toBeNull();
+  });
+
+  test('after a failure only a selection change or an explicit retry asks again, never an unrelated setting', () => {
+    const requests = () =>
+      sheets().filter((s) => s.href?.includes('/nord.css')).length;
+    applySettled(root, { ...base, colorTheme: 'gruvbox' });
+    applyColorTheme(root, { ...base, colorTheme: 'nord' });
+    expect(requests()).toBe(1);
+    settleSheets('error');
+    expect(requests()).toBe(0);
+    expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    // A background save of unrelated settings re-applies the same selection
+    // (and a mode change too): no request, the failure mark stays put.
+    for (const theme of ['dark', 'light', 'dark'] as const) {
+      applyColorTheme(root, { ...base, theme, colorTheme: 'nord' });
+      expect(requests()).toBe(0);
+      expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    }
+    // The previous family stays claimed, with theme-color for the mode.
+    expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
+    // Changing the selection (here the accent) does ask again.
+    applyColorTheme(root, {
+      ...base,
+      colorTheme: 'nord',
+      colorThemeAccent: 'red',
+    });
+    expect(requests()).toBe(1);
+    expect(root.hasAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe(false);
+    settleSheets('error');
+    expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    // And so does an explicit retry.
+    retryColorTheme(root);
+    expect(requests()).toBe(1);
   });
 
   test('a startup sheet that fails is not claimed, and is requested again', () => {
@@ -356,7 +397,8 @@ describe('family stylesheets load on demand', () => {
     // It 404s while the app runs: the theme is un-claimed and re-requested.
     startup.dispatchEvent(new Event('error'));
     expect(root.hasAttribute('data-color-theme')).toBe(false);
-    expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    // The automatic retry is in flight: retrying, not failed.
+    expect(root.hasAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe(false);
     expect(document.head.querySelector('meta[name="theme-color"]')).toBeNull();
     expect(sheets()).toEqual([{ id: '', href }]);
     settleSheets('load');
@@ -371,6 +413,11 @@ describe('family stylesheets load on demand', () => {
     failed.dataset.state = 'failed';
     applyColorTheme(root, nord);
     expect(root.hasAttribute('data-color-theme')).toBe(false);
+    // If that retry fails too, the family is marked failed.
+    settleSheets('error');
+    expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    retryColorTheme(root);
+    expect(root.hasAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe(false);
     settleSheets('load');
     expect(root.getAttribute('data-color-theme')).toBe('nord');
   });
