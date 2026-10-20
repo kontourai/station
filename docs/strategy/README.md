@@ -20,6 +20,7 @@
 | [kontour-integration-surface.md](kontour-integration-surface.md) | Verified public contracts of the Kontour products Station consumes | Before implementing against any `@kontourai/*` package |
 | [local-merge-readiness.md](local-merge-readiness.md) | Historical CI-outage evidence policy | When investigating that period; use root AGENTS.md and the testing guide for current delivery |
 | [multi-agent-delivery-protocol.md](multi-agent-delivery-protocol.md) | How agents deliver into this repo (layered review, fault injection, batch merges) | Before delivering a substantive change |
+| [daily-driver-qualification.md](daily-driver-qualification.md) | The unwired per-engine daily-driver qualification matrix: what it measures, how to run it, what it proves | Before running or wiring `dogfood:daily-driver:*` |
 | [dogfood/first-run-ritual.md](dogfood/first-run-ritual.md) | The 15-minute fresh-home tour run before each stable release cut | Before cutting a stable release |
 | [vision/ai-ui-bridge.md](vision/ai-ui-bridge.md) | The AI ↔ UI bridge north star | When working on bridge-related features |
 | [acp-extension-upstream-proposal.md](acp-extension-upstream-proposal.md) | Proposed ACP extensions, staged for upstream | When touching ACP integration surface |
