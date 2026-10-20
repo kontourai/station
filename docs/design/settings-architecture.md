@@ -65,7 +65,9 @@ permissions, or runtime defaults.
 ## Account preferences and device settings
 
 Personal display choices now belong to the authenticated person on this Station:
-theme, accent, chat font and reasoning/tool visibility, answer delivery, diff
+theme, accent, named color theme (family, dark flavor and accent; see
+[user color themes](../decisions/user-color-themes.md)), chat font and
+reasoning/tool visibility, answer delivery, diff
 style/wrapping, auto-hide, model-picker preferences, the conversation-delete
 confirmation and Developer navigation. The account preference contract is
 [`account-preferences.ts`](../../packages/contracts/src/account-preferences.ts).
