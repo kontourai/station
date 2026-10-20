@@ -202,6 +202,8 @@
 }
 
 .background-tasks-sheet__meta {
+  display: flex;
+  align-items: center;
   overflow: hidden;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
@@ -337,4 +339,8 @@
   .background-tasks-sheet__action {
     min-height: 44px;
   }
+}
+
+.background-tasks-sheet__meta > .child-work-activity {
+  flex: 1;
 }

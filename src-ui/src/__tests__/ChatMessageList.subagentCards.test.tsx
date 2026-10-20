@@ -223,7 +223,11 @@ function spawningTurn() {
 function progress() {
   return childWork('2026-10-14T14:30:00.000Z', {
     kind: 'upsert',
-    item: { ...runningChild, progress: 'Reading the decision records' },
+    item: {
+      ...runningChild,
+      latestTool: 'Read',
+      progress: 'Reading the decision records',
+    },
   });
 }
 
@@ -1190,6 +1194,11 @@ describe('subagent transcript cards', () => {
       expect(
         within(card).getByText('[opus] review station#3657 ADR freeze'),
       ).toBeTruthy();
+      expect(
+        within(card).getByText('Read', {
+          selector: '.child-work-activity__name',
+        }),
+      ).toBeTruthy();
       expect(within(card).getByText('Running')).toBeTruthy();
       expect(
         within(card).getByText('Reading the decision records'),
@@ -1228,6 +1237,7 @@ describe('subagent transcript cards', () => {
     view.rerender();
     const card = await findCard();
     await within(card).findByText('Completed');
+    expect(card.querySelector('.child-work-activity')).toBeNull();
     expect(within(card).queryByText('Running')).toBeNull();
     // The first settle's reported end (17m 04s after the reported start).
     expect(within(card).getByText('17:04')).toBeTruthy();

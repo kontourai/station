@@ -54,8 +54,7 @@ function provenanceText(provenance: ChildWorkProvenance): string {
 }
 
 /**
- * A delegate's own accounting, read from its session only while the row is
- * open — a closed row polls nothing.
+ * Accounting is shown on expansion; running activity shares the session query.
  */
 function DelegateUsage({
   threadId,
@@ -217,8 +216,11 @@ export function ChildWorkRow({
               threadId={item.childId}
               progress={item.progress}
             />
-          ) : running && item.progress ? (
-            <ChildWorkActivity progress={item.progress} />
+          ) : running ? (
+            <ChildWorkActivity
+              tool={item.latestTool}
+              progress={item.progress}
+            />
           ) : null}
           {showProvenance && (
             <span className="child-work-row__provenance">

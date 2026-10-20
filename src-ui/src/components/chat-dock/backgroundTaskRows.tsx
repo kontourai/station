@@ -93,16 +93,22 @@ export function TaskRow({
     entry.state === 'running' &&
     entry.stop?.kind === 'delegate-interrupt' &&
     delegateThreadId.length > 0;
-  const detail = useOrchestrationSessionQuery(delegateThreadId, {
-    enabled: delegateThreadId.length > 0,
+  // A subagent's reporter supplies identity only, never its title or accounting.
+  const detailThreadId = delegateThreadId || entry.sessionThreadId || '';
+  const detail = useOrchestrationSessionQuery(detailThreadId, {
+    enabled: detailThreadId.length > 0,
     staleTime: entry.state === 'running' ? 0 : 30_000,
-    refetchInterval: entry.state === 'running' ? 2_000 : undefined,
+    refetchInterval:
+      delegateThreadId && entry.state === 'running' ? 2_000 : undefined,
     retry: false,
     cancelWhenInactive: true,
   });
   const usage = useMemo(
-    () => (detail.data ? foldUsageEvents(detail.data.events) : null),
-    [detail.data],
+    () =>
+      delegateThreadId && detail.data
+        ? foldUsageEvents(detail.data.events)
+        : null,
+    [detail.data, delegateThreadId],
   );
   /**
    * station#4196: "N tokens" must not present a cache-exclusive sum as the
@@ -117,6 +123,7 @@ export function TaskRow({
     : undefined;
   const hasDetail = Boolean(entry.detail) || Boolean(usage);
   const transcriptTitle = useMemo(() => {
+    if (!delegateThreadId) return null;
     const started = detail.data?.events.find(
       (event) => event.method === 'turn.started',
     );
@@ -124,7 +131,7 @@ export function TaskRow({
     const firstLine = started.prompt.split('\n')[0]?.trim();
     if (!firstLine) return null;
     return firstLine.length > 80 ? `${firstLine.slice(0, 79)}…` : firstLine;
-  }, [detail.data]);
+  }, [detail.data, delegateThreadId]);
   const latestTool = useMemo(
     () =>
       entry.state === 'running' && delegateThreadId && detail.data
@@ -158,7 +165,7 @@ export function TaskRow({
         disabled={!hasDetail}
         onClick={() => hasDetail && setExpanded((current) => !current)}
       >
-        <span className="background-tasks-sheet__glyph" aria-hidden="true">
+        <span className="background-tasks-sheet__glyph">
           {entry.kind === 'agent' ? (
             <ChildWorkIdentity
               provider={provider ?? detail.data?.session?.provider}
@@ -173,10 +180,18 @@ export function TaskRow({
             {transcriptTitle ?? entry.title}
           </strong>
           <span className="background-tasks-sheet__meta">
-            {KIND_LABEL[entry.kind]}
+            {entry.state === 'running' && (entry.latestTool || latestTool) ? (
+              <ChildWorkActivity
+                tool={entry.latestTool ?? latestTool}
+                progress={
+                  entry.source === 'provider-task' ? entry.detail : undefined
+                }
+              />
+            ) : (
+              KIND_LABEL[entry.kind]
+            )}
             {elapsedMs !== undefined && ` · ${formatElapsed(elapsedMs)}`}
           </span>
-          {latestTool && <ChildWorkActivity tool={latestTool} />}
         </span>
         {outcomeChip && (
           <span

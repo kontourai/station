@@ -36,6 +36,7 @@ const runningChild = {
   title: '[opus] review station#3657 ADR freeze',
   kindLabel: 'general-purpose',
   model: { id: 'claude-opus-5-5', source: 'subagent-reply' },
+  latestTool: 'Read',
   transcript: {
     kind: 'claude-subagent',
     sessionId: '3f1c9b2e-8d4a-4c11-9e2f-5b7a6c0d1e2f',
@@ -488,6 +489,21 @@ test.describe('subagent transcript cards', () => {
     await expect(card.locator('.brand-icon--claude svg')).toBeVisible();
     await expect(card.getByText('Running')).toBeVisible();
     await expect(card.getByText('Reading the decision records')).toBeVisible();
+    const activity = card.locator('.child-work-activity__tool');
+    await expect(activity).toContainText('Read');
+    expect(
+      await activity.evaluate(
+        (element) => getComputedStyle(element, '::after').animationName,
+      ),
+    ).toBe('child-work-activity-sweep');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(
+      await activity.evaluate((element) =>
+        parseFloat(getComputedStyle(element, '::after').animationDuration),
+      ),
+    ).toBeLessThan(0.001);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
     await expect(card.getByText('claude-opus-5-5')).toHaveCount(0);
     await expect(card.getByText('6:12')).toBeVisible();
     await expectDockFits(page);
@@ -536,6 +552,7 @@ test.describe('subagent transcript cards', () => {
     });
 
     await expect(page.getByText(/Background task finished/)).toHaveCount(0);
+    await expect(card.locator('.child-work-activity')).toHaveCount(0);
     await expect(card.getByText('Completed')).toBeVisible();
     await expect(card.getByText('17:04')).toBeVisible();
     await expect(

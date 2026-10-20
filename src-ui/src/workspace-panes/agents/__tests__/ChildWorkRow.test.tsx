@@ -175,19 +175,40 @@ test('a transcript-file handle gets no button; a session handle opens that sessi
 });
 
 test('a running delegate shows the latest tool from its own current turn', () => {
+  const base = {
+    provider: 'codex' as const,
+    createdAt: '2026-10-20T00:00:00.000Z',
+    turnId: 'turn-new',
+  };
   useOrchestrationSessionQuery.mockReturnValue({
     data: {
       events: [
         {
+          ...base,
+          eventId: 'start',
           method: 'turn.started',
           threadId: 'delegate-live',
-          turnId: 'turn-new',
+          prompt: 'Check the source',
         },
-        { method: 'tool.started', threadId: 'delegate-live', toolName: 'Read' },
         {
+          ...base,
+          eventId: 'tool',
+          method: 'tool.started',
+          threadId: 'delegate-live',
+          toolName: 'Read',
+          itemId: 'tool-1',
+          toolCallId: 'tool-1',
+          arguments: {},
+        },
+        {
+          ...base,
+          eventId: 'other',
           method: 'tool.started',
           threadId: 'someone-else',
           toolName: 'OtherTool',
+          itemId: 'tool-2',
+          toolCallId: 'tool-2',
+          arguments: {},
         },
       ],
     },

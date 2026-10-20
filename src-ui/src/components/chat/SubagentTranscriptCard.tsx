@@ -15,6 +15,7 @@ import {
   CloseGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { ChildWorkActivity } from './ChildWorkActivity';
 import { ChildWorkIdentity } from './ChildWorkIdentity';
 import { LazyMarkdown } from './LazyMarkdown';
 import type { ToolCallLike } from './tool-call-runs';
@@ -160,7 +161,12 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               </span>
             </span>
           )}
-          {(running || !expanded) && preview ? (
+          {running ? (
+            <ChildWorkActivity
+              tool={item.latestTool}
+              progress={item.progress}
+            />
+          ) : !expanded && preview ? (
             <span className="subagent-card__preview">{preview}</span>
           ) : !expanded && !running && item.status === 'completed' ? (
             <span className="subagent-card__preview subagent-card__preview--gap">
