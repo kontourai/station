@@ -578,7 +578,7 @@ export interface PhonePaneLayer {
   /**
    * Where a minted pane was held before the layer moved it over Chat — a
    * side region a phone never shows — so the way back returns it there
-   * rather than leaving it unplaced (review M2). Null for a pane that was
+   * rather than leaving it unplaced (#2549). Null for a pane that was
    * placed nowhere. Never `main`: a pane held there does not open a layer
    * (the provider keeps `main`'s own rule), so a layer pane's origin is
    * always a dock region.
@@ -989,7 +989,7 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     // Home is a surface whose only placement is the primary area: its default
     // region is `main` and it declares no other, so no dock control ever
     // offers it and a dock swap can never carry it out of `main` (#928 C2a).
-    // No chord: the destination registry has no Home shortcut and this slice
+    // No chord: the destination registry has no Home shortcut and this entry
     // invents none.
     id: 'home',
     title: 'Home',

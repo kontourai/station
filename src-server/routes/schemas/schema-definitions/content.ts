@@ -178,12 +178,6 @@ export const setupImportApplySchema = z.object({
   witnessId: z.string().uuid(),
 });
 
-export const guidanceConversionSchema = z
-  .object({
-    name: z.string().min(1).max(200).optional(),
-  })
-  .optional();
-
 // Projects
 const projectEnvironmentRefSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('current') }),

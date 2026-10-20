@@ -16,10 +16,7 @@ import type {
 
 type PlatformProfileAdapter = Pick<
   NativePlatformAdapter,
-  | 'platform'
-  | 'getCapabilityReport'
-  | 'getBundledServerStatus'
-  | 'subscribeToStartupReadinessRetry'
+  'platform' | 'getCapabilityReport' | 'getBundledServerStatus'
 >;
 
 const state = vi.hoisted(() => ({
@@ -101,7 +98,6 @@ vi.mock('@kontourai/station-sdk', () => ({
 function platformProfileAdapter(
   overrides: Pick<PlatformProfileAdapter, 'platform' | 'getCapabilityReport'>,
 ) {
-  const dispose = vi.fn();
   return {
     ...overrides,
     // These profile-derivation tests do not own a real bundled service. Return
@@ -112,9 +108,6 @@ function platformProfileAdapter(
       command: 'bundled-server-status' as const,
       message: 'not available in the platform-profile fixture',
     }),
-    subscribeToStartupReadinessRetry: vi.fn((_listener: () => void) => ({
-      dispose,
-    })),
   } satisfies PlatformProfileAdapter;
 }
 
@@ -617,18 +610,5 @@ describe('PlatformProfile derivation', () => {
     );
     expect(screen.getByRole('button', { name: 'Reload Station' })).toBeTruthy();
     expect(screen.queryByTestId('protected-shell')).toBeNull();
-  });
-
-  test('leaves automatic startup readiness to the native host', async () => {
-    const adapter = platformProfileAdapter({
-      platform: 'tauri',
-      getCapabilityReport: async () => ({
-        status: 'ok',
-        value: { platform: 'android', capabilities: [] },
-      }),
-    });
-
-    await resolveProfile(adapter);
-    expect(adapter.subscribeToStartupReadinessRetry).not.toHaveBeenCalled();
   });
 });

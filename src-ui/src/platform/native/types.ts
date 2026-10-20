@@ -80,8 +80,6 @@ export type NativeCommandName =
   | 'open-desktop-tray-menu'
   | 'restart-bundled-server'
   | 'commit-renderer-mount'
-  | 'commit-startup-readiness'
-  | 'commit-startup-recovery-ui'
   | 'startup-window-admitted'
   | 'review-consent-natively'
   | 'agent-activity-status'
@@ -393,13 +391,6 @@ export interface BundledServerStatus {
   detail?: string | null;
 }
 
-export interface NativeStartupReadinessTicket {
-  generation: number;
-  instanceId: string;
-  bootId: string;
-  apiBase: string;
-}
-
 export interface NativeShareEvent {
   type: 'share-received';
   source: 'host-event' | 'pwa-share-target';
@@ -459,11 +450,6 @@ export interface NativePlatformAdapter {
   restartBundledServer(): Promise<NativeCommandResult<void>>;
   /** Commit one post-React-layout mount from the exact main WebView. */
   commitRendererMount(): Promise<NativeCommandResult<void>>;
-  /** Recheck and reveal the main window after the renderer commits its exact proof. */
-  commitStartupReadiness(
-    ticket: NativeStartupReadinessTicket,
-  ): Promise<NativeCommandResult<void>>;
-  commitStartupRecoveryUi(): Promise<NativeCommandResult<void>>;
   /**
    * Whether this WebView is already shown to the user: a non-main window, or
    * the main window after native startup readiness admitted it. On macOS this
@@ -471,9 +457,6 @@ export interface NativePlatformAdapter {
    * Read-only; a readiness phase alone does not establish visible content.
    */
   isStartupWindowAdmitted(): Promise<NativeCommandResult<boolean>>;
-  subscribeToStartupReadinessRetry(
-    listener: () => void,
-  ): NativeEventSubscription;
   /**
    * Ask the desktop host to open one revalidated loopback URL in the system
    * browser. The host, not the webview, owns this boundary.

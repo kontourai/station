@@ -152,7 +152,7 @@ describe('groupDelegatedSessionRuns', () => {
     }
   });
 
-  // Delta-review D1: absence is not corroboration — two scope-less legacy
+  // Absence is not corroboration — two scope-less legacy
   // summaries must not join on undefined === undefined.
   test('keeps a task-id parent flat when neither side carries any scope', () => {
     const unrelated = projectedSession({

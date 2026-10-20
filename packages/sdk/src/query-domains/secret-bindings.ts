@@ -88,16 +88,6 @@ export function useTelemetrySecretBindingGrantMutation(
       queryClient.invalidateQueries({ queryKey: ['secret-bindings'] }),
   });
 }
-export function useSecretBindingQuery(
-  id: string | undefined,
-  config?: QueryConfig<SecretBindingView>,
-) {
-  return useQuery({
-    ...secretBindingQueries.detail(id ?? ''),
-    ...config,
-    enabled: !!id && (config?.enabled ?? true),
-  });
-}
 export function useIntegrationSecretBindingQuery(
   integrationId: string | undefined,
   config?: QueryConfig<IntegrationSecretBindingProjection>,

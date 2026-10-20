@@ -674,7 +674,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           station#1502 slice 4 — §3.6's resolution states and their repair
           actions. Mounted HERE and nowhere else: `ProjectPage.tsx` stays
           byte-unchanged so the first-run journey `tests/first-run-live.spec.ts`
-          pins is provably untouched without an e2e run this slice cannot make.
+          pins is provably untouched without an e2e run.
 */}
         <ResourcesSection slug={slug} />
         {project && <AccessSection slug={slug} projectId={project.id} />}

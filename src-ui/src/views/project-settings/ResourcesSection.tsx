@@ -19,9 +19,9 @@ import { userFacingErrorMessage } from '../../utils/errorText';
  *
  * Mounted from `ProjectSettingsView` only. `ProjectPage.tsx` is deliberately
  * left byte-unchanged: `tests/first-run-live.spec.ts` (the §4.6 local-only
- * invariant pin) drives the first-run journey onto that view, and this slice
- * ships without e2e evidence — so the "the first-run journey is untouched"
- * claim is provable by inspection instead of by a run we did not perform.
+ * invariant pin) drives the first-run journey onto that view, so keeping it
+ * unchanged makes "the first-run journey is untouched" provable by
+ * inspection rather than only by that run.
  * Settings is also where the working-directory editor and the other repair
  * affordances already live.
  */
@@ -243,7 +243,7 @@ interface ResourceRowProps {
  * The `switch` is exhaustive with NO `default:` — a `default` is how a
  * renderer invents a state. `unresolvable` and `not-portable` have no producer
  * anywhere in Station today (§3.6 scopes `unresolvable` to an attempt that was
- * DENIED, and this slice performs no authenticated operation that can be
+ * DENIED, and this section performs no authenticated operation that can be
  * denied), so their arms are reachable only from a server that asserted them.
  * Nothing here constructs, defaults to, or falls back to either.
  */
