@@ -1516,7 +1516,9 @@ its layout phase as amended by #3894, and the target depends on #3875. The
 caller's own `terminal:operate` / `terminal:observe` grants gate every open.
 The Coding plugin opens the target or renders `TerminalView`; it adds no
 terminal code or grant of its own. j depends on this slice with no interim
-(OPEN-12, answered 2026-10-20).
+(OPEN-12, answered 2026-10-20). terminal.md's own status line reads
+"Proposal — unscheduled; no tracking issue as of 2026-10-20", so j cannot
+be scheduled until those phases are.
 
 ### SDK-6. Plugin device state
 
