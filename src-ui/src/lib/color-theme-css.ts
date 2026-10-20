@@ -49,7 +49,6 @@ import {
   type ColorThemeFlavor,
   type ColorThemeRoleProperty,
 } from './color-theme-catalog';
-import { colorThemeBackground } from './color-themes';
 
 export const COLOR_THEME_STYLESHEET_PATH =
   'src-ui/src/color-themes.generated.css';
@@ -238,10 +237,6 @@ export function renderColorThemeStartupIndex(): string {
       defaultAccent: family.defaultAccent,
     };
   }
-  const station = {
-    dark: colorThemeBackground({ id: 'station' }, 'dark'),
-    light: colorThemeBackground({ id: 'station' }, 'light'),
-  };
   // Shaped the way the repository formatter leaves it (a JSON string is
   // never re-wrapped), so `lint:check` and the drift test agree.
   return [
@@ -249,7 +244,6 @@ export function renderColorThemeStartupIndex(): string {
     '  const COLOR_THEMES = JSON.parse(',
     `    '${JSON.stringify(index)}',`,
     '  );',
-    `  const STATION_BACKGROUND = { dark: '${station.dark}', light: '${station.light}' };`,
     `  ${STARTUP_INDEX_END}`,
   ].join('\n');
 }

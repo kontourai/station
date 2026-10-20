@@ -138,8 +138,10 @@ describe.skipIf(!chromiumAvailable)('color theme cascade', () => {
     head: string,
     body = '',
     values?: Record<string, unknown> | string,
+    init?: string,
   ): Promise<Page> {
     const page = await browser.newPage();
+    if (init) await page.addInitScript(init);
     await page.route(`${ORIGIN}/**`, (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path === '/startup-theme.js')
@@ -288,7 +290,26 @@ describe.skipIf(!chromiumAvailable)('color theme cascade', () => {
           colorTheme: null,
           flavor: null,
           accent: null,
-          themeColor: '#0a0e13',
+          themeColor: null,
+        });
+      } finally {
+        await page.close();
+      }
+    });
+
+    test('the startup script needs no Object.hasOwn (Android WebView before Chrome 93)', async () => {
+      const page = await open(
+        HEAD(startupCss),
+        SPLASH,
+        { colorTheme: 'gruvbox' },
+        'delete Object.hasOwn;',
+      );
+      try {
+        expect(await page.evaluate(() => 'hasOwn' in Object)).toBe(false);
+        expect(await attributes(page)).toMatchObject({
+          colorTheme: 'gruvbox',
+          flavor: 'dark',
+          accent: 'orange',
         });
       } finally {
         await page.close();
@@ -301,7 +322,7 @@ describe.skipIf(!chromiumAvailable)('color theme cascade', () => {
         expect(await attributes(page)).toMatchObject({
           theme: 'dark',
           colorTheme: null,
-          themeColor: '#0a0e13',
+          themeColor: null,
         });
       } finally {
         await page.close();
@@ -391,7 +412,7 @@ describe.skipIf(!chromiumAvailable)('color theme cascade', () => {
           colorTheme: null,
           flavor: null,
           accent: null,
-          themeColor: '#f5f4ef',
+          themeColor: null,
         });
       } finally {
         await page.close();
@@ -411,7 +432,7 @@ describe.skipIf(!chromiumAvailable)('color theme cascade', () => {
         });
         expect(await attributes(page)).toMatchObject({
           colorTheme: null,
-          themeColor: '#0a0e13',
+          themeColor: null,
         });
       } finally {
         await page.close();

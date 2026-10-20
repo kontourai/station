@@ -31,21 +31,34 @@ function setAttribute(root: HTMLElement, name: string, value: string): void {
   if (root.getAttribute(name) !== value) root.setAttribute(name, value);
 }
 
-/** The single `theme-color` meta in the document head, created if absent. */
-function themeColorMeta(doc: Document): HTMLMetaElement {
-  const existing = doc.head.querySelector<HTMLMetaElement>(
+/** Marks the `theme-color` meta this module owns, so it removes only its own. */
+const OWNED_META = 'data-color-theme-meta';
+
+/**
+ * Point `theme-color` at a named theme's page canvas, or, for Station, remove
+ * the one a theme added: a default page carries no theme-color, as before
+ * color themes existed. The startup script's meta counts as ours.
+ */
+function syncThemeColor(doc: Document, background: string | null): void {
+  let meta = doc.head.querySelector<HTMLMetaElement>(
     'meta[name="theme-color"]',
   );
-  if (existing) return existing;
-  const meta = doc.createElement('meta');
-  meta.name = 'theme-color';
-  doc.head.append(meta);
-  return meta;
+  if (background === null) {
+    if (meta?.hasAttribute(OWNED_META)) meta.remove();
+    return;
+  }
+  if (!meta) {
+    meta = doc.createElement('meta');
+    meta.name = 'theme-color';
+    meta.setAttribute(OWNED_META, '');
+    doc.head.append(meta);
+  }
+  if (meta.content !== background) meta.content = background;
 }
 
 /**
  * Stamp (or, for `station`, clear) the attributes for these settings, and
- * point `theme-color` at the effective page canvas. Returns what applied.
+ * keep `theme-color` on a named theme's page canvas. Returns what applied.
  */
 export function applyColorTheme(
   root: HTMLElement,
@@ -62,9 +75,10 @@ export function applyColorTheme(
     setAttribute(root, COLOR_THEME_ACCENT_ATTRIBUTE, resolved.accent);
   }
   const mode = settings.theme === 'light' ? 'light' : 'dark';
-  const meta = themeColorMeta(root.ownerDocument);
-  const background = colorThemeBackground(resolved, mode);
-  if (meta.content !== background) meta.content = background;
+  syncThemeColor(
+    root.ownerDocument,
+    resolved.id === 'station' ? null : colorThemeBackground(resolved, mode),
+  );
   return resolved;
 }
 

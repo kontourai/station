@@ -95,11 +95,39 @@ describe('invalid stored or synced values fall back instead of throwing', () => 
       id: 'station',
     });
     expect(root.hasAttribute('data-color-theme')).toBe(false);
+    // Station adds no theme-color: a default page is unchanged.
+    expect(document.head.querySelector('meta[name="theme-color"]')).toBeNull();
+  });
+
+  test('returning to Station removes only the theme-color a theme added', () => {
+    applyColorTheme(root, {
+      theme: 'dark',
+      colorTheme: 'nord',
+      colorThemeFlavor: null,
+      colorThemeAccent: null,
+    });
     expect(
-      document.head
-        .querySelector('meta[name="theme-color"]')
-        ?.getAttribute('content'),
-    ).toBe('#0a0e13');
+      document.head.querySelectorAll('meta[name="theme-color"]'),
+    ).toHaveLength(1);
+    applyColorTheme(root, {
+      theme: 'dark',
+      colorTheme: 'station',
+      colorThemeFlavor: null,
+      colorThemeAccent: null,
+    });
+    expect(document.head.querySelector('meta[name="theme-color"]')).toBeNull();
+    // A theme-color something else declared is not ours to remove.
+    const foreign = document.createElement('meta');
+    foreign.name = 'theme-color';
+    foreign.content = '#123456';
+    document.head.append(foreign);
+    applyColorTheme(root, {
+      theme: 'dark',
+      colorTheme: 'station',
+      colorThemeFlavor: null,
+      colorThemeAccent: null,
+    });
+    expect(foreign.isConnected).toBe(true);
   });
 
   test('account values from a newer server fall back per field', () => {
