@@ -296,7 +296,8 @@ export function LocalUiSessionGate({
     activeConnection &&
       relayRoute &&
       relayScope?.state === 'ready' &&
-      verifiedRelay?.connectionId === activeConnection.id &&
+      verifiedRelay !== null &&
+      verifiedRelay.connectionId === activeConnection.id &&
       verifiedRelay.scopeKey === relayScope.scopeKey &&
       !verifiedRelay.authenticated,
   );
