@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-20T10:38:25Z | nightly-npm | 0.9.0-nightly.2484.39407854711 | `6569ee5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39407854711) |
 | 2026-10-20T05:54:27Z | nightly-npm | 0.9.0-nightly.2484.39374315524 | `e0c9c64` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39374315524) |
 | 2026-10-19T21:59:06Z | nightly-desktop | 0.1.11-nightly.2483.2 | `cd19298` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39321642672) |
 | 2026-10-19T21:59:01Z | nightly-android | 0.1.11-nightly.2483.2 | `cd19298` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39321642672) |
@@ -310,6 +311,44 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-20T10:38:25Z · nightly-npm · 0.9.0-nightly.2484.39407854711
+
+- Ship SHA: `6569ee5af0d4ae711594c7521736fd23cce435ab`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.9.0-nightly.2484.39407854711 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `e0c9c64` ([full sha](https://github.com/kontourai/station/commit/e0c9c64081f5901e3d1533f386bede1249b403f4)):
+
+**Features**
+
+- [#3926](https://github.com/kontourai/station/pull/3926) feat(ui): name a notable Basis standing on the answer chip
+- [#3896](https://github.com/kontourai/station/pull/3896) feat(scripts): add advisory code hygiene checks and nightly tracking
+
+**Fixes**
+
+- [#3927](https://github.com/kontourai/station/pull/3927) fix(scripts): end YAML block scalars by content indentation and read quoted keys
+- [#3939](https://github.com/kontourai/station/pull/3939) fix(ui): stop the full-access copy promising no sandbox
+- [#3923](https://github.com/kontourai/station/pull/3923) fix(security): keep workspace engine config from widening confinement
+- [#3922](https://github.com/kontourai/station/pull/3922) fix(acp): enforce Station approval mode on ACP engines
+- [#3921](https://github.com/kontourai/station/pull/3921) fix(security): decide path containment on native-resolved real paths
+- [#3916](https://github.com/kontourai/station/pull/3916) fix(cli): make tasks help match what the parser accepts
+
+**Docs**
+
+- [#3931](https://github.com/kontourai/station/pull/3931) docs(deploy): state that hosted Stations refuse new answer shares
+
+**Other**
+
+- [#3928](https://github.com/kontourai/station/pull/3928) chore(scripts): retire the refactor-shape guardrail family and drop literal pins
+- [#3933](https://github.com/kontourai/station/pull/3933) test(cli): run each tasks usage line against valid answers and advertise basis --json
+- [#3937](https://github.com/kontourai/station/pull/3937) refactor(server): retire the managed-chat-orchestration flag and mark unwired and sunset code
+- [#3940](https://github.com/kontourai/station/pull/3940) test(scripts): pin the archive repository in the generated manifest note
+- [#3865](https://github.com/kontourai/station/pull/3865) build(deps): bump the runtime-and-ui-minor-patch group across 1 directory with 15 updates
+- [#3897](https://github.com/kontourai/station/pull/3897) refactor(ui): share duplicated UI helpers and fix two consistency gaps
 
 ## 2026-10-20T05:54:27Z · nightly-npm · 0.9.0-nightly.2484.39374315524
 
