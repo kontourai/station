@@ -99,6 +99,9 @@ closing the page can lose those pending changes. Errors belong to the authority
 that initiated the save. The client refreshes on activation, focus and reconnect.
 It reports loading and save failure separately from saved values. Account changes retire
 the in-memory overlay; late responses cannot populate the replacement authority.
+Only the rendered appearance (mode and color theme) outlives it: it is held
+until the next account answers or a definite no-person answer, so a reconnect
+does not flash the device's appearance.
 There is no cross-Station cloud synchronization.
 
 Migration is an explicit **Import previous preferences** action in Settings →
