@@ -1,5 +1,7 @@
 # Station process supervisor
 
+Status: Proposal — unscheduled; no tracking issue as of 2026-10-20 (phases 2–4; phase 1 shipped in #3811).
+
 > **Reading status: proposal (2026-10-17), phase 1 core implemented.** The
 > supervisor package ([`packages/supervisor`](../../packages/supervisor/src/generation-manager.ts))
 > implements the control channel, listener handoff, sequential generation
