@@ -533,10 +533,14 @@ writer.
   - Repository-wide `require_code_owner_review` gates every CODEOWNERS path
     (`.github/workflows/`, `.github/CODEOWNERS`, many `scripts/` gates), not
     only the lock.
-  - A required check written as a workflow in this repository is not a
-    control: the pull request it checks can rewrite the workflow. A check
-    is acceptable only from a pinned GitHub App, bound in the ruleset by
-    its `integration_id`.
+  - A required check is weaker and more machinery than the native rule.
+    Anyone with write access can post a commit status with the same name
+    unless the ruleset pins the check to an app by its `integration_id`.
+    A `pull_request` workflow runs the pull request's own copy of the
+    workflow, so the change it checks can rewrite it;
+    `pull_request_target` and `pull_request_review` workflows run from the
+    base branch, which avoids that but still needs the app pinning. A check
+    is acceptable only as a pinned-app alternative.
   - Push rulesets and their file-path restriction do not apply: GitHub
     offers them for private and internal repositories, and this repository
     is public.
@@ -552,7 +556,10 @@ writer.
     session can approve a bot's lock bump, and "the review is the review of
     what Kontour code ships" then means "whoever holds that token approved
     it". The reviewing team should contain only accounts whose credentials
-    no automation holds.
+    no automation holds. That rules out the owner's own account as it is
+    used today, because agent sessions hold its credentials. Every lock
+    change, bot bumps included, then needs approval from another human or
+    from a separate owner account that agents never hold.
   - **Merge queue.** `main` uses a merge queue. GitHub's documentation for
     the rule does not say how it is evaluated for `merge_group` runs; the
     expectation is that the pull request's approval gates entry to the queue
@@ -1408,7 +1415,7 @@ before merge.
 | i2. Board extraction as an installed plugin, with migration | d1, i1, i0 | [security] |
 | i3. kontour-default and acme manifests | g, h, i2 | [security] |
 | R. Growth-only ratchet on `coding-layout/` app-internal imports | — | |
-| jG. Capability grants and legacy pane-id adoption (Coding, file preview, PR review) | d1 | [security] |
+| jG. Capability grants and legacy pane-id adoption (Coding, file preview, PR review) | d1, d2 | [security] |
 | jF. File preview → its own default plugin, with migration | i0, jG, SDK-1, SDK-4, SDK-6, SDK-views, KIT | [security] |
 | jP. PR review → its own default plugin, with migration | i0, jG, SDK-1, SDK-4, SDK-views, KIT | [security] |
 | j. Coding → plugin, with migration | a, a2, i0, i2, jF, jP, jG, SDK-1, SDK-2, SDK-3, SDK-4, SDK-5, SDK-6, SDK-views, KIT | [security] |
@@ -1764,19 +1771,24 @@ selects `trusted-plugin-react`.
   contributions. For tier 2 it gates the raise only.
 - An update requesting any new capability does not activate until consent
   is given. Exception (OPEN-14): capabilities listed in the plugin's
-  `plugins.lock` entry, for a `kontour` plugin, are pre-approved, except
-  high-risk ones. d2 owns this pre-approval rule and its re-prompt, and
-  reads capabilities from a lock file in the format i0 commits; its tests
-  use a fixture lock, so d2 does not depend on i0.
+  `plugins.lock` entry, for a `kontour` plugin, are pre-approved. d2 owns
+  this pre-approval rule and its re-prompt, and reads capabilities in the
+  lock format that
+  [decision 3](#decision-3-pluginslock-and-the-offline-default-set)
+  defines; its tests use a fixture lock, so d2 does not depend on i0. The
+  exclusion of high-risk capabilities from pre-approval, and where their
+  consent is given, belong to d3.
 
 Acceptance:
 
 - A tier-3 plugin cannot select `trusted-plugin-react`.
 - An update adding `agents.invoke` stays inactive until consent is given.
 - Against a fixture lock: a `kontour` locked plugin updated to a locked
-  version gets the lock entry's non-high-risk capabilities with no prompt. The same update listing
-  `agents.invoke` in its lock entry still stays inactive for that capability
-  until consent is given on the consent listener.
+  version gets the lock entry's capabilities with no prompt, and a
+  capability beyond its entry re-prompts.
+- The same update listing a high-risk capability (`agents.invoke`) in its
+  lock entry keeps that capability inactive until consent is given. (Where
+  consent is given, and the exclusion rule itself, are d3's.)
 - A tier-3 plugin requesting `approvals.render` is refused.
 
 Proof: frame-mount and installer tests, each failing when its rule is
@@ -1921,17 +1933,21 @@ tests for the two refusals.
 
 ### i0. Offline bundled default set from `plugins.lock` [security]
 
-**Owner prerequisite.** Before i0 starts, the owner adds a required reviewer ruleset rule for `plugins.lock`, with a reviewing team
-that excludes automation credentials and the merge-queue behaviour
+**Owner prerequisite.** Before i0 starts, the owner adds a required
+reviewer ruleset rule for `plugins.lock`, with the merge-queue behaviour
 confirmed ([decision 3](#decision-3-pluginslock-and-the-offline-default-set)).
-That is a repository-settings change an i0 pull request cannot make.
+The reviewing team excludes accounts whose credentials automation holds,
+which rules out the owner's own account as used today: every lock change,
+bot bumps included, needs another human or a separate owner account that
+agents never hold. That is a repository-settings change an i0 pull request
+cannot make.
 
 **Dependencies.** i0 builds the real lock, the release payload and the
 start-time installer. It does not own the grant rules: d2 owns lock
 pre-approval of listed capabilities and the re-prompt for anything beyond
 them, and d3 owns the high-risk exclusion, each tested against a fixture
 lock. jG owns per-plugin grants and legacy-id adoption. i0 depends on d1,
-d2, d3, i1 and jG; d2, d3 and jG depend only on d1; d1 depends on #1521. So
+d2, d3, i1 and jG; d2 and d3 depend only on d1, jG on d1 and d2, and d1 on #1521. So
 the graph is acyclic: no slice that i0 depends on depends on i0.
 
 - Commit `plugins.lock`: per plugin, name, version, artifact URL, sha256,
@@ -2049,6 +2065,9 @@ that a test build pins (no dependence on Coding or j):
   tier 3 without its lock-granted capabilities, and a Coding-like fixture
   declaring only an in-process renderer is `unavailable` until raised.
   "Keep and raise" opens the consent listener for the raise.
+- **Disclosure:** when build B's lock entry for a plugin lists one more
+  capability than build A's, starting on B repeats the shared-Station
+  disclosure; restarting on an unchanged lock does not.
 - **High-risk:** with the real start-time installer, a lock entry listing
   `agents.invoke` does not grant it without a consent-listener decision
   (d3's rule, exercised end to end).
@@ -2169,9 +2188,9 @@ added pair (non-zero exit, pair named) and one removed pair (zero exit).
   `workspace-coding-{file,diff,evidence}-composition.ts`, which grant only
   when `provenance.origin === 'builtin'`, with install-time capability
   grants for file read, Git diff and evidence.
-- A minimal piece of d2: the Coding plugin requests these capabilities in
-  its manifest and the operator approves them at install (or, for the
-  bundled set, as OPEN-14 decides).
+- jG consumes d2's grant and pre-approval rules; it builds only the
+  install-time grants for its own adopted panes, which each plugin requests
+  in its manifest and its lock entry lists.
 - Legacy-id adoption: a fixed table maps each legacy id to the plugin that
   owns it (the table in
   [decision 2](#decision-2-everything-in-coding-moves-into-the-plugin)):
