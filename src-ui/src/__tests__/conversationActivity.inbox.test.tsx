@@ -2,9 +2,9 @@
 /**
  * #2309: the inbox row's running state, RENDERED, read from the same
  * conversation activity record the thread uses. Built as production builds
- * the dock inbox (ChatDock.tsx: `buildHomeTaskItems({ chats: {}, sessions,
- * chatItems: useOpenChats(agents, sessions) })`, where `useOpenChats` is
- * `buildActiveChatTaskItems`).
+ * the dock inbox (ChatDock.tsx -> `useInboxWorkItems`:
+ * `buildHomeWorkItems({ chats: {}, sessions, chatItems })`, where the chat
+ * items come from `useOpenChatInbox`, i.e. `buildActiveChatTaskItems`).
  */
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type {
@@ -21,7 +21,7 @@ import {
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import {
   buildActiveChatTaskItems,
-  buildHomeTaskItems,
+  buildHomeWorkItems,
 } from '../views/home/home-view-model';
 
 const CONVERSATION = 'claude:conv-inbox-2309';
@@ -103,7 +103,7 @@ function renderInbox(
     agents: [],
     sessions,
   });
-  const items = buildHomeTaskItems({
+  const items = buildHomeWorkItems({
     chats: {},
     sessions,
     agents: [],

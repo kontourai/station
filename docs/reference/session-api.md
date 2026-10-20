@@ -463,6 +463,17 @@ is not a retry candidate. Staged uploads the refused send had bound are released
 from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
 
+A start or send that Station cannot run under the chat's approval mode on
+OpenCode is refused before any engine effect with
+`code: "acp_approval_governance_refused"`: OpenCode's resolved rules override
+Station's, or the chat runs an agent Station does not govern
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
+The message names the setting and says what picking Default would do in that
+chat. A refused start keeps that code: it is checked before Station claims the
+start, so it is never reported as a start that may have happened
+(`SESSION_START_INDETERMINATE`). The same request is refused again until that configuration or the
+chat's mode changes, so it is not a retry candidate.
+
 A send that starts a new ACP session on a model the engine's fresh session
 options did not offer is refused with `code: "model_not_advertised"`. The start
 is settled, not uncertain: the thread is not fenced behind an inspection, the
@@ -816,7 +827,10 @@ The remaining controls are defined by
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was
-  observed. A stale basis refuses the change.
+  observed. A stale basis refuses the change. An engine with no approval
+  control refuses it; on ACP that is decided per connection, and only an
+  engine whose approval rules Station sets at launch (OpenCode) has one
+  ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
 - `discardDraft`: `{ type: 'discardDraft', threadId }` asks the server to verify
   and discard a Draft; it is not a general Session deletion.
 

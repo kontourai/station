@@ -30,6 +30,7 @@ import {
   type AttachedSessionContinuationRead,
   browserAttachedSessionContinuationStore,
 } from '../../lib/attached-session-continuation-store';
+import { copyToClipboard } from '../../lib/clipboard';
 import type { ChatMessage } from '../../types';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
@@ -266,8 +267,10 @@ export function AttachedSessionDetail({
                 'Starter correlation is unavailable, so no continuation was requested.',
               retryable: true,
             });
+          // `return await`, not `return`: a rejection must land in the
+          // classifying `catch` below, not skip it unclassified (#2722).
           if (status.state === 'bound')
-            return adoptOrchestrationSession({
+            return await adoptOrchestrationSession({
               sourceThreadId: session.threadId,
               apiBase,
               intent: adoptionIntent.current,
@@ -653,14 +656,16 @@ export function AttachedSessionDetail({
                   showReasoning={false}
                   showToolDetails={false}
                   onCopy={(text) => {
-                    void navigator.clipboard
-                      .writeText(text)
-                      .catch(() =>
+                    // copyToClipboard also answers false where there is no
+                    // clipboard at all (a plain http:// origin), which the
+                    // direct writeText call threw on instead of toasting.
+                    void copyToClipboard(text).then((copied) => {
+                      if (!copied)
                         showToast(
                           'Could not copy this message.',
                           session.threadId,
-                        ),
-                      );
+                        );
+                    });
                   }}
                 />
               );

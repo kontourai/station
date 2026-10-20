@@ -1,5 +1,7 @@
 # Integrated terminal
 
+Status: Proposal — unscheduled; no tracking issue as of 2026-10-20.
+
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. Nothing here is implemented yet; the current behavior is
 > owned by [`TerminalService`](../../src-server/services/terminal/terminal-service.ts),

@@ -93,7 +93,10 @@ what Station ships instead, is the Accepted-gap section below.
 ACP is partial at its protocol `requestPermission` callback through the same
 staged evaluator. It has the unattended gap above and an additional coverage
 limit: only calls that invoke that callback and report a tool name enter the
-policy check, and the external engine reports that identity. Codex
+policy check, and the external engine reports that identity. Which calls
+invoke the callback is the engine's own configuration; for OpenCode, Station
+sets that configuration from the chat's approval mode
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)). Codex
 has no Station pre-tool interception seam. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.

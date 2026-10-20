@@ -204,6 +204,7 @@ export function conversationOpenPatch(
               // queued pick (#2436).
               lastAppliedApprovalMode: undefined,
               approvalEscalationRejected: undefined,
+              approvalTakeoverFailed: undefined,
               currentModeId: null,
               planArtifact: null,
               flowRun: null,

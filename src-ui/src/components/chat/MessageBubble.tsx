@@ -127,14 +127,14 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 const FALLBACK_AGENT: { name: string } = { name: 'AI' };
 
 /**
- * Accessible names for an answer's Basis controls: each starts with its
- * visible text (so voice control can say what it sees), then says which
- * answer, by its opening words or, wordless, its settle time.
+ * Which answer an answer's Basis controls belong to, by its opening words or,
+ * wordless, its settle time: the chip's accessible name says it after its
+ * visible text (`AnswerBasisAffordance`), and so does the chunk-failure Retry.
  */
 export function answerBasisLabels(
   text: string,
   settledAt: number,
-): { chip: string; retry: string } {
+): { answer: string; retry: string } {
   const words = text.replace(/\s+/g, ' ').trim();
   const at = absoluteTime(settledAt);
   const answer = words
@@ -143,7 +143,7 @@ export function answerBasisLabels(
       ? `the answer at ${at}`
       : 'this answer';
   return {
-    chip: `Basis for ${answer}`,
+    answer,
     retry: `Basis didn’t load · Retry for ${answer}`,
   };
 }
@@ -684,7 +684,7 @@ function MessageBubbleComponent({
           chatStoreId: activeSession.id,
           sessionId: answerSessionId,
           turnId: msg.turnId,
-          label: basisLabels.chip,
+          answerName: basisLabels.answer,
         }}
         pending={null}
         shareAcrossMounts

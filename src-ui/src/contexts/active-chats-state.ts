@@ -564,6 +564,13 @@ export type ChatUIState = {
    */
   approvalEscalationRejected?: boolean;
   /**
+   * #3290: Station could not move the engine onto the rules its latest turn
+   * asked for (`turn.started` metadata `approvalTakeoverFailed`); the
+   * engine kept the posture `lastAppliedApprovalMode` names, or its own
+   * settings. Not persisted, like the reports above.
+   */
+  approvalTakeoverFailed?: boolean;
+  /**
    * #2436: a pick the server has not received yet (see
    * `ApprovalPostureState`, utils/approvalMode.ts). Persisted: an offline
    * pick survives a reload and rides the next send.
