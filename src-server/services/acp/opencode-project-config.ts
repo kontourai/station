@@ -252,20 +252,6 @@ export function openCodeEditNeedsPerson(
   });
 }
 
-/**
- * #3957: why a governed session may not read or write `path` through the
- * ACP client file-system methods: the same rules as an edit, with no person
- * to ask, so anything an edit would send to a person is refused.
- */
-export function openCodeClientFileRefusal(
-  path: string,
-  cwd: string,
-): string | undefined {
-  return openCodeEditNeedsPerson({ filepath: path }, cwd)
-    ? "it is outside the session's project, reached through a symbolic link in it, or OpenCode configuration"
-    : undefined;
-}
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }

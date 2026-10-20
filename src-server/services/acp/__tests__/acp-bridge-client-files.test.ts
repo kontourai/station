@@ -5,12 +5,15 @@ import {
   realpathSync,
   writeFileSync,
 } from 'node:fs';
-import { join, sep } from 'node:path';
+import { join, sep, win32 } from 'node:path';
 import { RequestError } from '@agentclientprotocol/sdk';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
-import { createACPBridgeClient } from '../acp-bridge-client.js';
+import {
+  createACPBridgeClient,
+  normalizedClientPath,
+} from '../acp-bridge-client.js';
 
 /**
  * #3957: the ACP client file-system methods act in Station's own process, so
@@ -18,12 +21,7 @@ import { createACPBridgeClient } from '../acp-bridge-client.js';
  */
 const makeTempDir = trackTempDirs();
 
-function client(
-  fileAccessRefusal?: (
-    path: string,
-    access: 'read' | 'write',
-  ) => string | undefined,
-) {
+function client(fileMethodsOffered?: boolean) {
   const silent = { debug() {}, info() {}, warn() {}, error() {} };
   return createACPBridgeClient({
     cwd: process.cwd(),
@@ -34,17 +32,17 @@ function client(
     onSessionUpdate: async () => {},
     onExtNotification: () => {},
     onExtMethod: () => ({}),
-    ...(fileAccessRefusal ? { fileAccessRefusal } : {}),
+    ...(fileMethodsOffered === undefined ? {} : { fileMethodsOffered }),
   });
 }
 
-async function refusal(pending: unknown) {
+async function refusal(pending: unknown, code = -32602) {
   const error = await Promise.resolve(pending).then(
     () => undefined,
     (caught: unknown) => caught,
   );
   expect(error).toBeInstanceOf(RequestError);
-  expect((error as RequestError).code).toBe(-32602);
+  expect((error as RequestError).code).toBe(code);
   return (error as RequestError).message;
 }
 
@@ -86,33 +84,35 @@ describe('#3957 ACP client file methods', () => {
     });
   });
 
-  test("the session's rule refuses a read or write before it happens", async () => {
+  test('an engine not offered the methods is refused: nothing is read or written for it', async () => {
     const dir = realpathSync(makeTempDir('acp-bridge-3957-'));
-    mkdirSync(join(dir, 'p'));
-    writeFileSync(join(dir, 'p', 'secret.txt'), 'kept');
-    const asked: string[] = [];
-    const confined = client((path, access) => {
-      asked.push(`${access} ${path}`);
-      return 'it is outside the project';
-    });
+    writeFileSync(join(dir, 'kept.txt'), 'kept');
+    const notOffered = client(false);
     const write = await refusal(
-      confined.writeTextFile!({
+      notOffered.writeTextFile!({
         sessionId: 's',
-        path: join(dir, 'p', 'secret.txt'),
+        path: join(dir, 'kept.txt'),
         content: 'changed',
       }),
+      -32601,
     );
-    expect(write).toMatch(/it is outside the project/);
+    expect(write).toMatch(/did not offer the client file methods/);
     await refusal(
-      confined.readTextFile!({
-        sessionId: 's',
-        path: join(dir, 'p', 'secret.txt'),
-      }),
+      notOffered.readTextFile!({ sessionId: 's', path: join(dir, 'kept.txt') }),
+      -32601,
     );
-    expect(readFileSync(join(dir, 'p', 'secret.txt'), 'utf8')).toBe('kept');
-    expect(asked).toEqual([
-      `write ${join(dir, 'p', 'secret.txt')}`,
-      `read ${join(dir, 'p', 'secret.txt')}`,
-    ]);
+    expect(readFileSync(join(dir, 'kept.txt'), 'utf8')).toBe('kept');
+  });
+});
+
+describe('#3957 normalizedClientPath on Windows', () => {
+  test.each([
+    ['C:/Users/a/x.ts', 'C:\\Users\\a\\x.ts'],
+    ['C:\\Users\\a\\x.ts', 'C:\\Users\\a\\x.ts'],
+    ['C:/Users/a/../x.ts', undefined],
+    ['C://Users/a/x.ts', undefined],
+    ['Users/a/x.ts', undefined],
+  ])('%s -> %s', (input, expected) => {
+    expect(normalizedClientPath(input, win32)).toBe(expected);
   });
 });

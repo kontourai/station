@@ -211,6 +211,22 @@ const waiting = new Map();
 function write(message) {
   process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 }
+function record(entry) {
+  if (process.env.FAKE_OPENCODE_RECORD) {
+    appendFileSync(
+      process.env.FAKE_OPENCODE_RECORD,
+      `${JSON.stringify(entry)}\n`,
+    );
+  }
+}
+// Bun's default for an unhandled rejection: report it and keep running.
+process.on('unhandledRejection', (error) => {
+  record({
+    clientWrite: error?.path ?? null,
+    error: String(error?.message ?? error),
+    unhandled: true,
+  });
+});
 function request(method, params) {
   const id = nextOutgoingId++;
   write({ id, method, params });
@@ -277,11 +293,11 @@ async function prompt(sessionId, text) {
   const patchPath =
     match[1] === 'patch' ? join(process.cwd(), target) : undefined;
   const rawInput = editPath
-    ? { filepath: editPath, diff: '' }
+    ? { filepath: editPath, diff: '@@ -0,0 +1 @@\n+x\n' }
     : patchPath
       ? {
           filepath: target,
-          diff: '',
+          diff: '@@ -0,0 +1 @@\n+x\n',
           files: [{ filePath: patchPath, relativePath: target, type: 'add' }],
         }
       : { [action.key]: target };
@@ -334,26 +350,30 @@ async function prompt(sessionId, text) {
       }
     }
   }
-  // #3957: after an allowed edit, OpenCode's ACP agent writes the proposed
-  // content through the client (`fs/write_text_file`) at the metadata's
-  // `filepath`, as given (`acp/permission.ts` `writeProposedEdit`), and then
-  // its own tool writes the file.
+  // #3957: after an allowed edit with a non-empty diff, OpenCode's ACP agent
+  // writes the proposed content through the client (`fs/write_text_file`)
+  // at the metadata's `filepath`, as given, whatever capabilities the client
+  // advertised, and does not wait for it (`acp/permission.ts`
+  // `writeProposedEdit`: `void connection.writeTextFile(...)`). An error
+  // response rejects that promise unhandled; Bun 1.3.13, which OpenCode
+  // 1.18.18 runs on, keeps running (see the handler below). Its own tool then
+  // writes the file.
   if (
     allowed &&
     (editPath || patchPath) &&
+    rawInput.diff &&
     process.env.FAKE_OPENCODE_CLIENT_WRITE === '1'
   ) {
-    const response = await request('fs/write_text_file', {
+    const path = rawInput.filepath;
+    void request('fs/write_text_file', {
       sessionId,
-      path: rawInput.filepath,
+      path,
       content: 'written through the client\n',
+    }).then((response) => {
+      if (response?.__error)
+        throw Object.assign(new Error(response.__error.message), { path });
+      record({ clientWrite: path, error: null });
     });
-    if (process.env.FAKE_OPENCODE_RECORD) {
-      appendFileSync(
-        process.env.FAKE_OPENCODE_RECORD,
-        `${JSON.stringify({ clientWrite: rawInput.filepath, error: response?.__error?.message ?? null })}\n`,
-      );
-    }
   }
   const ownWrite = editPath ?? patchPath;
   if (allowed && ownWrite) {
@@ -399,6 +419,7 @@ async function handle(message) {
   const { id, method, params } = message;
   switch (method) {
     case 'initialize':
+      record({ clientCapabilities: params?.clientCapabilities ?? null });
       write({
         id,
         result: {

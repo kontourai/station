@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { readFile, stat, writeFile } from 'node:fs/promises';
-import { isAbsolute, normalize } from 'node:path';
+import * as pathModule from 'node:path';
 import {
   type Client,
   type CreateTerminalRequest,
@@ -53,46 +53,55 @@ interface ACPBridgeClientContext {
     params: Record<string, unknown>,
   ) => Record<string, unknown> | Promise<Record<string, unknown>>;
   /**
-   * #3957: why the session may not read or write `path` through the client
-   * file-system methods, or `undefined` when it may. Asked after the path is
-   * known to be absolute and normalized. Absent: any such path is allowed.
+   * #3957: whether Station offered this engine the client file-system
+   * methods (`fs/read_text_file`, `fs/write_text_file`). An engine that calls
+   * them anyway is refused: nothing is read or written for it. Default true.
    */
-  fileAccessRefusal?: (
-    path: string,
-    access: 'read' | 'write',
-  ) => string | undefined;
+  fileMethodsOffered?: boolean;
 }
 
 /**
- * #3957: the client file-system methods act on `params.path` exactly as
- * given, in Station's own process. ACP requires an absolute path; a relative
- * one would resolve against Station's working directory, and a non-normalized
- * one (`.`, `..`, repeated separators) can be read two ways. Both are
- * refused, then the session's own rule (`fileAccessRefusal`) applies.
+ * #3957: an absolute, normalized form of a client file path, or `undefined`.
+ * The client file-system methods act on the path in Station's own process.
+ * ACP requires an absolute path; a relative one would resolve against
+ * Station's working directory, and a non-normalized one (`.`, `..`,
+ * repeated separators) can be read two ways. Windows accepts `/` as a
+ * separator, so it is folded to `\\` before the comparison.
  */
+export function normalizedClientPath(
+  path: unknown,
+  paths: Pick<
+    typeof pathModule,
+    'isAbsolute' | 'normalize' | 'sep'
+  > = pathModule,
+): string | undefined {
+  if (typeof path !== 'string') return undefined;
+  const candidate = paths.sep === '\\' ? path.replaceAll('/', '\\') : path;
+  return paths.isAbsolute(candidate) && paths.normalize(candidate) === candidate
+    ? candidate
+    : undefined;
+}
+
 function assertClientFileAccess(
   path: unknown,
   access: 'read' | 'write',
   context: ACPBridgeClientContext,
 ): string {
-  if (
-    typeof path !== 'string' ||
-    !isAbsolute(path) ||
-    normalize(path) !== path
-  ) {
+  if (context.fileMethodsOffered === false) {
+    throw new RequestError(
+      -32601,
+      `Station did not offer the client file methods to this engine, so it does not ${access} '${String(path)}' for it.`,
+      { path },
+    );
+  }
+  const normalized = normalizedClientPath(path);
+  if (!normalized) {
     throw RequestError.invalidParams(
       { path },
       `Station refuses to ${access} '${String(path)}': client file paths must be absolute and normalized.`,
     );
   }
-  const refusal = context.fileAccessRefusal?.(path, access);
-  if (refusal) {
-    throw RequestError.invalidParams(
-      { path },
-      `Station refuses to ${access} '${path}': ${refusal}`,
-    );
-  }
-  return path;
+  return normalized;
 }
 
 export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
