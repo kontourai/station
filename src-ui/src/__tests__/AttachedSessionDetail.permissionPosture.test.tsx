@@ -68,17 +68,6 @@ import {
   takeAttachedContinuationHandoff,
 } from '../lib/attached-continuation-handoff';
 
-function classifiedAdoptionError(
-  failureClass:
-    | 'certain-response'
-    | 'certain-not-sent'
-    | 'uncertain-no-response',
-  message: string,
-  retryable: boolean,
-) {
-  return Object.assign(new Error(message), { failureClass, retryable });
-}
-
 const base = {
   provider: 'claude',
   threadId: 't1',
@@ -740,11 +729,11 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
   test('an uncertain continuation preserves the recovery copy and offers safe retry', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     adoptOrchestrationSession.mockRejectedValueOnce(
-      classifiedAdoptionError(
-        'uncertain-no-response',
-        'Station did not answer before the request ended.',
-        true,
-      ),
+      new AdoptSessionError({
+        failureClass: 'uncertain-no-response',
+        message: 'Station did not answer before the request ended.',
+        retryable: true,
+      }),
     );
     renderAttached();
 
@@ -763,6 +752,30 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
         .getByRole('button', { name: 'Continue and send' })
         .getAttribute('disabled'),
     ).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  test('a bound-starter rejection is classified, not passed through raw (#2722)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // A plain transport error, as `resolveApiBase` throws before the SDK's
+    // own classifier runs. Only the component's `catch` can turn it into an
+    // uncertain outcome, so the safe-retry line proves the rejection was
+    // awaited inside the `try` rather than returned past it.
+    adoptOrchestrationSession.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
+    renderAttached();
+
+    sendFromComposer();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    await screen.findByText(
+      "Couldn't start the continuation — Station isn't responding right now.",
+    );
+    expect(
+      screen.getByText(
+        'Retry safely — Station will not duplicate the continuation.',
+      ),
+    ).toBeTruthy();
     vi.restoreAllMocks();
   });
 });

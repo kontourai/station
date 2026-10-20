@@ -265,8 +265,10 @@ export function AttachedSessionDetail({
                 'Starter correlation is unavailable, so no continuation was requested.',
               retryable: true,
             });
+          // `return await`, not `return`: a rejection must land in the
+          // classifying `catch` below, not skip it unclassified (#2722).
           if (status.state === 'bound')
-            return adoptOrchestrationSession({
+            return await adoptOrchestrationSession({
               sourceThreadId: session.threadId,
               apiBase,
               intent: adoptionIntent.current,
