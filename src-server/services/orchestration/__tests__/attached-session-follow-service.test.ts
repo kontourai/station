@@ -1206,13 +1206,11 @@ describe('AttachedSessionFollowService', () => {
         provider: 'claude',
         kind: 'claude-transcript',
         discover: async () => ({ outcome: 'ok', sessions: [session] }),
-        read: vi
-          .fn()
-          .mockResolvedValue({
-            outcome: 'ok',
-            events: [event('legacy-kept')],
-            cursor: 20,
-          }),
+        read: vi.fn().mockResolvedValue({
+          outcome: 'ok',
+          events: [event('legacy-kept')],
+          cursor: 20,
+        }),
       };
       const options = {
         sources: [source],
@@ -1532,13 +1530,11 @@ describe('AttachedSessionFollowService', () => {
     }
     const beforeReplacement = persistedAttachment();
     const beforeEvents = store.listEvents(session.threadId);
-    const replacementRead = vi
-      .fn()
-      .mockResolvedValue({
-        outcome: 'ok',
-        events: [event('forbidden-new-subject')],
-        cursor: 60,
-      });
+    const replacementRead = vi.fn().mockResolvedValue({
+      outcome: 'ok',
+      events: [event('forbidden-new-subject')],
+      cursor: 60,
+    });
     const replacement = {
       ...source,
       kind: 'replacement-transcript-kind',
@@ -1737,6 +1733,51 @@ describe('AttachedSessionFollowService', () => {
       ).not.toContain(second.eventId);
     } finally {
       stop();
+    }
+  });
+
+  test('a meaningful attachment write rechecks ownership inside its queued write, after contention backoff', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: async () => ({ outcome: 'ok', sessions: [session] }),
+      read: async () => ({ outcome: 'ok', events: [], cursor: 20 }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    });
+    await service.pollNow();
+    const peer = new DatabaseSync(join(dir, 'orchestration.sqlite'));
+    let takenOver = false;
+    source.read = async () => {
+      // The cursor write queued after this read meets a held lock and backs
+      // off; a station-owned writer takes the row before its retry.
+      peer.exec('BEGIN IMMEDIATE');
+      setTimeout(() => {
+        peer.exec('ROLLBACK');
+        store.upsertSession({
+          ...persistedAttachment(),
+          controlMode: 'station-owned',
+          attachedSource: undefined,
+          resumeCursor: 'new-owner',
+        });
+        takenOver = true;
+      }, 0);
+      return { outcome: 'ok', events: [], cursor: 30 };
+    };
+    try {
+      await service.pollNow();
+      expect(takenOver).toBe(true);
+      expect(persistedAttachment()).toMatchObject({
+        controlMode: 'station-owned',
+        resumeCursor: 'new-owner',
+      });
+    } finally {
+      if (peer.isTransaction) peer.exec('ROLLBACK');
+      peer.close();
     }
   });
 

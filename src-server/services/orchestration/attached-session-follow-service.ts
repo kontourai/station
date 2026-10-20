@@ -1080,56 +1080,66 @@ export class AttachedSessionFollowService {
       };
     };
     const observed = snapshot.get(descriptor.threadId);
-    let session = candidateFor(observed);
     if (
       observed &&
-      sameAttachedSessionPersistence(observed, session) &&
+      sameAttachedSessionPersistence(observed, candidateFor(observed)) &&
       !hasNewEvents
     )
       return true;
 
     // This single-row read owns currentness across source.read's await. It
-    // is skipped entirely for a semantically unchanged, event-free page.
-    const current = this.options.eventStore.readSessionByThread(
+    // is skipped entirely for a semantically unchanged, event-free page. It
+    // runs inside the queued write so no other writer can interleave between
+    // these checks and the upsert.
+    const outcome = await this.options.eventStore.upsertSessionInBackgroundIf(
       descriptor.threadId,
+      () => {
+        const current = this.options.eventStore.readSessionByThread(
+          descriptor.threadId,
+        );
+        if (
+          (observed && !current) ||
+          (!observed && current) ||
+          (current && current.controlMode !== 'read-only-attached') ||
+          attachedSessionAffinityConflicts(current, descriptor) ||
+          (!sameAttachedSourceSubject(current, source, descriptor) &&
+            (current?.tenantExecutionContext ||
+              this.options.canBindNewAttachedSubject?.(descriptor.threadId) ===
+                false))
+        )
+          return false;
+        if (
+          current &&
+          observed &&
+          recordedAttachedSubjectChanged(observed, current)
+        )
+          return false;
+        // A different writer advanced durable progress while this page was
+        // read. Defer and rebuild follow state next poll; never overwrite it.
+        if (
+          current &&
+          comparableAttachedCursor(current.resumeCursor) &&
+          !sameBoundedPersistedValues(
+            current.resumeCursor,
+            observed?.resumeCursor,
+          )
+        )
+          return false;
+        const next = candidateFor(current);
+        if (current && sameAttachedSessionPersistence(current, next))
+          return true;
+        // Do not migrate an idle row's old poll timestamp. Only a meaningful
+        // metadata write needs the durable clock, including after a committed
+        // event's publication failed before the cached clock advanced.
+        next.updatedAt =
+          this.options.eventStore.latestEventCreatedAtByThread(
+            descriptor.threadId,
+          ) ?? next.createdAt;
+        return next;
+      },
     );
-    if (
-      (observed && !current) ||
-      (!observed && current) ||
-      (current && current.controlMode !== 'read-only-attached') ||
-      attachedSessionAffinityConflicts(current, descriptor) ||
-      (!sameAttachedSourceSubject(current, source, descriptor) &&
-        (current?.tenantExecutionContext ||
-          this.options.canBindNewAttachedSubject?.(descriptor.threadId) ===
-            false))
-    )
-      return false;
-    if (
-      current &&
-      observed &&
-      recordedAttachedSubjectChanged(observed, current)
-    )
-      return false;
-    // A different writer advanced durable progress while this page was read.
-    // Defer and rebuild follow state next poll rather than overwrite it.
-    if (
-      current &&
-      comparableAttachedCursor(current.resumeCursor) &&
-      !sameBoundedPersistedValues(current.resumeCursor, observed?.resumeCursor)
-    )
-      return false;
-    session = candidateFor(current);
-    if (current && sameAttachedSessionPersistence(current, session))
-      return true;
-    // Do not migrate an idle row's old poll timestamp. Only a meaningful
-    // metadata write needs the durable clock, including after a committed
-    // event's publication failed before the cached clock advanced.
-    session.updatedAt =
-      this.options.eventStore.latestEventCreatedAtByThread(
-        descriptor.threadId,
-      ) ?? session.createdAt;
-    await this.options.eventStore.upsertSessionInBackground(session);
-    snapshot.set(session);
+    if (typeof outcome === 'boolean') return outcome;
+    snapshot.set(outcome);
     return true;
   }
 

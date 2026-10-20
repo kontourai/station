@@ -4468,6 +4468,23 @@ export class EventStore {
     );
   }
 
+  /**
+   * `decide` runs inside the same synchronous write attempt as its upsert,
+   * after every earlier queued write for the Session, so a precondition it
+   * reads cannot go stale before the row is written. It returns the row to
+   * write, or a verdict to resolve with and write nothing.
+   */
+  upsertSessionInBackgroundIf(
+    threadId: string,
+    decide: () => ProviderSession | boolean,
+  ): Promise<ProviderSession | boolean> {
+    return this.writeInBackground(threadId, () => {
+      const decision = decide();
+      if (typeof decision !== 'boolean') this.upsertSession(decision);
+      return decision;
+    });
+  }
+
   deleteThreadInBackground(threadId: string): Promise<void> {
     return this.writeInBackground(threadId, () => this.deleteThread(threadId));
   }
