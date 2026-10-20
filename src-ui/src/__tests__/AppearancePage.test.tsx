@@ -314,6 +314,41 @@ describe('Appearance page while a theme sheet loads', () => {
     expect(screen.getByRole('status').textContent).toBe('');
   });
 
+  // The applier drops a sheet that failed and leaves the previous look in
+  // force (lib/color-theme-apply.ts). A card waiting on the root to name the
+  // theme would then wait forever; it has to say the theme did not load and
+  // offer to ask again.
+  test('a sheet that fails says so, offers a retry, and the retry applies it', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));
+    settleSheets('error');
+    await settleSheetsAndObserve();
+
+    expect(attributes().theme).toBeNull();
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
+    expect(card(/^Catppuccin/).getAttribute('aria-busy')).toBeNull();
+    expect(
+      card(/^Catppuccin/).querySelector('.appearance-theme__check'),
+    ).toBeNull();
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain("Couldn't load Catppuccin.");
+    expect(alert.textContent).toContain(
+      'The colors you had stay until it loads.',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinLoading…');
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    await settleSheetsAndObserve();
+    expect(attributes().theme).toBe('catppuccin');
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinMocha');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   test('rapid choices end on the last one, whichever sheet settles first', async () => {
     renderPage();
     fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));

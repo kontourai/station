@@ -86,6 +86,8 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
    */
   async function open(
     delays: Readonly<Record<string, number>> = {},
+    /** Families whose sheet answers 404 this many times before it serves. */
+    failures: Record<string, number> = {},
   ): Promise<Page> {
     const page = await browser.newPage();
     const errors: string[] = [];
@@ -96,6 +98,10 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
         return route.fulfill({ contentType: 'text/javascript', body: script });
       const sheet = /^\/color-themes\/([a-z-]+)\.css$/.exec(path);
       if (sheet) {
+        if ((failures[sheet[1]!] ?? 0) > 0) {
+          failures[sheet[1]!]! -= 1;
+          return route.fulfill({ status: 404, body: 'not found' });
+        }
         const body = readFileSync(resolve(PUBLIC_DIR, `.${path}`), 'utf8');
         return new Promise<void>((done) =>
           setTimeout(
@@ -241,6 +247,33 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
           .toLowerCase(),
       ),
     ).toBe(NORD_DARK_BACKGROUND);
+    await page.close();
+  });
+
+  test('a theme whose sheet 404s says so instead of loading forever, and Try again applies it', async () => {
+    const page = await open({}, { catppuccin: 1 });
+    await page
+      .getByRole('radio', { name: /^Catppuccin/ })
+      .locator('xpath=ancestor::label[1]')
+      .click();
+    const alert = page.getByRole('alert');
+    await alert.waitFor({ timeout: 10_000 });
+    expect(await alert.textContent()).toContain("Couldn't load Catppuccin.");
+    expect(await rootAttribute(page, 'data-color-theme')).toBeNull();
+    expect(
+      await page
+        .locator('.appearance-theme.is-selected .appearance-theme__detail')
+        .textContent(),
+    ).toBe('Not loaded');
+
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await untilTheme(page, 'catppuccin');
+    await alert.waitFor({ state: 'detached' });
+    expect(
+      await page
+        .locator('.appearance-theme.is-selected .appearance-theme__detail')
+        .textContent(),
+    ).toBe('Mocha');
     await page.close();
   });
 

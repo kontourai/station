@@ -148,6 +148,15 @@
   box-shadow: none;
 }
 
+.appearance-theme.is-failed {
+  border-color: var(--k-caution);
+  box-shadow: none;
+}
+
+.appearance__failed {
+  margin-top: var(--k-space-3);
+}
+
 .appearance-theme__check {
   position: absolute;
   top: var(--k-space-1);

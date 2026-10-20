@@ -1,6 +1,8 @@
 import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';
 import { useCallback, useSyncExternalStore } from 'react';
+import { Button } from '../components/Button';
 import { CheckGlyph } from '../components/icons/Glyph';
+import { PageCallout } from '../components/PageCallout';
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
 import {
@@ -15,6 +17,7 @@ import {
 } from '../hooks/useKeyboardShortcut';
 import { useLocale } from '../i18n/LocaleContext';
 import {
+  applyColorTheme,
   COLOR_THEME_ACCENT_ATTRIBUTE,
   COLOR_THEME_ATTRIBUTE,
   COLOR_THEME_FLAVOR_ATTRIBUTE,
@@ -30,6 +33,7 @@ import {
   type ColorThemeOption,
   type ColorThemeSwatch,
 } from '../lib/color-themes';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import { AccentColorPicker } from '../views/settings/AccentColorPicker';
 import { formatSettingsMessage } from '../views/settings/settings-catalog';
 import './AppearancePage.css';
@@ -183,12 +187,27 @@ const APPLIED_ATTRIBUTES = [
   COLOR_THEME_ACCENT_ATTRIBUTE,
 ];
 
-/** What the document root names now, as one comparable key. */
+/**
+ * A family sheet still on its way: not yet settled by the applier (which
+ * marks `data-state`) and, for the startup script's own request, not yet
+ * parsed either. A failed sheet is removed (lib/color-theme-apply.ts), so it
+ * never counts as on its way.
+ */
+function sheetInFlight(): boolean {
+  return [
+    ...document.head.querySelectorAll<HTMLLinkElement>(
+      'link[rel="stylesheet"][href*="/color-themes/"]',
+    ),
+  ].some((link) => !link.dataset.state && !link.sheet);
+}
+
+/** What the document root names now, and whether a sheet is in flight. */
 function readAppliedSelection(): string {
   const root = document.documentElement;
-  return APPLIED_ATTRIBUTES.map((name) => root.getAttribute(name) ?? '').join(
-    '|',
-  );
+  const named = APPLIED_ATTRIBUTES.map(
+    (name) => root.getAttribute(name) ?? '',
+  ).join('|');
+  return `${named}#${sheetInFlight() ? 'loading' : 'settled'}`;
 }
 
 function subscribeAppliedSelection(onChange: () => void): () => void {
@@ -196,6 +215,12 @@ function subscribeAppliedSelection(onChange: () => void): () => void {
   observer.observe(document.documentElement, {
     attributes: true,
     attributeFilter: APPLIED_ATTRIBUTES,
+  });
+  observer.observe(document.head, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['data-state'],
   });
   return () => observer.disconnect();
 }
@@ -226,7 +251,25 @@ export function AppearancePage() {
     readAppliedSelection,
     readAppliedSelection,
   );
-  const loading = applied !== selectionKey(resolved);
+  const [named, flight] = applied.split('#');
+  // Applied, on its way, or failed: the applier drops a sheet that failed and
+  // leaves the previous look in force, so with nothing in flight and the root
+  // still not naming the choice, the choice did not take.
+  const sheetState =
+    named === selectionKey(resolved)
+      ? 'applied'
+      : flight === 'loading'
+        ? 'loading'
+        : 'failed';
+  const loading = sheetState === 'loading';
+  const failed = sheetState === 'failed';
+  // Asks the applier for the sheet again (it re-requests a failed one on
+  // every apply), with the same settings it is bound to.
+  const retry = () =>
+    applyColorTheme(
+      document.documentElement,
+      deviceSettingsStore.getSnapshot(),
+    );
 
   const setMode = useCallback(
     (next: ColorThemeMode) => setDeviceSetting('theme', next),
@@ -291,10 +334,11 @@ export function AppearancePage() {
             const preview = themePreview(option, mode, settings);
             const selected = option.id === resolved.id;
             const settling = selected && loading;
+            const broken = selected && failed;
             return (
               <label
                 key={option.id}
-                className={`appearance-theme${selected ? ' is-selected' : ''}${settling ? ' is-loading' : ''}`}
+                className={`appearance-theme${selected ? ' is-selected' : ''}${settling ? ' is-loading' : ''}${broken ? ' is-failed' : ''}`}
                 aria-busy={settling || undefined}
               >
                 <input
@@ -306,14 +350,18 @@ export function AppearancePage() {
                   onChange={() => chooseTheme(option.id)}
                 />
                 <ThemeThumbnail swatch={preview.swatch} />
-                {selected && !settling && (
+                {selected && !settling && !broken && (
                   <span className="appearance-theme__check" aria-hidden="true">
                     <CheckGlyph />
                   </span>
                 )}
                 <span className="appearance-theme__name">{option.label}</span>
                 <span className="appearance-theme__detail">
-                  {settling ? 'Loading…' : (preview.flavorLabel ?? 'Default')}
+                  {settling
+                    ? 'Loading…'
+                    : broken
+                      ? 'Not loaded'
+                      : (preview.flavorLabel ?? 'Default')}
                 </span>
               </label>
             );
@@ -322,6 +370,23 @@ export function AppearancePage() {
         <p className="sr-only" role="status">
           {loading ? `Loading ${selectedOption.label}.` : ''}
         </p>
+        {failed && (
+          <PageCallout
+            calloutId="appearance-theme-failed"
+            className="appearance__failed"
+            tone="warning"
+            role="alert"
+            ariaLabel="Theme not loaded"
+            title={`Couldn't load ${selectedOption.label}.`}
+            action={
+              <Button size="sm" onClick={retry}>
+                Try again
+              </Button>
+            }
+          >
+            The colors you had stay until it loads.
+          </PageCallout>
+        )}
       </PageSection>
 
       {family && darkFlavors.length > 1 && (
