@@ -29,6 +29,7 @@ import {
   dirname,
   isAbsolute,
   join,
+  normalize,
   parse as parsePath,
   relative,
   resolve,
@@ -137,6 +138,16 @@ export function isOpenCodeEditShaped(
   return input.filepath !== undefined || input.files !== undefined;
 }
 
+/**
+ * `isInside` without letter case where the file system usually ignores it
+ * (macOS, Windows), for paths whose case-variant spelling must still match.
+ */
+function isInsideIgnoringCase(path: string, root: string): boolean {
+  return process.platform === 'darwin' || process.platform === 'win32'
+    ? isInside(path.toLowerCase(), root.toLowerCase())
+    : isInside(path, root);
+}
+
 function isInside(path: string, root: string): boolean {
   const rel = relative(root, path);
   return (
@@ -153,10 +164,18 @@ function isInside(path: string, root: string): boolean {
  * anywhere (#3924). A link above the project (such as `/var` on macOS) is
  * resolved; one that cannot be resolved is refused. Components that do not
  * exist yet are taken as written: nothing beneath them can be a link.
+ *
+ * The path is judged as written, never normalized first: OpenCode hands the
+ * same raw path to the file system, which resolves `link/..` through the
+ * link, while `path.resolve` would collapse it away. So a path that is not
+ * already absolute and normalized (a `.` or `..` segment, a repeated
+ * separator) is refused rather than reinterpreted.
  */
 function writeDestination(target: string, root: string): string | undefined {
-  const absolute = resolve(target);
+  if (!isAbsolute(target) || normalize(target) !== target) return undefined;
+  const absolute = target;
   const parts = absolute.split(sep).filter(Boolean);
+  if (parts.some((part) => part === '.' || part === '..')) return undefined;
   let current = parsePath(absolute).root;
   for (const [index, part] of parts.entries()) {
     const candidate = join(current, part);
@@ -224,7 +243,7 @@ export function openCodeEditNeedsPerson(
       !isInside(real, root) ||
       isOpenCodeConfigPath(relative(root, real)) ||
       isOpenCodeConfigPath(relative(root, resolve(target))) ||
-      global.some((path) => isInside(real, path))
+      global.some((path) => isInsideIgnoringCase(real, path))
     );
   });
 }

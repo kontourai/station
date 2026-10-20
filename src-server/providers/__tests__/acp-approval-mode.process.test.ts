@@ -1100,6 +1100,22 @@ describe.skipIf(process.platform === 'win32')(
         },
       );
 
+      test('Auto: an absolute `link/..` path into global configuration asks a person', async () => {
+        h = harness('opencode');
+        const globalDir = join(h.cwd, '..', 'global-config-dotdot', 'opencode');
+        mkdirSync(globalDir, { recursive: true });
+        symlinkSync(globalDir, join(h.cwd, 'a'));
+        await start(h, 'auto-dotdot', 'auto');
+        const raw = `${h.cwd}/a/../opencode/plugins/x.js`;
+        const edit = await turn(h, 'auto-dotdot', `edit: ${raw}`, {
+          answer: 'decline',
+        });
+        expect(edit.asked).toMatchObject({ payload: { toolKind: 'edit' } });
+        expect(
+          existsSync(join(globalDir, '..', 'opencode', 'plugins', 'x.js')),
+        ).toBe(false);
+      });
+
       test('a start inside the preflight window is scanned again', async () => {
         h = harness('opencode');
         const input = {

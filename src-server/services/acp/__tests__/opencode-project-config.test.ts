@@ -1,5 +1,5 @@
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -165,6 +165,63 @@ describe('#3924 openCodeEditNeedsPerson: symbolic links and global configuration
       ),
     ).toBe(true);
   });
+
+  test.each([
+    ['an absolute link target', 'absolute'],
+    ['a relative link target', 'relative'],
+  ])(
+    'a raw `link/..` path is judged as written, through %s',
+    (_label, kind) => {
+      const { root, repo, cwd } = project();
+      const home = join(root, 'home');
+      const globalDir = join(home, '.config', 'opencode');
+      mkdirSync(globalDir, { recursive: true });
+      symlinkSync(
+        kind === 'absolute'
+          ? globalDir
+          : join('..', 'home', '.config', 'opencode'),
+        join(repo, 'a'),
+      );
+      // `path.resolve` would collapse this to <repo>/opencode/plugins/x.js;
+      // the file system resolves it to the global plugins directory.
+      const raw = `${repo}${sep}a${sep}..${sep}opencode${sep}plugins${sep}x.js`;
+      expect(openCodeEditNeedsPerson({ filepath: raw }, cwd, env, home)).toBe(
+        true,
+      );
+    },
+  );
+
+  test.each([
+    ['a `..` segment', (repo: string) => `${repo}${sep}src${sep}..${sep}a.ts`],
+    ['a `.` segment', (repo: string) => `${repo}${sep}.${sep}a.ts`],
+    ['a repeated separator', (repo: string) => `${repo}${sep}${sep}a.ts`],
+  ])('a path with %s asks, even without a link', (_label, path) => {
+    const { repo, cwd } = project();
+    expect(openCodeEditNeedsPerson({ filepath: path(repo) }, cwd, env)).toBe(
+      true,
+    );
+    // The same file, written plainly, does not.
+    expect(
+      openCodeEditNeedsPerson({ filepath: join(repo, 'a.ts') }, cwd, env),
+    ).toBe(false);
+  });
+
+  test.skipIf(process.platform !== 'darwin' && process.platform !== 'win32')(
+    'global configuration in another letter case asks, where the file system ignores case',
+    () => {
+      const root = realpathSync(makeTempDir('opencode-project-config-case-'));
+      const home = join(root, 'home');
+      mkdirSync(join(home, '.config', 'opencode'), { recursive: true });
+      expect(
+        openCodeEditNeedsPerson(
+          { filepath: join(home, '.CONFIG', 'OpenCode', 'plugins', 'z.ts') },
+          home,
+          env,
+          home,
+        ),
+      ).toBe(true);
+    },
+  );
 
   test('a link above the project is resolved, so ordinary edits stay ordinary', () => {
     const { root, repo } = project();

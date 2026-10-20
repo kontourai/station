@@ -29,14 +29,14 @@
 // resume but cannot resume this session would.
 //
 // #3924: an `edit: <path>` request carries what OpenCode sends, its
-// permission metadata (`{ filepath, diff }`, `filepath` absolute, resolved
-// against the process's directory), and an allowed edit writes the file.
+// permission metadata (`{ filepath, diff }`, `filepath` absolute: an absolute
+// path as written, a relative one joined to the process's directory), and an allowed edit writes the file.
 // An `always` answer is remembered for the permission, as OpenCode's edit
 // tool asks with `always: ["*"]`: later requests for it are not sent, and a
 // `{ "always": <permission> }` line is recorded. `debug agent` records a
 // `{ "debugAgent": <name> }` line.
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 
 // `debug agent <name>` prints the agent's resolved rules (#3290), as
 // `opencode debug agent` does; it is not an engine launch.
@@ -253,7 +253,15 @@ async function prompt(sessionId, text) {
       ? { ...ACTIONS.mcp, permission: target, title: target }
       : ACTIONS[match[1]];
   const toolCallId = `call_fixture_${++callCounter}`;
-  const editPath = match[1] === 'edit' ? resolve(target) : undefined;
+  // As OpenCode's edit and write tools do: an absolute path is passed on as
+  // written (the file system then resolves `link/..` through the link), a
+  // relative one is joined to the directory.
+  const editPath =
+    match[1] === 'edit'
+      ? isAbsolute(target)
+        ? target
+        : join(process.cwd(), target)
+      : undefined;
   const rawInput = editPath
     ? { filepath: editPath, diff: '' }
     : { [action.key]: target };
