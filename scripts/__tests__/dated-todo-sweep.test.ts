@@ -100,11 +100,22 @@ function runUpsert({
     [
       '#!/bin/sh',
       'printf "%s\\n" "$*" >> "$0.calls"',
-      'if [ "$1 $2" = "issue list" ]; then cat "$FAKE_GH_LISTING"; fi',
+      'if [ "$1 $2" = "issue list" ]; then exec "$FAKE_GH_NODE" "$FAKE_GH_LIST_JS" "$@"; fi',
       'if [ "$1 $2" = "issue create" ]; then echo https://example.test/issues/1; fi',
     ].join('\n') + '\n',
   );
   chmodSync(join(bin, 'gh'), 0o755);
+  // Like real `gh`, `issue list` returns only the fields `--json` requested, so
+  // a dropped field reaches the script as undefined rather than fixture data.
+  writeFileSync(
+    join(root, 'list.mjs'),
+    [
+      "import { readFileSync } from 'node:fs';",
+      "const fields = process.argv[process.argv.indexOf('--json') + 1].split(',');",
+      "const listing = JSON.parse(readFileSync(process.env.FAKE_GH_LISTING, 'utf8'));",
+      'console.log(JSON.stringify(listing.map((issue) => Object.fromEntries(fields.map((field) => [field, issue[field]])))));',
+    ].join('\n'),
+  );
   const entries = Array.from({ length: dueEntries }, (_, index) => ({
     file: 'a.ts',
     line: index + 1,
@@ -133,6 +144,8 @@ function runUpsert({
         ...process.env,
         PATH: `${bin}:${process.env.PATH}`,
         FAKE_GH_LISTING: join(root, 'listing.json'),
+        FAKE_GH_LIST_JS: join(root, 'list.mjs'),
+        FAKE_GH_NODE: process.execPath,
         GITHUB_REPOSITORY: 'owner/repo',
       },
       windowsHide: true,
@@ -176,6 +189,15 @@ describe.runIf(process.platform !== 'win32')('upsert step', () => {
     expect(writes).toHaveLength(2);
     expect(writes[0]).toMatch(/^issue edit 2908 --body-file /);
     expect(writes[1]).toBe('issue reopen 2908 --repo owner/repo');
+  });
+
+  it('updates an open issue without reopening it when something is due', () => {
+    const writes = runUpsert({
+      dueEntries: 1,
+      listing: [{ ...ISSUE, state: 'OPEN' }],
+    });
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatch(/^issue edit 2908 --body-file /);
   });
 
   it('creates the P2 issue when something is due and none exists', () => {
