@@ -1,0 +1,41 @@
+{
+  "revision": "a9a1c15bb5de9d61fe1573ad7cb4ead2f55e14d9",
+
+  "notes": [
+    {"path":".github/pull_request_template.md","note":"Added one bullet under 'Issue and closure condition': closing a slice or epic requires removing or wiring every UNWIRED/SUNSET marker citing it and updating its design doc status, pointing at docs/guides/code-hygiene.md, which exists. Other sections unchanged.","inputs":[".github/pull_request_template.md"]},
+
+    {"path":".veritas/README.md","note":"docs/guides/documentation.md gained one paragraph in 'Maintain comments with their code' linking the new code-hygiene guide; no claim this document makes about the documentation guide or its sections changed.","inputs":[".veritas/README.md","docs/guides/documentation.md"]},
+
+    {"path":"AGENTS.md","note":"Added one routing row (code without a production caller, compatibility code, dated evidence directories -> docs/guides/code-hygiene.md, which exists). The protected Veritas governance block, landing procedure and other routes are unchanged.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"CLAUDE.md imports AGENTS.md; the AGENTS.md delta adds one routing row outside the protected governance block. Nothing in CLAUDE.md needs to change.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/README.md","note":"docs/guides/documentation.md gained one paragraph in 'Maintain comments with their code' linking the new code-hygiene guide; no claim this document makes about the documentation guide or its sections changed.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"docs/guides/documentation.md gained one paragraph in 'Maintain comments with their code' linking the new code-hygiene guide; no claim this document makes about the documentation guide or its sections changed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"package.json#/scripts delta adds only the hygiene:report and six hygiene:<check> scripts (node scripts/hygiene-report.mjs); no script this document names changed or was removed, so its claims stand.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"docs/guides/documentation.md gained one paragraph in 'Maintain comments with their code' linking the new code-hygiene guide; no claim this document makes about the documentation guide or its sections changed. AGENTS.md gained one routing row outside the governance block. package.json#/scripts delta adds only the hygiene:report and six hygiene:<check> scripts (node scripts/hygiene-report.mjs); no script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/code-quality.md","AGENTS.md","docs/guides/documentation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"package.json#/scripts delta adds only the hygiene:report and six hygiene:<check> scripts (node scripts/hygiene-report.mjs); no script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"docs/guides/documentation.md gained one paragraph in 'Maintain comments with their code' linking the new code-hygiene guide; no claim this document makes about the documentation guide or its sections changed. package.json#/scripts delta adds only the hygiene:report and six hygiene:<check> scripts (node scripts/hygiene-report.mjs); no script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/development.md","docs/guides/documentation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/documentation.md","note":"Added the code-hygiene link paragraph. scripts/docs-freshness-sweep.mjs now delegates the tracking-issue upsert to scripts/lib/tracking-issue.mjs with identical gh arguments (documentation-freshness.test.ts upsert cases pass). The workflow adds the read-only hygiene job and the dependency-free hygiene-issue job; the freshness sweep job, schedule, permissions and the statements that it tracks one issue, never edits the ledger and never fails a required check are unchanged.","inputs":["docs/guides/documentation.md",".github/workflows/docs-freshness-sweep.yml","scripts/docs-freshness-sweep.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"docs/guides/documentation.md gained one paragraph in 'Maintain comments with their code' linking the new code-hygiene guide; no claim this document makes about the documentation guide or its sections changed.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"package.json#/scripts delta adds only the hygiene:report and six hygiene:<check> scripts (node scripts/hygiene-report.mjs); no script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"docs/guides/documentation.md gained one paragraph in 'Maintain comments with their code' linking the new code-hygiene guide; no claim this document makes about the documentation guide or its sections changed. scripts/vitest-resource-manifest.mjs adds hygiene-report.test.ts to the process-heavy group, consistent with the child-process classification rule; the workflow inventory row for docs-freshness-sweep.yml (file, sidebar name, schedule) is unchanged. package.json#/scripts delta adds only the hygiene:report and six hygiene:<check> scripts (node scripts/hygiene-report.mjs); no script this document names changed or was removed, so its claims stand.","inputs":["docs/guides/testing.md","docs/guides/documentation.md","package.json#/scripts","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"scripts/documentation-impact.mjs now keeps only path, state, summary and source paths of each historical ledger it compiles; the docs:impact and docs:impact --catch-up --json commands and their output are unchanged (byte-identical catch-up JSON measured before/after), so the README's usage statements stand.","inputs":["docs/learn/README.md","scripts/documentation-impact.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"package.json#/scripts delta adds only the hygiene:report and six hygiene:<check> scripts (node scripts/hygiene-report.mjs); no script this document names changed or was removed, so its claims stand.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"scripts/AGENTS.md","note":"scripts/vitest-resource-manifest.mjs classifies the new child-process test scripts/__tests__/hygiene-report.test.ts as process-heavy, which is what this file requires; routed owners and commands unchanged.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"New guide reviewed against scripts/hygiene-report.mjs (flags, exit 0/1/2, NOT_VERIFIED), scripts/lib/hygiene/checks.mjs (patterns, scopes, exemptions, retention line format), github.mjs (STATION_HYGIENE_GH seam, batched GraphQL), the workflow jobs and package scripts. Ran every check against this repository and fixture trees.","inputs":["docs/guides/code-hygiene.md",".github/workflows/docs-freshness-sweep.yml","package.json#/scripts","scripts/hygiene-report.mjs","scripts/lib/hygiene/checks.mjs","scripts/lib/hygiene/github.mjs","scripts/lib/hygiene/source-text.mjs","scripts/lib/tracking-issue.mjs"]}
+  ]
+}
