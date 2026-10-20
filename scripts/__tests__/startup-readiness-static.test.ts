@@ -258,9 +258,9 @@ describe('desktop startup readiness static boundary', () => {
     expect(platformBootstrap).not.toContain('startStartupReadinessProof');
     // Native owns the identity proof: a waiting-phase wake and a newly
     // published sidecar ticket each request the native commit.
-    expect(
-      rustBlock(lib, 'fn notify_startup_readiness_if_waiting('),
-    ).toContain('request_native_startup_commit(app);');
+    expect(rustBlock(lib, 'fn notify_startup_readiness_if_waiting(')).toContain(
+      'request_native_startup_commit(app);',
+    );
     expect(rustBlock(lib, 'fn observe_startup_ticket(')).toContain(
       'request_native_startup_commit_for_ticket(app, published_ticket);',
     );

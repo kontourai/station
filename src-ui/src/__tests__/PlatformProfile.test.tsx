@@ -16,9 +16,7 @@ import type {
 
 type PlatformProfileAdapter = Pick<
   NativePlatformAdapter,
-  | 'platform'
-  | 'getCapabilityReport'
-  | 'getBundledServerStatus'
+  'platform' | 'getCapabilityReport' | 'getBundledServerStatus'
 >;
 
 const state = vi.hoisted(() => ({
