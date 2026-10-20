@@ -64,6 +64,7 @@ import {
 } from './device-host-tools.js';
 import type { DeviceHubEndpoint } from './device-hub-endpoint.js';
 import { DeviceHostBusyError } from './device-shares.js';
+import { isRecord } from '../../utils/is-record.js';
 
 export type DeviceTool = 'xcrun' | 'adb';
 
@@ -536,9 +537,6 @@ function parseIosForeground(
 }
 
 // ---- accessibility ------------------------------------------------------
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const numberOr = (value: unknown, fallback: number) =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;

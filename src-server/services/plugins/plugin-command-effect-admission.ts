@@ -25,6 +25,7 @@ import {
   type PluginRuntimeArtifact,
   pluginInstallationGeneration,
 } from './plugin-runtime-artifact.js';
+import { isRecord } from '../../utils/is-record.js';
 
 export type PluginCommandRequirementResolution =
   | 'available'
@@ -115,10 +116,6 @@ const CONTEXT_FIELDS = [
   'taskId',
 ] as const;
 const CONTEXT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 /** Strict route-seam parse; unknown fields are refused, never ignored. */
 function parsePluginCommandEffectAdmissionRequest(

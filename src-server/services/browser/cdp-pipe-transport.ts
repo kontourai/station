@@ -16,6 +16,7 @@
  *   frame, and an unbounded buffer is a memory hazard.
  */
 import type { CdpTransport } from './browser-host.js';
+import { isRecord } from '../../utils/is-record.js';
 
 /** Default incoming frame bound. Screencast JPEG frames are well under this. */
 const DEFAULT_CDP_MAX_MESSAGE_BYTES = 64 * 1024 * 1024;
@@ -71,10 +72,6 @@ interface PendingRequest {
 }
 
 type Listener = (params: unknown, sessionId?: string) => void;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 export class CdpPipeTransport implements CdpTransport {
   readonly closed: Promise<void>;

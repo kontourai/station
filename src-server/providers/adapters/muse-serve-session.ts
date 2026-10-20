@@ -46,6 +46,7 @@ import {
   MuseServeTimeoutError,
 } from './muse-serve-rpc.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
+import { isRecord } from '../../utils/is-record.js';
 
 /**
  * #2452: one Station session driven through a `muse serve` (MSP) host.
@@ -331,10 +332,6 @@ function approvalSubjectSignature(
     subject.workspaceRoot ?? null,
     stages,
   ]);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function readString(value: unknown): string | undefined {

@@ -44,6 +44,7 @@ import {
   type PluginPrincipalResolution,
 } from './plugin-identity-enumeration.js';
 import { personOnly } from './plugin-person-approval.js';
+import { isRecord } from '../../utils/is-record.js';
 
 export interface PluginCommandEffectRouteDeps {
   admission: PluginCommandEffectAdmission;
@@ -72,10 +73,6 @@ const REFUSAL_STATUS: Record<
 };
 
 const OUTCOMES = new Set<string>(PLUGIN_COMMAND_EFFECT_OUTCOMES);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 async function readJson(c: Context): Promise<unknown> {
   try {

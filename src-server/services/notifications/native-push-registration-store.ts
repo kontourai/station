@@ -32,6 +32,7 @@ import {
   readPrivateJsonFile,
   writePrivateJsonFileSync,
 } from './private-json-file.js';
+import { isRecord } from '../../utils/is-record.js';
 
 const ANDROID_FILE_NAME = 'native-push-registrations.json';
 const ANDROID_LABEL = 'Native push registrations';
@@ -195,10 +196,6 @@ export class NativePushRegistrationStoreError extends Error {
   constructor(label = ANDROID_LABEL) {
     super(`${label} are unreadable or unsafe`);
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isValidAndroidRequest(
