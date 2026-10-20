@@ -1,5 +1,5 @@
 /**
- * Epic #2323 S3 review round 3: a draft build runs in a disposable process.
+ * Epic #2323 S3: a draft build runs in a disposable process.
  *
  * A FIFO `package.json` is read by esbuild's own resolver, where no Station
  * check sees it, and blocks esbuild's Go service in a syscall. In-process
@@ -310,7 +310,7 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
     return dir;
   }
 
-  // Round 4 MEDIUM: the child is detached into its own session, so a server
+  // The child is detached into its own session, so a server
   // that dies mid-build (crash, SIGKILL) used to leave it and its blocked
   // esbuild service running under init. Only PIDs this test spawned (or that
   // descend from them) are signalled.
@@ -415,7 +415,7 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
     TEST_TIMEOUT_MS,
   );
 
-  // Round 4 LOW: the child gets a minimal environment, never the server's
+  // The child gets a minimal environment, never the server's
   // provider keys. Read from the running child's own environment, found by
   // the pid this test recorded.
   test(

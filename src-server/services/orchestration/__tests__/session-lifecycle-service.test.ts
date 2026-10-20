@@ -102,7 +102,7 @@ describe('session-lifecycle-service', () => {
       lifecycleState: 'idle',
       transitionReason: 'provider_turn_completed',
     });
-    // #2324 review F1: a provider turn that fails, likewise distinguishable.
+    // #2324: a provider turn that fails, likewise distinguishable.
     const providerFailed: CanonicalRuntimeEvent = {
       ...base,
       eventId: 'p3',
@@ -359,7 +359,7 @@ describe('session-lifecycle-service', () => {
 
     // initialState 'created' is the shape EVERY adapter emits on every
     // startSession (reattach included) — it must stay unstamped too
-    // (archive#1073 review round 1).
+    // (archive#1073).
     const started = normalizeCanonicalRuntimeEventLifecycle(
       {
         eventId: 'evt-n2',
@@ -561,7 +561,7 @@ describe('session-lifecycle-service', () => {
     expect(projection.lifecycleState).toBe('running');
   });
 
-  // Boundary pin (archive#1073 review LOW): request.resolved maps to 'running'
+  // Boundary pin (archive#1073): request.resolved maps to 'running'
   // unconditionally. In every real adapter sequence requests open inside a
   // turn, so this is correct there; a lone resolved request after an
   // attach-only session would fabricate running. Pinned so a future change
@@ -1044,7 +1044,7 @@ describe('session.exited exit-code derivation (#3442)', () => {
       ],
     });
     expect(projection.lifecycleState).toBe('failed');
-    // archive#3442 review finding: `mapEventToLifecycleTransition`'s
+    // archive#3442: `mapEventToLifecycleTransition`'s
     // `session.exited` case sets `reason: 'runtime_error'` on this branch,
     // but nothing asserted it — it reaches
     // `OrchestrationSessionSummary.transitionReason` and the
@@ -1077,7 +1077,7 @@ describe('session.exited exit-code derivation (#3442)', () => {
     expect(projection.lifecycleState).toBe('completed');
   });
 
-  // archive#3451 finding M1: exitCode 0 must FILL, not override, a failure
+  // archive#3451 (M1): exitCode 0 must FILL, not override, a failure
   // this same event stream already recorded. archive#3473 made this
   // reachable: finalizeUnexpectedExit now always synthesizes a runtime.error
   // before session.exited, and a process CAN die with an unresolved turn yet
@@ -1187,7 +1187,7 @@ describe('session.exited exit-code derivation (#3442)', () => {
   });
 });
 
-// archive#3451 finding 2: a session.exited crash (defined, nonzero exitCode)
+// archive#3451: a session.exited crash (defined, nonzero exitCode)
 // is the one 'failed' path with no `runtime.error` to read a cause from.
 describe('session.exited crash blockedReason (station#3451 finding 2)', () => {
   const base = {
@@ -1388,7 +1388,7 @@ describe('interruptibleTurnIdForEvents / isDeferredRetriableTurnError (station#3
     expect(interruptibleTurnIdForEvents(events)).toBeUndefined();
   });
 
-  // archive#3451 finding B1 (blocking, review-found): `interruptibleTurnIdForEvents`
+  // archive#3451 (B1): `interruptibleTurnIdForEvents`
   // folds over `eventStore.listSessionProjectionEvents(threadId)`, a BOUNDED
   // fact set — not the full event log. At the time of this fix,
   // `firstTurnStartedWithPrompt` always returned the FIRST turn ever
@@ -1448,8 +1448,8 @@ describe('interruptibleTurnIdForEvents / isDeferredRetriableTurnError (station#3
     expect(activeTurnIdForEvents(boundedFactSet)).toBeUndefined();
   });
 
-  // archive#3451 fix round D1: the SAME B1 scenario reproduces through the
-  // OTHER arm — the `!event.turnId` escape the round-1 fix kept. The
+  // archive#3451 (D1): the SAME B1 scenario reproduces through the
+  // OTHER arm — the `!event.turnId` escape the first B1 fix kept. The
   // adapter-stream-restart error (orchestration-service.ts: any provider,
   // retriable: true, deliberately no turnId) IS a LIFECYCLE_METHODS event
   // and can evict turn-2's turn.started from the bounded fact set exactly
@@ -1497,9 +1497,8 @@ describe('station#3581 review BLOCK 1: the stamp early-return distrusts a stale 
   // ALREADY-PERSISTED row from BEFORE this fix (or a hypothetical future
   // write path) would look on disk — `sessionState: 'completed'` already
   // stamped — which is precisely the shape a write-path-only fix can never
-  // heal, per the review's own point: "the write path has been minting
-  // this stamp since before your branch, so real machines already carry
-  // it."
+  // heal: the write path minted this stamp long before the fix, so real
+  // machines already carry it.
   test('a persisted turn.completed row already stamped sessionState:"completed" is still rejected when the identity anchor names a different, later turn', () => {
     const base = {
       provider: 'codex' as const,
@@ -1697,7 +1696,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
 
   // The discriminating negative: a turn that was still IN PROGRESS when the
   // process died has no recorded outcome, so the exit IS the outcome
-  // (archive#3451 finding 1, unchanged by the guard above).
+  // (archive#3451, unchanged by the guard above).
   test('a turn still in progress when the process exits abnormally is failed', () => {
     const projection = projectSessionLifecycle({
       session,

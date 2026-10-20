@@ -13,8 +13,9 @@
  * a path inside, the Project folder; and the folder, `.git` included, is
  * fingerprinted before and after to show nothing under it was written.
  *
- * The probes ported from the three review rounds of the first design
- * (branch `feat/plugin-publish-git-s6`) are marked with their round.
+ * Probes ported from reviews of the first design (branch
+ * `feat/plugin-publish-git-s6`, which ran git in the folder) are marked
+ * "Ported"; each names the defect it found there.
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -727,7 +728,7 @@ describe('a writer racing the read (round 3: symlinked parent)', () => {
     expect(heads(bare)).toBe('');
   });
 
-  /** Review of #2374, MEDIUM: the link count was checked only on the open
+  /** #2374: the link count was checked only on the open
    * descriptor. The in-folder hard link is removed just before the open (so
    * the count reads 1) and the parent swapped for a link to where the
    * other name lives, then swapped back after the read. */
@@ -852,7 +853,7 @@ describe('a writer racing the read (round 3: symlinked parent)', () => {
 });
 
 describe('the folder’s .git is never read or written (rounds 1-3)', () => {
-  /** Round 2: the folder laid out as its own bare repository, whose config
+  /** Ported: the folder laid out as its own bare repository, whose config
    * names a filter and rewrites the remote to the attacker. */
   test('a bare-layout folder: no filter runs and the push goes only to the validated address', async () => {
     mkdirSync(join(folder, '.git'));
@@ -892,7 +893,7 @@ describe('the folder’s .git is never read or written (rounds 1-3)', () => {
     expectNoGitTouchedFolder();
   });
 
-  /** Round 3: an index entry naming `..` read a file outside the folder. */
+  /** Ported: an index entry naming `..` read a file outside the folder. */
   test('a ".." entry planted in the folder’s index reaches nothing', async () => {
     mkdirSync(join(folder, 'aa'));
     writeFileSync(join(folder, 'aa', 'secret.txt'), 'inside');
@@ -920,7 +921,7 @@ describe('the folder’s .git is never read or written (rounds 1-3)', () => {
     expectNoGitTouchedFolder();
   });
 
-  /** Round 3: git's writes into the folder's `.git` followed planted links
+  /** Ported: git's writes into the folder's `.git` followed planted links
    * (a copy-back overwrote an `authorized_keys`). */
   test('links planted under .git are never followed or written through', async () => {
     git(folder, ['init', '--quiet']);
@@ -950,7 +951,7 @@ describe('the folder’s .git is never read or written (rounds 1-3)', () => {
     expectNoGitTouchedFolder();
   });
 
-  /** Round 3: fake remote-tracking refs hid a secret committed earlier from
+  /** Ported: fake remote-tracking refs hid a secret committed earlier from
    * the unpushed-history scan. An export pushes no folder history at all. */
   test('fake tracking refs and a secret in the folder’s history push nothing of that history', async () => {
     git(folder, ['init', '--quiet']);
@@ -975,7 +976,7 @@ describe('the folder’s .git is never read or written (rounds 1-3)', () => {
     expectNoGitTouchedFolder();
   });
 
-  /** Round 2: a filter named by the folder's attributes ran on commit. */
+  /** Ported: a filter named by the folder's attributes ran on commit. */
   test('filter attributes in the folder’s .git never run, and a published one is refused', async () => {
     git(folder, ['init', '--quiet']);
     git(folder, ['config', 'filter.x.clean', markerScript()]);

@@ -11,8 +11,8 @@
  * module: it builds a real `OrchestrationService` and a real on-disk
  * `EventStore`. That is deliberately stronger — it covers the ctor wiring
  * that constructs `interruptedTurns`, which a module-only suite would miss.
- * (An earlier draft of slice 13 called it "its unit suite in everything but
- * name"; that was an overclaim in the wrong direction, corrected in review.)
+ * (An earlier description called it "its unit suite in everything but
+ * name"; that was an overclaim in the wrong direction.)
  *
  * It probes the crash shape the issue describes: a `SessionTurnBoundaryAuthority` row left `invoking`/`accepted`
  * by an owner whose process died. The dead-owner simulation mirrors
@@ -20,8 +20,8 @@
  * `EventStore`'s owner via `close()`, then open a fresh `EventStore` on the
  * same file, which reconciles at construction exactly like a real restart.
  *
- * Review round 1 reshaped the presentation-path selection from a provider
- * branch to a FileMemory-occupancy check (H2) — `fakeMemoryAdapter()` below
+ * The presentation path is chosen by FileMemory occupancy, not by provider
+ * (the H2 tests) — `fakeMemoryAdapter()` below
  * models a real `getMessages`/`getConversation`/`addMessage` store so tests
  * can seed either an EMPTY store or one with existing content, in either
  * direction, independent of `provider`.
@@ -47,7 +47,7 @@ import {
   projectSessionLifecycle,
 } from '../session-lifecycle-service.js';
 
-// archive#4080 follow-up (review round 2, finding 1): spy-wrap the
+// archive#4080 follow-up: spy-wrap the
 // REAL implementation so every other test's behavior is unchanged — this
 // exists only to pin that `InterruptedTurnRecovery.consume` actually calls
 // through the shared resolver `readConversationMessages` also uses, not a
@@ -132,8 +132,8 @@ function fakeMemoryAdapter(options?: {
   // entries off the END before returning. This fake previously ignored the
   // option and returned everything, which is why
   // INTERRUPTED_TURN_MEMORY_SCAN_LIMIT had zero test power — the marker
-  // scan could never miss a marker no matter how many messages trailed it
-  // (found in slice 13 review, M3). A fixture whose shape the real writer
+  // scan could never miss a marker no matter how many messages trailed it.
+  // A fixture whose shape the real writer
   // never produces cannot pin behavior that depends on that shape.
   const tail = (messages: StoredMessage[], limit?: number) =>
     typeof limit === 'number' && limit >= 0 ? messages.slice(-limit) : messages;
@@ -1185,7 +1185,7 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       provider: 'station-agent',
       agentSlug: 'demo-agent',
       boundaryState: 'invoking',
-      // #3562 fix round 1 (F2): no turn of its own, so no abort is attempted
+      // #3562: no turn of its own, so no abort is attempted
       // and the decline lands on the BANNER publish — the path this test
       // exists for. With a started turn the abort is declined first and
       // this would duplicate the #2235 declined-abort test below.
@@ -1956,7 +1956,7 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     });
 
     /**
-     * #3562 fix round 1. Fixtures for the rows recovery must NOT read as
+     * #3562. Fixtures for the rows recovery must NOT read as
      * owning a turn: `accepted` rows do not block a new claim, and a steer
      * takes no claim and re-publishes a non-provider `turn.started` carrying
      * the id of the turn it steers — which can be an EARLIER accepted row's.

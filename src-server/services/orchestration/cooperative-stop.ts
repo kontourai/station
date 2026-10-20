@@ -26,7 +26,7 @@ type StopSettlement = 'acknowledged' | 'completed' | 'deadline';
 /**
  * A Stop recorded before its turn existed.
  *
- * `clientTurnId` is what makes this safe (UX audit T1 review): keyed on the
+ * `clientTurnId` is what makes this safe (UX audit T1): keyed on the
  * thread alone, a cancel whose intended turn never started stayed armed for
  * the whole TTL and would interrupt whatever turn started next. With the key,
  * the `sendTurn` path binds `turnId` the moment its dispatch resolves, and
@@ -43,7 +43,7 @@ interface PendingTurnInterrupt {
    * Turns whose `turn.started` this record has already seen while it was
    * still waiting for its binding.
    *
-   * UX audit T1 review round 3 (HIGH): Claude and ACP publish `turn.started`
+   * UX audit T1: Claude and ACP publish `turn.started`
    * BEFORE `sendTurn` returns the id, so the ordinary ordering is
    * start-then-bind — and the event-driven apply, correctly refusing to guess
    * which dispatch that start belonged to, had to stand down. Nothing then
@@ -245,10 +245,10 @@ export class CooperativeStop {
       return;
     }
     if (event.turnId) pending.startedTurnIds.add(event.turnId);
-    // UX audit T1 review: a correlated cancel may only reach the turn its own
+    // UX audit T1: a correlated cancel may only reach the turn its own
     // dispatch produced. Until that binding exists the record waits — a turn
     // starting now belongs to some other dispatch, and interrupting it would
-    // stop work the user never asked to stop. Round 3: the wait now ENDS, at
+    // stop work the user never asked to stop. The wait now ENDS, at
     // `bindPendingTurnInterrupt`, using the start just recorded above.
     if (pending.clientTurnId !== undefined && pending.turnId === undefined) {
       return;
@@ -303,7 +303,7 @@ export class CooperativeStop {
    * Binds a pending Stop to the provider turn its own dispatch produced, or
    * drops it when that dispatch produced none. See {@link PendingTurnInterrupt}.
    *
-   * UX audit T1 review round 3 (HIGH): this is also where a held cancel is
+   * UX audit T1: this is also where a held cancel is
    * APPLIED, not merely recorded. Claude and ACP publish `turn.started` before
    * `sendTurn` returns its id, so in the ordinary case the event-driven apply
    * has already seen the start and stood down for want of a binding — and no

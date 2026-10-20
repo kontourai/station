@@ -55,7 +55,8 @@ interface InterruptedTurnRecoveryDeps {
     agentSlug: string,
   ) => InterruptedTurnMemoryAdapter | undefined;
   /**
-   * C2's projection+publish. Returns boolean in-service and the M4 refusal
+   * The service's projection+publish (`projectAndPublishEvent`). Returns
+   * boolean in-service and the M4 refusal
    * branch READS it — a declined publish must retain the boundary row — so
    * unlike the CooperativeStop/FlowPolicySidecar precedent this is NOT
    * `void`. Narrowing it would silently convert "declined" into "done".
@@ -117,9 +118,9 @@ export interface InterruptedTurnMemoryAdapter {
 const INTERRUPTED_TURN_MEMORY_SCAN_LIMIT = 5;
 
 /**
- * archive#4080 (review round 1, H2 core reshape; review round 2,
- * follow-up 1: delegates to the shared `resolveConversationTranscriptSource`
- * rather than re-deriving its own copy of the lookup). Occupancy is decided
+ * archive#4080 (H2: delegates to the shared
+ * `resolveConversationTranscriptSource` rather than re-deriving its own copy
+ * of the lookup). Occupancy is decided
  * by the SAME two-step FileMemory lookup `readConversationMessages` uses —
  * see that function's own doc for why this is the one shared definition.
  * `alreadyBannered` is this caller's own use of the bounded result: the
@@ -326,7 +327,7 @@ export class InterruptedTurnRecovery {
    * on its own). Every banner this writes is gated on exactly one such row;
    * there is no code path that writes one without a matching row.
    *
-   * PRESENTATION PATH (review round 1, H2 core reshape): chosen the SAME
+   * PRESENTATION PATH (H2): chosen the SAME
    * way the read path chooses it — `readConversationMessages` serves
    * FileMemory whenever it is non-empty for the thread, regardless of
    * provider, and the persisted-runtime-events projection otherwise. This
@@ -382,7 +383,7 @@ export class InterruptedTurnRecovery {
    * started and before any other turn started. Requests outside that window
    * are left alone.
    *
-   * IDEMPOTENCE (review round 1, H1): the write→delete gap between a
+   * IDEMPOTENCE (H1): the write→delete gap between a
    * banner landing and `resolveInterruptedTurnBoundary` closing its row is
    * a real crash window — a process that dies in it leaves the row for a
    * next boot to find again. Both write paths are therefore made
@@ -393,12 +394,12 @@ export class InterruptedTurnRecovery {
    * `metadata.interruptedTurnBoundaryId`, scanned for before writing. A
    * retry that finds either already present skips straight to close.
    *
-   * REFUSAL (review round 1, M4): `projectAndPublishEvent` returns `false`
+   * REFUSAL (M4): `projectAndPublishEvent` returns `false`
    * when it declines to publish (e.g. a quarantined thread) — honored here
    * by leaving the boundary row unresolved and logging, rather than
    * silently treating a declined publish as done.
    *
-   * INFORMATION CARRIED FORWARD (review round 1, M5): the boundary row's
+   * INFORMATION CARRIED FORWARD (M5): the boundary row's
    * own facts — prior state, provider turn id, owner id, its own
    * created/updated timestamps — are copied onto the event's
    * `interruptedTurnBoundary` payload before the row is deleted, so nothing
@@ -483,7 +484,7 @@ export class InterruptedTurnRecovery {
         continue;
       }
       try {
-        // station#2235 (review MEDIUM 1): the row outlives the crash, not the
+        // station#2235: the row outlives the crash, not the
         // session's future. If the thread opened a NEWER turn after this
         // boundary was claimed — a new owner attached and the user kept
         // going before this boot's consume ran — both recovery events would
@@ -523,7 +524,7 @@ export class InterruptedTurnRecovery {
           // thread's latest turn start, the process died before it landed (or
           // the thread moved on): there is no turn to close or banner.
           const providerTurn = isProviderTurnBoundary(record);
-          // #2324 review L4: a send the engine accepted but never started (it
+          // #2324 (L4): a send the engine accepted but never started (it
           // was queued behind a turn the engine opened itself when the process
           // died) has no `turn.started` of its own — the start is published
           // only when the engine starts it. A newer start on the thread is then

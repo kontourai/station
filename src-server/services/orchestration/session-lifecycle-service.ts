@@ -251,7 +251,7 @@ export function projectSessionLifecycle(options: {
   if (!blockedReason && lastBlockingError?.method === 'runtime.error') {
     blockedReason = lastBlockingError.message;
   }
-  // archive#3451 finding 2: a `session.exited` crash (a defined, nonzero
+  // archive#3451: a `session.exited` crash (a defined, nonzero
   // exitCode — the same observation `deriveLifecycleTransition`'s
   // 'session.exited' case already folds to `failed`) is otherwise the one
   // 'failed' path with no `runtime.error` to read a cause from, so the UI
@@ -555,12 +555,12 @@ export function interruptibleTurnIdForEvents(
   return activeTurnId;
 }
 
-// archive#3451 fix round D5: moved to packages/contracts/src/runtime-events.ts,
+// archive#3451: moved to packages/contracts/src/runtime-events.ts,
 // which src-server AND src-ui both already depend on — re-exported here so
 // every existing src-server import of this module keeps working unchanged.
 export { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 
-// archive#3525/#3559 fix rounds: `InternalStopSuppression.arm`
+// archive#3525/#3559: `InternalStopSuppression.arm`
 // and `steerTurn` (orchestration-service.ts) each fold over
 // `listEventsByMethods` narrowed to exactly the methods THIS function
 // inspects below, as a performance narrowing — every other canonical method
@@ -583,7 +583,7 @@ export const ACTIVE_TURN_FOLD_METHODS = [
 
 // archive#3558 exported this alongside `acceptsTurnTerminalEvent` so
 // `deriveAgentRunStatus` could track the SAME `activeTurnId` this module's
-// own folds track. archive#3581 review MEDIUM 1: that reason is gone —
+// own folds track. archive#3581: that reason is gone —
 // `deriveAgentRunStatus`/`findTerminalFailureEvent`/
 // `wireTurnCompletionNotifications` all fold `nextTurnIdentityAnchor` now,
 // not this function, and nothing outside this module imports
@@ -623,7 +623,7 @@ function nextActiveTurnId(
       // same safe `undefined` for the case the bounded fact set cannot
       // represent.
       //
-      // archive#3451 fix round D1: no `!event.turnId` escape. That
+      // archive#3451 (D1): no `!event.turnId` escape. That
       // disjunct reproduced the exact same bug through the OTHER arm — the
       // adapter-stream-restart error (orchestration-service.ts, retriable:
       // true, deliberately no turnId) is itself a LIFECYCLE_METHODS event
@@ -656,7 +656,7 @@ function nextActiveTurnId(
 // session `buildOrchestrationSessionSummary` folded, from the identical
 // events, as still `running`.
 //
-// archive#3557/#3558 fix-round review BLOCK 2 / archive#3581 (FIXED): the
+// archive#3557/#3558 / archive#3581 (FIXED): the
 // PREVIOUS revision of this function was a permissive default keyed off
 // `activeTurnId === undefined` — `(event, undefined)` was unconditionally
 // `true` for any terminal that names a turn at all. `nextActiveTurnId`'s
@@ -691,9 +691,8 @@ function nextActiveTurnId(
 // `interruptibleTurnIdForEvents` depend on exactly that clearing semantics
 // ("is a turn currently open") and must not gain a stale-but-defined id.
 //
-// archive#3581 review round 2, addressing three further findings on top of
-// the above:
-//   BLOCK 1: this guard was still bypassable. `deriveLifecycleTransition`
+// archive#3581, further gaps on top of the above:
+//   Stamp bypass: this guard was still bypassable. `deriveLifecycleTransition`
 //   honors a persisted `sessionState` STAMP before ever reaching this
 //   function (its own early return, further down) — and the write path
 //   that mints that stamp (`orchestration-service.ts`'s `consumeAdapterEvents`)
@@ -706,7 +705,7 @@ function nextActiveTurnId(
 //   distrusts a stamped `turn.completed`/`turn.aborted` this guard would
 //   reject, which is what heals rows already persisted with the old,
 //   unguarded stamp (a write-side fix alone cannot reach those).
-//   MEDIUM 3: `nextTurnIdentityAnchor` used to clear back to `undefined` the
+//   Clear on accept: `nextTurnIdentityAnchor` used to clear to `undefined` the
 //   moment it accepted a terminal, which reopened this exact permissive
 //   hole for anything arriving afterward with no turn of its own to compare
 //   against. It now retains the last-started turn's id for the rest of the
@@ -748,7 +747,7 @@ export function acceptsTurnTerminalEvent(
  * not merely "no turn is currently open" — an earlier revision of this fold
  * cleared the anchor to `undefined` the moment an ACCEPTED terminal closed
  * a turn, which reopened exactly that hole for anything arriving afterward
- * with no turn of its own to compare against (archive#3581 review MEDIUM 3):
+ * with no turn of its own to compare against (archive#3581):
  *
  * ```
  * turn.started(t1) → turn.started(t2) → turn.completed(t2) [accepted, real]
@@ -775,15 +774,15 @@ export function acceptsTurnTerminalEvent(
  * folds apply — see `deriveLifecycleTransition`'s stamp early-return for why
  * the write and read sides must agree.
  *
- * LOAD-BEARING INVARIANT (archive#3581 review round 2, finding 2): a
- * terminal is only EVER wrongly rejected by this fold if it names a turn
- * whose OWN `turn.started` was never published — a rejection otherwise
- * requires (by construction) that a DIFFERENT, later `turn.started`
- * superseded it, which is exactly the correct-to-reject case. So this fold
- * is safe only because every real terminal publisher also publishes a
- * pairing `turn.started` for the same turn id. Audited at review time: all
- * nine adapters that publish `turn.completed`/`turn.aborted` (bedrock,
- * ollama, claude, codex, acp, station-agent, muse, plus
+ * LOAD-BEARING INVARIANT (archive#3581): a terminal is only EVER wrongly
+ * rejected by this fold if it names a turn whose OWN `turn.started` was never
+ * published — a rejection otherwise requires (by construction) that a
+ * DIFFERENT, later `turn.started` superseded it, which is exactly the
+ * correct-to-reject case. So this fold is safe only because every real terminal
+ * publisher also publishes a pairing `turn.started` for the same turn id.
+ * Audited when this fold was written: all nine adapters that publish
+ * `turn.completed`/`turn.aborted` (bedrock, ollama, claude, codex, acp,
+ * station-agent, muse, plus
  * `claude-transcript-session-source.ts`) pair them with their own
  * `turn.started`; `acp-adapter.ts` additionally gates its terminal publish
  * on matching the session's own tracked turn identity; and the bounded
@@ -806,14 +805,14 @@ export function nextTurnIdentityAnchor(
 }
 
 /**
- * archive#3581 BLOCK 1 (review): the `turnIdentityAnchorForEvents` sibling of
+ * archive#3581: the `turnIdentityAnchorForEvents` sibling of
  * `activeTurnIdForEvents`, folding `nextTurnIdentityAnchor` instead of
  * `nextActiveTurnId`. Exported specifically so `orchestration-service.ts`'s
  * `consumeAdapterEvents` can compute the SAME identity value at WRITE time
  * that `deriveLifecycleTransition`/`deriveAgentRunStatus` compute at READ
  * time — using `activeTurnIdForEvents` there (as this codebase did before
  * this fix) stamps a persisted event's `sessionState` from the CLEARING
- * fold, which reopens BLOCK 1's exact gap: a stale terminal arriving after
+ * fold, which reopens the stamp-bypass gap: a stale terminal arriving after
  * its superseding turn's own error/exit gets accepted and stamped
  * `sessionState: 'completed'` on disk, and `deriveLifecycleTransition`'s
  * stamp early-return then honors that stamp before its own
@@ -863,7 +862,7 @@ function isLegacyAttachStamp(event: CanonicalRuntimeEvent): boolean {
   // The full fabricated tuple, not just method+reason: a deliberately
   // authored event that happens to reuse the canonical reason but carries a
   // different state or source is NOT the legacy stamp and stays trusted
-  // (review MED: the heuristic must recognize exactly what the old
+  // (the heuristic must recognize exactly what the old
   // normalize generated).
   if (event.transitionSource !== 'runtime') return false;
   return (
@@ -920,7 +919,7 @@ function deriveLifecycleTransition(
   // `normalizeCanonicalRuntimeEventLifecycle` (the WRITE-time caller, via
   // `orchestration-service.ts`'s `consumeAdapterEvents`) now passes
   // `turnIdentityAnchorForEvents` over the bounded projection instead of
-  // `activeTurnIdForEvents` — review BLOCK 1: passing the CLEARING fold's
+  // `activeTurnIdForEvents`: passing the CLEARING fold's
   // value there stamped a persisted event's `sessionState` from a stale
   // terminal exactly like this function's own `acceptsTurnTerminalEvent`
   // guard below exists to reject, and the stamp early-return runs BEFORE
@@ -936,8 +935,7 @@ function deriveLifecycleTransition(
   source: SessionTransitionSource;
 } | null {
   const from = event.previousState ?? previousState ?? 'queued';
-  // archive#3557/#3558 fix-round review BLOCK 3 delta-review MEDIUM (archive#3581
-  // is BLOCK 2, this is a separate, later-caught finding): a persisted
+  // archive#3557/#3558, a gap separate from archive#3581's: a persisted
   // `turn.completed` is normalized and stamped with `sessionState` BEFORE
   // it is written (`consumeAdapterEvents` -> `normalizeCanonicalRuntimeEventLifecycle`,
   // `orchestration-service.ts:5641-5645`; `projectAndPublishEvent` persists
@@ -959,7 +957,7 @@ function deriveLifecycleTransition(
   // write path this fix is correcting.
   const isStampedStaleCancellation =
     event.method === 'turn.completed' && event.finishReason === 'cancelled';
-  // archive#3581 review BLOCK 1: the SAME trap that produced
+  // archive#3581: the SAME trap that produced
   // `isStampedStaleCancellation`, in its general form. That exclusion was
   // written narrowly for a stamped CANCELLATION — an ACCEPTED terminal
   // whose `finishReason` correction only happens in the switch below — and
@@ -998,7 +996,7 @@ function deriveLifecycleTransition(
       // startSession — including recovery/reattach of a session with real
       // history — so 'created' is an attach fact, not a work state, and
       // must stay transition-neutral or a reattach resets completed/failed
-      // sessions to queued (review HIGH). A fresh session's 'queued' comes
+      // sessions to queued. A fresh session's 'queued' comes
       // from the projection's initial value. Any other explicitly-carried
       // initial state is an adapter deliberately reporting where the
       // session began, and is honored.
@@ -1056,7 +1054,7 @@ function deriveLifecycleTransition(
       };
     case 'turn.completed':
       if (!acceptsTurnTerminalEvent(event, turnIdentityAnchor)) return null;
-      // archive#3557/#3558 fix-round review BLOCK 3: codex's own Stop
+      // archive#3557/#3558: codex's own Stop
       // confirmation publishes `turn.completed(finishReason: 'cancelled')`
       // for the SAME turn `turn.aborted` already closed — both real events,
       // not adapter noise — and the max-sequence rule that resolves a
@@ -1140,7 +1138,7 @@ function deriveLifecycleTransition(
       // re-queuing from scratch) 'failed' is what the contract already
       // declares retryable.
       //
-      // archive#3451 finding M1: `exitCode === 0` FILLS rather than
+      // archive#3451 (M1): `exitCode === 0` FILLS rather than
       // overrides. It is a real fact about the OS process, not the turn —
       // archive#3473's `finalizeUnexpectedExit` now always synthesizes a
       // `runtime.error` (folding `from` to 'failed') before publishing
@@ -1167,14 +1165,14 @@ function deriveLifecycleTransition(
       // persisted and still readable as history; it just no longer decides
       // the outcome. A turn still IN PROGRESS is `running` (or queued /
       // needs_input / review_pending / blocked), none of which are stopped,
-      // so the crash-mid-turn -> `failed` fold archive#3451 finding 1 added
+      // so the crash-mid-turn -> `failed` fold archive#3451 added
       // is untouched. Mirrored by `deriveAgentRunStatus`'s
       // `isTerminalAgentRunStatus(status)` guard on the same event.
       // #2540: `idle` too — a finished turn's resident engine exiting (a
       // restart, an explicit stop, a reap) is not a new outcome for the work.
       if (isSessionLifecycleStateAtRest(from)) return null;
       // `from === 'failed'` no longer needs its own arm here: the stopped
-      // guard above already returned for it (finding M1's case is a strict
+      // guard above already returned for it (the M1 case is a strict
       // subset of the general rule).
       const to =
         event.exitCode === 0
@@ -1203,7 +1201,7 @@ function runtimeSessionStateToLifecycleState(
   // 'running' is the same conflation archive#1073 fixed for session.configured —
   // and a worse one, because bedrock/ollama publish state-changed -> 'idle'
   // immediately AFTER turn.completed, so every completed turn folded back to
-  // 'running' on those providers (archive#1121 review).
+  // 'running' on those providers (archive#1121).
   if (state === 'configured') return 'queued';
   if (state === 'idle') return 'queued';
   if (state === 'running') return 'running';
