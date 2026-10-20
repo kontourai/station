@@ -66,10 +66,10 @@ function fixture(name: 'sprintf-js' | 'node-forge' = 'sprintf-js') {
     'pnpm-workspace.yaml',
     JSON.stringify({
       nodeLinker: 'hoisted',
-      patchedDependencies: { [`${name}@${version}`]: 'patches/sprintf.patch' },
+      patchedDependencies: { [`${name}@${version}`]: 'patches/package.patch' },
     }),
   );
-  write('patches/sprintf.patch', patch);
+  write('patches/package.patch', patch);
   write(
     'node_modules/argparse/package.json',
     JSON.stringify({ name: 'argparse', version: '1.0.10' }),
@@ -107,7 +107,7 @@ function fixture(name: 'sprintf-js' | 'node-forge' = 'sprintf-js') {
       schemaVersion: 1,
       package: name,
       version,
-      patchPath: 'patches/sprintf.patch',
+      patchPath: 'patches/package.patch',
       patchSha256: patchHash,
       nodeMajor: 24,
       installedEntrypoints: files.map((file) => ({
@@ -241,7 +241,7 @@ describe('machine-bound production residual acceptance', () => {
     [
       'patch bytes',
       (f: ReturnType<typeof fixture>) =>
-        f.write('patches/sprintf.patch', 'changed patch'),
+        f.write('patches/package.patch', 'changed patch'),
     ],
     [
       'workspace binding',
@@ -350,7 +350,7 @@ describe('machine-bound production residual acceptance', () => {
       for (const file of [
         'pnpm-workspace.yaml',
         'pnpm-lock.yaml',
-        'patches/sprintf.patch',
+        'patches/package.patch',
         'node_modules/sprintf-js/package.json',
         'node_modules/sprintf-js/src/sprintf.js',
         'node_modules/sprintf-js/dist/sprintf.min.js',
@@ -654,7 +654,7 @@ describe('RSA remediation admission boundaries', () => {
     ]);
   });
 
-  it.each(['patches/sprintf.patch', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'])(
+  it.each(['patches/package.patch', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'])(
     'blocks changed %s at the high-severity decision',
     (file) => {
       const f = fixture('node-forge');
@@ -691,5 +691,257 @@ describe('RSA remediation admission boundaries', () => {
     expect(result.blockingFindings.map((finding) => finding.advisory)).toEqual([
       'GHSA-aaaa-bbbb-cccc',
     ]);
+  });
+});
+
+// The verifier is identity-agnostic once it has validated a reviewed
+// advisory/version pair, so these controls run against the live node-forge
+// identity rather than a retired one.
+describe('installed-tree verification, exercised through the node-forge remediation', () => {
+  const forgeDir = 'node_modules/node-forge';
+  const forgeManifest = JSON.stringify({
+    name: 'node-forge',
+    version: '1.4.0',
+    main: 'lib/index.js',
+    browser: { buffer: false, crypto: false, process: false },
+  });
+  const forgeFiles: ReadonlyArray<readonly [string, string]> = [
+    ['lib/index.js', source],
+    ['lib/rsa.js', source],
+    ['dist/forge.min.js', minified],
+    ['dist/forge.all.min.js', minified],
+  ];
+  const writeForgeCopy = (
+    f: ReturnType<typeof fixture>,
+    directory: string,
+    override?: string,
+  ) => {
+    f.write(`${directory}/package.json`, forgeManifest);
+    for (const [file, original] of forgeFiles)
+      f.write(`${directory}/${file}`, override ?? original);
+  };
+  const expectBlocked = (f: ReturnType<typeof fixture>, message: RegExp) => {
+    const result = f.evaluate();
+    expect(result.ok).toBe(false);
+    expect(result.patchedFindings).toHaveLength(0);
+    expect(result.blockingFindings).toHaveLength(1);
+    expect(result.exceptionErrors.join(' ')).toMatch(message);
+  };
+
+  it.each([
+    [
+      'patch bytes',
+      /patch bytes changed/,
+      (f: ReturnType<typeof fixture>) =>
+        f.write('patches/package.patch', 'changed patch'),
+    ],
+    [
+      'workspace binding',
+      /workspace or lock binding mismatch/,
+      (f: ReturnType<typeof fixture>) =>
+        f.write(
+          'pnpm-workspace.yaml',
+          JSON.stringify({ nodeLinker: 'hoisted', patchedDependencies: {} }),
+        ),
+    ],
+    [
+      'lock hash',
+      /workspace or lock binding mismatch/,
+      (f: ReturnType<typeof fixture>) => {
+        f.lock.patchedDependencies['node-forge@1.4.0'] = '0'.repeat(64);
+        f.write('pnpm-lock.yaml', JSON.stringify(f.lock));
+      },
+    ],
+    [
+      'snapshot edge',
+      /Unresolved dependency|unpatched or absent locked package/,
+      (f: ReturnType<typeof fixture>) => {
+        f.lock.snapshots['argparse@1.0.10'].dependencies['node-forge'] =
+          '1.4.0';
+        f.write('pnpm-lock.yaml', JSON.stringify(f.lock));
+      },
+    ],
+    [
+      'missing evidence file',
+      /ENOENT/,
+      (f: ReturnType<typeof fixture>) =>
+        rmSync(join(f.root, forgeDir, 'dist/forge.min.js')),
+    ],
+    [
+      'unaccounted copy',
+      /unaccounted installed copy or entrypoint/,
+      (f: ReturnType<typeof fixture>) =>
+        writeForgeCopy(f, 'node_modules/argparse/node_modules/node-forge'),
+    ],
+    [
+      'caller-directory shadow copy',
+      /unaccounted installed copy or entrypoint/,
+      (f: ReturnType<typeof fixture>) => {
+        const caller = 'node_modules/argparse/lib/help/formatter.js';
+        const copy = 'node_modules/argparse/lib/help/node_modules/node-forge';
+        f.write(caller, 'module.exports = require("node-forge");');
+        writeForgeCopy(f, copy, 'unpatched caller shadow');
+        expect(createRequire(join(f.root, caller)).resolve('node-forge')).toBe(
+          realpathSync(join(f.root, copy, 'lib/index.js')),
+        );
+      },
+    ],
+    [
+      'package identity',
+      /installed package identity changed/,
+      (f: ReturnType<typeof fixture>) =>
+        f.write(
+          `${forgeDir}/package.json`,
+          JSON.stringify({
+            name: 'unbound-package',
+            version: '1.4.0',
+            main: 'lib/index.js',
+          }),
+        ),
+    ],
+    [
+      'runtime entrypoint contract',
+      /runtime entrypoint contract changed/,
+      (f: ReturnType<typeof fixture>) =>
+        f.write(
+          `${forgeDir}/package.json`,
+          JSON.stringify({
+            name: 'node-forge',
+            version: '1.4.0',
+            main: 'lib/index.js',
+            browser: { buffer: true, crypto: false, process: false },
+          }),
+        ),
+    ],
+  ])(
+    'keeps the high finding blocked after %s drift, then passes after restoration',
+    (_name, message, mutate) => {
+      const f = fixture('node-forge');
+      expect(f.evaluate().ok).toBe(true);
+      const originals = new Map<string, Buffer>();
+      for (const file of [
+        'pnpm-workspace.yaml',
+        'pnpm-lock.yaml',
+        'patches/package.patch',
+        `${forgeDir}/package.json`,
+        ...forgeFiles.map(([file]) => `${forgeDir}/${file}`),
+      ])
+        originals.set(file, readFileSync(join(f.root, file)));
+      mutate(f);
+      expectBlocked(f, message);
+      rmSync(join(f.root, 'node_modules/argparse/node_modules'), {
+        recursive: true,
+        force: true,
+      });
+      rmSync(join(f.root, 'node_modules/argparse/lib'), {
+        recursive: true,
+        force: true,
+      });
+      for (const [path, data] of originals) f.write(path, data.toString());
+      expect(f.evaluate().ok).toBe(true);
+    },
+  );
+
+  it('refuses a Node-resolvable file shadow and restores acceptance after removal', () => {
+    const f = fixture('node-forge');
+    const caller = 'node_modules/argparse/lib/help/formatter.js';
+    const shadow = 'node_modules/argparse/lib/help/node_modules/node-forge.js';
+    f.write(caller, 'module.exports = require("node-forge");');
+    f.write(shadow, 'module.exports = { unpatched: true };');
+    expect(createRequire(join(f.root, caller)).resolve('node-forge')).toBe(
+      realpathSync(join(f.root, shadow)),
+    );
+    expectBlocked(f, /unaccounted module file shadow/);
+    rmSync(join(f.root, shadow));
+    expect(f.evaluate().ok).toBe(true);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses a file symlink shadow at the real caller lookup',
+    () => {
+      const f = fixture('node-forge');
+      const caller = 'node_modules/argparse/lib/help/formatter.js';
+      const target = 'node_modules/argparse/lib/unpatched.js';
+      const shadow = 'node_modules/argparse/lib/help/node_modules/node-forge';
+      f.write(caller, 'module.exports = require("node-forge");');
+      f.write(target, 'module.exports = { unpatched: true };');
+      mkdirSync(join(f.root, shadow, '..'), { recursive: true });
+      symlinkSync(join(f.root, target), join(f.root, shadow), 'file');
+      expect(createRequire(join(f.root, caller)).resolve('node-forge')).toBe(
+        realpathSync(join(f.root, target)),
+      );
+      expectBlocked(f, /unaccounted module file shadow|unaccounted linked/);
+      rmSync(join(f.root, shadow));
+      expect(f.evaluate().ok).toBe(true);
+    },
+  );
+
+  it('traverses unrelated manifestless module directories without hiding copies', () => {
+    const f = fixture('node-forge');
+    f.write(
+      'node_modules/argparse/lib/node_modules/@types/fixture/index.d.ts',
+      'export type Name = string;',
+    );
+    expect(f.evaluate().ok).toBe(true);
+  });
+
+  it('refuses caller shadows through a case-equivalent module directory', ({
+    skip,
+  }) => {
+    const f = fixture('node-forge');
+    f.write('case-probe', 'case-probe');
+    if (!existsSync(join(f.root, 'CASE-PROBE'))) {
+      skip();
+      return;
+    }
+    const caller = 'node_modules/argparse/lib/help/formatter.js';
+    const shadow = 'node_modules/argparse/lib/help/NODE_MODULES/node-forge';
+    f.write(caller, 'module.exports = require("node-forge");');
+    writeForgeCopy(f, shadow, 'unbound shadow');
+    const resolved = createRequire(join(f.root, caller)).resolve('node-forge');
+    const observed = statSync(resolved);
+    const shadowFile = statSync(join(f.root, shadow, 'lib/index.js'));
+    expect([observed.dev, observed.ino]).toEqual([
+      shadowFile.dev,
+      shadowFile.ino,
+    ]);
+    expectBlocked(f, /unaccounted installed copy or entrypoint/);
+    rmSync(join(f.root, shadow), { recursive: true });
+    expect(f.evaluate().ok).toBe(true);
+  });
+
+  it('accounts for every installed copy when all of their hashes are explicitly bound', () => {
+    const f = fixture('node-forge');
+    const nested = 'node_modules/argparse/node_modules/node-forge';
+    writeForgeCopy(f, nested);
+    for (const [file, original] of forgeFiles)
+      f.remediation.patchBinding.installedEntrypoints.push({
+        path: `${nested}/${file}`,
+        sha256: hash(file.startsWith('dist/') ? minified : original),
+      });
+    f.write(`${nested}/dist/forge.min.js`, source);
+    expectBlocked(f, /installed entrypoint bytes changed/);
+    f.write(`${nested}/dist/forge.min.js`, minified);
+    expect(f.evaluate().ok).toBe(true);
+  });
+
+  it('refuses missing binding evidence and a changed Node runtime', () => {
+    const f = fixture('node-forge');
+    const entries = f.remediation.patchBinding.installedEntrypoints;
+    f.remediation.patchBinding.installedEntrypoints = [];
+    expectBlocked(f, /missing entrypoint evidence/);
+    f.remediation.patchBinding.installedEntrypoints = entries;
+    expect(f.evaluate().ok).toBe(true);
+    Object.defineProperty(process.versions, 'node', { value: '25.0.0' });
+    expectBlocked(f, /runtime changed/);
+  });
+
+  it('refuses evidence for a file no installed copy accounts for', () => {
+    const f = fixture('node-forge');
+    f.remediation.patchBinding.installedEntrypoints.push({
+      path: `${forgeDir}/lib/extra.js`,
+      sha256: hash(source),
+    });
+    expectBlocked(f, /unobserved entrypoint evidence/);
   });
 });
