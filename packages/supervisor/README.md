@@ -1,11 +1,18 @@
 # Station process supervisor
 
 `@kontourai/station-supervisor` is the process that is meant to own a Station
-instance's listening sockets and its core server generations. It keeps the
-listeners open while one core server generation hands over to the next, rolls a
-failed handoff back, and restarts a crashed core, so an upgrade or restart does
-not drop connections. Desktop, the tray and the CLI become clients of its
-control channel.
+instance's listening sockets and its core server generations. It holds the
+listening sockets while one core server generation hands over to the next,
+rolls a failed handoff back, and restarts a crashed core. New connections wait
+in the kernel backlog during a swap instead of being refused.
+
+Existing connections are not carried across a handoff. The outgoing generation
+drains them for a bounded time: busy keep-alive connections close after their
+response, idle ones close after a short grace, and SSE streams are ended. A
+generation still running at its drain deadline is terminated along with any
+connections it still holds; only an active voice call extends that deadline,
+up to a cap. Clients reconnect to the next generation. Desktop, the tray and
+the CLI become clients of the supervisor's control channel.
 
 **Status: phase 1 core implemented, not adopted.** The control channel, listener
 handoff, sequential generation handoff with rollback, and crash restart are
