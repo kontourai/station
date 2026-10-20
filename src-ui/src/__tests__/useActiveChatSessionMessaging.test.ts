@@ -1511,6 +1511,35 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(chat?.input).toBe('look');
   });
 
+  // #3290: Station could not apply its approval mode to OpenCode. Sending
+  // again is refused again until the user's configuration or the chat's mode
+  // changes, so the notice names that step and offers no Retry.
+  it('an approval-governance refusal is not presented as transient: no Retry, the next step named', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        "Station can't apply its approval mode to OpenCode, so the chat was not started: your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking).",
+        'acp_approval_governance_refused',
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'opencode', undefined, 'run it');
+    });
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toContain(
+      "**Station's approval mode wasn't applied**",
+    );
+    expect(notice?.content).toContain('for bash in the build agent');
+    expect(notice?.content).toContain(
+      'Change the OpenCode setting or mode named above.',
+    );
+    expect(notice?.content).not.toContain('Retrying may help');
+    expect(notice?.action).toBeUndefined();
+  });
+
   describe('expectedEngine precondition', () => {
     const catalog = (
       agents: Array<{

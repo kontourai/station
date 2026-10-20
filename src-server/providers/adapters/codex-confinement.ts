@@ -3,7 +3,10 @@ import type {
   ConfinementPlan,
   ConfinementPosture,
 } from '@kontourai/station-contracts/execution-confinement';
-import { PROVIDER_CODEX } from '@kontourai/station-contracts/provider';
+import {
+  PROVIDER_CODEX,
+  type StationConfinement,
+} from '@kontourai/station-contracts/provider';
 import {
   type ConfinementProvider,
   requiredConfinementLevel,
@@ -47,6 +50,35 @@ function rootsConfined(
     ...(evidence.permittedRoots ?? []),
   ];
   return roots.every((root) => allowed.some((base) => within(base, root)));
+}
+
+/**
+ * #3800: the `codex app-server` arguments that keep a session not started
+ * as `host` from being widened by configuration inside its own workspace.
+ *
+ * Codex merges every `.codex/config.toml` from the project root down to the
+ * cwd over the user's configuration, and honours
+ * `sandbox_workspace_write.writable_roots` from it: a planted
+ * `writable_roots = ["/Users"]` is what `thread/start` then reports and
+ * enforces. A `-c` override outranks every file layer (EXECUTED against
+ * codex-cli 0.162.1), and as a spawn argument it applies to every
+ * configuration load the process makes (start, resume, fork,
+ * `config/read`), so it holds even when the file is rewritten mid-session.
+ *
+ * It pins the roots to none rather than marking the project untrusted:
+ * Codex's untrusted mode would also drop the workspace's `AGENTS.md` and
+ * change its default approval policy. The user's own extra roots are
+ * dropped too; a root outside the workspace was never a confinement
+ * (`observeCodexSandboxPosture`), and one inside it adds nothing but can
+ * re-open a path Codex keeps read-only, such as `.git`. Appended last, so
+ * it also outranks a connection's own arguments.
+ */
+export function codexConfinementConfigArgs(
+  confinement: StationConfinement | undefined,
+): string[] {
+  return confinement === 'host'
+    ? []
+    : ['-c', 'sandbox_workspace_write.writable_roots=[]'];
 }
 
 /**

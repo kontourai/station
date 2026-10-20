@@ -18,7 +18,11 @@ export async function getBlockingAccessibilityViolations(
         .filter(
           (animation) =>
             animation.playState === 'running' &&
-            animation.effect?.getTiming().iterations !== Infinity,
+            animation.effect?.getTiming().iterations !== Infinity &&
+            // A scroll-driven cue (a scrollable table's or the composer
+            // rail's faded edge) finishes only when scrolled to its end, so
+            // it never settles by waiting. Only time-based ones do.
+            animation.timeline === document.timeline,
         )
         .map((animation) => animation.finished.catch(() => {})),
     );

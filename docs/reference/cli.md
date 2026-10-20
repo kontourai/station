@@ -1043,9 +1043,8 @@ managed chat route directly, so the chat lands an orchestration event-store
 row and appears in `station runs` with agent + model metadata, and
 `--on-request`/approvals ride the same canonical `request.opened` vocabulary
 as any other engine. **This is unconditional.** station#1418/#1415 cut every
-interactive caller over and `STATION_FEATURES=managed-chat-orchestration` was
-never flipped — it is inert and switches nothing, so do not reason about it
-as a toggle.
+interactive caller over. The `managed-chat-orchestration` feature flag never
+switched anything and has been removed (ADR 0014).
 
 `--title` is rejected on this path regardless (explicitly, not silently
 dropped). See
@@ -1473,6 +1472,9 @@ station tasks attach-turn <task-id> --session=<session-id> --turn=<turn-id> [--a
 station tasks show-turn <task-id> [--api-base=<url>]
 station tasks attach-result <task-id> --session=<session-id> --event=<event-id> [--api-base=<url>]
 station tasks show-results <task-id> [--json] [--api-base=<url>]
+station tasks basis <task-id> [--answer-reference=<reference-id>] [--format=summary|json] [--json] [--api-base=<url>]
+station tasks get-output <task-id> <output-id> [--api-base=<url>]
+station tasks keep-output <task-id> --path=<relative-path> --title=<title> --operation=<operation-id> [--media=<type>] [--api-base=<url>]
 ```
 
 Examples:

@@ -45,7 +45,13 @@
       "path": "src-ui/src/components/badges/AcpSessionModeSheet.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/AcpSessionModeChip.test.tsx drives the advertised-mode radio rows; src-ui/src/__tests__/ChatInputArea.test.tsx opens it from the composer in place of the approval-mode chip"
+      "evidence": "src-ui/src/__tests__/AcpSessionModeChip.test.tsx drives the advertised-mode radio rows; src-ui/src/__tests__/ChatInputArea.test.tsx opens it from the composer beside the approval control"
+    },
+    {
+      "path": "src-ui/src/components/badges/EngineApprovalDisclosureSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/ChatInputArea.test.tsx opens the read-only approval explanation from the composer chip of an ACP engine that decides for itself (#3290)"
     },
     {
       "path": "src-ui/src/components/badges/ComposerModeSheet.tsx",
