@@ -197,6 +197,7 @@ export function MessageDeliveryNote({
           state === 'sending' || state === 'received' ? undefined : true
         }
       >
+        {/* biome-ignore lint/a11y/noSvgWithoutTitle: the title is set below from the delivery state; the rule cannot see dynamic text. */}
         <svg viewBox="0 0 16 16" focusable="false">
           {/* The glyph's tooltip and its accessible name. */}
           <title id={titleId}>{glyphLabel}</title>
