@@ -9,7 +9,7 @@
  * its `sandbox` replaced where a case needs Codex to report something else.
  */
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
@@ -19,7 +19,8 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfinementRefusedError } from '../../security/confinement/confinement-provider.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
@@ -660,7 +661,7 @@ describe('#3800: workspace configuration cannot widen a confined Codex sandbox',
     '-c',
     'default_permissions="station-workspace"',
     '-c',
-    'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={"**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
+    'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={".git"="read",".agents"="read","**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
     '-c',
     'sandbox_workspace_write.writable_roots=[]',
     '-c',
@@ -809,5 +810,43 @@ describe('#3800: workspace configuration cannot widen a confined Codex sandbox',
     expect(run.outcome).toEqual({ ok: true });
     expect(run.spawnArgs).toBeUndefined();
     await run.cleanup();
+  });
+});
+
+describe('#3800: a start without a cwd checks the directory Codex would run in', () => {
+  const makeTempDir = trackTempDirs();
+
+  test("an unaccounted .codex in the server's own directory refuses a non-host start before Codex is spawned", async () => {
+    const dir = realpathSync(makeTempDir('codex-no-cwd-'));
+    mkdirSync(join(dir, '.codex'));
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+    let spawned = false;
+    const adapter = new CodexAdapter({
+      processFactory: () => {
+        spawned = true;
+        return new FakeCodexProcess() as never;
+      },
+    });
+    try {
+      const outcome = await adapter
+        .startSession({
+          provider: 'codex',
+          threadId: 'no-cwd',
+          confinement: 'workspace',
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(outcome).toBeInstanceOf(ConfinementRefusedError);
+      expect((outcome as ConfinementRefusedError).code).toBe(
+        'confinement_workspace_incompatible',
+      );
+      expect((outcome as Error).message).toContain(join(dir, '.codex'));
+      expect(spawned).toBe(false);
+    } finally {
+      cwd.mockRestore();
+      await adapter.stopAll();
+    }
   });
 });

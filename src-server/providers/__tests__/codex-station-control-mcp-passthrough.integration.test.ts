@@ -204,7 +204,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
       '-c',
       'default_permissions="station-workspace"',
       '-c',
-      'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={"**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
+      'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={".git"="read",".agents"="read","**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
       '-c',
       'sandbox_workspace_write.writable_roots=[]',
       '-c',

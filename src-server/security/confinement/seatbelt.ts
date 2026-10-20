@@ -227,7 +227,11 @@ export interface SeatbeltGrantInput {
  * - A checkout whose `.git` is inside the workspace keeps, besides the
  *   above, every other worktree's and submodule's pointers and config
  *   (`worktrees`, `modules`) read-only, and the `.git` directory itself
- *   cannot be removed, renamed or replaced by a pointer file.
+ *   cannot be removed, renamed or replaced by a pointer file. Its
+ *   remote-tracking refs (`refs/remotes`, `packed-refs`) are read-only too
+ *   (#3800): a Codex start trusts a nested `.codex` only by them, so `git
+ *   fetch`, `pull` and ref packing are refused there, as in a linked
+ *   worktree.
  * - Always (#3800): the engines' project configuration directories, at any
  *   depth (`SEATBELT_ENGINE_CONFIG_NAMES`). A confined agent that could
  *   write one could widen the next Codex session's sandbox, or plant hooks
@@ -256,7 +260,16 @@ export function seatbeltGrants(
       join(git.gitDir, 'config.worktree'),
     );
     if (within(input.workspace, common)) {
-      writeDenied.push(join(common, 'worktrees'), join(common, 'modules'));
+      // #3800: remote-tracking refs are what a later Codex start trusts a
+      // nested `.codex` by, so a confined session may not write them, here
+      // or packed (a linked worktree never could).
+      writeDenied.push(
+        join(common, 'worktrees'),
+        join(common, 'modules'),
+        join(common, 'refs', 'remotes'),
+        join(common, 'packed-refs'),
+        join(common, 'packed-refs.lock'),
+      );
       writeDeniedExact.push(common);
     } else {
       writeDenied.push(

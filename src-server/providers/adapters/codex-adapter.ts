@@ -1793,7 +1793,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       if (unaccounted)
         throw new ConfinementRefusedError(
           'confinement_workspace_incompatible',
-          `This codex session was not started: ${unaccounted} is Codex project configuration its repository does not account for (not committed, changed since HEAD, or inside a nested or missing repository), and a session that does not run as the operator would load it. Commit or remove it, or run the session as the operator (a host session). Station judges it against the outermost Git repository containing the folder, so a project inside another repository (a home-directory one, for example) is judged against that one.`,
+          `This codex session was not started: ${unaccounted} is Codex project configuration that did not come from its repository's upstream (it is not on a remote-tracking branch with these exact bytes, or the folder has no repository or remote), and a session that does not run as the operator would load it. Commit and push \`.codex\` to its upstream and fetch, remove it, or run the session as the operator (a host session). Station judges it against the outermost Git repository containing the folder, so a project inside another repository (a home-directory one, for example) is judged against that one.`,
         );
     }
     const startedAt = Date.now();

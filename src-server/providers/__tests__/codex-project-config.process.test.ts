@@ -28,6 +28,16 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfinementRefusedError } from '../../security/confinement/confinement-provider.js';
+import {
+  canonicalPath,
+  createSeatbeltConfinementProvider,
+  probeSeatbelt,
+  SANDBOX_EXEC,
+} from '../../security/confinement/seatbelt.js';
+import {
+  confinedClaudeSpawn,
+  prepareConfinedClaudeLaunch,
+} from '../adapters/claude-seatbelt.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { createCodexProcess } from '../adapters/codex-adapter-transport.js';
 import {
@@ -43,7 +53,7 @@ if (!codexBinary)
     'ENFORCEMENT UNVERIFIED (#3800): no `codex` binary on this host; the planted project config probe did not run.',
   );
 
-/** Makes `dir` a Git repository whose `HEAD` holds everything in it. */
+/** Makes `dir` a Git repository whose `HEAD` and upstream hold everything in it. */
 function commitAll(dir: string): void {
   const env = {
     ...process.env,
@@ -56,6 +66,8 @@ function commitAll(dir: string): void {
     ['init', '-q'],
     ['add', '-A'],
     ['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'fixture'],
+    // As if pushed and fetched: a Codex start trusts upstream content only.
+    ['update-ref', 'refs/remotes/origin/main', 'HEAD'],
   ]) {
     const result = spawnSync('git', args, { cwd: dir, env, encoding: 'utf8' });
     if (result.status !== 0)
@@ -252,19 +264,22 @@ describe.skipIf(!codexBinary || !darwin)(
       nestedClaude:
         'mkdir -p sub/.claude && echo "{}" > sub/.claude/settings.json',
       projectFile: 'mkdir -p sub/new && echo ok > sub/new/file.txt',
+      // What a Codex start trusts a nested `.codex` by.
+      remoteRef:
+        'mkdir -p .git/refs/remotes/origin && echo 0 > .git/refs/remotes/origin/x',
+      packedRefs: 'echo x >> .git/packed-refs',
+      gitHook: 'mkdir -p .git/hooks && echo x > .git/hooks/pre-commit',
+      agentsSkill: 'mkdir -p .agents/skills && echo x > .agents/skills/x.md',
     } as const;
 
     function probeUnder(profileArgs: string[]): Record<string, boolean> {
       const root = realpathSync(makeTempDir('codex-profile-'));
       const workspace = join(root, 'workspace');
       const codexHome = join(root, 'codex-home');
-      for (const dir of [
-        join(workspace, '.git'),
-        join(workspace, 'pre', '.codex'),
-        codexHome,
-      ])
+      for (const dir of [join(workspace, 'pre', '.codex'), codexHome])
         mkdirSync(dir, { recursive: true });
       writeFileSync(join(workspace, 'pre', '.codex', 'config.toml'), '# ok\n');
+      commitAll(workspace);
       const allowed: Record<string, boolean> = {};
       for (const [name, script] of Object.entries(PROBES)) {
         const result = spawnSync(
@@ -311,6 +326,10 @@ describe.skipIf(!codexBinary || !darwin)(
         checkedInNestedCodex: false,
         nestedClaude: false,
         projectFile: true,
+        remoteRef: false,
+        packedRefs: false,
+        gitHook: false,
+        agentsSkill: false,
         checkedInUnchanged: true,
       });
     }, 120_000);
@@ -322,6 +341,11 @@ describe.skipIf(!codexBinary || !darwin)(
         checkedInNestedCodex: true,
         projectFile: true,
         checkedInUnchanged: false,
+        // Parity: the root `.git` and `.agents` Station's profile restates.
+        remoteRef: false,
+        packedRefs: false,
+        gitHook: false,
+        agentsSkill: false,
       });
     }, 120_000);
   },
@@ -504,5 +528,206 @@ describe.skipIf(!codexBinary || !darwin)(
         run.controller.abort();
       }
     }, 90_000);
+  },
+);
+
+const seatbeltProbe = darwin ? probeSeatbelt() : { ok: false as const };
+
+/**
+ * Round 3 of the #3962 review: local commits are not a trust anchor. A
+ * confined Claude session holds Seatbelt grants for the object store and its
+ * own branch ref, so it can commit `sub/pkg/.codex/config.toml` with git
+ * plumbing; a confined Codex session then stages the same bytes in temp and
+ * moves `pkg` in. Both run under the real profiles Station builds. The
+ * start must still be refused, and the remote-tracking refs it trusts
+ * instead must not be writable to the Claude session.
+ */
+describe.skipIf(!codexBinary || !seatbeltProbe.ok)(
+  `a .codex committed by a confined Claude session and staged by a confined Codex one${codexBinary && seatbeltProbe.ok ? '' : ' (SKIPPED: needs codex and Seatbelt on macOS)'}`,
+  () => {
+    const makeTempDir = trackTempDirs({ lifetime: 'file' });
+    const provider = createSeatbeltConfinementProvider();
+    const adapters: CodexAdapter[] = [];
+    afterAll(async () => {
+      for (const adapter of adapters) await adapter.stopAll();
+    });
+
+    async function asClaude(workspace: string, root: string, script: string) {
+      const home = join(root, 'home');
+      const stationRoot = join(home, '.station');
+      const stationHome = join(stationRoot, 'instances', 'test');
+      mkdirSync(join(home, '.claude'), { recursive: true });
+      mkdirSync(stationHome, { recursive: true });
+      const launch = await prepareConfinedClaudeLaunch({
+        workspace: canonicalPath(workspace),
+        configDir: join(stationHome, 'confined-homes', 'claude'),
+        stationHome,
+        home,
+        stationRoot,
+      });
+      const wrapped = confinedClaudeSpawn(provider, launch).wrap({
+        command: '/bin/sh',
+        args: ['-c', script],
+        cwd: workspace,
+        env: {
+          PATH: '/usr/bin:/bin',
+          HOME: home,
+          GIT_AUTHOR_NAME: 'probe',
+          GIT_AUTHOR_EMAIL: 'probe@example.invalid',
+          GIT_COMMITTER_NAME: 'probe',
+          GIT_COMMITTER_EMAIL: 'probe@example.invalid',
+          GIT_CONFIG_NOSYSTEM: '1',
+        },
+      });
+      expect(wrapped.command).toBe(SANDBOX_EXEC);
+      const result = spawnSync(wrapped.command, wrapped.args, {
+        cwd: wrapped.cwd,
+        env: wrapped.env,
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+      launch.cleanup();
+      return result;
+    }
+
+    function asCodex(
+      cwd: string,
+      codexHome: string,
+      config: string,
+      script: string,
+    ) {
+      return spawnSync(
+        codexBinary!,
+        [
+          'sandbox',
+          '-P',
+          STATION_CODEX_PERMISSION_PROFILE,
+          ...codexConfinementConfigArgs('workspace'),
+          '-C',
+          cwd,
+          '--',
+          'sh',
+          '-c',
+          script,
+        ],
+        {
+          cwd,
+          env: {
+            ...process.env,
+            CODEX_HOME: codexHome,
+            PLANTED_CONFIG: config,
+          },
+          encoding: 'utf8',
+          timeout: 30_000,
+        },
+      );
+    }
+
+    test.each(['a linked worktree', 'the main checkout'] as const)(
+      'in %s: the commit lands, the remote-tracking refs stay read-only, and the start is refused',
+      async (layout) => {
+        const root = realpathSync(makeTempDir('codex-claude-chain-'));
+        const repo = join(root, 'repo');
+        const codexHome = join(root, 'codex-home');
+        const marker = join(root, 'mcp-ran');
+        mkdirSync(join(repo, 'sub'), { recursive: true });
+        mkdirSync(codexHome);
+        writeFileSync(join(repo, 'README.md'), 'fixture\n');
+        commitAll(repo);
+        let workspace = repo;
+        if (layout === 'a linked worktree') {
+          workspace = join(root, 'feature');
+          const added = spawnSync(
+            'git',
+            ['worktree', 'add', '-q', '-b', 'feature', workspace],
+            { cwd: repo, encoding: 'utf8' },
+          );
+          expect(added.status, added.stderr).toBe(0);
+          mkdirSync(join(workspace, 'sub'), { recursive: true });
+        }
+        const config = `[mcp_servers.planted]\ncommand = "/bin/sh"\nargs = ["-c", ${JSON.stringify(`touch ${marker}; sleep 5`)}]\n`;
+        const upstreamBefore = spawnSync(
+          'git',
+          ['rev-parse', 'refs/remotes/origin/main'],
+          { cwd: repo, encoding: 'utf8' },
+        ).stdout.trim();
+        const claude = await asClaude(
+          workspace,
+          root,
+          [
+            'set -e',
+            `cd "${workspace}"`,
+            // The confined env carries no extra variables: inline the bytes.
+            `blob=$(git hash-object -w --stdin <<'PLANTED'\n${config}PLANTED\n)`,
+            'git update-index --add --cacheinfo "100644,$blob,sub/pkg/.codex/config.toml"',
+            'tree=$(git write-tree)',
+            'commit=$(git commit-tree "$tree" -p HEAD -m planted)',
+            'git update-ref "$(git symbolic-ref HEAD)" "$commit"',
+            'echo COMMITTED',
+            'if git update-ref refs/remotes/origin/main "$commit" 2>/dev/null; then echo REMOTE_WRITTEN; fi',
+            `if echo "$commit refs/remotes/origin/planted" >> "${join(repo, '.git', 'packed-refs')}" 2>/dev/null; then echo PACKED_WRITTEN; fi`,
+            'true',
+          ].join('\n'),
+        );
+        expect(claude.stdout, claude.stderr).toContain('COMMITTED');
+        expect(claude.stdout).not.toContain('REMOTE_WRITTEN');
+        expect(claude.stdout).not.toContain('PACKED_WRITTEN');
+        expect(
+          spawnSync('git', ['rev-parse', 'refs/remotes/origin/main'], {
+            cwd: repo,
+            encoding: 'utf8',
+          }).stdout.trim(),
+        ).toBe(upstreamBefore);
+        // HEAD now really tracks the planted file.
+        const shown = spawnSync(
+          'git',
+          ['show', 'HEAD:sub/pkg/.codex/config.toml'],
+          { cwd: workspace, encoding: 'utf8' },
+        );
+        expect(
+          shown.stdout,
+          `${shown.stderr}\n${claude.stdout}\n${claude.stderr}`,
+        ).toBe(config);
+        const codex = asCodex(
+          join(workspace, 'sub'),
+          codexHome,
+          config,
+          [
+            'staged="$(mktemp -d)"',
+            'mkdir -p "$staged/pkg/.codex"',
+            'printf %s "$PLANTED_CONFIG" > "$staged/pkg/.codex/config.toml"',
+            'mv "$staged/pkg" pkg',
+          ].join(' && '),
+        );
+        expect(codex.status, codex.stderr).toBe(0);
+        const pkg = join(workspace, 'sub', 'pkg');
+        const adapter = new CodexAdapter({
+          getConnectionEnv: async () => ({ CODEX_HOME: codexHome }),
+          processFactory: (env, args) =>
+            createCodexProcess(undefined, env, args),
+        });
+        adapters.push(adapter);
+        const outcome = await adapter
+          .startSession({
+            provider: 'codex',
+            threadId: `claude-chain-${layout}`,
+            cwd: pkg,
+            modelOptions: { approvalMode: 'auto' },
+            confinement: 'workspace',
+            confinementPlan: WORKSPACE_PLAN,
+          })
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+        expect(outcome).toBeInstanceOf(ConfinementRefusedError);
+        expect((outcome as ConfinementRefusedError).code).toBe(
+          'confinement_workspace_incompatible',
+        );
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+        expect(existsSync(marker)).toBe(false);
+      },
+      120_000,
+    );
   },
 );

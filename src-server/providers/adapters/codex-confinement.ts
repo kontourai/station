@@ -50,8 +50,14 @@ export const STATION_CODEX_PERMISSION_PROFILE = 'station-workspace';
 
 /**
  * Codex's `:workspace` (what `workspace-write` means: the workspace roots and
- * temp writable, the `.codex` at a root kept read-only) plus engine
- * configuration denied at any depth under every workspace root.
+ * temp writable) plus engine configuration denied at any depth under every
+ * workspace root.
+ *
+ * `:workspace` keeps a root's `.git` and `.agents` read-only, but a profile
+ * that adds its own `:workspace_roots` entries loses that (EXECUTED, 0.162.1:
+ * `.git/hooks`, `refs/remotes` and `packed-refs` became writable), so both
+ * are restated as `read`. Remote-tracking refs are what a later start trusts
+ * a nested `.codex` by (`findUnaccountedCodexConfig`).
  *
  * Codex merges each `.codex/config.toml` from the project root down to the
  * cwd, and Station starts sessions in subdirectories, so a nested
@@ -67,7 +73,7 @@ export const STATION_CODEX_PERMISSION_PROFILE = 'station-workspace';
  * directory pattern alone refuses creating one, but not writing inside a
  * checked-in one (EXECUTED, codex-cli 0.162.1, macOS).
  */
-const STATION_CODEX_PERMISSION_PROFILE_DEFINITION = `permissions.${STATION_CODEX_PERMISSION_PROFILE}={extends=":workspace",filesystem={":workspace_roots"={"**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}`;
+const STATION_CODEX_PERMISSION_PROFILE_DEFINITION = `permissions.${STATION_CODEX_PERMISSION_PROFILE}={extends=":workspace",filesystem={":workspace_roots"={".git"="read",".agents"="read","**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}`;
 
 /** Whether the profile Station relies on, if any, is the one Codex reports. */
 function profileApplied(evidence: CodexSandboxEvidence): boolean {

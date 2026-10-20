@@ -164,6 +164,10 @@ describe('Seatbelt grants and profile', () => {
       // Other worktrees' and submodules' pointers and config (R2).
       `${dotGit}/worktrees`,
       `${dotGit}/modules`,
+      // What a Codex start trusts a nested `.codex` by (#3800).
+      `${dotGit}/refs/remotes`,
+      `${dotGit}/packed-refs`,
+      `${dotGit}/packed-refs.lock`,
     ]);
     // `.git` itself cannot be removed, renamed or replaced by a pointer.
     expect(grants.writeDeniedExact).toEqual([dotGit]);
