@@ -16,8 +16,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   closeStableListener,
   DIRECT_LISTENER_LINK,
-  DRAIN_QUIET_CAP_MS,
-  DRAIN_QUIET_CLOSE_MS,
   type DrainRequest,
   drainWaitBoundMs,
   parkUnderSupervisor,
@@ -721,6 +719,9 @@ describe('the supervisor run directory', () => {
 });
 
 describe('connection catching (protocol 1.1)', () => {
+  /** The link's quiet close after sending spares, and its cap (not exported). */
+  const DRAIN_QUIET_CLOSE_MS = 50;
+  const DRAIN_QUIET_CAP_MS = 1_000;
   /**
    * A connection accepted by another listener and not read, as the
    * supervisor holds one, with `request` already sent by its client.
@@ -850,7 +851,6 @@ describe('connection catching (protocol 1.1)', () => {
   });
 
   it('after sending spares, a drain keeps accepting until no connection has arrived for the quiet window', async () => {
-    expect(DRAIN_QUIET_CLOSE_MS).toBe(50);
     const channel = new FakeChannel();
     const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });
     const server = okServer();
@@ -880,7 +880,6 @@ describe('connection catching (protocol 1.1)', () => {
   });
 
   it('after sending spares, a drain under steady connections closes only after a quiet window or at the cap', async () => {
-    expect(DRAIN_QUIET_CAP_MS).toBe(1_000);
     const channel = new FakeChannel();
     const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });
     const server = okServer();

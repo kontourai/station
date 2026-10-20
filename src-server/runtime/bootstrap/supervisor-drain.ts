@@ -6,7 +6,7 @@
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
 import type { DrainRequest, SupervisorLink } from './supervisor-link.js';
 
-export const VOICE_DRAIN_POLL_MS = 500;
+const VOICE_DRAIN_POLL_MS = 500;
 
 export interface SupervisorDrainDeps {
   link: Pick<SupervisorLink, 'reportDrainProgress' | 'reportDrained'>;
