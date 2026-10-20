@@ -22,7 +22,30 @@ interface Cancellation {
   key: string;
 }
 
-export function useConversationInbox(conversationId: string) {
+/** Entries a reader still needs to see: not sent, not withdrawn. */
+export function visibleInboxEntries(
+  entries: readonly ConversationInboxEntry[] | undefined,
+): ConversationInboxEntry[] {
+  return (entries ?? []).filter(
+    (entry) => entry.state !== 'sent' && entry.state !== 'cancelled',
+  );
+}
+
+/**
+ * How often to read the inbox. Station holds a follow-up only behind a
+ * running turn, so while this client sees the conversation working, or the
+ * last read showed held messages, it reads every 2s; otherwise a slower read
+ * still finds a message another client queued behind a turn this client has
+ * not seen start. Turn facts on the event stream and focus/reconnect read
+ * again in between.
+ */
+export const INBOX_ACTIVE_POLL_MS = 2_000;
+export const INBOX_IDLE_POLL_MS = 15_000;
+
+export function useConversationInbox(
+  conversationId: string,
+  { active = false }: { active?: boolean } = {},
+) {
   const scope = useHostRequestAuthorityScope();
   const client = useQueryClient();
   const enabled = Boolean(conversationId && scope?.isCurrent());
@@ -45,7 +68,9 @@ export function useConversationInbox(conversationId: string) {
       current.state.error instanceof StationHttpError &&
       [401, 403, 404].includes(current.state.error.status)
         ? false
-        : 2_000,
+        : active || visibleInboxEntries(current.state.data).length > 0
+          ? INBOX_ACTIVE_POLL_MS
+          : INBOX_IDLE_POLL_MS,
     refetchIntervalInBackground: false,
     queryFn: async ({ signal }): Promise<ConversationInboxEntry[]> => {
       if (!scope?.isCurrent())
@@ -72,6 +97,11 @@ export function useConversationInbox(conversationId: string) {
         ? 'available'
         : 'loading';
   const entries = availability === 'available' ? query.data : undefined;
+  // A failed read keeps TanStack's last successful data; it is not shown (it
+  // may be stale), but it says whether there was anything to lose sight of.
+  const lostSightOfEntries =
+    availability === 'unavailable' &&
+    visibleInboxEntries(query.data).length > 0;
   const cancellation = useMutation({
     mutationKey: [...queryKey, 'cancel'],
     retry: false,
@@ -121,10 +151,7 @@ export function useConversationInbox(conversationId: string) {
   return {
     availability,
     entries,
-    pendingCount: entries?.filter(
-      (entry) => entry.state === 'queued' || entry.state === 'sending',
-    ).length,
-    refreshing: query.isFetching,
+    lostSightOfEntries,
     refresh: () => {
       if (enabled && scope?.isCurrent())
         void query.refetch({ cancelRefetch: false });

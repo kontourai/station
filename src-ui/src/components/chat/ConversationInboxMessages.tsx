@@ -1,88 +1,44 @@
-import { useConversationInbox } from '../../hooks/useConversationInbox';
-import { Button } from '../Button';
-import './ConversationInboxMessages.css';
+import { useMemo } from 'react';
+import {
+  useConversationInbox,
+  visibleInboxEntries,
+} from '../../hooks/useConversationInbox';
+import { type HeldMessages, QueuedMessages } from './QueuedMessages';
 
-const STATE_LABEL = {
-  queued: 'Waiting for the current turn',
-  sending: 'Sending',
-  unconfirmed: 'Delivery outcome unknown.',
-  refused: 'Not sent',
-  sent: 'Sent',
-  cancelled: 'Removed',
-};
+type QueuedMessagesProps = Parameters<typeof QueuedMessages>[0];
 
+/**
+ * The one pending-message surface above the composer: this browser's queued
+ * follow-ups and the ones Station holds in the conversation's server inbox
+ * (#3868), in one list. Nothing renders while neither holds anything, and a
+ * background read of the inbox changes nothing on screen unless its answer
+ * does.
+ */
 export function ConversationInboxMessages({
   conversationId,
-}: {
-  conversationId: string;
+  conversationActive,
+  ...queue
+}: Omit<QueuedMessagesProps, 'held'> & {
+  /** Absent for a replay or a conversation Station has not named yet. */
+  conversationId?: string;
+  /** The conversation is working, so Station may start holding follow-ups. */
+  conversationActive?: boolean;
 }) {
-  const inbox = useConversationInbox(conversationId);
-  const rows = inbox.entries?.filter(
-    (entry) => entry.state !== 'sent' && entry.state !== 'cancelled',
-  );
-  return (
-    <section
-      className="conversation-inbox"
-      aria-label="Messages held by Station"
-    >
-      <div className="conversation-inbox__header">
-        <span role="status">
-          {inbox.availability === 'available'
-            ? `${inbox.pendingCount} pending message${inbox.pendingCount === 1 ? '' : 's'} held by Station`
-            : inbox.availability === 'loading'
-              ? 'Checking messages held by Station…'
-              : 'Messages held by Station are unavailable.'}
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={inbox.refresh}
-          disabled={inbox.refreshing}
-        >
-          Refresh
-        </Button>
-      </div>
-      {inbox.availability === 'available' && inbox.refreshing && (
-        <span className="conversation-inbox__state">Refreshing queue…</span>
-      )}
-      {inbox.removalError && (
-        <p role="alert">
-          Removal was not confirmed. Read the queue again before trying another
-          action.
-        </p>
-      )}
-      {rows?.length ? (
-        <ul>
-          {rows.map((entry, index) => (
-            <li key={entry.clientTurnId ?? `${entry.createdAt}:${index}`}>
-              <div>
-                <p className="conversation-inbox__message">{entry.message}</p>
-                <span className="conversation-inbox__state">
-                  {STATE_LABEL[entry.state]}
-                </span>
-                {entry.reason && <p>{entry.reason}</p>}
-              </div>
-              {entry.clientTurnId &&
-                ['queued', 'unconfirmed', 'refused'].includes(entry.state) && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    pending={inbox.removing}
-                    pendingLabel="Removing…"
-                    aria-label={`${entry.state === 'queued' ? 'Remove' : 'Dismiss'} held message: ${entry.message}`}
-                    onClick={() => {
-                      void inbox
-                        .remove(entry.clientTurnId!)
-                        .catch(() => undefined);
-                    }}
-                  >
-                    {entry.state === 'queued' ? 'Remove' : 'Dismiss'}
-                  </Button>
-                )}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
-  );
+  const inbox = useConversationInbox(conversationId ?? '', {
+    active: conversationActive,
+  });
+  const entries = inbox.entries;
+  const visible = useMemo(() => visibleInboxEntries(entries), [entries]);
+  const { remove, refresh, removing, removalError, lostSightOfEntries } = inbox;
+  const held: HeldMessages = {
+    entries: visible,
+    unavailable: lostSightOfEntries,
+    removing,
+    removalError,
+    onRemove: (key) => {
+      void remove(key).catch(() => undefined);
+    },
+    onRetry: refresh,
+  };
+  return <QueuedMessages {...queue} held={held} />;
 }
