@@ -91,7 +91,7 @@ any other. A plugin cannot replace a Station shortcut through the SDK,
 because no Station id starts with `plugin.`. Plugin shortcuts rank below
 Station's own, so a Station shortcut on the same chord wins whichever
 registered first; only Station's "go up a level" Escape fallback yields to a
-plugin. Only an installed plugin's pane can register shortcuts.
+plugin. Only a verified plugin's pane can register shortcuts.
 
 The command palette (⌘K), Settings (⌘,) and the shortcut list (⌘/) are
 reserved, so a user can always get back in control of a misbehaving plugin.
