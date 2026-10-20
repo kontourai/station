@@ -1,0 +1,21 @@
+{
+  "revision": "dddc4cd17d598053ae3f145278ec829b85aac4c1",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"Delta-only capture review: since this capture was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5). No rendered style changed, so the capture still shows current behavior.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Delta-only capture review: since this capture was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5). No rendered style changed, so the capture still shows current behavior.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Delta-only capture review: since this capture was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5). No rendered style changed, so the capture still shows current behavior.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Delta-only capture review: since this capture was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5). No rendered style changed, so the capture still shows current behavior.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Delta-only capture review: since this capture was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5). No rendered style changed, so the capture still shows current behavior.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Delta-only capture review: since this capture was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5). No rendered style changed, so the capture still shows current behavior.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Delta-only capture review: since this capture was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5). No rendered style changed, so the capture still shows current behavior.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Delta-only capture review: since this capture was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5). No rendered style changed, so the capture still shows current behavior.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]}
+  ]
+}
