@@ -4,29 +4,76 @@
  * The generic Veritas runner has a boolean evidence-check transport. Station
  * proof-family lanes additionally use exit 2 for NOT_VERIFIED, so this
  * boundary reads the structured engine result before selecting the CI exit.
- * Since Veritas 1.6.0 the engine only promotes a failing *required* check to
- * `evidenceCheckFailure`; an explicit `--evidence-check-command` that exits
- * nonzero is recorded in `evidenceCheckResults` as a warning and readiness
- * passes. Station's contract is that any nonzero nested command is a
- * readiness failure, so the failure is derived from the public per-check
- * results when the engine reports none. It uses the public Veritas engine
- * API; it does not reinterpret shell output or suppress a failed evidence
- * command.
+ * Veritas 1.6.0 through 1.11.2 recorded a nonzero explicit
+ * `--evidence-check-command` only as a warning in `evidenceCheckResults`, so
+ * the failure is derived from the public per-check results when the engine
+ * reports none. Since 1.11.3 the engine makes the explicit command a required
+ * check for the run (its MIGRATING guide, "Explicit Evidence Check Commands
+ * Block Readiness Again"), so its exit 2 now also fails the record. Only that
+ * flag-added requirement is set aside when asking whether anything else is
+ * red; every configured requirement still counts. It uses the public Veritas
+ * engine API; it does not reinterpret shell output or suppress a failed
+ * evidence command.
  */
 
 import { resolve } from 'node:path';
 import {
   feedbackHasFailures,
   parseReadinessArgs,
+  readinessEvidenceCheckSummary,
   runMergeReadiness,
 } from '@kontourai/veritas/engine';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
-export function classifyReadinessEvidence({ evidenceCheckFailure, record }) {
+/**
+ * The id of the check the explicit command added, when no configured Repo Map
+ * check carries the same id. A configured check that the command merely
+ * repeats keeps its own requirement and is never set aside.
+ */
+export function explicitOnlyEvidenceCheckId(record, evidenceCheckCommand) {
+  if (!evidenceCheckCommand) return null;
+  const configured = new Set(
+    (record?.repo_map?.evidenceChecks ?? []).map((check) => check.id),
+  );
+  const explicit = (record?.selected_evidence_checks ?? []).find(
+    (check) =>
+      check.command === evidenceCheckCommand && !configured.has(check.id),
+  );
+  return explicit?.id ?? null;
+}
+
+/** The record's failures with one required check removed. The remaining
+ *  checks keep the run's own states (skipped, missing, timed out), which the
+ *  engine holds outside the serialized record and exposes only through
+ *  `readinessEvidenceCheckSummary`. */
+function hasFailuresBesides(record, evidenceCheckId) {
+  const required = readinessEvidenceCheckSummary(record).required.filter(
+    (check) => check.id !== evidenceCheckId,
+  );
+  return feedbackHasFailures(
+    { ...record, required_evidence_checks: required },
+    null,
+  );
+}
+
+export function classifyReadinessEvidence({
+  evidenceCheckFailure,
+  record,
+  explicitEvidenceCheckId = null,
+}) {
   // A required Veritas policy is a real readiness failure even when a nested
   // evidence command could not complete. Do not let the latter downgrade red
-  // evidence into NOT_VERIFIED.
-  if (feedbackHasFailures(record, null)) {
+  // evidence into NOT_VERIFIED. The nested command's own exit 2 is the one
+  // requirement that does not count as red here.
+  const notVerifiedExplicit =
+    evidenceCheckFailure?.exitCode === 2 &&
+    explicitEvidenceCheckId !== null &&
+    evidenceCheckFailure.id === explicitEvidenceCheckId;
+  if (
+    notVerifiedExplicit
+      ? hasFailuresBesides(record, explicitEvidenceCheckId)
+      : feedbackHasFailures(record, null)
+  ) {
     return { status: 'FAIL', exitCode: 1, reason: 'readiness-failed' };
   }
   if (evidenceCheckFailure) {
@@ -133,9 +180,14 @@ export async function runStationReadinessEvidence(
     evidenceCheckFailure: readinessRun.evidenceCheckFailure,
     evidenceCheckResults: readinessRun.evidenceCheckResults,
   });
+  const record = readinessRun.reportResult.record;
   const outcome = classifyReadinessEvidence({
     evidenceCheckFailure,
-    record: readinessRun.reportResult.record,
+    record,
+    explicitEvidenceCheckId: explicitOnlyEvidenceCheckId(
+      record,
+      evidenceCheckCommand,
+    ),
   });
   return {
     schemaVersion: 1,
