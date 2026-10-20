@@ -82,7 +82,7 @@ function TurnsCopy({ turns }: { turns: TurnsRead }) {
       </p>
     );
   }
-  if (turns.turns.length === 0) return <p>No agent turns are running.</p>;
+  if (turns.turns.length === 0) return <p>Nothing is running right now.</p>;
   return (
     <>
       <p>

@@ -200,7 +200,7 @@ function RestartConfirmation({
         </p>
       )}
       {turns.isSuccess && total === 0 && (
-        <p className="station-dialog__message">No agent turns are running.</p>
+        <p className="station-dialog__message">Nothing is running right now.</p>
       )}
       {turns.isSuccess && total > 0 && (
         <>
