@@ -814,6 +814,27 @@ describe('a related target is the exact occurrence, never one bound elsewhere', 
   );
 });
 
+describe('a relation names an occurrence; only its own record says what it is', () => {
+  test('a kept occurrence whose stored record is bound elsewhere is not focused for the relation’s target', async () => {
+    await mount();
+    const kept = (await open({})) as { handle: string };
+    await run(async () => {
+      await probe.relations?.keep(kept.handle);
+    });
+    // The occurrence's own record now says another Session; the relation
+    // still names this caller's exact target.
+    const key = `station:plugin-pane-state:v1:${kept.handle}`;
+    const stored = JSON.parse(localStorage.getItem(key) ?? 'null');
+    localStorage.setItem(
+      key,
+      JSON.stringify({ ...stored, scope: { sessionId: 'session-z' } }),
+    );
+    const outcome = (await open({})) as { status: string; handle: string };
+    expect(outcome.status).toBe('opened');
+    expect(outcome.handle).not.toBe(kept.handle);
+  });
+});
+
 describe('a capability acts only for the occurrence and Station it was given to', () => {
   test('one taken on a Station opens nothing once another Station is verified', async () => {
     await mount();
