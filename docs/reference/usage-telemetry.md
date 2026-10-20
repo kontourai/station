@@ -47,7 +47,9 @@ its ten-second send interval, records nothing and does not enable daily counts.
 A notice is recorded only after an interaction with the visibly presented
 surface: Save choice, Not now, close, Escape or backdrop dismissal. Save first
 persists the chosen preference, then records the displayed notice revision;
-saving Don't share therefore cannot temporarily enable a count. A failed choice
+saving Don't share therefore cannot temporarily enable a count. Closing during
+a pending Save does not record early; that save owns the notice after persistence.
+A failed choice
 save records no notice. A failed notice write leaves the saved preference intact,
 reports that separate failure and keeps counts paused. Viewing Privacy & sharing
 also records nothing; its Save action records a notice only for its visibly
@@ -130,9 +132,12 @@ restart and the daily timer starts without another UI call. An updated field
 revision requires another notice. The body remains
 `{ "publisher": "operator", "inventoryRevision": "<shown revision>" }`.
 The status API exposes persisted `liteNotices` per destination. The UI records
-only while its choice surface is in the viewport, the document is visible and
-no other modal covers it; its own dialog is the presentation. DNT and non-Lite
-states still refuse notice records. A failed write leaves counts suppressed.
+only after explicit interaction with a choice surface that is in the viewport,
+with the document visible and no other modal covering it. That visibility,
+revision and request authority are captured at the interaction, before awaiting
+a choice save. DNT still refuses notice records. Off and Full saves can record
+this presentation fact after persistence; it never grants Full consent, and Off
+still blocks all sending. A failed write leaves counts suppressed.
 No separate floating notice or JSON field dump is rendered. Detailed choices
 in first run and Settings share the readable What's included component.
 Distributions do not supply this copy or its controls.

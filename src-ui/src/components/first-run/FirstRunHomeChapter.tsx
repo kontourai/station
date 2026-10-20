@@ -210,6 +210,8 @@ export function FirstRunHomeChapter({
    */
   const [roleTitle, setRoleTitle] = useState<string | undefined>(undefined);
   const stepRegionRef = useRef<HTMLDivElement>(null);
+  const disclosureDismissRef = useRef<(() => void) | null>(null);
+  const disclosureChoiceRef = useRef<HTMLInputElement>(null);
   const [steps, setSteps] = useState<ChapterStep[]>(() =>
     planFirstRunChapterSteps({
       disclosureOutstanding: false,
@@ -335,7 +337,7 @@ export function FirstRunHomeChapter({
   }, [open]);
 
   // #1582 L2. The FIRST step is deliberately not refocused here: the surface's
-  // own mount focus already lands on the panel, and racing it would move focus
+  // own mount focus lands on the disclosure choice or panel; racing it moves focus
   // twice on the first screen a person ever sees. Only a CHANGE of step, which
   // is exactly when the control that had focus stops existing.
   const focusedStep = useRef<ChapterStep | null>(null);
@@ -395,6 +397,7 @@ export function FirstRunHomeChapter({
     // every route, and the just-closed dialog re-appears over `/agents` —
     // the #765 B1 escalation, reproduced live.
     if (step === 'disclosure') {
+      disclosureDismissRef.current?.();
       dismissUsageTelemetryDisclosure(
         dismissalRevision ?? disclosureData?.inventoryRevision,
       );
@@ -507,6 +510,10 @@ export function FirstRunHomeChapter({
       {open ? (
         <ResponsiveDialogSurface
           layer="dialog"
+          initialFocusRef={
+            step === 'disclosure' ? disclosureChoiceRef : undefined
+          }
+          initialFocusPolicy={step === 'disclosure' ? 'always' : 'panel'}
           onClose={defer}
           ariaLabelledBy="first-run-chapter-title"
           overlayClassName="first-run-chapter__overlay"
@@ -539,6 +546,8 @@ export function FirstRunHomeChapter({
           >
             {step === 'disclosure' ? (
               <UsageTelemetryDisclosureStep
+                dismissNoticeRef={disclosureDismissRef}
+                initialChoiceRef={disclosureChoiceRef}
                 onAdvance={() => {
                   if (intentFirst && !explicitSetup.current) {
                     defer();

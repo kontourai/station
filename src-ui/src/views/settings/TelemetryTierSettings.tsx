@@ -89,12 +89,13 @@ export function TelemetryTierSettings({
     setPending(undefined);
   };
   return (
-    <div
+    <section
       {...settingsRow('usage-telemetry')}
+      ref={noticeRef}
       tabIndex={-1}
       className="telemetry-sharing"
     >
-      <section aria-label="Usage sharing choices" ref={noticeRef}>
+      <section aria-label="Usage sharing choices">
         <UsageSharingChoices
           value={primaryChoice}
           onChange={(tier) => {
@@ -278,7 +279,7 @@ export function TelemetryTierSettings({
           {advancedContent}
         </section>
       </details>
-    </div>
+    </section>
   );
 }
 

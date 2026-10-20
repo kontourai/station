@@ -107,27 +107,30 @@ export function useTelemetryNotice(enabled: boolean) {
       rect.bottom <= 0
     )
       return;
-    return async () => {
-      for (const publisher of ['kontour', 'operator'] as const) {
+    const revision = current.liteInventoryRevision;
+    const targets = (['kontour', 'operator'] as const)
+      .filter((publisher) => {
         const state = current.publishers[publisher];
-        const revision = current.liteInventoryRevision;
-        const key = `${targetKey}:${publisher}:${revision}`;
-        if (
-          !state ||
-          state.reason === 'DNT' ||
-          current.liteNotices?.[publisher]?.inventoryRevision === revision ||
-          inFlight.current.has(key)
-        )
-          continue;
+        return (
+          state &&
+          state.reason !== 'DNT' &&
+          current.liteNotices?.[publisher]?.inventoryRevision !== revision
+        );
+      })
+      .map((publisher) => ({
+        publisher,
+        revision,
+        apiBase,
+        identityKey: scope?.identityKey,
+        requestScope: scope?.requestScope ?? null,
+      }));
+    return async () => {
+      for (const target of targets) {
+        const key = `${targetKey}:${target.publisher}:${target.revision}`;
+        if (inFlight.current.has(key)) continue;
         inFlight.current.add(key);
         try {
-          await receipt.mutateAsync({
-            publisher,
-            revision,
-            apiBase,
-            identityKey: scope?.identityKey,
-            requestScope: scope?.requestScope ?? null,
-          });
+          await receipt.mutateAsync(target);
         } finally {
           inFlight.current.delete(key);
         }

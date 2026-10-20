@@ -60,6 +60,26 @@ vi.mock('../../hooks/useRecoveryConfig', () => ({
 vi.mock('../../contexts/RecoveryQueryBoundary', () => ({
   useOptionalRecoveryScope: () => bridge.scope,
 }));
+vi.mock('../../contexts/ConfigContext', () => ({
+  useConfig: () => bridge.config,
+  useConfigSettled: () => true,
+  useConfigActions: () => ({
+    updateConfig: vi.fn(),
+    recordFirstRunDecision: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+vi.mock('../../contexts/onboarding-setup-store', () => ({
+  useOnboardingSetupState: () => ({ launcherWouldShow: false }),
+  firstRunChapterPresence: { set: vi.fn() },
+}));
+vi.mock('../../hooks/useSystemStatus', () => ({
+  useSystemStatus: () => ({ isFetching: false }),
+}));
+vi.mock('../first-run/EnginesStep', () => ({
+  useFirstRunEngineOptions: () => ({ options: [], settled: true }),
+  FirstRunEnginesChapter: () => null,
+}));
+vi.mock('../first-run/AboutYouStep', () => ({ AboutYouStep: () => null }));
 vi.mock('../../../../src-server/telemetry/metrics.js', () => ({
   configOps: { add: vi.fn() },
   usageTelemetryOutcomes: { add: vi.fn() },
@@ -88,6 +108,8 @@ const { createLogger } = await import(serverModule('utils/logger.js'));
 
 import type { RecoveryScope } from '../../contexts/RecoveryQueryBoundary';
 import { StationConfigSection } from '../../views/settings/StationConfigSection';
+import { FirstRunHomeChapter } from '../first-run/FirstRunHomeChapter';
+import { firstRunStore } from '../first-run/first-run-store';
 import { SHARING_LABELS } from '../UsageSharingChoices';
 import {
   resetUsageTelemetryDisclosureDismissal,
@@ -177,7 +199,11 @@ async function publisherFixture(
 import { TelemetryOutbox } from '../../views/settings/TelemetryOutbox';
 
 beforeEach(() => {
+  bridge.request.mockClear();
+  bridge.save.mockClear();
+  bridge.scopedRead.mockClear();
   resetUsageTelemetryDisclosureDismissal();
+  firstRunStore.reset();
   bridge.scope = null;
   build.endpoint = '';
 });
@@ -976,22 +1002,35 @@ test.each(['off', 'dismiss'] as const)(
         const gate = new Promise<void>((resolve) => {
           resumeChoice = resolve;
         });
+        let started!: () => void;
+        const entered = new Promise<void>((resolve) => {
+          started = resolve;
+        });
+        let writeResponse: Promise<Response> | undefined;
         const request = bridge.request.getMockImplementation()!;
-        bridge.request.mockImplementation(
-          async (url: string, init?: RequestInit) => {
-            if (url.endsWith('/config/app') && init?.method === 'PUT')
+        bridge.request.mockImplementation((url: string, init?: RequestInit) => {
+          if (url.endsWith('/config/app') && init?.method === 'PUT') {
+            started();
+            writeResponse = (async () => {
               await gate;
-            return request(url, init);
-          },
-        );
+              return request(url, init);
+            })();
+            return writeResponse;
+          }
+          return request(url, init);
+        });
         fireEvent.click(
           screen.getByRole('radio', { name: SHARING_LABELS.off }),
         );
         fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
-        await vi.waitFor(() =>
-          expect(
-            calls('/config/app').filter(([, init]) => init?.method === 'PUT'),
-          ).toHaveLength(1),
+        await entered;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(12_000);
+        });
+        expect((await service.telemetryStatus()).liteNotices).toEqual({});
+        expect(sent).toHaveLength(0);
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Close usage sharing' }),
         );
         await act(async () => {
           await vi.advanceTimersByTimeAsync(12_000);
@@ -999,8 +1038,18 @@ test.each(['off', 'dismiss'] as const)(
         expect((await service.telemetryStatus()).liteNotices).toEqual({});
         expect(sent).toHaveLength(0);
         resumeChoice!();
+        expect((await writeResponse!).status).toBe(200);
       } else fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
-      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      const now = new Date();
+      vi.useRealTimers();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(now);
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(async () =>
+        expect(
+          Object.keys((await service.telemetryStatus()).liteNotices),
+        ).toHaveLength(2),
+      );
       expect(
         Object.keys((await service.telemetryStatus()).liteNotices).sort(),
       ).toEqual(['kontour', 'operator']);
@@ -1060,7 +1109,9 @@ test.each([
             telemetryPublishers={status.publishers}
             telemetryDisclosure={disclosure}
             telemetryCounts={status.liteInventory}
-            onChange={setDraft}
+            onChange={(patch) =>
+              setDraft((current) => ({ ...current, ...patch }))
+            }
           />
         );
       }
@@ -1143,3 +1194,56 @@ test('notice failure after Save preserves the preference and reports only the no
     await service.shutdown();
   }
 });
+
+test.each(['close', 'escape'] as const)(
+  'guided first-run %s records an explicit visible dismissal and preserves choices',
+  async (exit) => {
+    const { client, loader, service } = await publisherFixture();
+    bridge.config = { ...bridge.config, firstRun: { status: 'pending' } };
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: 300,
+      right: 500,
+      width: 500,
+      height: 300,
+      toJSON() {},
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <FirstRunHomeChapter intentFirst />
+      </QueryClientProvider>,
+    );
+    try {
+      const dialog = await screen.findByRole('dialog');
+      const anonymous = await screen.findByRole('radio', {
+        name: /Anonymous usage counts/,
+      });
+      await waitFor(() => expect(document.activeElement).toBe(anonymous));
+      expect(calls('/lite-notices')).toHaveLength(0);
+      if (exit === 'close')
+        fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
+      else fireEvent.keyDown(dialog, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(async () =>
+        expect(
+          Object.keys((await service.telemetryStatus()).liteNotices),
+        ).toHaveLength(2),
+      );
+      expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+        kontour: 'lite',
+        operator: 'lite',
+      });
+      expect(
+        calls('/config/app').filter(([, init]) => init?.method === 'PUT'),
+      ).toHaveLength(0);
+    } finally {
+      view.unmount();
+      client.clear();
+      await service.shutdown();
+      loader.dispose();
+    }
+  },
+);

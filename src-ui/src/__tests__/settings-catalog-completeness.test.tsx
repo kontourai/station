@@ -2282,16 +2282,20 @@ describe('settings catalog completeness', () => {
     );
     const rect = vi
       .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-      .mockReturnValue({
-        top: 100,
-        bottom: 300,
-        height: 200,
-        left: 0,
-        right: 390,
-        width: 390,
-        x: 0,
-        y: 100,
-        toJSON: () => ({}),
+      .mockImplementation(function (this: HTMLElement) {
+        const clipped =
+          this.getAttribute('aria-label') === 'Usage sharing choices';
+        return {
+          top: clipped ? -400 : 100,
+          bottom: clipped ? -200 : 300,
+          height: 200,
+          left: 0,
+          right: 390,
+          width: 390,
+          x: 0,
+          y: 100,
+          toJSON: () => ({}),
+        };
       });
     const view = await renderSettings();
     const notices = () =>
@@ -2305,7 +2309,12 @@ describe('settings catalog completeness', () => {
         );
       });
       expect(notices()).toHaveLength(0);
-      fireEvent.click(screen.getByRole('radio', { name: "Don't share" }));
+      for (const name of ['Kontour telemetry', 'Operator telemetry']) {
+        fireEvent.change(screen.getByRole('combobox', { name }), {
+          target: { value: 'off' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+      }
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       await waitFor(() => expect(notices()).toHaveLength(2));
       expect(updateConfig.mock.calls.map(([patch]) => patch)).toEqual([

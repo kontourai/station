@@ -9,7 +9,13 @@ import {
 } from '@kontourai/station-sdk';
 import { DEFAULT_CLIENT_REQUEST_TIMEOUT_MS } from '@kontourai/station-sdk/client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import {
+  type Ref,
+  type RefObject,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useOptionalRecoveryScope } from '../contexts/RecoveryQueryBoundary';
 import {
@@ -32,11 +38,15 @@ export function UsageSharingPrompt({
   onClose,
   onDecided,
   dialog = false,
+  dismissNoticeRef,
+  initialChoiceRef,
 }: {
   data: SharingDisclosure & { inventoryRevision: string };
   onClose: () => void;
   onDecided: (apiBase: string, dnt: boolean) => void;
   dialog?: boolean;
+  dismissNoticeRef?: Ref<() => void>;
+  initialChoiceRef?: RefObject<HTMLInputElement | null>;
 }) {
   const scope = useOptionalRecoveryScope();
   const { apiBase: protectedBase } = useApiBase();
@@ -78,14 +88,15 @@ export function UsageSharingPrompt({
   const setChoice = (value: TelemetryTier) =>
     setSelection({ target: selectionTarget, value });
   const client = useQueryClient();
-  const choiceRef = useRef<HTMLInputElement>(null);
+  const internalChoiceRef = useRef<HTMLInputElement>(null);
+  const choiceRef = initialChoiceRef ?? internalChoiceRef;
   const save = useMutation({
     mutationFn: async (action: {
       next: TelemetryTier;
       recordNotice: (() => Promise<void>) | undefined;
     }) => {
       const { next } = action;
-      // Capture one authority for both requests; guarded recovery writes refuse rotation.
+      // Guarded recovery writes refuse rotation of the captured authority.
       const target = { apiBase, scope };
       const write = async (
         path: string,
@@ -191,6 +202,10 @@ export function UsageSharingPrompt({
       onDecided(target.apiBase, target.dnt);
     },
   });
+  useImperativeHandle(dismissNoticeRef, () => () => {
+    // The owner may close while a Save is pending; that Save owns the notice.
+    if (!save.isPending) void notice.recordShown().catch(() => {});
+  });
   let host: string | undefined = data.additionalHost;
   try {
     if (!host && settings?.productTelemetryEndpoint)
@@ -239,6 +254,10 @@ export function UsageSharingPrompt({
     </section>
   );
   const close = async () => {
+    if (save.isPending) {
+      onClose();
+      return;
+    }
     try {
       await notice.recordShown();
     } finally {

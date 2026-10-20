@@ -20,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ReactNode,
   type Ref,
+  type RefObject,
   useEffect,
   useId,
   useRef,
@@ -1267,9 +1268,13 @@ function DisclosureDecisionActions({
  */
 export function UsageTelemetryDisclosureStep({
   onAdvance,
+  dismissNoticeRef,
+  initialChoiceRef,
 }: {
   /** The decision landed — the run moves to its next step. */
   onAdvance: () => void;
+  dismissNoticeRef?: Ref<() => void>;
+  initialChoiceRef?: RefObject<HTMLInputElement | null>;
 }) {
   const { data, settled, dismissalRevision } =
     useUsageTelemetryDisclosureState();
@@ -1286,6 +1291,8 @@ export function UsageTelemetryDisclosureStep({
   if (data.publishers)
     return (
       <UsageSharingPrompt
+        dismissNoticeRef={dismissNoticeRef}
+        initialChoiceRef={initialChoiceRef}
         data={data}
         onClose={() => {
           dismissUsageTelemetryDisclosure(dismissalRevision);
