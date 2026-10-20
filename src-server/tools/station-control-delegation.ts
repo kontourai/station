@@ -4752,11 +4752,7 @@ export async function continueDelegatedTask(
     // to the forward below. Then the sender-currency probe: a revocation
     // that landed during target resolution refuses before the POST.
     if (
-      isInboundDelegationPeer(
-        input.principal,
-        input.clientOrigin,
-        input.inboundDeviceKind,
-      )
+      isInboundDelegationPeer(input.inboundDeviceKind)
     )
       throw new ReceiverExecutionRefusal(
         'receiver_execution_forwarding_refused',
@@ -4890,11 +4886,7 @@ export async function respondToDelegatedTaskRequest(
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     // Same no-onward-hop + sender-currency guards as the continue path.
     if (
-      isInboundDelegationPeer(
-        input.principal,
-        input.clientOrigin,
-        input.inboundDeviceKind,
-      )
+      isInboundDelegationPeer(input.inboundDeviceKind)
     )
       throw new ReceiverExecutionRefusal(
         'receiver_execution_forwarding_refused',
@@ -5166,14 +5158,11 @@ export async function interruptDelegatedTask(
  * device-credential authority, so production composition resolves its kind
  * to `undefined` (never a peer); an ordinary personal device resolves
  * `device` and may still select a saved peer as its controller. The
- * `principal`/`clientOrigin` parameters are retained so call sites keep
- * passing the verified caller facts (and the derivation stays reviewable
- * next to them), but they do not participate in the verdict. Exported for
- * unit coverage of the derivation without a runtime.
+ * predicate therefore takes only the verified device kind, so a caller
+ * cannot hand it a display identity to weigh. Exported for unit coverage of
+ * the derivation without a runtime.
  */
 export function isInboundDelegationPeer(
-  _principal: PrincipalRef | undefined,
-  _clientOrigin: ClientOrigin | undefined,
   inboundDeviceKind: 'device' | 'delegation' | undefined,
 ): boolean {
   return inboundDeviceKind === 'delegation';
@@ -5217,11 +5206,7 @@ export async function delegateTask(
   // facts only (never body/userId/metadata) — see isInboundDelegationPeer.
   const inboundPeer =
     portableIntent === true &&
-    isInboundDelegationPeer(
-      input.principal,
-      input.clientOrigin,
-      input.inboundDeviceKind,
-    );
+    isInboundDelegationPeer(input.inboundDeviceKind);
   // The ONE environment resolution for this dispatch: the route never
   // resolves, so there is no second resolution to race these endpoints.
   const selectedTarget = await resolveTarget(
