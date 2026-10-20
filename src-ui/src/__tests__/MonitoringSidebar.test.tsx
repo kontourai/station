@@ -211,7 +211,13 @@ describe('MonitoringSidebar', () => {
       />,
     );
     expect(screen.getByText('External producers')).toBeTruthy();
-    expect(screen.getByText('producer:flow-agents:default')).toBeTruthy();
+    // The producer's own agent name as the title, the producer as a
+    // sublabel, and the namespaced id only as the tooltip.
+    expect(screen.getByText('default').getAttribute('title')).toBe(
+      'producer:flow-agents:default',
+    );
+    expect(screen.getByText('via flow-agents')).toBeTruthy();
+    expect(screen.queryByText('producer:flow-agents:default')).toBeNull();
     expect(screen.getByText('External')).toBeTruthy();
   });
 });

@@ -1375,6 +1375,18 @@
   font-weight: 500;
 }
 
+/* A value that must stay on one line (the producer name): ellipsis, with the
+   full value in the element's title. */
+.pill-badge--single-line {
+  display: inline-block;
+  max-width: 16rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .tool-badge {
   background: var(--bg-tertiary);
   border-color: var(--warning-text);

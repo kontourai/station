@@ -1,5 +1,6 @@
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
+import { PRODUCER_ID_PREFIX } from '../../src-shared/monitoring-keys.js';
 import { MONITORING_SESSION_ID_KEYS } from './monitoring-session-identity.js';
 import type {
   AgentTelemetryIngestEvent,
@@ -161,8 +162,6 @@ function validateAgentEvent(
   return { ok: true, event: parsed.data as AgentTelemetryIngestEvent };
 }
 
-/** Prefix of every identity a telemetry producer reported. */
-const PRODUCER_ID_PREFIX = 'producer:';
 /**
  * Every identity a producer row may carry that a reader groups, filters or
  * de-duplicates by: session, trace, tool-call and event ids, and the agent

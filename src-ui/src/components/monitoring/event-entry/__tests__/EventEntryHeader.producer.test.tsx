@@ -40,7 +40,30 @@ describe('EventEntryHeader producer label', () => {
     renderHeader(row({ [K.TELEMETRY_PRODUCER]: 'flow-agents-codex' }));
     expect(screen.getByText('Producer:')).toBeTruthy();
     expect(screen.getByText('flow-agents-codex').getAttribute('title')).toBe(
-      'Reported by an external telemetry producer; not observed by Station',
+      'flow-agents-codex: reported by an external telemetry producer; not observed by Station',
+    );
+  });
+
+  test("shows the producer's own agent and session, with the full ids as tooltips", () => {
+    renderHeader(
+      row({
+        [K.TELEMETRY_PRODUCER]: 'flow-agents-codex',
+        [K.AGENT_SLUG]: 'producer:flow-agents-codex:codex',
+        [K.TRACE_ID]: 'producer:flow-agents-codex:codex-session-2',
+      }),
+    );
+    const agent = screen.getByText('codex');
+    expect(agent.getAttribute('title')).toBe(
+      'producer:flow-agents-codex:codex',
+    );
+    const trace = screen.getByText('codex-session-2');
+    expect(trace.getAttribute('title')).toContain(
+      'producer:flow-agents-codex:codex-session-2',
+    );
+    expect(screen.queryByText(/^producer:/)).toBeNull();
+    // One line, ellipsis: the single-line pill class carries it.
+    expect(screen.getByText('flow-agents-codex').className).toContain(
+      'pill-badge--single-line',
     );
   });
 

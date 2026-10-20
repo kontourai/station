@@ -1,4 +1,8 @@
-import { monitoringAgentName } from '@shared/monitoring-keys';
+import {
+  displayMonitoringId,
+  monitoringAgentName,
+  parseProducerScopedId,
+} from '@shared/monitoring-keys';
 import type {
   MonitoringEvent,
   MonitoringStats,
@@ -50,6 +54,7 @@ export function MonitoringSidebar({
     ).length;
     const isSelected = selectedAgents.includes(slug);
     const agentColor = getAgentColor(slug);
+    const producer = parseProducerScopedId(slug)?.producer;
 
     return (
       // Same structure as the running card above: card = mouse
@@ -77,9 +82,16 @@ export function MonitoringSidebar({
             onAgentClick(slug, event);
           })}
         >
-          <span className="agent-name">{slug}</span>
+          <span className="agent-name" title={slug}>
+            {displayMonitoringId(slug)}
+          </span>
           <span className="agent-status historical-status">{statusLabel}</span>
         </div>
+        {producer && (
+          <div className="meta-label" title={slug}>
+            via {producer}
+          </div>
+        )}
         <div className="agent-meta">
           <div className="meta-item">
             <span className="meta-label">Events:</span>

@@ -14,6 +14,7 @@ import {
   K,
   monitoringAgentName,
   OP,
+  PRODUCER_ID_PREFIX,
   SPAN,
 } from '../../../src-shared/monitoring-keys.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
@@ -439,7 +440,7 @@ export function createInsightsRoutes(
                 const traceId = event[K.TRACE_ID];
                 if (
                   operation === OP.INVOKE_AGENT &&
-                  traceId === `producer:${producer}:no-session`
+                  traceId === `${PRODUCER_ID_PREFIX}${producer}:no-session`
                 ) {
                   if (spanKind === SPAN.END) tally.chats++;
                 } else if (

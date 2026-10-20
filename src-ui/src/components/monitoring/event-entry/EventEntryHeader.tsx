@@ -1,6 +1,8 @@
 import {
+  displayMonitoringId,
   K,
   monitoringAgentName,
+  shortMonitoringId,
 } from '../../../../../src-shared/monitoring-keys';
 import type { MonitoringEvent } from '../../../contexts/MonitoringContext';
 import { getAgentColor, getEventType } from '../../../views/monitoring-utils';
@@ -55,13 +57,18 @@ export function EventEntryHeader({
                 : undefined
             }
           >
-            {(event[K.TRACE_ID] as string).slice(-8)}
+            {shortMonitoringId(event[K.TRACE_ID] as string, 8)}
           </button>
         )}
       </div>
       <div className="log-type">{getEventType(event).toUpperCase()}</div>
-      <div className="log-agent">
-        {monitoringAgentName(event as Record<string, unknown>)}
+      <div
+        className="log-agent"
+        title={monitoringAgentName(event as Record<string, unknown>)}
+      >
+        {displayMonitoringId(
+          monitoringAgentName(event as Record<string, unknown>),
+        )}
       </div>
 
       <div className="log-data">
@@ -83,7 +90,7 @@ export function EventEntryHeader({
               }
               title="Filter by conversation"
             >
-              ...{(event[K.CONVERSATION_ID] as string).slice(-6)}
+              ...{shortMonitoringId(event[K.CONVERSATION_ID] as string, 6)}
             </button>
           </span>
         )}
@@ -97,7 +104,7 @@ export function EventEntryHeader({
               onClick={() => onToolCallClick(event[K.TOOL_CALL_ID] as string)}
               title="Filter by tool call ID"
             >
-              ...{(event[K.TOOL_CALL_ID] as string).slice(-6)}
+              ...{shortMonitoringId(event[K.TOOL_CALL_ID] as string, 6)}
             </button>
           </span>
         )}
@@ -115,8 +122,8 @@ export function EventEntryHeader({
           <span className="log-inline">
             <span className="meta-label">Producer:</span>
             <span
-              className="pill-badge"
-              title="Reported by an external telemetry producer; not observed by Station"
+              className="pill-badge pill-badge--single-line"
+              title={`${event[K.TELEMETRY_PRODUCER] as string}: reported by an external telemetry producer; not observed by Station`}
             >
               {event[K.TELEMETRY_PRODUCER] as string}
             </span>
