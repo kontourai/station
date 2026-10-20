@@ -135,7 +135,6 @@ const nativeStationControlPools = new Map<
 
 async function retireNativeStationControlPools(
   owner?: MCPLocalConnectionCustody,
-  tenantId?: string,
 ): Promise<void> {
   const settlements: Promise<unknown>[] = [];
   for (const [custody, pool] of nativeStationControlPools) {
@@ -143,7 +142,6 @@ async function retireNativeStationControlPools(
     const claims: MCPLocalClaim[] = [];
     const selected: Array<[string, NativeConnectionEntry]> = [];
     for (const [id, entry] of pool) {
-      if (tenantId !== undefined && id !== tenantId) continue;
       entry.current = false; // Before cleanup or any await.
       claims.push(entry.claim);
       selected.push([id, entry]);
@@ -162,13 +160,6 @@ async function retireNativeStationControlPools(
   const results = await Promise.allSettled(settlements);
   if (results.some((result) => result.status === 'rejected'))
     throw new Error('Native station-control cleanup failed.');
-}
-
-export async function releaseNativeStationControlContext(
-  context: TenantExecutionContext | undefined,
-): Promise<void> {
-  if (context)
-    await retireNativeStationControlPools(undefined, context.tenantId);
 }
 
 /** Bounded local-handle retirement; not a process/descendant drain receipt. */

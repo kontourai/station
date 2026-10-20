@@ -26,7 +26,6 @@ import type {
   NativePlatformAdapter,
   NativePlatformError,
   NativeShareEvent,
-  NativeStartupReadinessTicket,
   NativeTrayNavigationEvent,
   NativeWorkspacePanePopOutRequest,
 } from './types';
@@ -1105,21 +1104,6 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     }
   }
 
-  async commitStartupReadiness(
-    ticket: NativeStartupReadinessTicket,
-  ): Promise<NativeCommandResult<void>> {
-    try {
-      await this.bridge.invoke<unknown>('commit_startup_readiness', { ticket });
-      return { status: 'ok', value: undefined };
-    } catch (error) {
-      return {
-        status: 'error',
-        command: 'commit-startup-readiness',
-        message: errorMessage(error),
-      };
-    }
-  }
-
   async isStartupWindowAdmitted(): Promise<NativeCommandResult<boolean>> {
     try {
       const admitted = await this.bridge.invoke<unknown>(
@@ -1153,40 +1137,6 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         message: errorMessage(error),
       };
     }
-  }
-
-  async commitStartupRecoveryUi(): Promise<NativeCommandResult<void>> {
-    try {
-      await this.bridge.invoke<unknown>('commit_startup_recovery_ui');
-      return { status: 'ok', value: undefined };
-    } catch (error) {
-      return {
-        status: 'error',
-        command: 'commit-startup-recovery-ui',
-        message: errorMessage(error),
-      };
-    }
-  }
-
-  subscribeToStartupReadinessRetry(
-    listener: () => void,
-  ): NativeEventSubscription {
-    let disposed = false;
-    let unlisten: UnlistenFn | undefined;
-    void this.bridge
-      .listen('station://startup-readiness-retry', () => {
-        if (!disposed) listener();
-      })
-      .then((value) => {
-        unlisten = value;
-        if (disposed) value();
-      });
-    return {
-      dispose() {
-        disposed = true;
-        unlisten?.();
-      },
-    };
   }
 
   async openLocalBrowserPreview(

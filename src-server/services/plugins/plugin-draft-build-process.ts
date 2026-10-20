@@ -7,8 +7,7 @@ import type {
 import { registerDetachedOwnedChild } from '../infra/process-utils.js';
 
 /**
- * Runs one plugin DRAFT build in a disposable child process (epic #2323 S3,
- * review round 3).
+ * Runs one plugin DRAFT build in a disposable child process (epic #2323 S3).
  *
  * A draft is authored by any Project member, and some of what esbuild reads
  * never passes through Station's `onLoad` checks: its resolver opens files

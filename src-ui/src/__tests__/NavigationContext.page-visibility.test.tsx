@@ -8,7 +8,8 @@ import {
 import { navigationStore } from '../contexts/navigation-store';
 
 const screenSize = vi.hoisted(() => ({ mobile: false }));
-vi.mock('../hooks/useIsMobile', () => ({
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => screenSize.mobile,
 }));
 

@@ -17,7 +17,16 @@ permissions:
 jobs:
   resolve-build:
     name: Resolve exact build revision
-    if: github.event_name != 'pull_request'
+    # workflow_run fires for every completed build. A build superseded by its
+    # own cancel-in-progress concurrency, or dispatched on a non-main branch
+    # (which the resolver refuses by design), has nothing testable: skip it
+    # rather than report main red (#3402). A failed main build still runs
+    # the resolver and fails. Manual dispatch keeps its strict validation.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion != 'cancelled')
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     permissions:

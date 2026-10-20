@@ -108,7 +108,7 @@ interface DispatchModelConfig {
   fleet?: DispatchFleetConfig;
 }
 
-/** Identifies the evidence producer in every derived `CapabilityEvidence.source` (SF-4). */
+/** Identifies the evidence producer in every derived `CapabilityEvidence.source`. */
 const EVIDENCE_SOURCE_ID = 'station:connection-readiness/v1';
 
 /**
@@ -123,7 +123,7 @@ const EVIDENCE_SOURCE_ID = 'station:connection-readiness/v1';
  * closes): within the window a Dispatch invocation reuses the last grade;
  * once the window elapses, the next invocation re-resolves live evidence
  * through the same batched `fetchReadinessEvidenceMap` path (one
- * `listConnections()` call per window — archive#1426 SF-5 — never one per request).
+ * `listConnections()` call per window — archive#1426 — never one per request).
  *
  * This bounds both directions of archive#1431's staleness bug within one TTL
  * window instead of "until the next agent rebuild": an evidence over-claim
@@ -133,14 +133,14 @@ const EVIDENCE_SOURCE_ID = 'station:connection-readiness/v1';
  *
  * 60s: short enough that an operator who runs a smoke and waits sees it take
  * effect on their very next turn in the common case, long enough that a
- * multi-turn conversation or a burst of dispatch calls still gets the SF-5
+ * multi-turn conversation or a burst of dispatch calls still gets the
  * batching benefit instead of degrading back to a `listConnections()` call
  * per request.
  */
 export const DISPATCH_EVIDENCE_TTL_MS = 60_000;
 
 /**
- * Fallback logger (fix round 3, M-1b) for the ONE warning that must never go
+ * Fallback logger for the ONE warning that must never go
  * silent: `warnIfPolicyNeedsEvidenceSource` below. That warning is gated on
  * "did this call path wire an evidence source" — which correlates almost
  * perfectly with "did this call path wire a logger," since both are threaded
@@ -224,7 +224,7 @@ const FIDELITY_RANK: Record<StructuredToolsFidelity, number> = {
  * source this module doesn't control.
  *
  * ### The freshness downgrade is a defensive floor, not the primary
- * honesty mechanism (fix round, SF-1)
+ * honesty mechanism
  *
  * Given how `connection-readiness-evidence.ts` computes evidence today, the
  * one-rank downgrade below can only actually fire for a stale `catalog-ready`
@@ -404,8 +404,8 @@ function candidateEvidenceFromReadiness(
  *   never a crash.
  * - A malformed response (wrong length) or a thrown lookup failure →
  *   `undefined`, distinct from the above, so `createTtlCachedCandidateResolver`
- *   does not cache a failure for the TTL window (same MB-1 discipline as
- *   `fetchReadinessEvidenceMap`).
+ *   does not cache a failure for the TTL window (the same
+ *   failure-is-not-cached rule as `fetchReadinessEvidenceMap`).
  */
 async function fetchModelToolSurfaceList(
   source: DispatchEvidenceSource | undefined,
@@ -435,17 +435,17 @@ async function fetchModelToolSurfaceList(
 
 /**
  * Resolves live readiness evidence for every candidate connection in ONE
- * batched call (fix round, SF-5) — the earlier per-candidate design drove
+ * batched call — the earlier per-candidate design drove
  * one full `ConnectionService.listConnections()` discovery pass (including
  * health probes) per Dispatch candidate. A candidate set is small and
  * bounded, so this resolves once per call instead of once per candidate.
  * archive#1431: the caller (`createTtlCachedCandidateResolver`) invokes this
  * once per `DISPATCH_EVIDENCE_TTL_MS` window over the life of the built
  * Dispatch model, not once per Dispatch invocation and not once for the
- * model's entire lifetime — SF-5's batching guarantee (one call per
+ * model's entire lifetime — the batching guarantee (one call per
  * resolution, covering every candidate connection) is unchanged either way.
  *
- * Never throws (fix round, SF-2): a concurrent connection-inventory
+ * Never throws: a concurrent connection-inventory
  * invalidation (`ConnectionService`'s "Model inventory generation is
  * obsolete." race) or any other lookup failure degrades every candidate to
  * `unavailable` — an evidence lookup that can't complete must never fail
@@ -453,7 +453,7 @@ async function fetchModelToolSurfaceList(
  *
  * Returns `undefined` on a lookup failure, distinct from the `new Map()` it
  * returns for a legitimately-empty result (no source wired, or no
- * connection ids requested) — archive#1431 review round (MB-1). The two
+ * connection ids requested) — archive#1431. The two
  * outcomes look identical to a naive caller ("nothing came back"), but they
  * must not be treated identically by `createTtlCachedCandidateResolver`: a
  * legitimately empty map is a valid grade worth caching for the TTL window;
@@ -482,7 +482,7 @@ async function fetchReadinessEvidenceMap(
 }
 
 /**
- * Defensive loud path (fix round, MB-2/M-1b): a Dispatch policy that
+ * Defensive loud path: a Dispatch policy that
  * actually depends on live evidence (a `minimumEvidence` above the default
  * `'unavailable'`, or any `requiredCapabilities`) is silently inert on a
  * call path with no `dispatchEvidenceSource` wired — every candidate grades
@@ -490,8 +490,8 @@ async function fetchReadinessEvidenceMap(
  * and honest, but silent; this makes it audible to whoever operates the
  * agent.
  *
- * Falls back to `moduleLogger` when `config.logger` is absent (fix round 3,
- * M-1b) — deliberately, not merely defensively: this is precisely the case
+ * Falls back to `moduleLogger` when `config.logger` is absent —
+ * deliberately, not merely defensively: this is precisely the case
  * this warning exists for. An `AgentCreationConfig` with no
  * `dispatchEvidenceSource` wired is, in this codebase today, also one with
  * no `logger` wired (both come from the same threading), so gating the
@@ -524,7 +524,7 @@ function capabilitiesEqual(
 }
 
 /**
- * Legibility (fix round, SF-3): Dispatch's own eligibility filter
+ * Legibility: Dispatch's own eligibility filter
  * (`@kontourai/dispatch`'s engine) is silent about WHY a candidate didn't
  * make it into the routable set — a caller only ever sees
  * `'no-eligible-candidates'` on the terminal receipt. This replicates that
@@ -532,7 +532,7 @@ function capabilitiesEqual(
  * connection id and the derived level vs. the required one, so an operator
  * can see why a model stopped routing.
  *
- * Change feed, not a per-window repeat (archive#1431 review round, SF-2):
+ * Change feed, not a per-window repeat (archive#1431):
  * with evidence re-graded every TTL window instead of once at agent
  * (re)build, logging every excluded candidate on every resolution would
  * repeat an identical line ~1,440 times/day per persistently-excluded
@@ -548,8 +548,8 @@ function capabilitiesEqual(
  * named so the log line reads as a change-feed entry rather than a bare
  * repeat.
  *
- * Recovery is also named, not just decline (archive#1431 review round,
- * R-1): a candidate that WAS excluded (below `minimum`, or missing a
+ * Recovery is also named, not just decline (archive#1431): a
+ * candidate that WAS excluded (below `minimum`, or missing a
  * required capability) last window and now clears both gates gets its own
  * `'admitted'` line naming the prior level — logging only exclusions would
  * make an excluded→admitted transition invisible (nothing in the exclusion
@@ -600,7 +600,7 @@ function logExcludedCandidates(
       const changeSuffix = previous
         ? ` (was '${previous.evidence.level}')`
         : '';
-      // archive#1430 review, L-1 message priority — now decided once, inside
+      // archive#1430 message priority — now decided once, inside
       // `admissionOf`, instead of re-derived here (archive#1398).
       const { refusal } = admissionOf(candidate.evidence, policy);
       if (refusal === 'missing-capabilities') {
@@ -630,7 +630,7 @@ function logExcludedCandidates(
       return;
     }
 
-    // R-1: not excluded now — name the recovery when it WAS excluded last
+    // Not excluded now — name the recovery when it WAS excluded last
     // window, so the change feed covers admission as well as exclusion.
     if (previous && isExcluded(previous.evidence)) {
       logger.info(
@@ -749,7 +749,7 @@ function bindRoutingToAuthorizedTurn(
  * Composite key for one contributed model on one peer.
  *
  * The separator is written as the `\\u0000` ESCAPE, never as a literal NUL
- * byte (security review, M-5). A literal control character makes the whole
+ * byte. A literal control character makes the whole
  * source file `data` to file(1) and invisible to `git grep -I`, which is how
  * the repo's own zero-tolerance content gates skip it — a source file that
  * silently opts out of the scanners is a place things hide.
@@ -779,8 +779,8 @@ function isAdmitted(
  * Why a candidate did not clear the replicated predicate. Named so the two
  * message-producing call sites (`logExcludedCandidates` and
  * `withPolicyExclusions`) branch on a decision rather than each
- * re-deriving one from the evidence — the drift that archive#1430's L-1
- * review round already had to correct once.
+ * re-deriving one from the evidence — the drift archive#1430 already had
+ * to correct once.
  */
 type AdmissionRefusal =
   | 'evidence-level'
@@ -858,7 +858,7 @@ function admissionOf(
   }
 
   // --- Reason, ordered by ROOT cause rather than by the engine's evaluation
-  // order (archive#1430 review, L-1). An insufficient evidence level ALSO
+  // order (archive#1430). An insufficient evidence level ALSO
   // mechanically fails every capability requirement — `deriveDispatchCapabilities`
   // returns `[]` at `unavailable` — so naming the capability would be true
   // and useless. `level === 'unavailable'` is checked explicitly, not just
@@ -977,7 +977,7 @@ function gradeDispatchCandidates(
  * resolution it returns the cached candidates (no evidence-source call at
  * all); once the window elapses it re-resolves through
  * `fetchReadinessEvidenceMap` — still ONE batched call across every
- * candidate connection (archive#1426 SF-5), just repeated per TTL window instead
+ * candidate connection (archive#1426), just repeated per TTL window instead
  * of once for the life of the built model.
  *
  * The outer try/catch is the lazy path's own fail-soft floor (archive#1431): it is
@@ -988,7 +988,7 @@ function gradeDispatchCandidates(
  * `fetchReadinessEvidenceMap`) or in this function's own bookkeeping. On
  * any throw, every candidate grades `unavailable` for that call.
  *
- * MB-1 (archive#1431 review round): a *failed* resolution — whether from
+ * archive#1431: a *failed* resolution — whether from
  * this catch, or from `fetchReadinessEvidenceMap` itself returning
  * `undefined` on a caught source rejection — is deliberately NOT cached.
  * `fetchReadinessEvidenceMap`'s own error handling already swallows the
@@ -1001,7 +1001,7 @@ function gradeDispatchCandidates(
  * call after a failure retries the source rather than replaying the
  * failure for the rest of the window.
  *
- * SF-1 (archive#1431 review round): concurrent invocations that both land
+ * archive#1431: concurrent invocations that both land
  * past the TTL share ONE in-flight resolution instead of each starting
  * their own — without this, N callers racing in after expiry would each
  * independently call `fetchReadinessEvidenceMap`, stampeding
@@ -1038,7 +1038,7 @@ function createTtlCachedCandidateResolver(
     }
     if (inFlight) return inFlight;
 
-    // SF-2: the grade this candidate set carried into the previous
+    // The grade this candidate set carried into the previous
     // successfully cached window, snapshotted before this attempt can
     // possibly overwrite `cache` — the change-feed diff base for
     // `logExcludedCandidates`. `undefined` on the first-ever resolution, or
@@ -1080,8 +1080,8 @@ function createTtlCachedCandidateResolver(
         const fleetResolved = fleet
           ? await resolveFleetPlanHalf(fleet, policy)
           : null;
-        // Withdrawn shells are deliberately absent from `planCandidates`
-        // (security review, M-3): offering Dispatch a candidate whose peer has
+        // Withdrawn shells are deliberately absent from `planCandidates`:
+        // offering Dispatch a candidate whose peer has
         // stopped contributing spends an attempt to earn a
         // `model-not-contributed` refusal. They are still fully present in the
         // receipt as `admitted: false` with a `capability-withdrawn`
@@ -1108,7 +1108,7 @@ function createTtlCachedCandidateResolver(
           policy,
         );
 
-        // MB-1: only a defined result FROM BOTH sources — success, even if
+        // Only a defined result FROM BOTH sources — success, even if
         // legitimately empty — earns a cached grade. `undefined` from
         // either means that lookup failed; do not pin that failure for a
         // full TTL window (archive#1430: a tool-surface lookup failure must
@@ -1123,7 +1123,7 @@ function createTtlCachedCandidateResolver(
           `[dispatch] Candidate evidence re-grade failed for agent '${spec.name}'; every candidate will grade as 'unavailable' for this turn.`,
           { error: reason },
         );
-        // Security review, H-1(c): this path used to drop the whole fleet half
+        // This path used to drop the whole fleet half
         // and return `routing: null` — every fleet capability removed from the
         // turn with no diagnostic anywhere, which is §4.5's first banned
         // behavior occurring inside the module whose docblock claims the shape
@@ -1174,8 +1174,8 @@ function createTtlCachedCandidateResolver(
 
 interface FleetResolvedHalf {
   /**
-   * The fleet candidates OFFERED to Dispatch. Withdrawn shells are absent
-   * (security review, M-3) — see {@link records} for the full considered set.
+   * The fleet candidates OFFERED to Dispatch. Withdrawn shells are absent;
+   * see {@link records} for the full considered set.
    */
   planCandidates: GradedDispatchCandidate[];
   /**
@@ -1189,8 +1189,8 @@ interface FleetResolvedHalf {
 }
 
 /**
- * The named exclusion for a fleet resolution this Station could not complete
- * (security review, H-1(c)). One per known peer model, because the operator's
+ * The named exclusion for a fleet resolution this Station could not complete.
+ * One per known peer model, because the operator's
  * question is "why is my workstation not being used" and the answer is about
  * this Station, not about that peer — plus a fleet-scoped record when the
  * candidate set is empty so the failure is never invisible.
@@ -1238,7 +1238,7 @@ function fleetResolutionFailedExclusions(
  *    halves matter: a peer that stops contributing must not simply disappear
  *    from the surface (§4.5's first banned behavior), and it must not be
  *    handed to Dispatch either, which would spend a budgeted attempt to earn
- *    a `model-not-contributed` refusal (security review, M-3);
+ *    a `model-not-contributed` refusal;
  *  - offered but never in the built set → `not-in-resolved-set`, so "your new
  *    contribution is invisible until the next rebuild" is a sentence the
  *    operator can read rather than a mystery.
@@ -1299,7 +1299,7 @@ async function resolveFleetPlanHalf(
         // `unavailable`, that predicate returns TRUE for an unavailable grade,
         // so a withdrawn candidate used to render `admitted: true` beside its
         // own `capability-withdrawn` exclusion — one envelope stating both
-        // that it routed and that it could not (security review, M-3).
+        // that it routed and that it could not.
         // Withdrawal is a fact about the candidate set, decided before policy
         // gets a say.
         admitted: false,
@@ -1307,7 +1307,7 @@ async function resolveFleetPlanHalf(
       continue;
     }
 
-    // archive#1430 review, M-2: deliberately no `toolSurface` argument here
+    // archive#1430: deliberately no `toolSurface` argument here
     // — a fleet candidate never derives `structured-tools`, on purpose, not
     // merely because no wire currently carries a peer's tool-surface claim.
     // `FleetContributedModel.toolSurface` (archive#1430) is the PEER's own
@@ -1327,7 +1327,7 @@ async function resolveFleetPlanHalf(
       level: live.evidence.level,
       // archive#1398: `capabilityShape` with no tool surface, so
       // this necessarily yields `structuredToolsFidelity: 'unavailable'` —
-      // the M-2 refusal above, restated on Dispatch 0.5.0's second axis. A
+      // the refusal above, restated on Dispatch 0.5.0's second axis. A
       // peer's self-reported tool surface must not become an asserted
       // fidelity any more than it may become an asserted capability.
       ...capabilityShape(live.evidence.level),
@@ -1421,7 +1421,7 @@ function mergeRoutingCandidateRecords(
  * see": the difference between "you have no GPU model" and "you have one and
  * I refused to trust it yet".
  *
- * archive#1430 review, L-1: the "missing capabilities" vs. "evidence too
+ * archive#1430: the "missing capabilities" vs. "evidence too
  * low" message choice reads `realCapabilitiesById`, the candidate's ACTUAL
  * graded `evidence.capabilities` from `resolved.candidates` — never a
  * recompute from `evidence.level` alone. Before archive#1430, `deriveDispatchCapabilities`
@@ -1473,7 +1473,7 @@ function withPolicyExclusions(
     const missing = required.filter(
       (capability) => !evidence.capabilities.includes(capability),
     );
-    // archive#1430 review, L-1 message priority: the evidence-level message
+    // archive#1430 message priority: the evidence-level message
     // takes precedence whenever the level itself is the binding constraint
     // (`isAdmitted`'s FIRST condition) — a candidate whose level is too low
     // ALSO trivially fails any capability requirement (an insufficient
@@ -1573,7 +1573,7 @@ export async function createConfiguredDispatchModel(
 
   /**
    * Routing snapshots awaiting their receipt, keyed by the plan digest
-   * Dispatch will stamp on that receipt (security review, H-1(a)).
+   * Dispatch will stamp on that receipt.
    *
    * This used to be a single `lastRouting` variable, which is a correctness
    * bug the moment two turns overlap — and turns overlap routinely: one built
@@ -1675,7 +1675,7 @@ export async function createConfiguredDispatchModel(
       // An agent that never opted into fleet routing has nothing to receipt
       // here; that is the ONLY silent return on this path.
       if (!fleet) return;
-      // Deliberately NOT deleted on read (security review round 2, M-1).
+      // Deliberately NOT deleted on read.
       // `planDigest` is pure content — `executionPlanDigest` hashes the
       // canonicalized plan plus the request digest, with no nonce and no
       // timestamp — so two genuinely concurrent turns that are identical
@@ -1689,7 +1689,7 @@ export async function createConfiguredDispatchModel(
       const pending = pendingRouting.get(receipt.planDigest);
       try {
         if (!pending) {
-          // Security review, H-1(b): this case used to `return` above the
+          // This case used to `return` above the
           // try/catch, so a fleet-enabled turn could go entirely unreceipted
           // with nothing on any channel. There is no honest envelope to write
           // — the considered set for this plan is genuinely unknown — so the
@@ -1781,7 +1781,7 @@ const FLEET_ROUTING_OBSERVER_TIMEOUT_MS = 250;
  *
  * An eviction is LOUD and counted: it means some earlier turn's receipt will
  * arrive to find nothing, and silently discarding provenance is the failure
- * this whole review round is about. It is not merely a memory guard.
+ * this map exists to prevent. It is not merely a memory guard.
  */
 function rememberRouting(
   pending: Map<string, PendingFleetRouting>,

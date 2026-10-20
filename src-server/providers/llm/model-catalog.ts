@@ -231,13 +231,6 @@ export async function safeListModelCatalog(
   }
 }
 
-export async function safeListModels(
-  provider: ILLMProvider | null,
-  timeoutMs: number = MODEL_CATALOG_TIMEOUT_MS,
-): Promise<LLMModel[]> {
-  return (await safeListModelCatalog(provider, [], timeoutMs)).models;
-}
-
 /**
  * Whether `requestedModel` is launchable, and under which exact selector.
  *

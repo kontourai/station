@@ -195,7 +195,7 @@ export function ACPConnectionsSection({
         <SkeletonList count={2} label="Loading engines" />
       )}
       {/*
-        Review H1: the failure was read, but only inside the Add-provider
+        The failure was read, but only inside the Add-provider
         modal — the page itself fell through to the empty state below and told
         a user whose provider list Station could not read that they had none
         and should add one. The failure belongs on the surface that made the
