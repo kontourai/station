@@ -5,7 +5,6 @@ import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-
 import {
   ApplicationSessionClient,
   type ApplicationSessionKey,
-  createApplicationSessionKey,
   restoreApplicationSessionKey,
 } from '@kontourai/station-sdk/application-session';
 import type { ClientCredential } from '@kontourai/station-sdk/client';
@@ -1425,43 +1424,4 @@ export async function createBrowserRelayApplicationCredential(input: {
       return response;
     },
   };
-}
-
-/**
- * Same-origin HTTPS cookie adoption; relayed cross-origin pages are rejected by the SDK contract.
- * No production caller yet: added in #2451 ahead of the relay wiring that will call it.
- */
-export async function adoptBrowserRelayCookies(input: {
-  connectionId: string;
-  applicationOrigin: string;
-  route: NonNullable<SavedConnection['brokerRoute']>;
-  storage?: BrowserRelayAuthorityStorage;
-}) {
-  const origin = assertOrigin(input.applicationOrigin, 'Station origin');
-  if (
-    origin !== window.location.origin ||
-    new URL(origin).protocol !== 'https:'
-  )
-    throw new Error(
-      'Cookie adoption requires the browser to be on the Station HTTPS origin.',
-    );
-  const key = await createApplicationSessionKey();
-  const client = new ApplicationSessionClient(
-    origin,
-    input.route.scope.stationId,
-    window.location.origin,
-    {},
-    key,
-  );
-  const adoption = await client.adoptCookies();
-  await installBrowserRelayApplicationAuthority(
-    {
-      ...input,
-      bearer: { kind: 'alias', credential: adoption.aliasCredential },
-      key,
-      continuation: adoption.continuation,
-    },
-    input.storage,
-  );
-  return { aliasId: adoption.aliasId, aliasExpiresAt: adoption.aliasExpiresAt };
 }

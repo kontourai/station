@@ -11,3 +11,5 @@ These changes are included in Station source and bundles. Connect remains privat
 - Allow a host-owned signaling adapter to pin one validated client ID and nonce before Pion offer and Station-proof construction. Browser connections retain their existing generated identity when no provider is supplied. (Retained from `pinned-native-pion-identity.md`.)
 
 - Add an optional self-hosted browser broker transport with independently approved Station signing trust, bounded signaling, fresh-peer reconnect and encrypted Fetch channels. Device, account and Project authority remain separate from the transport. (Retained from `self-hosted-browser-transport.md`.)
+
+- Accept native relay setup links with longer configurable expiry or no time expiry. The invitation wire shape is unchanged. Existing receiver builds with a five-minute validation ceiling need five-minute invitations until updated. (Retained from `native-relay-invitation-expiry.md`.)

@@ -120,7 +120,6 @@
     "scripts/__tests__/ecosystem-manifest.test.ts": 3,
     "scripts/__tests__/evidence-check-execution-gate.test.ts": 1,
     "scripts/__tests__/examples-conformance.test.ts": 2,
-    "scripts/__tests__/gcp-bootstrap.test.ts": 1,
     "scripts/__tests__/gen-settings-registry.test.ts": 3,
     "scripts/__tests__/generate-app-icons.test.ts": 4,
     "scripts/__tests__/guardrail-known-bad-fixtures.test.ts": 1,

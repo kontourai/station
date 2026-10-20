@@ -13,9 +13,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { documentationCatchUp } from './documentation-impact.mjs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { checkDocumentationFreshness } from './lib/documentation-freshness.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { runGh, upsertTrackingIssue } from './lib/tracking-issue.mjs';
 
 export const SWEEP_ISSUE_TITLE = 'Documentation freshness sweep';
 export const SWEEP_ISSUE_LABELS = Object.freeze(['documentation', 'P2']);
@@ -80,14 +80,6 @@ export function reportStaleCount(report) {
   return Number(match[1]);
 }
 
-function runGh(args) {
-  return execFileSyncBounded('gh', args, {
-    encoding: 'utf8',
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
-}
-
 /**
  * Create, update, reopen or close the single tracking issue.
  * @param {{ repo: string, reportPath: string, gh?: (args: string[]) => string }} input
@@ -95,58 +87,14 @@ function runGh(args) {
 export function upsertFreshnessIssue({ repo, reportPath, gh = runGh }) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo ?? ''))
     throw new Error('--repo must be owner/name');
-  const staleCount = reportStaleCount(readFileSync(reportPath, 'utf8'));
-  const numbers = gh([
-    'api',
-    '--method',
-    'GET',
-    // Found by its stable title, not a label, so relabelling the issue
-    // cannot make the next sweep open a duplicate. Search matches words;
-    // the exact title is checked in the filter.
-    'search/issues',
-    '-f',
-    `q=repo:${repo} is:issue in:title "${SWEEP_ISSUE_TITLE}"`,
-    '-f',
-    'per_page=100',
-    '--jq',
-    `.items[] | select(.pull_request == null and .title == ${JSON.stringify(SWEEP_ISSUE_TITLE)}) | .number`,
-  ])
-    .split('\n')
-    .filter(Boolean)
-    .map(Number)
-    .sort((a, b) => a - b);
-  const existing = numbers[0];
-  if (existing === undefined) {
-    if (!staleCount) return { action: 'none' };
-    const created = gh([
-      'api',
-      '--method',
-      'POST',
-      `repos/${repo}/issues`,
-      '-f',
-      `title=${SWEEP_ISSUE_TITLE}`,
-      '-F',
-      `body=@${reportPath}`,
-      ...SWEEP_ISSUE_LABELS.flatMap((label) => ['-f', `labels[]=${label}`]),
-      '--jq',
-      '.number',
-    ]);
-    return { action: 'created', number: Number(created) };
-  }
-  gh([
-    'api',
-    '--method',
-    'PATCH',
-    `repos/${repo}/issues/${existing}`,
-    '-F',
-    `body=@${reportPath}`,
-    '-f',
-    `state=${staleCount ? 'open' : 'closed'}`,
-    ...(staleCount ? [] : ['-f', 'state_reason=completed']),
-    '--jq',
-    '.number',
-  ]);
-  return { action: staleCount ? 'updated' : 'closed', number: existing };
+  return upsertTrackingIssue({
+    repo,
+    reportPath,
+    title: SWEEP_ISSUE_TITLE,
+    labels: SWEEP_ISSUE_LABELS,
+    outstanding: reportStaleCount(readFileSync(reportPath, 'utf8')),
+    gh,
+  });
 }
 
 export async function collectFreshnessReport({ root = process.cwd() } = {}) {

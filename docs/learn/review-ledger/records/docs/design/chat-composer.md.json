@@ -172,7 +172,13 @@
 
     "src-ui/src/views/home/home-view-model.ts",
 
-    "src-ui/src/__tests__/composer-sizing.browser.test.tsx"
+    "src-ui/src/__tests__/composer-sizing.browser.test.tsx",
+
+    "src-ui/src/hooks/useConversationInbox.ts",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.tsx",
+
+    "tests/message-delivery-recovery.spec.ts"
   ],
 
   "checks": [
