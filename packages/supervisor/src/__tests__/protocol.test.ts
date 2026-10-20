@@ -11,6 +11,7 @@ import {
   CONTROL_MAX_LINE_BYTES,
   resolveControlEndpoint,
   SUPERVISOR_PROTOCOL,
+  supervisorRunDir,
   unixSocketPathLimit,
 } from '../protocol.ts';
 import { makeShortHome, startSupervisor } from './harness.ts';
@@ -261,8 +262,8 @@ describe('supervisor control protocol (real processes)', () => {
         'a'.repeat(40),
         'b'.repeat(40),
       );
-      const inHome = join(home, 'run', 'supervisor-test.sock');
-      expect(Buffer.byteLength(inHome)).toBeGreaterThan(
+      const inRunDir = join(supervisorRunDir(home), 'supervisor-test.sock');
+      expect(Buffer.byteLength(inRunDir)).toBeGreaterThan(
         unixSocketPathLimit(process.platform),
       );
       const supervisor = await startSupervisor({ home });
@@ -272,12 +273,12 @@ describe('supervisor control protocol (real processes)', () => {
       );
       expect(endpoint.fallbackDir).not.toBeNull();
       expect(endpoint.path.startsWith(`${endpoint.fallbackDir}/`)).toBe(true);
-      expect(existsSync(inHome)).toBe(false);
+      expect(existsSync(inRunDir)).toBe(false);
       expect(statSync(endpoint.fallbackDir as string).mode & 0o777).toBe(0o700);
       expect(statSync(endpoint.path).mode & 0o777).toBe(0o600);
-      // The token stays in the home.
+      // The token stays in the run directory beside the home.
       expect(endpoint.tokenPath).toBe(
-        join(home, 'run', 'supervisor-test.token'),
+        join(supervisorRunDir(home), 'supervisor-test.token'),
       );
       expect((await supervisor.status()).state).toBe('serving');
     },

@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '277d4c3a066dadb265a3198f07fa6f05977e0b662faec4caa04e047c6f4079e0';
+  '16ea1af82128857d9e37a4a4679867f8bfde1c0a2c5b39454d7ee563aa83f330';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -634,7 +634,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Navigation and work surfaces',
     summary:
       'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.',
-    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n- architecture-personal-board-authoring: Personal Board authoring\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md\n- docs/user/personal-boards.md',
+    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-colorthemes: ColorThemes\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n- architecture-personal-board-authoring: Personal Board authoring\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md\n- docs/user/personal-boards.md',
     tags: ['architecture', 'surfaces'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -661,6 +661,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-surfaces',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'keyboard-shortcuts',
+  },
+  {
+    id: 'architecture-colorthemes',
+    title: 'ColorThemes',
+    summary:
+      'Interface, composition, invariants, and documented evidence for ColorThemes.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## ColorThemes\n\n**Purpose.** A person chooses a named palette (Catppuccin, Rosé Pine, Gruvbox,\nNord, Tokyo Night) on top of light and dark; `station` sets nothing. The\n[decision record](../decisions/user-color-themes.md) owns settings,\ncompatibility and precedence.\n\n**Interface.** The [catalog](../../src-ui/src/lib/color-theme-catalog.ts) is the\nsingle source of every value: per family, flavors mapped onto the `--k-*`\nroles and Station's functional colours, named accents and per-flavor channel\nbrands. [color-theme-selection.ts](../../src-ui/src/lib/color-theme-selection.ts)\nresolves the `colorTheme`, `colorThemeFlavor` and `colorThemeAccent` settings\nagainst a small generated index (unknown ids fall back, nothing throws), so\nthe startup path never loads the catalog;\n[color-themes.ts](../../src-ui/src/lib/color-themes.ts) exposes\n`COLOR_THEME_OPTIONS` for a picker. [color-theme-apply.ts](../../src-ui/src/lib/color-theme-apply.ts)\nloads the selected family's stylesheet, stamps `data-color-theme*` and\n`theme-color` once it has loaded (a failed sheet is not claimed, is marked\nwith `data-color-theme-failed` and is requested again only when the selection\nchanges or on `retryColorTheme()`), records the rendered appearance in\n[appearance-cache.ts](../../src-ui/src/lib/appearance-cache.ts), and stays\nbound to the settings store from `main.tsx`.\n[branding-theme.ts](../../src-ui/src/lib/branding-theme.ts) re-rates a\nwhite-label brand on the theme's surfaces.\n\n**Generated artifacts.** [color-theme-css.ts](../../src-ui/src/lib/color-theme-css.ts)\nrenders one stylesheet per family, the splash subset, the runtime index and\nthe index block in [startup-theme.js](../../src-ui/public/startup-theme.js);\n[gen-color-themes.ts](../../scripts/gen-color-themes.ts)\n(`npm run gen:color-themes`) only writes them. Selector weight, not load\norder, decides precedence against `index.css` and the channel blocks.\n\n**Evidence.** [Contrast](../../src-ui/src/__tests__/color-theme-contrast.test.ts)\nrates every family, flavor and accent with `@kontourai/ui/contrast`;\n[artifacts](../../src-ui/src/__tests__/color-theme-artifacts.test.ts) fails on\ndrift or a startup bundle that reaches the catalog;\n[cascade](../../src-ui/src/__tests__/color-theme-cascade.test.ts) runs the real\nstartup script, store and applier against the real stylesheets in Chromium,\nincluding the appearance cache, a slow sheet and Station's unchanged default.\nA signed-in person's appearance is in force before first paint only once this\ndevice has rendered it. No native shell or rendered screenshot is covered.",
+    tags: ['architecture', 'surfaces', 'ColorThemes'],
+    parentId: 'architecture-surfaces',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'colorthemes',
   },
   {
     id: 'architecture-unifiedsearchservice',

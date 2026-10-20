@@ -5,6 +5,9 @@ import type { ApprovalMode } from './provider.js';
 export const ACCOUNT_PREFERENCE_KEYS = [
   'theme',
   'accentColor',
+  'colorTheme',
+  'colorThemeFlavor',
+  'colorThemeAccent',
   'diffStyle',
   'diffWrap',
   'chatShowReasoning',
@@ -23,8 +26,14 @@ export type InteractiveApprovalDefaults = Partial<
 >;
 
 export type AccountPreferences = Partial<
-  Pick<DeviceSettings, PortableSettingKey>
+  Pick<DeviceSettings, Exclude<PortableSettingKey, 'colorTheme'>>
 > & {
+  /**
+   * Stored as a parsed id rather than today's family list: a client newer
+   * than the server may name a family this server does not know, and the UI
+   * resolves any unknown id to `station`.
+   */
+  colorTheme?: string;
   smoothReveal?: boolean;
   bufferedDelivery?: boolean;
   interactiveApprovalModes?: InteractiveApprovalDefaults;

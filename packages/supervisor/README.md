@@ -14,10 +14,12 @@ connections it still holds; only an active voice call extends that deadline,
 up to a cap. Clients reconnect to the next generation. Desktop, the tray and
 the CLI become clients of the supervisor's control channel.
 
-**Status: phase 1 core implemented, not adopted.** The control channel, listener
+**Status: phase 1 implemented, not adopted.** The control channel, listener
 handoff, sequential generation handoff with rollback, and crash restart are
-implemented and tested against a fixture core server. No launch mode runs the
-supervisor yet, and the core server has no supervised mode. Until adoption,
+implemented. The core server can run as a supervised generation (it parks
+until promoted, binds its listeners through the supervisor, and drains on
+handoff), tested with the built core server. No launch mode runs the
+supervisor yet. Until adoption,
 Station's lifecycle is owned by the existing launchers listed in the
 [design](../../docs/design/process-supervisor.md).
 
