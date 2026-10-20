@@ -151,6 +151,18 @@ Session inventory preserves Surface's `not-chosen` reviewed-source state and
 `reviewed-source-review-not-chosen` gap when a review selected another candidate.
 The row remains `contributed-to`; that state does not establish support for the answer.
 
+A current-answer inventory is bound to the scope's exact Session and turn, not
+to an available answer. It parses whatever the Surface answer state is. Consumers
+render that state from the carried `basis`, so a partial Basis outage keeps the
+other resolved groups. An available answer must still equal the bound answer
+exactly. A non-available answer admits no `surface-answer-contribution` row.
+In that scope `contributed-to` is the only support edge. A row without it is
+turn lineage: only `observed-during` or `produced-by`, carrying the scope's
+`turnId` (`output.turnId` for outputs). Decision and delegation rows carry an
+optional `turnId` for this. The Session resource summary has no turn, so it never
+appears in a current-answer inventory. See the
+[parser](../../packages/contracts/src/session-inventory.ts).
+
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
 `AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
