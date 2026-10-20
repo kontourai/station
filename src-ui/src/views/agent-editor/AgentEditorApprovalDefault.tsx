@@ -82,8 +82,10 @@ export function AgentEditorApprovalDefault({
       </select>
       {value === 'never' && (
         <span className="editor-hint" id="ae-approval-default-hint">
-          Every chat with this agent starts at full access: no sandbox and no
-          approval prompts, as you. Anyone using it can still tighten a chat.
+          Every chat with this agent starts at full access: approval prompts are
+          off where the engine allows it. A start without a full-access grant,
+          such as a webhook, still runs inside Station’s workspace confinement.
+          Anyone using it can still tighten a chat.
         </span>
       )}
     </div>
