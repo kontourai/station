@@ -1,5 +1,7 @@
 // Runs before first paint without loading the application module graph.
-// Keep the envelope/prior-key precedence aligned with resolveBootTheme.
+// Keep the precedence aligned with resolveBootTheme and the settings store
+// (lib/appearance-cache.ts): the account appearance this device last
+// rendered, then the device envelope, then the legacy theme key.
 (() => {
   const root = document.documentElement;
   let theme = 'dark';
@@ -15,6 +17,22 @@
         theme = saved.theme;
     } catch {
       // A malformed envelope still permits the legacy theme preference.
+    }
+    try {
+      // Account preferences never enter the envelope, so a signed-in
+      // person's appearance is known here only from what was last rendered.
+      // A device-sourced cache is ignored: the envelope above is its source.
+      const cached = JSON.parse(localStorage.getItem('station-appearance-v1'));
+      if (
+        cached?.version === 1 &&
+        cached.source === 'account' &&
+        (cached.theme === 'light' || cached.theme === 'dark')
+      ) {
+        theme = cached.theme;
+        saved = cached;
+      }
+    } catch {
+      // A malformed cache is no cache.
     }
   } catch {
     // Storage can be unavailable in a WebView; retain Station's default.

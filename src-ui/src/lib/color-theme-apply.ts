@@ -15,6 +15,7 @@
  */
 
 import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';
+import { writeAppearanceCache } from './appearance-cache';
 import {
   colorThemeBackground,
   colorThemeStylesheet,
@@ -184,19 +185,27 @@ export function whenColorThemeStylesheetSettled(
 interface SettingsSource {
   getSnapshot(): AppliedSettings;
   subscribe(listener: () => void): () => void;
+  /** Where the snapshot's appearance comes from (the settings store's answer). */
+  getAppearanceSource?(): 'account' | 'device' | 'cache';
 }
 
 /**
- * Apply now and on every settings change, for the page's lifetime. Not a
- * React effect: the app mounts the account boundary only after authority is
- * verified, and the theme has to follow device settings before that too.
+ * Apply now and on every settings change, for the page's lifetime, and record
+ * what was rendered in the appearance cache (lib/appearance-cache.ts) so the
+ * next launch can paint it before first paint. A snapshot that is itself the
+ * cache is not written back. Not a React effect: the app mounts the account
+ * boundary only after authority is verified, and the theme has to follow
+ * device settings before that too.
  */
 export function bindColorThemeToSettings(
   root: HTMLElement,
   source: SettingsSource,
 ): () => void {
   const apply = () => {
-    applyColorTheme(root, source.getSnapshot());
+    const settings = source.getSnapshot();
+    applyColorTheme(root, settings);
+    const from = source.getAppearanceSource?.() ?? 'device';
+    if (from !== 'cache') writeAppearanceCache(settings, from);
   };
   apply();
   return source.subscribe(apply);

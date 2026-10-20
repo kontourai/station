@@ -155,6 +155,8 @@ describe('color theme cascade', () => {
     init?: string;
     /** Delay before a family sheet is served, in ms. */
     sheetDelay?: number;
+    /** The last-applied appearance cache (lib/appearance-cache.ts). */
+    cache?: Record<string, unknown>;
   }
 
   /**
@@ -208,6 +210,13 @@ describe('color theme cascade', () => {
               : JSON.stringify({ version: 1, values: options.values }),
         },
       );
+    if (options.cache)
+      await page.addInitScript((raw) => {
+        if (!sessionStorage.getItem('cached')) {
+          localStorage.setItem('station-appearance-v1', raw);
+          sessionStorage.setItem('cached', '1');
+        }
+      }, JSON.stringify(options.cache));
     await page.goto(`${ORIGIN}/`);
     return Object.assign(page, { requested });
   }
@@ -346,6 +355,60 @@ describe('color theme cascade', () => {
         }
       },
     );
+
+    const accountCache = {
+      version: 1,
+      source: 'account',
+      theme: 'light',
+      colorTheme: 'rose-pine',
+      colorThemeFlavor: 'moon',
+      colorThemeAccent: 'foam',
+    };
+
+    test("a signed-in person's last rendered appearance is in force before first paint, over the device envelope", async () => {
+      const page = await open(HEAD(startupCss), {
+        body: SPLASH,
+        values: { theme: 'dark', colorTheme: 'gruvbox' },
+        cache: accountCache,
+      });
+      try {
+        const dawn = family('rose-pine').light;
+        expect(await attributes(page)).toEqual({
+          theme: 'light',
+          colorTheme: 'rose-pine',
+          flavor: 'moon',
+          accent: 'foam',
+          themeColor: dawn.roles['--k-bg'],
+        });
+        const bg = await page.evaluate(
+          () =>
+            getComputedStyle(document.getElementById('splash')!)
+              .backgroundColor,
+        );
+        expect(toHex(bg)).toBe(dawn.roles['--k-bg']);
+      } finally {
+        await page.close();
+      }
+    });
+
+    test.each([
+      ['a device-sourced cache', { ...accountCache, source: 'device' }],
+      ['an unknown cache version', { ...accountCache, version: 2 }],
+    ])('%s is ignored: the device envelope paints', async (_label, cache) => {
+      const page = await open(HEAD(startupCss), {
+        body: SPLASH,
+        values: { theme: 'dark', colorTheme: 'gruvbox' },
+        cache,
+      });
+      try {
+        expect(await attributes(page)).toMatchObject({
+          theme: 'dark',
+          colorTheme: 'gruvbox',
+        });
+      } finally {
+        await page.close();
+      }
+    });
 
     test('the startup script needs no Object.hasOwn (Android WebView before Chrome 93)', async () => {
       const page = await open(HEAD(startupCss), {

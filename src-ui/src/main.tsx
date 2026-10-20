@@ -63,6 +63,7 @@ import { PermissionManager } from './core/PermissionManager';
 import { EXTENSIONS_UNAVAILABLE_LABEL } from './core/pluginRegistryCopy';
 import { LocaleProvider, resolveDevelopmentLocale } from './i18n/LocaleContext';
 import { applyAccentColor } from './lib/accent-contrast';
+import { readAppearanceCache } from './lib/appearance-cache';
 import {
   applyBrandingTheme,
   BRANDING_THEME_STORAGE_KEY,
@@ -219,6 +220,7 @@ const _envelopeRaw = localStorage.getItem('station-device-settings-v1');
 const _bootTheme = resolveBootTheme(
   _envelopeRaw,
   localStorage.getItem('theme'),
+  readAppearanceCache(),
 );
 document.documentElement.setAttribute('data-theme', _bootTheme);
 const _bootAccent = resolveBootAccentColor(

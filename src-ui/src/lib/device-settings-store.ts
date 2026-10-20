@@ -48,6 +48,13 @@ import {
   toRegionArrangementRecord,
 } from '../regions/region-arrangement-record';
 import { applyAccountPreferencePatch } from './account-preference-values';
+import {
+  APPEARANCE_KEYS,
+  type Appearance,
+  type AppearanceSource,
+  bootAppearanceFrom,
+  readAppearanceCache,
+} from './appearance-cache';
 import { parseCodingSessionPanelsRecord } from './coding-panels-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
@@ -710,6 +717,11 @@ class DeviceSettingsStore {
   private snapshot: DeviceSettings;
   private listeners = new Set<Listener>();
   private hydratedState: boolean;
+  /**
+   * The account appearance this device last rendered, in force until this
+   * page knows whose appearance applies (lib/appearance-cache.ts).
+   */
+  private bootAppearance: Appearance | null = null;
 
   constructor() {
     // Hydration is synchronous in this environment (localStorage reads are
@@ -720,6 +732,7 @@ class DeviceSettingsStore {
     // through without changing the public shape.
     this.hydratedState = false;
     this.envelope = this.loadOrMigrate();
+    this.bootAppearance = bootAppearanceFrom(readAppearanceCache());
     this.snapshot = this.resolve();
     this.hydratedState = true;
 
@@ -867,6 +880,8 @@ class DeviceSettingsStore {
       }
       result.featureSettings = features;
     }
+    if (!this.account?.values && this.bootAppearance)
+      for (const key of APPEARANCE_KEYS) result[key] = this.bootAppearance[key];
     return result as unknown as DeviceSettings;
   }
 
@@ -928,6 +943,7 @@ class DeviceSettingsStore {
    */
   reloadFromStorage = (): void => {
     this.envelope = this.loadOrMigrate();
+    this.bootAppearance = bootAppearanceFrom(readAppearanceCache());
     this.snapshot = this.resolve();
     this.notify();
   };
@@ -945,6 +961,30 @@ class DeviceSettingsStore {
 
   getEnvelope = (): DeviceSettingsEnvelope => this.envelope;
 
+  /** Where the resolved appearance comes from right now. */
+  getAppearanceSource = (): AppearanceSource | 'cache' =>
+    this.account?.values ? 'account' : this.bootAppearance ? 'cache' : 'device';
+
+  /**
+   * The account boundary found no person (or the device's own appearance was
+   * chosen): stop showing the cached account appearance.
+   */
+  releaseBootAppearance = (): void => {
+    if (!this.bootAppearance) return;
+    this.bootAppearance = null;
+    this.snapshot = this.resolve();
+    this.notify();
+  };
+
+  /** A device write to an appearance key is a choice: the cache yields to it. */
+  private yieldBootAppearance(keys: readonly string[]): void {
+    if (
+      this.bootAppearance &&
+      keys.some((key) => (APPEARANCE_KEYS as readonly string[]).includes(key))
+    )
+      this.bootAppearance = null;
+  }
+
   /** Account values never enter the origin-wide device envelope. */
   bindAccountPreferences = (
     values: AccountPreferences | undefined,
@@ -953,6 +993,9 @@ class DeviceSettingsStore {
   ): (() => void) => {
     const binding = { values, write, writable };
     this.account = binding;
+    // The account answered: its values, not the cache, are the appearance
+    // from here on, including after this binding ends.
+    if (values) this.bootAppearance = null;
     this.snapshot = this.resolve();
     this.notify();
     return () => {
@@ -993,6 +1036,7 @@ class DeviceSettingsStore {
     }
     const laddered = runMigrationLadder(input);
     const { values, droppedKeys } = sanitizeImportedValues(laddered.values);
+    this.yieldBootAppearance(Object.keys(values));
     this.applyEnvelope({ version: CURRENT_ENVELOPE_VERSION, values });
     return { droppedKeys };
   };
@@ -1012,6 +1056,7 @@ class DeviceSettingsStore {
       partial = device;
     }
     const fresh = this.readPersistedEnvelope();
+    this.yieldBootAppearance(Object.keys(partial));
     this.applyEnvelope({
       ...fresh,
       values: { ...fresh.values, ...partial },
@@ -1052,6 +1097,15 @@ class DeviceSettingsStore {
     }
     const fresh = this.readPersistedEnvelope();
     const currentValue = this.resolveValue(fresh, key);
+    if (this.bootAppearance && APPEARANCE_KEYS.some((k) => k === key)) {
+      // Even an unchanged device value is chosen over the cached one.
+      this.yieldBootAppearance([key]);
+      if (valuesEqual(currentValue, value)) {
+        this.snapshot = this.resolve();
+        this.notify();
+        return;
+      }
+    }
     if (valuesEqual(currentValue, value)) return;
 
     this.applyEnvelope({
@@ -1087,6 +1141,14 @@ class DeviceSettingsStore {
       );
     }
     const fresh = this.readPersistedEnvelope();
+    if (
+      this.bootAppearance &&
+      keys.some((key) => APPEARANCE_KEYS.some((k) => k === key))
+    ) {
+      this.yieldBootAppearance(keys);
+      this.snapshot = this.resolve();
+      this.notify();
+    }
     const stored = keys.filter((key) => Object.hasOwn(fresh.values, key));
     if (stored.length === 0) return;
     const nextValues = { ...fresh.values };
@@ -1108,7 +1170,12 @@ export const deviceSettingsStore = new DeviceSettingsStore();
 export function resolveBootTheme(
   envelopeRaw: string | null,
   priorRaw: string | null,
+  appearanceRaw: string | null = null,
 ): 'light' | 'dark' {
+  // The account appearance this device last rendered wins, as in
+  // startup-theme.js (lib/appearance-cache.ts).
+  const cached = bootAppearanceFrom(appearanceRaw);
+  if (cached) return cached.theme;
   if (envelopeRaw !== null) {
     try {
       const parsed = JSON.parse(envelopeRaw);
