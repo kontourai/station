@@ -32,6 +32,9 @@ an explicit Details action.
 
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
+A settled answer's **Basis** chip is not hover-revealed: it sits beside that row,
+visible at rest, and opens the Chat inventory scoped to that answer
+([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).
 During an authorized active-turn continuation wait, the composer accepts and
 preserves a draft. Sending and queueing stay blocked until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
