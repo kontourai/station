@@ -65,8 +65,10 @@ export function AnswerBasisAffordance({
   'aria-busy': ariaBusy,
   onOpen,
 }: AnswerBasisAffordanceProps): ReactElement {
-  // Cached standings are not re-read as the chip scrolls back into view;
-  // assessment and narrative updates tombstone and invalidate this key.
+  // A mounted chip does not re-read its standing as it scrolls back into
+  // view; assessment and narrative updates tombstone and invalidate this key.
+  // A remounted chip (the transcript virtualizer unmounts far-off rows) reads
+  // again: the SDK re-checks access on mount and hides the cached standing.
   const query = useAnswerBasisQuery(sessionId, turnId, {
     enabled,
     requestScope,

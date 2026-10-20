@@ -40,9 +40,12 @@ today, and states that standing only in its accessible name. A notable standing
 (policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
 **Basis · Policy met**
 ([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
-The chip reads an answer's standing only while it is on screen, does not re-read
-a cached one, and refreshes on an assessment or narrative update. Pending or
-failed, it stays **Basis** and still opens.
+The chip reads an answer's standing only while it is on screen, cancels a read
+that scrolls off screen unanswered, does not re-read a standing it holds while it
+stays mounted, and refreshes on an assessment or narrative update. A long
+transcript unmounts far-off answers; one that returns is read again, because the
+Basis read re-checks access for each new chip. Pending or failed, it stays
+**Basis** and still opens.
 During an authorized active-turn continuation wait, the composer accepts and
 preserves a draft. Sending and queueing stay blocked until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
