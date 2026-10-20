@@ -158,13 +158,13 @@ describe('toolbar geometry accounts for the top safe-area inset', () => {
   it('keeps the header navigation menu above the fixed mobile chrome', () => {
     // The toolbar creates no stacking context, so its navigation menu
     // competes directly with the maximized dock (--layer-sticky + 1).
-    // Both sides now speak the token scale: the menu sits at navigation,
-    // whose order above the dock is pinned by layer-tokens.test.ts, and the
-    // backdrop sits exactly one below its own menu or it swallows the menu's
-    // clicks.
+    // Both sides now speak the token scale: the menu sits at the toolbar
+    // menus' tier, above notifications (whose order above the dock and
+    // navigation is pinned by layer-tokens.test.ts), and the backdrop sits
+    // below its own menu or it swallows the menu's clicks.
     const menu = read('components/chat/chat.css');
     expect(menu).toMatch(
-      /\.app-toolbar__overflow-menu\s*\{[^}]*z-index:\s*var\(--layer-navigation\)/,
+      /\.app-toolbar__overflow-menu\s*\{[^}]*z-index:\s*var\(--layer-toolbar-menu\)/,
     );
 
     const backdrop = read('components/header/OverflowMenu.tsx');

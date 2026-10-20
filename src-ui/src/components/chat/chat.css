@@ -198,7 +198,8 @@
     var(--app-toolbar-total-height)
   );
   right: var(--space-4);
-  z-index: var(--layer-navigation);
+  /* Over the notification column it opens into (`--layer-toolbar-menu`). */
+  z-index: var(--layer-toolbar-menu);
   margin-top: var(--space-3);
   width: min(280px, calc(100vw - 32px));
 }
@@ -213,7 +214,8 @@
     var(--app-toolbar-total-height)
   );
   right: var(--space-4);
-  z-index: var(--layer-navigation);
+  /* On a phone it grows up from the footer into the notification column. */
+  z-index: var(--layer-toolbar-menu);
   margin-top: var(--space-3);
   min-width: 200px;
 }
@@ -240,8 +242,12 @@
      scale's own rule is that a passive notice yields to an active surface;
      `--layer-navigation` is where this menu belongs, because on mobile it IS
      the app's navigation overflow. `OverflowMenu.tsx` derives its dismiss
-     backdrop from the same token so the two cannot drift apart. */
-  z-index: var(--layer-navigation);
+     backdrop from the same token so the two cannot drift apart.
+
+     And above the notification column it opens into: `--layer-toolbar-menu`,
+     one tier over notifications, while the backdrop stays at navigation - 1
+     so a notification outside this panel is still pressed directly. */
+  z-index: var(--layer-toolbar-menu);
   min-width: 160px;
 }
 
