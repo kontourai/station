@@ -162,14 +162,15 @@ The optional [private telemetry companion](../../deployment/telemetry/README.md)
 now has an explicit receiver image target and a separate pinned Compose profile.
 It requires private credential files and loopback exposure; consumer validation,
 actual delivery, backup/restore and release qualification are still pending.
-Its source is distinct from the development template below and existing dogfood
-receipts.
+Its source is distinct from existing dogfood receipts.
 
-The standalone stack in `monitoring/` is independently managed from the
-production Station container. It maps OTLP HTTP to 4318, Prometheus to 9090,
-Grafana to 3333 and Jaeger to 16686. The checked-in template uses mutable image
-tags, host port bindings and a development Grafana password/anonymous viewing;
-it is not a hardened public monitoring deployment.
+The same directory provides the only checked-in monitoring stack. Its
+[developer profile](../../deployment/telemetry/README.md#developer-profile) runs
+the digest-pinned Collector, Prometheus, Tempo and Grafana without the product
+receiver, independently of the production Station container. It publishes OTLP
+HTTP on 44482, Prometheus on 44483 and Grafana on 44484, all on loopback, and
+refuses to start without private credential files. It is not a hardened public
+monitoring deployment.
 
 Read [the monitoring guide](monitoring.md) before enabling the stack or setting
 `OTEL_EXPORTER_OTLP_ENDPOINT`. `localhost` in a container names that container,

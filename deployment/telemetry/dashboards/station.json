@@ -360,7 +360,7 @@
       "gridPos": {
         "x": 0,
         "y": 17,
-        "w": 6,
+        "w": 12,
         "h": 5
       },
       "datasource": {
@@ -389,83 +389,13 @@
       ]
     },
     {
-      "id": 22,
-      "type": "bargauge",
-      "title": "Layout Operations",
-      "gridPos": {
-        "x": 6,
-        "y": 17,
-        "w": 6,
-        "h": 5
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "station-prometheus"
-      },
-      "options": {
-        "orientation": "horizontal",
-        "displayMode": "gradient",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"]
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (operation) (station_layout_operations_total)",
-          "legendFormat": "{{op}}"
-        }
-      ]
-    },
-    {
-      "id": 23,
-      "type": "bargauge",
-      "title": "Prompt Operations",
-      "gridPos": {
-        "x": 12,
-        "y": 17,
-        "w": 6,
-        "h": 5
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "station-prometheus"
-      },
-      "options": {
-        "orientation": "horizontal",
-        "displayMode": "gradient",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"]
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (operation) (station_prompt_operations_total)",
-          "legendFormat": "{{op}}"
-        }
-      ]
-    },
-    {
       "id": 24,
       "type": "bargauge",
       "title": "Project Operations",
       "gridPos": {
-        "x": 18,
+        "x": 12,
         "y": 17,
-        "w": 6,
+        "w": 12,
         "h": 5
       },
       "datasource": {

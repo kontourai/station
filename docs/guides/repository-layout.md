@@ -30,7 +30,7 @@ Consume sibling Kontour products through published interfaces. The
 | `config/`, `schemas/` | Checked-in configuration and validation schemas |
 | `packaging/`, `patches/` | Distribution inputs and managed dependency patches |
 | `ops/` | Station-specific operational launch and release helpers |
-| `monitoring/` | Optional observability stack |
+| `deploy/`, `deployment/` | Deployment recipes, including the optional telemetry and monitoring stack; [Deployment](deployment.md) says which directory holds what |
 | `assets/` | Application assets |
 | `docs/` | Guides, references, decisions, and public-site sources |
 | `.github/`, `.githooks/` | Hosted workflows, contribution forms, local hooks |
