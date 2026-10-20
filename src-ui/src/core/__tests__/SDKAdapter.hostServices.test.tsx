@@ -228,10 +228,12 @@ describe('useShortcut through the real adapter and registry', () => {
     expect(paletteRun).toHaveBeenCalledTimes(1);
   });
 
-  test('a reserved shortcut that declines its key still does not hand it to a plugin', () => {
+  test('rebinding a reserved shortcut onto a plugin chord withdraws the plugin shortcut', () => {
     // The palette is rebound onto the plugin's chord and declines (returns
-    // false), so dispatch walks on to the plugin: only the reserved-chord
-    // guard stops it there.
+    // false), so dispatch would walk on to the plugin. The rebinding
+    // re-validates the plugin against the palette's LIVE chord, refuses it
+    // and unregisters it, so it never fires. (The dispatch guard itself is
+    // reached by the next test, where the plugin's own binding moves.)
     const paletteRun = vi.fn(() => false);
     const run = vi.fn();
     function KernelPalette() {
@@ -262,6 +264,8 @@ describe('useShortcut through the real adapter and registry', () => {
     act(() => {
       actions?.setBinding('command-palette', { key: 'j', modifiers: ['cmd'] });
     });
+    expect(results.jump).toMatchObject({ ok: false, reason: 'reserved' });
+    expect(registryIds()).not.toContain('plugin.acme-tools.jump');
     pressPrimary('j');
     expect(paletteRun).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledTimes(1);
