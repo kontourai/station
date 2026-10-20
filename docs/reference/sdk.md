@@ -3507,7 +3507,7 @@ family subclasses stay and gain the refusal's fields:
 | `DelegationApiError` | `Error` | `status`, `retryAfterMs` (it already carried `code`, `retryable`, `details`) |
 | `AnswerSupportRequestError` | `Error` | `code`, `details`, `retryAfterMs` |
 | `ActionOperationProtocolError`, `LiveActivityProtocolError` | `Error` | `status`, `code`, `details`, `retryAfterMs`; absent on a malformed response |
-| `AnswerBasisRequestError`, `AnswerNarrativeBindingRequestError`, `FlowGateEvaluationRequestError` | `Error` | `code`, `retryAfterMs`; the message stays fixed |
+| `AnswerBasisRequestError`, `FlowGateEvaluationRequestError` | `Error` | `code`, `retryAfterMs`; the message stays fixed |
 
 Each keeps its earlier constructor; the new form takes the helper's
 `StationHttpError`. A delegation response whose body is not JSON throws a
