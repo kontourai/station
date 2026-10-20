@@ -11,6 +11,7 @@ import {
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
 import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { isRecord } from '../../utils/is-record.js';
 
 /**
  * #2452 (slice 4 of epic #2455): Muse workflow subagents, mapped onto the
@@ -136,10 +137,6 @@ export function createMuseServeChildWorkState(): MuseServeChildWorkState {
     stopRequested: new Set(),
     closed: false,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function readString(value: unknown): string | undefined {

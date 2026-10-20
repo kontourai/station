@@ -16,15 +16,15 @@ import {
   type WorkingStateSnapshot,
 } from './shared-working-state.js';
 
-export const REVISION_EVIDENCE_SCHEMA_VERSION = 1 as const;
-export const DEFAULT_REVISION_EVIDENCE_CAPACITY = 256;
-export const DEFAULT_REVISION_EVIDENCE_IMPORT_BYTES = 4 * 1024 * 1024;
-export const DEFAULT_REVISION_EVIDENCE_SNAPSHOT_BYTES = 512 * 1024;
-export const DEFAULT_REVISION_EVIDENCE_TEXT_BYTES = 256 * 1024;
-export const DEFAULT_REVISION_EVIDENCE_RECORD_BYTES = 768 * 1024;
+const REVISION_EVIDENCE_SCHEMA_VERSION = 1 as const;
+const DEFAULT_REVISION_EVIDENCE_CAPACITY = 256;
+const DEFAULT_REVISION_EVIDENCE_IMPORT_BYTES = 4 * 1024 * 1024;
+const DEFAULT_REVISION_EVIDENCE_SNAPSHOT_BYTES = 512 * 1024;
+const DEFAULT_REVISION_EVIDENCE_TEXT_BYTES = 256 * 1024;
+const DEFAULT_REVISION_EVIDENCE_RECORD_BYTES = 768 * 1024;
 export const MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES = 256;
-export const MAX_REVISION_EVIDENCE_LABEL_BYTES = 256;
-export const MAX_REVISION_EVIDENCE_ATTESTATION_BYTES = 4 * 1024;
+const MAX_REVISION_EVIDENCE_LABEL_BYTES = 256;
+const MAX_REVISION_EVIDENCE_ATTESTATION_BYTES = 4 * 1024;
 
 export type EvidenceRevisionId = `revision-evidence-v1:${string}`;
 
@@ -34,13 +34,6 @@ export interface RevisionCorrelation {
   readonly agentSessionId?: string;
   readonly runId?: string;
   readonly proposedChangeId?: string;
-}
-
-export interface FreezeRevisionInput {
-  readonly snapshot: WorkingStateSnapshot;
-  readonly parents: readonly EvidenceRevisionId[];
-  /** Opaque request identity; never part of the revision identity. */
-  readonly requestId: string;
 }
 
 export interface CommittedRevision {
@@ -232,12 +225,6 @@ export interface RevisionAttributionAuthority {
   verify(
     input: RevisionAttributionBinding & { readonly attestation: string },
   ): { readonly outcome: 'verified' } | { readonly outcome: 'unavailable' };
-}
-
-export interface ProposedChangeRevisionBinding {
-  readonly proposedChangeId: string;
-  readonly beforeRevisionId: EvidenceRevisionId;
-  readonly afterRevisionId: EvidenceRevisionId;
 }
 
 type ProposedChangeRevisionResolution =

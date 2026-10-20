@@ -37,7 +37,7 @@ export interface CliCommandResult {
 // Set this to "1" to disable the login-shell/well-known-dir fallback and
 // search only process.env.PATH (for hardened/pinned deployments that want
 // exactly todays behavior).
-export const STATION_DISABLE_LOGIN_PATH_RESOLVE_ENV =
+const STATION_DISABLE_LOGIN_PATH_RESOLVE_ENV =
   'STATION_DISABLE_LOGIN_PATH_RESOLVE';
 
 function isLoginPathResolveDisabled(): boolean {

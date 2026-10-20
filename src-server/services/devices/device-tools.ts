@@ -56,6 +56,7 @@ import {
   DEVICE_PUSH_PAYLOAD_MAX_BYTES,
 } from '@kontourai/station-contracts/device-tools';
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';
+import { isRecord } from '../../utils/is-record.js';
 import {
   DeviceToolError,
   locateExecutable,
@@ -536,9 +537,6 @@ function parseIosForeground(
 }
 
 // ---- accessibility ------------------------------------------------------
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const numberOr = (value: unknown, fallback: number) =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -1170,7 +1168,7 @@ export class DeviceToolsService {
     assertTarget(target.platform, target.deviceId);
     const { platform, deviceId } = target;
     // Asked once; its SETTLED result — a refusal, a busy host, any error —
-    // is what every later ask gets (review round 3, D1). A latch set before
+    // is what every later ask gets. A latch set before
     // the first ask resolved would hand later commands a pass instead.
     const first = options.beforeRun;
     let decided: Promise<void> | undefined;
