@@ -804,12 +804,20 @@ const result = useShortcut({
 ```
 
 `id` is 1-64 letters, digits, `-` or `_`; Station lists it as
-`plugin.<plugin>.<id>`. The result is `{ ok: true, registryId }` or
-`{ ok: false, reason, message }`, with `reason` one of `'reserved'`,
-`'invalid-id'`, `'invalid-keys'` or `'invalid-when'`. A refused shortcut is not
-registered. The command palette (⌘K), Settings (⌘,) and the shortcut list (⌘/)
-are reserved: Station refuses those chords and never lets a plugin shortcut
-shadow them. Plugin shortcuts run below Station's view-level shortcuts. See
+`plugin.<plugin>.<id>`, with the installed plugin's name percent-encoded. The
+result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
+`reason` one of `'unbound'`, `'reserved'`, `'invalid-id'`, `'invalid-keys'` or
+`'invalid-when'`. A refused shortcut is not registered.
+
+- `'unbound'`: the pane has no installed-plugin identity Station verified.
+  Only an installed plugin's Workspace Pane has one; a project layout's own
+  `plugin` field does not count.
+- `'reserved'`: the command palette (⌘K), Settings (⌘,) and the shortcut list
+  (⌘/), and the text-editing chords ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A (Ctrl off a
+  Mac). Station never lets a plugin shortcut fire on them.
+
+Plugin shortcuts rank below Station's own: a Station shortcut on the same
+chord wins whichever registered first. See
 [plugin shortcuts](../guides/keyboard-shortcuts.md#plugin-shortcuts).
 
 A `when` string is a host context key (`'composerFocused'`,
@@ -819,8 +827,8 @@ names; combine them with `{ not }`, `{ and: [] }` and `{ or: [] }`.
 #### `useShortcutScope(name: string, active = true): void`
 
 Turns on one of your plugin's scopes while mounted and `active`. A scope is
-visible only to your plugin's shortcuts. A host context key or an invalid
-name throws.
+visible only to your plugin's shortcuts. A host context key, an invalid name
+or a pane without a verified plugin identity throws.
 
 ```tsx
 const [editing, setEditing] = useState(false);
@@ -862,19 +870,22 @@ const decision = await host.confirm({ title: 'Delete?', message: 'This cannot be
 - `clipboard.writeText` resolves `true` only for a write the platform
   accepted. Over plain `http://` there is no clipboard, so it resolves `false`.
 - `openExternal` opens `http:` and `https:` URLs in the desktop app's system
-  opener or a new browser tab, so the Station app is never replaced. Any other
-  scheme resolves `false`, and Station shows the user the link to copy. The
-  desktop app's own link policy may also refuse a link.
+  opener or a new browser tab, so the Station app is never replaced. It hands
+  on the parsed, normalised URL. Any other scheme, or a URL with a user name or
+  password, resolves `false`, and Station tells the user. The desktop app's own
+  link policy may also refuse a link.
 - `prompt` shows Station's prompt dialog and resolves the trimmed text, or
   `null` when cancelled. A newer prompt cancels an open one. A prompt the pane
-  outlives also resolves `null`. Empty text cannot be submitted.
+  outlives resolves `null`, and so does a call after the pane has gone. Empty
+  text cannot be submitted.
 - `confirm` shows Station's confirm dialog and resolves `'confirmed'` or
   `'cancelled'`, with the [pane-host contract](../design/pane-host-contract.md)'s
-  semantics.
+  semantics; a call after the pane has gone resolves `'cancelled'`.
 
-Both dialogs are Station's standard modal chrome, drawn by the host rather
-than the plugin. They are not trust or approval prompts, and an in-process
-plugin can draw lookalike dialogs.
+Both dialogs are Station's standard modal chrome with a close button, drawn by
+the host rather than the plugin, and headed "From <plugin>" (or "From an
+unverified layout"). They are not trust or approval prompts, and an
+in-process plugin can draw lookalike dialogs.
 
 #### `useHostFacts(): PaneHostFacts`
 

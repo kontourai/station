@@ -204,6 +204,9 @@ export interface SDKShortcut {
 
 /** Why the host refused a shortcut. */
 export type SDKShortcutRefusalReason =
+  /** This pane has no installed-plugin identity the host verified. */
+  | 'unbound'
+  /** A Station kernel chord or a text-editing chord (copy, paste, …). */
   | 'reserved'
   | 'invalid-id'
   | 'invalid-keys'

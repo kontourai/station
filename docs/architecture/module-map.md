@@ -522,9 +522,11 @@ carries those values. Dispatch checks disabled state, the registered `when`
 expression and modal/input ownership before matching a chord; priority wins,
 then registry order. Browser or OS interception remains outside that matcher.
 Plugins register through the SDK's `useShortcut`, which the
-[SDK shortcut binding](../../src-ui/src/core/sdkShortcutsHost.ts) namespaces as
-`plugin.<owner>.<id>` at priority 0. Dispatch skips a plugin shortcut on a
-[reserved kernel chord](../../src-ui/src/contexts/kernelReservedShortcuts.ts),
+[SDK shortcut binding](../../src-ui/src/core/sdkShortcutsHost.ts) files under
+`plugin.<owner>.<id>` (owner: the verified installed-plugin name,
+percent-encoded; none means refused `unbound`) at priority -1, below Station's
+default 0. Dispatch skips a plugin shortcut on a
+[reserved kernel or text-editing chord](../../src-ui/src/contexts/kernelReservedShortcuts.ts),
 and registration refuses one.
 
 **Caller limits.** The [editor](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx)

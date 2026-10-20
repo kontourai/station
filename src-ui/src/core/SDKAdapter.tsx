@@ -31,7 +31,7 @@ import {
   useSendMessage,
 } from '../hooks/useActiveChatSessions';
 import { copyToClipboard } from '../lib/clipboard';
-import { openExternalLink } from '../platform/openExternalLink';
+import { openPluginExternalLink } from '../platform/openExternalLink';
 import {
   usePaneConfirmChrome,
   usePaneHostFacts,
@@ -178,26 +178,34 @@ export function SDKAdapter({
   const launchChat = useLaunchChat(apiBase);
   const auth = useAuth();
 
+  // The installed plugin this pane belongs to, as the host admitted it. Only
+  // `PluginWorkspacePaneSDKBoundary` passes one; the layout routes
+  // (LayoutView, PersonalBoardView, LayoutWorkspacePane) mount layouts whose
+  // `plugin` field is editable config, so they have no verified identity.
+  const verifiedPlugin = boundPluginName;
+
   // Host services. The dialogs are the shell's own chrome, rendered here
   // beside the plugin: this adapter is mounted exactly while it renders its
   // children, so `active` is constant and unmount settles an open request.
-  const { confirm, confirmChrome } = usePaneConfirmChrome(true);
-  const { prompt, promptChrome } = usePanePromptChrome(true);
+  // They name who asked, so a plugin's dialog cannot pass as Station's.
+  const requester = verifiedPlugin ?? 'an unverified layout';
+  const { confirm, confirmChrome } = usePaneConfirmChrome(
+    true,
+    undefined,
+    requester,
+  );
+  const { prompt, promptChrome } = usePanePromptChrome(true, requester);
   const facts = usePaneHostFacts();
   const sdkHost = useMemo<SDKHost>(
     () => ({
       clipboard: { writeText: copyToClipboard },
-      openExternal: openExternalLink,
+      openExternal: openPluginExternalLink,
       prompt,
       confirm,
     }),
     [prompt, confirm],
   );
-  // Shortcut ids are namespaced by owner only to keep plugins from colliding
-  // with each other and the kernel; this is not request identity.
-  const shortcutOwner =
-    boundPluginName ?? layout?.plugin ?? `layout-${layout?.slug ?? 'unknown'}`;
-  const shortcuts = useSDKShortcutsHost(shortcutOwner);
+  const shortcuts = useSDKShortcutsHost(verifiedPlugin);
 
   // Create SDK context value with injected contexts. The agents, navigation,
   // toast and auth slots are the SDK's published contracts (#2399), so this

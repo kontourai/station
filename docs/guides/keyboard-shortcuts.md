@@ -66,12 +66,15 @@ Plugins register shortcuts with the SDK's `useShortcut`. They join the same
 registry under `plugin.<plugin>.<id>`, so they appear in the shortcut list
 (under **Plugins**) and in Settings, and an active modal suppresses them like
 any other. A plugin cannot replace a Station shortcut through the SDK,
-because no Station id starts with `plugin.`. Plugin shortcuts run at priority 0: Station's
-view-level shortcuts (Close, view Escape) keep their keys, and route-level
-fallbacks yield.
+because no Station id starts with `plugin.`. Plugin shortcuts rank below
+Station's own, so a Station shortcut on the same chord wins whichever
+registered first; only Station's "go up a level" Escape fallback yields to a
+plugin. Only an installed plugin's pane can register shortcuts.
 
 The command palette (⌘K), Settings (⌘,) and the shortcut list (⌘/) are
 reserved, so a user can always get back in control of a misbehaving plugin.
+So are the text-editing chords: ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A, which are Ctrl
+off a Mac.
 Station refuses a plugin chord that equals one of their defaults or their
 current bindings. If you later move a reserved shortcut onto a plugin's chord,
 or move a plugin shortcut onto a reserved one, the plugin's shortcut stops

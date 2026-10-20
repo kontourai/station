@@ -258,8 +258,9 @@ export function useShortcut(shortcut: SDKShortcut): SDKShortcutRegistration {
   const runRef = useRef(shortcut.run);
   runRef.current = shortcut.run;
   const { id, description, when, enabled = true } = shortcut;
-  const { key } = shortcut.keys;
-  const modifiersKey = shortcut.keys.modifiers.join('|');
+  // A malformed `keys` (missing, or without a modifiers array) must reach the
+  // host's validation as-is and come back `invalid-keys`, not throw here.
+  const keysKey = JSON.stringify(shortcut.keys ?? null);
   const whenKey = JSON.stringify(when ?? null);
   // Keyed on content, so an inline `keys`/`when` literal does not re-register
   // on every render.
@@ -268,15 +269,10 @@ export function useShortcut(shortcut: SDKShortcut): SDKShortcutRegistration {
     () => ({
       id,
       description,
-      keys: {
-        key,
-        modifiers: modifiersKey
-          ? (modifiersKey.split('|') as SDKShortcut['keys']['modifiers'])
-          : [],
-      },
+      keys: shortcut.keys,
       ...(when === undefined ? {} : { when }),
     }),
-    [id, description, key, modifiersKey, whenKey],
+    [id, description, keysKey, whenKey],
   );
   const registration = useMemo(() => host.validate(input), [host, input]);
 

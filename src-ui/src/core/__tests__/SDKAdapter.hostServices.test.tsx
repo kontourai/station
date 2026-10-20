@@ -76,9 +76,13 @@ function RegistryProbe() {
 function Shell({
   children,
   pluginName = 'acme-tools',
+  layoutPlugin,
 }: {
   children: ReactNode;
-  pluginName?: string;
+  /** `null` mounts the adapter with no verified plugin identity. */
+  pluginName?: string | null;
+  /** The layout's own (member-editable) `plugin` field. */
+  layoutPlugin?: string;
 }) {
   return (
     <ToastProvider>
@@ -86,8 +90,13 @@ function Shell({
         <KeyboardShortcutsProvider>
           <RegistryProbe />
           <SDKAdapter
-            layout={{ slug: 'acme', name: 'Acme', tabs: [] }}
-            boundPluginName={pluginName}
+            layout={{
+              slug: 'acme',
+              name: 'Acme',
+              tabs: [],
+              ...(layoutPlugin ? { plugin: layoutPlugin } : {}),
+            }}
+            {...(pluginName ? { boundPluginName: pluginName } : {})}
           >
             {children}
           </SDKAdapter>
@@ -145,7 +154,7 @@ describe('useShortcut through the real adapter and registry', () => {
       key: 'j',
       modifiers: ['cmd', 'shift'],
       description: 'Open the Acme picker',
-      priority: 0,
+      priority: -1,
     });
     expect(registry?.getDisplay('plugin.acme-tools.openPicker')).not.toBe('');
 
@@ -219,8 +228,11 @@ describe('useShortcut through the real adapter and registry', () => {
     expect(paletteRun).toHaveBeenCalledTimes(1);
   });
 
-  test('a plugin chord the user later gives a reserved shortcut is skipped at dispatch', () => {
-    const paletteRun = vi.fn();
+  test('a reserved shortcut that declines its key still does not hand it to a plugin', () => {
+    // The palette is rebound onto the plugin's chord and declines (returns
+    // false), so dispatch walks on to the plugin: only the reserved-chord
+    // guard stops it there.
+    const paletteRun = vi.fn(() => false);
     const run = vi.fn();
     function KernelPalette() {
       useKeyboardShortcut(
@@ -251,8 +263,159 @@ describe('useShortcut through the real adapter and registry', () => {
       actions?.setBinding('command-palette', { key: 'j', modifiers: ['cmd'] });
     });
     pressPrimary('j');
-    expect(run).toHaveBeenCalledTimes(1);
     expect(paletteRun).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  test('a Station global wins a shared chord even when the plugin registered first', () => {
+    const stationRun = vi.fn();
+    const pluginRun = vi.fn();
+    function StationGlobal() {
+      useKeyboardShortcut('app.bold', 'b', ['cmd'], 'Station ⌘B', stationRun);
+      return null;
+    }
+    render(
+      <Shell>
+        <PluginShortcut
+          id="bold"
+          keys={{ key: 'b', modifiers: ['cmd'] }}
+          description="Plugin ⌘B"
+          run={pluginRun}
+        />
+        <StationGlobal />
+      </Shell>,
+    );
+    const ids = registryIds();
+    // Precondition: the plugin really is ahead in registration order.
+    expect(ids.indexOf('plugin.acme-tools.bold')).toBeLessThan(
+      ids.indexOf('app.bold'),
+    );
+    pressPrimary('b');
+    expect(stationRun).toHaveBeenCalledTimes(1);
+    expect(pluginRun).not.toHaveBeenCalled();
+  });
+
+  test('without a verified plugin identity, registration is refused unbound', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    render(
+      <Shell pluginName={null} layoutPlugin="acme-tools">
+        <PluginShortcut
+          id="spoof"
+          keys={{ key: 'j', modifiers: ['cmd', 'alt'] }}
+          description="Claims acme-tools"
+          run={() => {}}
+        />
+      </Shell>,
+    );
+    expect(results.spoof).toMatchObject({ ok: false, reason: 'unbound' });
+    expect(registryIds().some((id) => id.startsWith('plugin.'))).toBe(false);
+  });
+
+  test('owner names that differ only by "." and "-" never share a registry id', () => {
+    function Both() {
+      return (
+        <>
+          <SDKAdapter
+            layout={{ slug: 'one', name: 'One', tabs: [] }}
+            boundPluginName="a.b"
+          >
+            <PluginShortcut
+              id="dot"
+              keys={{ key: 'j', modifiers: ['cmd', 'alt'] }}
+              description="a.b"
+              run={() => {}}
+            />
+          </SDKAdapter>
+          <SDKAdapter
+            layout={{ slug: 'two', name: 'Two', tabs: [] }}
+            boundPluginName="a-b"
+          >
+            <PluginShortcut
+              id="dash"
+              keys={{ key: 'j', modifiers: ['cmd', 'shift'] }}
+              description="a-b"
+              run={() => {}}
+            />
+          </SDKAdapter>
+        </>
+      );
+    }
+    render(
+      <ToastProvider>
+        <NavigationProvider>
+          <KeyboardShortcutsProvider>
+            <RegistryProbe />
+            <Both />
+          </KeyboardShortcutsProvider>
+        </NavigationProvider>
+      </ToastProvider>,
+    );
+    const dot = results.dot;
+    const dash = results.dash;
+    expect(dot?.ok && dash?.ok).toBe(true);
+    if (!dot?.ok || !dash?.ok) return;
+    expect(dot.registryId).not.toBe(dash.registryId.replace('.dash', '.dot'));
+    expect(dot.registryId).toBe('plugin.a%2Eb.dot');
+    expect(dash.registryId).toBe('plugin.a-b.dash');
+  });
+
+  test('text-editing chords are reserved', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const chords: Array<[string, Array<'cmd' | 'shift'>]> = [
+      ['c', ['cmd']],
+      ['v', ['cmd']],
+      ['x', ['cmd']],
+      ['z', ['cmd']],
+      ['a', ['cmd']],
+      ['z', ['cmd', 'shift']],
+    ];
+    render(
+      <Shell>
+        {chords.map(([key, modifiers]) => (
+          <PluginShortcut
+            key={`${modifiers.join('+')}+${key}`}
+            id={`edit-${modifiers.join('-')}-${key}`}
+            keys={{ key, modifiers }}
+            description="Editing"
+            run={() => {}}
+          />
+        ))}
+        <PluginShortcut
+          id="control"
+          keys={{ key: 'a', modifiers: ['cmd', 'shift'] }}
+          description="Not an editing chord"
+          run={() => {}}
+        />
+      </Shell>,
+    );
+    for (const [key, modifiers] of chords)
+      expect(results[`edit-${modifiers.join('-')}-${key}`]).toMatchObject({
+        ok: false,
+        reason: 'reserved',
+      });
+    expect(results.control?.ok).toBe(true);
+  });
+
+  test('a malformed keys value is refused invalid-keys instead of throwing', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    render(
+      <Shell>
+        <PluginShortcut
+          id="broken"
+          keys={undefined as unknown as SDKShortcut['keys']}
+          description="Broken"
+          run={() => {}}
+        />
+        <PluginShortcut
+          id="nomods"
+          keys={{ key: 'j' } as unknown as SDKShortcut['keys']}
+          description="No modifiers"
+          run={() => {}}
+        />
+      </Shell>,
+    );
+    expect(results.broken).toMatchObject({ ok: false, reason: 'invalid-keys' });
+    expect(results.nomods).toMatchObject({ ok: false, reason: 'invalid-keys' });
   });
 
   test('a plugin shortcut the user rebinds onto a reserved chord never fires on it', () => {
@@ -448,6 +611,33 @@ describe('useHost through the real adapter', () => {
     );
   });
 
+  test('openExternal hands on the normalised URL and refuses credentials', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(
+      <Shell>
+        <HostProbe />
+      </Shell>,
+    );
+    await expect(
+      host!.openExternal('https://user:secret@example.com/'),
+    ).resolves.toBe(false);
+    expect(open).not.toHaveBeenCalled();
+    expect(
+      toastStore
+        .getSnapshot()
+        .some((toast) => toast.message.includes('user name or password')),
+    ).toBe(true);
+
+    await expect(
+      host!.openExternal('HTTPS://Example.COM/a b?q=1'),
+    ).resolves.toBe(true);
+    expect(open).toHaveBeenCalledWith(
+      'https://example.com/a%20b?q=1',
+      '_blank',
+      'noopener,noreferrer',
+    );
+  });
+
   test('prompt renders the shell dialog and resolves the entered text', async () => {
     render(
       <Shell>
@@ -465,6 +655,11 @@ describe('useHost through the real adapter', () => {
     await screen.findByRole('dialog', { name: 'Rename file' });
     // Modal chrome: the registry's modal guard keys on this attribute.
     expect(document.querySelector('[aria-modal="true"]')).not.toBeNull();
+    // Kernel chrome names who asked, and offers the same close as confirm.
+    expect(screen.getByText('From acme-tools')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Close Rename file' }),
+    ).toBeTruthy();
     const input = screen.getByLabelText('New name') as HTMLInputElement;
     expect(input.value).toBe('notes.md');
     fireEvent.change(input, { target: { value: '  todo.md  ' } });
@@ -511,8 +706,36 @@ describe('useHost through the real adapter', () => {
       decision = host!.confirm({ title: 'Delete branch?', message: 'Gone.' });
     });
     await screen.findByText('Delete branch?');
+    expect(screen.getByText('From acme-tools')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await expect(decision).resolves.toBe('confirmed');
+  });
+
+  test('without a verified plugin the dialogs say so', async () => {
+    render(
+      <Shell pluginName={null} layoutPlugin="station">
+        <HostProbe />
+      </Shell>,
+    );
+    act(() => {
+      void host!.prompt({ title: 'Name it' });
+    });
+    await screen.findByRole('dialog', { name: 'Name it' });
+    expect(screen.getByText('From an unverified layout')).toBeTruthy();
+  });
+
+  test('a host captured before unmount settles prompt and confirm at once', async () => {
+    const view = render(
+      <Shell>
+        <HostProbe />
+      </Shell>,
+    );
+    const captured = host!;
+    view.unmount();
+    await expect(captured.prompt({ title: 'Late' })).resolves.toBeNull();
+    await expect(
+      captured.confirm({ title: 'Late', message: 'Too late' }),
+    ).resolves.toBe('cancelled');
   });
 });
 

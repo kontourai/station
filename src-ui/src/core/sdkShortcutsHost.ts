@@ -18,12 +18,24 @@ const LOCAL_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const MODIFIERS = new Set(['cmd', 'ctrl', 'shift', 'alt']);
 
 /**
- * The owner segment of a plugin shortcut id. Dots would let one owner forge
- * another's prefix (`a.b` + `c` vs `a` + `b.c`), so anything outside a
- * package-name alphabet becomes `-`.
+ * Below every Station shortcut that does not ask to yield: a Station global at
+ * the default priority 0 wins a shared chord whatever the registration order
+ * (children register first, and every binding change re-registers plugins).
+ * Route-level fallbacks (`app.escapeUp`, -100) still yield to a plugin.
+ */
+const PLUGIN_SHORTCUT_PRIORITY = -1;
+
+/**
+ * The owner segment of a plugin shortcut id and scope key, percent-encoded so
+ * distinct owners never share a segment (`a.b` and `a-b` stay apart) and the
+ * segment cannot contain the `.` or `/` separators.
  */
 function ownerSegment(owner: string): string {
-  return owner.replace(/[^A-Za-z0-9@/_-]/g, '-') || 'plugin';
+  return owner.replace(
+    /[^A-Za-z0-9_-]/g,
+    (char) =>
+      `%${char.codePointAt(0)?.toString(16).toUpperCase().padStart(2, '0')}`,
+  );
 }
 
 type Translated = { ok: true; when: ShortcutWhen } | { ok: false; at: string };
@@ -56,21 +68,24 @@ function translateWhen(when: SDKShortcutWhen, owner: string): Translated {
 }
 
 /**
- * The SDK's `shortcuts` slot, bound to one plugin owner. Plugin shortcuts join
+ * The SDK's `shortcuts` slot, bound to one VERIFIED plugin owner: the
+ * installed plugin name the host admitted for this pane. With no verified
+ * owner (a layout mounted without one, whose `plugin` field is editable
+ * config) every registration is refused `unbound` rather than filed under a
+ * name the layout could choose. Plugin shortcuts join
  * the kernel registry (so the shortcut list, Settings and modal suppression
  * treat them like built-ins) under `plugin.<owner>.<id>`, which no kernel id
- * uses, at priority 0: kernel view shortcuts (priority 100) keep their keys,
- * route-level fallbacks (below 0) yield, and reserved kernel chords are
+ * uses, at `PLUGIN_SHORTCUT_PRIORITY`; reserved kernel and editing chords are
  * refused here and skipped by the dispatcher. Undefined outside the shortcut
  * provider, so the SDK reports the slot unavailable.
  */
 export function useSDKShortcutsHost(
-  owner: string,
+  owner: string | undefined,
 ): SDKShortcutsContext | undefined {
   const registry = useOptionalKeyboardShortcuts();
   return useMemo(() => {
     if (!registry) return undefined;
-    const segment = ownerSegment(owner);
+    const segment = owner ? ownerSegment(owner) : null;
 
     const check = (
       shortcut: Omit<SDKShortcut, 'run'>,
@@ -80,6 +95,15 @@ export function useSDKShortcutsHost(
           registration: SDKShortcutRegistration & { ok: true };
           when?: ShortcutWhen;
         } => {
+      if (segment === null)
+        return {
+          registration: {
+            ok: false,
+            reason: 'unbound',
+            message:
+              'Station registers shortcuts only for an installed plugin it has identified; this pane has no verified plugin identity.',
+          },
+        };
       if (typeof shortcut.id !== 'string' || !LOCAL_NAME.test(shortcut.id))
         return {
           registration: {
@@ -125,7 +149,9 @@ export function useSDKShortcutsHost(
           registration: {
             ok: false,
             reason: 'reserved',
-            message: `This chord belongs to Station's "${conflict.id}" shortcut, which plugins cannot override.`,
+            message: conflict.id.startsWith('editing.')
+              ? 'This chord is reserved for text editing (copy, paste, cut, undo, redo, select all).'
+              : `This chord belongs to Station's "${conflict.id}" shortcut, which plugins cannot override.`,
           },
         };
       return {
@@ -148,7 +174,7 @@ export function useSDKShortcutsHost(
           modifiers: [...shortcut.keys.modifiers],
           description: shortcut.description,
           handler: () => shortcut.run(),
-          priority: 0,
+          priority: PLUGIN_SHORTCUT_PRIORITY,
           ...('when' in checked && checked.when !== undefined
             ? { when: checked.when }
             : {}),
@@ -156,6 +182,10 @@ export function useSDKShortcutsHost(
         return registry.register(entry);
       },
       activateScope: (name) => {
+        if (segment === null)
+          throw new Error(
+            'Station activates shortcut scopes only for an installed plugin it has identified.',
+          );
         if (
           !LOCAL_NAME.test(name) ||
           (SHORTCUT_CONTEXT_KEYS as readonly string[]).includes(name)

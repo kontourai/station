@@ -53,14 +53,16 @@ export function displayedExternalLink(url: string): string {
  */
 function reportUnopenedExternalLink(
   url: string,
-  reason: 'host-refused' | 'unsupported-scheme',
+  reason: 'host-refused' | 'unsupported-scheme' | 'credentials',
 ): void {
   pruneRefusalNotices();
   if (liveRefusalNotices.has(url)) return;
   const why =
     reason === 'host-refused'
       ? 'The Station app cannot open this link.'
-      : 'Station only opens web (http or https) links.';
+      : reason === 'credentials'
+        ? 'Station does not open links that carry a user name or password.'
+        : 'Station only opens web (http or https) links.';
   const id = toastStore.show(
     `${why} Copy it to open it yourself: ${displayedExternalLink(url)}`,
     undefined,
@@ -152,4 +154,27 @@ export async function openExternalLink(url: string): Promise<boolean> {
   if (native !== null) return native;
   window.open(url, '_blank', 'noopener,noreferrer');
   return true;
+}
+
+/**
+ * `openExternalLink` for a plugin's request (`useHost().openExternal`): the
+ * same http(s)-only rule and visible refusal, plus two plugin-specific
+ * limits. A URL carrying credentials (`https://user:pass@host`) is refused,
+ * since a plugin could use one to make a lookalike host read as trusted; and
+ * what is handed on is the parsed, normalised `href`, so the opener sees the
+ * URL the scheme check actually judged.
+ */
+export async function openPluginExternalLink(url: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return openExternalLink(url);
+  }
+  if (!isWebUrl(parsed.href)) return openExternalLink(url);
+  if (parsed.username || parsed.password) {
+    reportUnopenedExternalLink(url, 'credentials');
+    return false;
+  }
+  return openExternalLink(parsed.href);
 }

@@ -23,3 +23,21 @@ export const KERNEL_RESERVED_SHORTCUTS = {
     binding: { key: string; modifiers: readonly ShortcutModifier[] };
   }
 >;
+
+/**
+ * Text-editing chords no plugin may bind: copy, paste, cut, undo, redo and
+ * select all belong to whatever field has focus. `cmd` is Control off a Mac,
+ * so these also cover the Ctrl spellings there. Not registered shortcuts, so
+ * they have no live binding to follow.
+ */
+export const EDITING_RESERVED_CHORDS = [
+  { id: 'editing.copy', binding: { key: 'c', modifiers: ['cmd'] } },
+  { id: 'editing.paste', binding: { key: 'v', modifiers: ['cmd'] } },
+  { id: 'editing.cut', binding: { key: 'x', modifiers: ['cmd'] } },
+  { id: 'editing.undo', binding: { key: 'z', modifiers: ['cmd'] } },
+  { id: 'editing.redo', binding: { key: 'z', modifiers: ['cmd', 'shift'] } },
+  { id: 'editing.selectAll', binding: { key: 'a', modifiers: ['cmd'] } },
+] as const satisfies readonly {
+  id: string;
+  binding: { key: string; modifiers: readonly ShortcutModifier[] };
+}[];

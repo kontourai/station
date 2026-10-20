@@ -5,16 +5,22 @@ import type {
   WorkspacePaneHostContract,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import {
+  type PointerEvent,
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
+import { Button } from '../components/Button';
+import { Dialog } from '../components/Dialog';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
-import { PromptModal } from '../components/modals/PromptModal';
+import '../components/modals/PromptModal.css';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { isComposingKeyEvent } from '../lib/isComposingKeyEvent';
 
 /**
  * The two contract members whose implementation is the SHELL's own chrome and
@@ -68,23 +74,36 @@ export function usePaneConfirmChrome(
    * true for an in-process pane: it has no document of its own to replace.
    */
   generation?: number,
+  /**
+   * Who asked, shown as the dialog's eyebrow ("From <requester>") so a
+   * plugin's question cannot pass as Station's own. Omitted where the
+   * transport already names the plugin (the frame prefixes the title).
+   */
+  requester?: string,
 ): PaneConfirmChrome {
   const [confirmRequest, setConfirmRequest] =
     useState<PaneConfirmRequest | null>(null);
   const confirmResolveRef = useRef<
     ((decision: PaneConfirmDecision) => void) | null
   >(null);
+  const live = usePlacementLiveness(active);
 
   const confirm = useCallback(
     (request: PaneConfirmRequest) =>
       new Promise<PaneConfirmDecision>((resolve) => {
+        // A host captured before the placement went away answers at once:
+        // nothing can show this dialog any more.
+        if (!live.current) {
+          resolve('cancelled');
+          return;
+        }
         // A superseded request settles rather than dangles. This also bounds
         // the chrome to ONE dialog: a pane cannot stack modals on the user.
         confirmResolveRef.current?.('cancelled');
         confirmResolveRef.current = resolve;
         setConfirmRequest(request);
       }),
-    [],
+    [live],
   );
 
   const settleConfirm = useCallback((decision: PaneConfirmDecision) => {
@@ -145,12 +164,29 @@ export function usePaneConfirmChrome(
       isOpen={confirmRequest !== null}
       title={confirmRequest?.title ?? ''}
       message={confirmRequest?.message ?? ''}
+      {...(requester ? { eyebrow: `From ${requester}` } : {})}
       onConfirm={() => settleConfirm('confirmed')}
       onCancel={() => settleConfirm('cancelled')}
     />
   );
 
   return { confirm, confirmChrome };
+}
+
+/**
+ * Whether the placement can still show a dialog: true while mounted and
+ * `active`. A request made through a host captured earlier reads this and
+ * settles at once instead of opening a dialog nothing will render.
+ */
+function usePlacementLiveness(active: boolean) {
+  const live = useRef(active);
+  useEffect(() => {
+    live.current = active;
+    return () => {
+      live.current = false;
+    };
+  }, [active]);
+  return live;
 }
 
 /** A prompt request: plain data, so the shell renders all of the dialog. */
@@ -167,28 +203,119 @@ interface PanePromptChrome {
   promptChrome: ReactNode;
 }
 
+function stopAtPortal(event: PointerEvent) {
+  event.stopPropagation();
+}
+
+/**
+ * The prompt dialog, on the same `Dialog` chrome as the confirm dialog: the
+ * requester eyebrow, a close button, Escape and backdrop dismissal.
+ */
+function HostPromptDialog({
+  request,
+  requester,
+  onSubmit,
+  onCancel,
+}: {
+  request: PanePromptRequest;
+  requester?: string;
+  onSubmit: (value: string) => void;
+  onCancel: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
+  const [value, setValue] = useState(request.initial ?? '');
+  useEffect(() => {
+    // Rename-friendly: select the basename, as the shell's PromptModal does.
+    const input = inputRef.current;
+    if (!input) return;
+    const dot = input.value.lastIndexOf('.');
+    input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
+  }, []);
+  const trimmed = value.trim();
+  const submit = () => {
+    if (trimmed) onSubmit(trimmed);
+  };
+  return createPortal(
+    <div className="confirm-modal-portal" onPointerDown={stopAtPortal}>
+      <Dialog
+        title={request.title}
+        {...(requester ? { eyebrow: `From ${requester}` } : {})}
+        closeLabel={`Close ${request.title}`}
+        onClose={onCancel}
+        size="sm"
+        initialFocusRef={inputRef}
+        initialFocusPolicy="always"
+        historyMode="none"
+        footer={
+          <>
+            <Button variant="secondary" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={submit} disabled={!trimmed}>
+              OK
+            </Button>
+          </>
+        }
+      >
+        {request.label ? (
+          <label className="prompt-modal__label" htmlFor={inputId}>
+            {request.label}
+          </label>
+        ) : null}
+        <input
+          ref={inputRef}
+          id={inputId}
+          className="prompt-modal__input"
+          type="text"
+          {...(request.label ? {} : { 'aria-label': request.title })}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !isComposingKeyEvent(event)) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+        />
+      </Dialog>
+    </div>,
+    document.body,
+  );
+}
+
 /**
  * The shell's one prompt dialog, the text-input sibling of
  * `usePaneConfirmChrome` with the same lifetime rules: one dialog at a time
- * (a newer request settles the older `null`), and a request settles `null`
- * when the placement deactivates or unmounts. Only the plugin SDK's
- * `useHost().prompt` uses it today; it is not yet a pane-host contract member,
- * so the frame transport has no prompt message.
+ * (a newer request settles the older `null`), a request settles `null` when
+ * the placement deactivates or unmounts, and a request made after that
+ * settles `null` at once. Only the plugin SDK's `useHost().prompt` uses it
+ * today; it is not yet a pane-host contract member, so the frame transport
+ * has no prompt message.
  */
-export function usePanePromptChrome(active: boolean): PanePromptChrome {
+export function usePanePromptChrome(
+  active: boolean,
+  /** Shown as "From <requester>"; see `usePaneConfirmChrome`. */
+  requester?: string,
+): PanePromptChrome {
   const [promptRequest, setPromptRequest] = useState<PanePromptRequest | null>(
     null,
   );
   const resolveRef = useRef<((value: string | null) => void) | null>(null);
+  const live = usePlacementLiveness(active);
 
   const prompt = useCallback(
     (request: PanePromptRequest) =>
       new Promise<string | null>((resolve) => {
+        if (!live.current) {
+          resolve(null);
+          return;
+        }
         resolveRef.current?.(null);
         resolveRef.current = resolve;
         setPromptRequest(request);
       }),
-    [],
+    [live],
   );
 
   const settle = useCallback((value: string | null) => {
@@ -212,17 +339,16 @@ export function usePanePromptChrome(active: boolean): PanePromptChrome {
     [],
   );
 
-  const promptChrome = (
-    <PromptModal
-      isOpen={promptRequest !== null}
-      title={promptRequest?.title ?? ''}
-      label={promptRequest?.label}
-      initialValue={promptRequest?.initial ?? ''}
-      confirmLabel="OK"
-      onConfirm={(value) => settle(value)}
+  const promptChrome = promptRequest ? (
+    <HostPromptDialog
+      // A superseding request starts a fresh input.
+      key={JSON.stringify(promptRequest)}
+      request={promptRequest}
+      {...(requester ? { requester } : {})}
+      onSubmit={(value) => settle(value)}
       onCancel={() => settle(null)}
     />
-  );
+  ) : null;
 
   return { prompt, promptChrome };
 }

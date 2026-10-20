@@ -18,7 +18,10 @@ import {
   writeShortcutOverrides,
   writeSkillShortcuts,
 } from '../settings/shortcutPreferences';
-import { KERNEL_RESERVED_SHORTCUTS } from './kernelReservedShortcuts';
+import {
+  EDITING_RESERVED_CHORDS,
+  KERNEL_RESERVED_SHORTCUTS,
+} from './kernelReservedShortcuts';
 
 export interface KeyboardShortcut {
   id: string;
@@ -451,7 +454,10 @@ export function KeyboardShortcutsProvider({
   /** Signatures of every reserved chord: defaults plus live resolved bindings. */
   const reservedChords = useCallback(() => {
     const chords = new Map<string, string>();
-    for (const entry of Object.values(KERNEL_RESERVED_SHORTCUTS))
+    for (const entry of [
+      ...Object.values(KERNEL_RESERVED_SHORTCUTS),
+      ...EDITING_RESERVED_CHORDS,
+    ])
       chords.set(effectiveChordSignature(entry.binding), entry.id);
     for (const id of RESERVED_SHORTCUT_IDS) {
       const registered = shortcutsRef.current.get(id);

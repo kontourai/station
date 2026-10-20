@@ -42,7 +42,7 @@ describe('station dev SDK mock host services', () => {
     expect(open).not.toHaveBeenCalled();
     await expect(host.openExternal('https://example.com')).resolves.toBe(true);
     expect(open).toHaveBeenCalledWith(
-      'https://example.com',
+      'https://example.com/',
       '_blank',
       'noopener,noreferrer',
     );
@@ -97,6 +97,110 @@ describe('station dev SDK mock host services', () => {
       fireEvent.keyDown(win, { key: 'k', metaKey: isMac, ctrlKey: !isMac });
     });
     expect(refusedRun).not.toHaveBeenCalled();
+  });
+
+  test('openExternal refuses credentials and opens the normalised URL', async () => {
+    const open = vi.spyOn(win, 'open').mockImplementation(() => null);
+    const host = mock.useHost();
+    await expect(
+      host.openExternal('https://user:secret@example.com/'),
+    ).resolves.toBe(false);
+    expect(open).not.toHaveBeenCalled();
+    await expect(host.openExternal('HTTPS://Example.COM/a b')).resolves.toBe(
+      true,
+    );
+    expect(open).toHaveBeenCalledWith(
+      'https://example.com/a%20b',
+      '_blank',
+      'noopener,noreferrer',
+    );
+  });
+
+  test('applies the same registration refusals as Station', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const register = (shortcut: Record<string, unknown>) =>
+      renderHook(() =>
+        mock.useShortcut({ description: 'x', run: () => {}, ...shortcut }),
+      ).result.current;
+    expect(
+      register({ id: 'copy', keys: { key: 'c', modifiers: ['cmd'] } }),
+    ).toMatchObject({ ok: false, reason: 'reserved' });
+    expect(
+      register({ id: 'redo', keys: { key: 'z', modifiers: ['cmd', 'shift'] } }),
+    ).toMatchObject({ ok: false, reason: 'reserved' });
+    expect(
+      register({ id: 'odd', keys: { key: 'j', modifiers: ['meta'] } }),
+    ).toMatchObject({ ok: false, reason: 'invalid-keys' });
+    expect(
+      register({ id: 'dup', keys: { key: 'j', modifiers: ['cmd', 'cmd'] } }),
+    ).toMatchObject({ ok: false, reason: 'invalid-keys' });
+    expect(register({ id: 'nokeys' })).toMatchObject({
+      ok: false,
+      reason: 'invalid-keys',
+    });
+    expect(
+      register({
+        id: 'badwhen',
+        keys: { key: 'j', modifiers: ['alt'] },
+        when: 'not a scope!',
+      }),
+    ).toMatchObject({ ok: false, reason: 'invalid-when' });
+    expect(() =>
+      renderHook(() => mock.useShortcutScope('composerFocused')),
+    ).toThrow();
+  });
+
+  test('honours when/scopes, modals and the text-field guard at dispatch', () => {
+    const scoped = vi.fn();
+    const bare = vi.fn();
+    function Harness({ active }: { active: boolean }) {
+      mock.useShortcutScope('editor', active);
+      mock.useShortcut({
+        id: 'save',
+        keys: { key: 's', modifiers: ['alt'] },
+        description: 'Save',
+        when: 'editor',
+        run: scoped,
+      });
+      mock.useShortcut({
+        id: 'next',
+        keys: { key: 'n', modifiers: [] },
+        description: 'Next',
+        run: bare,
+      });
+      return null;
+    }
+    const view = renderHook(({ active }) => Harness({ active }), {
+      initialProps: { active: false },
+    });
+    const pressSave = () =>
+      act(() => {
+        fireEvent.keyDown(win, { key: 's', altKey: true });
+      });
+    pressSave();
+    expect(scoped).not.toHaveBeenCalled();
+    view.rerender({ active: true });
+    pressSave();
+    expect(scoped).toHaveBeenCalledTimes(1);
+
+    const field = win.document.createElement('textarea');
+    win.document.body.append(field);
+    act(() => {
+      fireEvent.keyDown(field, { key: 'n' });
+    });
+    expect(bare).not.toHaveBeenCalled();
+    act(() => {
+      fireEvent.keyDown(win.document.body, { key: 'n' });
+    });
+    expect(bare).toHaveBeenCalledTimes(1);
+    field.remove();
+
+    const modal = win.document.createElement('div');
+    modal.setAttribute('aria-modal', 'true');
+    win.document.body.append(modal);
+    pressSave();
+    modal.remove();
+    expect(scoped).toHaveBeenCalledTimes(1);
   });
 
   test('useHostFacts reports the device facts shape', () => {
