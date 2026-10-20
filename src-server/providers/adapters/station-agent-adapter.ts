@@ -96,8 +96,8 @@ import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 const PROVIDER = 'station-agent' as const;
 
 /**
- * archive#1207 (review HIGH 2, the actual production trigger under
- * `managed-chat-orchestration`): how long `consumeChatStream`'s bridge from
+ * archive#1207 (the production trigger is managed chat, which runs through
+ * orchestration): how long `consumeChatStream`'s bridge from
  * the inner `/chat` SSE response onto the orchestration event bus may go
  * completely silent before it is treated as dead. Without this, a silent
  * stall on the inner stream (server crash, dropped connection, no error
