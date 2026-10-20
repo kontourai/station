@@ -71,12 +71,15 @@ export function findUnaccountedCodexConfig(
       .map((path) => resolve(path)),
   );
   const pairs: [string, string | undefined][] = [
-    [resolve(cwd), options.root ? resolve(options.root) : undefined],
+    [
+      resolve(cwd),
+      options.root ? lexicalRoot(resolve(cwd), options.root) : undefined,
+    ],
   ];
   try {
     const real: [string, string | undefined] = [
-      realpathSync(cwd),
-      options.root ? realpathSync(options.root) : undefined,
+      realpathSync.native(cwd),
+      options.root ? realpathSync.native(options.root) : undefined,
     ];
     if (real[0] !== pairs[0]![0] || real[1] !== pairs[0]![1]) pairs.push(real);
   } catch {
@@ -87,6 +90,30 @@ export function findUnaccountedCodexConfig(
     if (found) return found;
   }
   return undefined;
+}
+
+/**
+ * The root as the lexical cwd spells it: the server stamps the canonical
+ * directory, which a cwd reached through a symlink or another case does not
+ * lexically contain. The nearest ancestor of the cwd that resolves to the
+ * root, else the root itself (and the cwd then lies outside it).
+ */
+function lexicalRoot(cwd: string, root: string): string {
+  const canonical = (() => {
+    try {
+      return realpathSync.native(root);
+    } catch {
+      return resolve(root);
+    }
+  })();
+  for (const dir of ancestors(cwd)) {
+    try {
+      if (realpathSync.native(dir) === canonical) return dir;
+    } catch {
+      // A missing ancestor resolves to nothing.
+    }
+  }
+  return resolve(root);
 }
 
 const MAX_CONFIG_FILES = 256;

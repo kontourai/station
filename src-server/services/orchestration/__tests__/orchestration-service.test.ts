@@ -1053,7 +1053,7 @@ describe('OrchestrationService', () => {
       });
       expect(
         service.firstStartedMetadataOfThread('rooted-session'),
-      ).toMatchObject({ confinementRoot: projectRoot });
+      ).toMatchObject({ confinementRoot: realpathSync.native(projectRoot) });
       // A start naming no Project (a station-control dispatch to a plain
       // folder, say) still belongs to the deepest Project around its cwd.
       await started('slugless-session', {
@@ -1062,7 +1062,28 @@ describe('OrchestrationService', () => {
       });
       expect(
         service.firstStartedMetadataOfThread('slugless-session'),
-      ).toMatchObject({ confinementRoot: projectRoot });
+      ).toMatchObject({ confinementRoot: realpathSync.native(projectRoot) });
+      // Compared and stamped canonically: a Project configured through a
+      // symlink still contains the cwd (round 6 of the #3962 review).
+      const linkHome = mkdtempSync(join(tmpdir(), 'orchestration-link-'));
+      const linked = join(linkHome, 'P');
+      symlinkSync(projectRoot, linked);
+      configuredProjects.push({
+        slug: 'linked',
+        workingDirectory: linked,
+        id: 'project-linked-id',
+      });
+      // Named, the start itself refuses a cwd the link does not lexically
+      // contain; unnamed, the Project around the cwd is found canonically.
+      configuredProjects.splice(
+        configuredProjects.findIndex((project) => project.slug === 'rooted'),
+        1,
+      );
+      await started('linked-session', { userId: 'human:test:alice' });
+      expect(
+        service.firstStartedMetadataOfThread('linked-session'),
+      ).toMatchObject({ confinementRoot: realpathSync.native(projectRoot) });
+      rmSync(linkHome, { recursive: true, force: true });
     });
 
     test('S2: only a session that predates the stamp gets the slug-lookup fallback', async () => {

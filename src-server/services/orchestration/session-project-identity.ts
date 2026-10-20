@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { expandTilde } from '../../utils/paths.js';
 
@@ -54,8 +55,11 @@ function isWithin(root: string, path: string): boolean {
  *   `host` is ever checked, and such a session is never the operator's own,
  *   so nothing there is trusted.
  *
- * Paths (stored with a literal `~`) are expanded, resolved and compared
- * lexically, as Project containment is everywhere else.
+ * Paths are compared canonically (`canonicalDirectory`), and the root is
+ * returned canonical: an adopted place is already canonical, and a lexical
+ * comparison let a Project configured through a symlink or in another case
+ * miss it, leaving the place as its own root (round 6 of the #3962
+ * review).
  */
 export function sessionConfinementRoot(
   cwd: string | undefined,
@@ -66,12 +70,12 @@ export function sessionConfinementRoot(
   } = {},
 ): string {
   if (cwd === undefined) return '';
-  const target = resolve(expandTilde(cwd));
+  const target = canonicalDirectory(cwd);
   const roots = projects
     .map((project) => ({
       slug: project.slug,
       root: project.workingDirectory
-        ? resolve(expandTilde(project.workingDirectory))
+        ? canonicalDirectory(resolve(expandTilde(project.workingDirectory)))
         : undefined,
     }))
     .filter(
@@ -84,8 +88,24 @@ export function sessionConfinementRoot(
   if (deepest) return deepest.root;
   if (
     options.admittedCwd !== undefined &&
-    resolve(expandTilde(options.admittedCwd)) === target
+    canonicalDirectory(options.admittedCwd) === target
   )
     return target;
   return '';
+}
+
+/**
+ * A stored path (literal `~` allowed) as the filesystem spells it: symlinks
+ * resolved and, on a case-insensitive volume, in its on-disk case
+ * (`realpathSync.native`), so a Project configured through a link or in
+ * another case still contains the folders inside it. A path that does not
+ * exist is only resolved.
+ */
+function canonicalDirectory(path: string): string {
+  const resolved = resolve(expandTilde(path));
+  try {
+    return realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
 }

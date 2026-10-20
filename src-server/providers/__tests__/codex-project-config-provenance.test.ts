@@ -8,6 +8,7 @@ import {
   appendFileSync,
   chmodSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   realpathSync,
   rmSync,
@@ -17,6 +18,12 @@ import {
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { ConfinementRefusedError } from '../../security/confinement/confinement-provider.js';
+import {
+  SESSION_CONFINEMENT_ROOT_METADATA_KEY,
+  sessionConfinementRoot,
+} from '../../services/orchestration/session-project-identity.js';
+import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { findUnaccountedCodexConfig } from '../adapters/codex-project-config-provenance.js';
 
 const makeTempDir = trackTempDirs();
@@ -291,5 +298,127 @@ describe('findUnaccountedCodexConfig (#3800)', () => {
       }),
     ).toBeUndefined();
     expect(check(home, home)).toBe(join(home, '.codex'));
+  });
+});
+
+/**
+ * Round 6 of the #3962 review: the root the server stamps is compared and
+ * returned canonically. An adopted place is canonical; a Project configured
+ * through a symlink or in another case must still contain it, or the place
+ * becomes its own root and a repository planted there anchors itself.
+ */
+describe('a canonical confinement root (#3800)', () => {
+  /** A Project folder with a self-anchoring repository planted at `D`. */
+  function plantedProject(): { real: string; planted: string } {
+    const real = realpathSync(makeTempDir('codex-canonical-project-'));
+    const planted = join(real, 'D');
+    mkdirSync(join(planted, '.codex'), { recursive: true });
+    writeFileSync(join(planted, '.codex', 'config.toml'), '[mcp_servers.x]\n');
+    commitAll(planted);
+    return { real, planted };
+  }
+
+  test.each(['an ordinary start', 'an adoption'] as const)(
+    'a Project configured through a symlink still roots %s at the Project',
+    (kind) => {
+      const { real, planted } = plantedProject();
+      const link = join(
+        realpathSync(makeTempDir('codex-canonical-link-')),
+        'P',
+      );
+      symlinkSync(real, link);
+      const root = sessionConfinementRoot(
+        planted,
+        [{ slug: 'p', workingDirectory: link }],
+        kind === 'an adoption'
+          ? { projectSlug: 'p', admittedCwd: planted }
+          : {},
+      );
+      expect(root).toBe(real);
+      expect(findUnaccountedCodexConfig(planted, { root })).toBe(
+        join(planted, '.codex'),
+      );
+    },
+  );
+
+  const caseInsensitive = (() => {
+    const probe = realpathSync(makeTempDir('codex-case-probe-'));
+    return existsSync(probe.toUpperCase());
+  })();
+  if (!caseInsensitive)
+    console.warn(
+      'SKIPPED (#3800): the temp volume is case-sensitive; the case-variant Project probe did not run.',
+    );
+
+  test
+    .skipIf(!caseInsensitive)
+    .each(['an ordinary start', 'an adoption'] as const)(
+    'a Project configured in another case still roots %s at the Project',
+    (kind) => {
+      const { real, planted } = plantedProject();
+      const variant = real.toUpperCase();
+      expect(variant).not.toBe(real);
+      const root = sessionConfinementRoot(
+        planted,
+        [{ slug: 'p', workingDirectory: variant }],
+        kind === 'an adoption'
+          ? { projectSlug: 'p', admittedCwd: planted }
+          : {},
+      );
+      expect(root).toBe(real);
+      expect(findUnaccountedCodexConfig(planted, { root })).toBe(
+        join(planted, '.codex'),
+      );
+    },
+  );
+
+  test('a cwd reached through a symlink to the Project is judged from the Project', () => {
+    const { root, pkg } = repository();
+    const link = join(realpathSync(makeTempDir('codex-canonical-cwd-')), 'L');
+    symlinkSync(root, link);
+    const linkedPkg = join(link, 'sub', 'pkg');
+    expect(findUnaccountedCodexConfig(linkedPkg, { root })).toBeUndefined();
+    expect(findUnaccountedCodexConfig(pkg, { root })).toBeUndefined();
+  });
+});
+
+/**
+ * The adapter, not only the check: an empty stamp (a folder outside every
+ * Project) must reach `findUnaccountedCodexConfig` as no root at all, never
+ * as the cwd, or a repository planted at the cwd anchors itself.
+ */
+describe('the Codex adapter with an empty confinement root (#3800)', () => {
+  test('a self-anchoring repository at the cwd is refused before Codex is spawned', async () => {
+    const dir = realpathSync(makeTempDir('codex-empty-root-'));
+    mkdirSync(join(dir, '.codex'));
+    writeFileSync(join(dir, '.codex', 'config.toml'), '[mcp_servers.x]\n');
+    commitAll(dir);
+    // Anchored at itself, the repository would be trusted.
+    expect(findUnaccountedCodexConfig(dir, { root: dir })).toBeUndefined();
+    let spawned = false;
+    const adapter = new CodexAdapter({
+      processFactory: () => {
+        spawned = true;
+        throw new Error('spawned');
+      },
+    });
+    const outcome = await adapter
+      .startSession({
+        provider: 'codex',
+        threadId: 'empty-root',
+        cwd: dir,
+        confinement: 'workspace',
+        metadata: { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: '' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(spawned).toBe(false);
+    expect(outcome).toBeInstanceOf(ConfinementRefusedError);
+    expect((outcome as ConfinementRefusedError).code).toBe(
+      'confinement_workspace_incompatible',
+    );
+    await adapter.stopAll();
   });
 });
