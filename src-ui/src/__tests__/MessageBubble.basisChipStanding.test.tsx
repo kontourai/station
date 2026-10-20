@@ -245,6 +245,39 @@ describe('answer Basis chip standing', () => {
     }
   });
 
+  it('a fling past fifty answers keeps at most one viewport of reads in flight', async () => {
+    // Reads that never answer on their own: each settles only when aborted,
+    // so whatever is still in flight after the fling was never cancelled.
+    const inFlight = new Set<number>();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const n = Number(/turns\/turn-(\d+)\/basis/.exec(String(input))![1]);
+        reads.push(n);
+        inFlight.add(n);
+        return new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            inFlight.delete(n);
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        });
+      }),
+    );
+    renderTranscript();
+    await chipsMounted();
+
+    for (let first = 0; first <= ANSWERS - VIEWPORT; first += VIEWPORT)
+      await scrollTo(first);
+
+    // Each answer that passed through the viewport started one read, and
+    // every one that left it was cancelled: only the last viewport remains.
+    await waitFor(() =>
+      expect([...inFlight].sort((a, b) => a - b)).toEqual([45, 46, 47, 48, 49]),
+    );
+    expect(reads).toHaveLength(ANSWERS);
+    expect(new Set(reads).size).toBe(ANSWERS);
+  });
+
   it('shows Surface’s label only for a notable standing; an unassessed one stays plain', async () => {
     renderTranscript();
     await chipsMounted();
