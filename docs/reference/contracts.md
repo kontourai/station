@@ -180,9 +180,18 @@ queued follow-ups on it until a turn starts or the user sends one.
 
 `ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
 not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
-`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). The
-chat banner reads it through the Session API's
+`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). Its
+`autoResumeChoice` (`resume` or `hold`) is the person's choice for that one
+stop, which decides `autoResume` in place of the setting. The chat banner
+reads it through the Session API's
 [usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+
+`@kontourai/station-contracts/agent-schedule` owns what an agent schedules
+for itself and what it only proposes: `AgentWakeUp`, `AgentJobProposal`,
+`ConversationAgentSchedule`, their bounds (`AGENT_WAKE_UP_MAX_HORIZON_MS`,
+`AGENT_WAKE_UP_MIN_DELAY_MS`, `AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION`,
+`AGENT_WAKE_UP_NOTE_MAX_CHARS`, `AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION`)
+and `jobMatchesProposal`, the comparison the scheduler's approval uses.
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It

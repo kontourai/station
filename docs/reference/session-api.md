@@ -1309,11 +1309,13 @@ aggregate `turn.completed.outputText` where appropriate.
 
 When a Claude Code or Codex turn stops on a provider usage limit, Station
 records a recovery intent for the Session (see `ConnectionRecoveryProjection`
-in [contracts](contracts.md)). Three routes serve the chat banner:
+in [contracts](contracts.md)). These routes serve the chat banner:
 
 - `GET /sessions/:threadId/usage-limit` answers `{ recovery }`: the Session's
   latest recovery projection when it came from a usage limit, with `autoResume`
-  (the current `usageLimitAutoResume` setting) while the stop waits, or `null`.
+  (whether it will resume on its own at the reset) while the stop waits, or
+  `null`. `autoResume` is the `usageLimitAutoResume` setting unless the person
+  chose for this stop (`autoResumeChoice`, below).
   It carries no event list and sits at the Session read tier.
 - `POST /sessions/:threadId/usage-limit/resume` ("Resume now") starts sending
   the stopped turn again at once, whatever the setting and before the reset. It
@@ -1329,12 +1331,21 @@ in [contracts](contracts.md)). Three routes serve the chat banner:
   a waiting stop unsent with `outcomeReason: "user-canceled"`. That retires the
   whole stop, so Resume now is no longer offered for it either; the user sends
   a message to continue.
+- `POST /sessions/:threadId/usage-limit/resume-at-reset` ("Resume at
+  <reset>") and `POST /sessions/:threadId/usage-limit/hold` ("Don't resume")
+  decide a stop still waiting for a known reset, for that stop alone, in place
+  of the setting: the projection then carries `autoResumeChoice` (`resume` or
+  `hold`) and the matching `autoResume`. Nothing is sent now, the choice
+  survives a restart, and every pre-dispatch check still applies at the reset.
+  A held stop keeps Resume now. Either answers `not-waiting` for a stop with
+  no known reset or one no longer waiting.
 
-Both POSTs answer `{ result, recovery }`: `result.kind` is `resumed` (the
+Every POST answers `{ result, recovery }`: `result.kind` is `resumed` (the
 dispatch started; whether the provider accepts it shows later in `recovery`,
 which can still read `failed` if the dispatch is rejected), `failed` (it could
 not be dispatched at all, for example its attachment bytes are gone), `canceled`, `retired`
-(with `reason`) or `not-waiting` (nothing was left to act on), and `recovery`
+(with `reason`), `chosen` (with `choice`) or `not-waiting` (nothing was left
+to act on), and `recovery`
 is the projection afterward.
 
 They need the operate scope and the Session's own person, which is the same
