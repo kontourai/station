@@ -24,8 +24,6 @@
 
     "Dockerfile",
 
-    "monitoring/docker-compose.yml",
-
     "ops/dogfood/install-macos.zsh",
 
     "ops/dogfood/io.kontourai.station-dogfood.plist.template",
