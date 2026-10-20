@@ -89,6 +89,8 @@ const server = http.createServer((req, res) => {
         pid: process.pid,
         entry: process.argv[1],
         inheritedBirth: process.env.STATION_SUPERVISOR_BIRTH ?? null,
+        inheritedForceCatching:
+          process.env.STATION_SUPERVISOR_TEST_FORCE_CATCHING ?? null,
         adoptedConnections,
       }),
     );

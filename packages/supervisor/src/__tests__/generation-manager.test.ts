@@ -24,6 +24,8 @@ type CatcherFactory = NonNullable<
 const SPARE_ANSWER_TIMEOUT_MS = 2_000;
 const CATCH_QUIET_MS = 50;
 const CATCH_QUIET_CAP_MS = 1_000;
+const HOLD_LIMIT_PER_LISTENER = 511;
+const HOLD_DEADLINE_MS = 60_000;
 
 const clock: Clock = {
   now: () => Date.now(),
@@ -55,6 +57,8 @@ type Behavior = {
   reportsListening?: boolean;
   /** On promote, report its listeners listening but never `ready`. */
   listenWithoutReady?: boolean;
+  /** With listenWithoutReady: exit(1) this long after reporting listening. */
+  exitAfterListeningMs?: number;
 };
 
 class FakeGeneration implements GenerationProcess {
@@ -125,6 +129,8 @@ class FakeGeneration implements GenerationProcess {
         for (const name of message.listeners) {
           this.emit({ type: 'listener.listening', name });
         }
+        const after = this.behavior.exitAfterListeningMs;
+        if (after !== undefined) setTimeout(() => this.exit(1, null), after);
       });
     }
     if (message.type === 'promote' && this.behavior.ready !== false) {
@@ -822,7 +828,10 @@ describe('GenerationManager', () => {
       handle: ListenerHandle;
       held: FakeConnection[];
       closed: boolean;
+      stopped: boolean;
       lastCaughtAt: number;
+      /** Accepts one more connection, as a real catcher would. */
+      catchOne(): void;
     }
     /**
      * Each catcher holds one connection; `log` records when one listens.
@@ -830,13 +839,19 @@ describe('GenerationManager', () => {
      */
     function catching(log: () => string[], caughtAt?: () => number) {
       const catchers: FakeCatcher[] = [];
-      const createCatcher: CatcherFactory = (name, handle) => {
+      const createCatcher: CatcherFactory = (name, handle, now, onCatch) => {
         const entry: FakeCatcher = {
           name,
           handle,
           held: [new FakeConnection()],
           closed: false,
+          stopped: false,
           lastCaughtAt: caughtAt?.() ?? 0,
+          catchOne() {
+            entry.held.push(new FakeConnection());
+            entry.lastCaughtAt = now();
+            onCatch();
+          },
         };
         catchers.push(entry);
         log().push(`catcher ${name}`);
@@ -845,7 +860,14 @@ describe('GenerationManager', () => {
           get lastCaughtAt() {
             return entry.lastCaughtAt;
           },
+          get heldCount() {
+            return entry.held.filter((c) => !c.destroyed).length;
+          },
+          stop: () => {
+            entry.stopped = true;
+          },
           close: () => {
+            entry.stopped = true;
             entry.closed = true;
             log().push(`catcher ${name} closed`);
             return entry.held;
@@ -863,16 +885,21 @@ describe('GenerationManager', () => {
       caughtAt?: () => number,
     ) {
       let logRef: string[] = [];
+      /** What the manager logs. */
+      const lines: string[] = [];
       const { catchers, extra } = catching(() => logRef, caughtAt);
       const harness = setup(
         (generation, entry) => ({
           adoptsConnections: true,
           ...behaviorFor(generation, entry),
         }),
-        catchConnections ? extra : {},
+        {
+          ...(catchConnections ? extra : {}),
+          log: (line) => lines.push(line),
+        },
       );
       logRef = harness.log;
-      return { ...harness, catchers };
+      return { ...harness, catchers, lines };
     }
     const adopted = (gen: FakeGeneration | undefined) =>
       (gen?.sent ?? [])
@@ -1125,6 +1152,124 @@ describe('GenerationManager', () => {
         await settle(handoff);
         await manager.stop();
       }
+    });
+
+    it('keeps holding for the rollback when the trial exits during the release quiet window', async () => {
+      const { manager, generations, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js'
+            ? {
+                ready: false,
+                listenWithoutReady: true,
+                exitAfterListeningMs: 10,
+              }
+            : {},
+        true,
+        () => Date.now(),
+      );
+      await manager.start();
+      const handoff = manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: 5_000,
+      });
+      expect(await settle(handoff)).toMatchObject({
+        outcome: 'rolled-back',
+        generation: 3,
+      });
+      expect(generations[1]?.exited).toBe(true);
+      expect(adopted(generations[1])).toEqual([]);
+      expect(adopted(generations[2]).map(({ handle }) => handle)).toEqual(
+        heldConnections(catchers),
+      );
+      expect(heldConnections(catchers).every((c) => !c.destroyed)).toBe(true);
+      await manager.stop();
+    });
+
+    it('keeps holding for the rollback when the trial is being ended during the release quiet window', async () => {
+      const { manager, generations, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js'
+            ? { ready: false, listenWithoutReady: true, answerSpares: false }
+            : {},
+        true,
+        () => Date.now(),
+      );
+      await manager.start();
+      // The catchers keep accepting, so the release waits out its cap, and
+      // the trial's readiness timeout passes inside that wait.
+      const busy = setInterval(() => {
+        for (const catcher of catchers) catcher.lastCaughtAt = Date.now();
+      }, 10);
+      const handoff = manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: CATCH_QUIET_CAP_MS / 2,
+      });
+      await vi.advanceTimersByTimeAsync(CATCH_QUIET_CAP_MS * 2);
+      clearInterval(busy);
+      expect(await settle(handoff)).toMatchObject({
+        outcome: 'rolled-back',
+        generation: 3,
+      });
+      expect(adopted(generations[1])).toEqual([]);
+      expect(adopted(generations[2]).map(({ handle }) => handle)).toEqual(
+        heldConnections(catchers),
+      );
+      await manager.stop();
+    });
+
+    it('stops a listener catching once it holds the limit, leaving new connections to the backlog', async () => {
+      const { manager, lines, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js' ? { ready: false } : {},
+      );
+      await manager.start();
+      const handoff = manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: 30_000,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(catchers).toHaveLength(2);
+      // Each catcher starts holding one; bring the listener to one short.
+      const [a, b] = catchers as [FakeCatcher, FakeCatcher];
+      for (let held = 2; held < HOLD_LIMIT_PER_LISTENER - 1; held += 1) {
+        (held % 2 ? a : b).catchOne();
+      }
+      expect(catchers.some(({ stopped }) => stopped)).toBe(false);
+      a.catchOne();
+      expect(catchers.every(({ stopped }) => stopped)).toBe(true);
+      expect(catchers.some(({ closed }) => closed)).toBe(false);
+      expect(lines.join('\n')).toContain(
+        `holding ${HOLD_LIMIT_PER_LISTENER} connection(s) for api, the limit`,
+      );
+      // What it holds is still passed on, to the rollback generation.
+      expect(await settle(handoff)).toMatchObject({ outcome: 'rolled-back' });
+      expect(heldConnections(catchers)).toHaveLength(HOLD_LIMIT_PER_LISTENER);
+      expect(heldConnections(catchers).every((c) => !c.destroyed)).toBe(true);
+      await manager.stop();
+    });
+
+    it('closes what it has held for the hold deadline with no generation to take it', async () => {
+      const { manager, lines, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js' ? { ready: false } : {},
+      );
+      await manager.start();
+      void manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: HOLD_DEADLINE_MS * 2,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(catchers).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(HOLD_DEADLINE_MS - 1);
+      expect(heldConnections(catchers).some((c) => c.destroyed)).toBe(false);
+      expect(catchers.some(({ closed }) => closed)).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(catchers.every(({ closed }) => closed)).toBe(true);
+      expect(heldConnections(catchers).every((c) => c.destroyed)).toBe(true);
+      expect(lines).toContain(
+        `closed 2 connection(s) held longer than ${HOLD_DEADLINE_MS}ms with no generation to take them`,
+      );
+      await settle(manager.stop());
     });
   });
 });

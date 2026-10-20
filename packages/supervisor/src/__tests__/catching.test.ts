@@ -2,7 +2,7 @@
  * Connection catching (protocol 1.1) with real processes and sockets, and
  * every pairing of a supervisor and core that does or does not speak it.
  * Catching is Windows-only in production;
- * STATION_SUPERVISOR_TEST_CATCH_CONNECTIONS runs the same code on any host
+ * STATION_SUPERVISOR_TEST_FORCE_CATCHING runs the same code on any host
  * (1) or turns it off as a 1.0 supervisor has it (0).
  */
 import { realpathSync } from 'node:fs';
@@ -18,8 +18,8 @@ import {
 
 const makeTempDir = trackTempDirs();
 
-const CATCH_ON = { STATION_SUPERVISOR_TEST_CATCH_CONNECTIONS: '1' };
-const CATCH_OFF = { STATION_SUPERVISOR_TEST_CATCH_CONNECTIONS: '0' };
+const CATCH_ON = { STATION_SUPERVISOR_TEST_FORCE_CATCHING: '1' };
+const CATCH_OFF = { STATION_SUPERVISOR_TEST_FORCE_CATCHING: '0' };
 const PROTOCOL_1_0 = { FAKE_CORE_PROTOCOL_1_0: '1' };
 
 const PASSED = /passed (\d+) connection\(s\) held during the handoff/g;
@@ -78,7 +78,10 @@ describe('connection catching during a handoff (real processes)', () => {
       // them: the load client saw no error and kept being answered.
       const [passed] = passedCounts(supervisor);
       expect(passed, supervisor.output()).toBeGreaterThan(0);
-      expect((await getBoot(supervisor.port)).adoptedConnections).toBe(passed);
+      const boot = await getBoot(supervisor.port);
+      expect(boot.adoptedConnections).toBe(passed);
+      // The test switch is the supervisor's alone.
+      expect(boot.inheritedForceCatching).toBeNull();
       let servedBefore = load.stats.ok;
       await vi.waitFor(() =>
         expect(load.stats.ok).toBeGreaterThan(servedBefore + 20),

@@ -17,15 +17,23 @@ export function createNetCatcher(
   name: string,
   handle: ListenerHandle,
   now: () => number,
+  onCatch: () => void,
   log: (message: string) => void,
 ): ListenerCatcher {
   const held: Socket[] = [];
   let lastCaughtAt = 0;
+  let listening = true;
   const server = createServer({ pauseOnConnect: true }, (socket) => {
     lastCaughtAt = now();
     socket.on('error', ignoreHeldError);
     held.push(socket);
+    onCatch();
   });
+  const stop = () => {
+    if (!listening) return;
+    listening = false;
+    server.close();
+  };
   server.on('error', (error) =>
     log(`catcher ${name} failed: ${error.message}`),
   );
@@ -37,8 +45,12 @@ export function createNetCatcher(
     get lastCaughtAt() {
       return lastCaughtAt;
     },
+    get heldCount() {
+      return held.filter((socket) => !socket.destroyed).length;
+    },
+    stop,
     close(): HeldConnection[] {
-      server.close();
+      stop();
       return held.splice(0).filter((socket) => !socket.destroyed);
     },
   };

@@ -75,13 +75,18 @@ const INHERITED_SUPERVISOR_BIRTH_ENV = 'STATION_SUPERVISOR_BIRTH';
 const CATCH_SPARES = 8;
 
 /**
+ * Tests only: 1 or 0 forces connection catching on or off on any platform.
+ * Generations do not inherit it.
+ */
+const TEST_FORCE_CATCHING_ENV = 'STATION_SUPERVISOR_TEST_FORCE_CATCHING';
+
+/**
  * Whether handoffs catch connections: on Windows only, the one platform that
- * resets a connection completed into a closing listener's accept. Tests set
- * STATION_SUPERVISOR_TEST_CATCH_CONNECTIONS to 1 or 0 to run the same code
- * on any platform, or to turn it off.
+ * resets a connection completed into a closing listener's accept, unless a
+ * test forces it (TEST_FORCE_CATCHING_ENV).
  */
 function catchesConnections(): boolean {
-  const forced = process.env.STATION_SUPERVISOR_TEST_CATCH_CONNECTIONS;
+  const forced = process.env[TEST_FORCE_CATCHING_ENV];
   if (forced === '1') return true;
   if (forced === '0') return false;
   return process.platform === 'win32';
@@ -118,6 +123,7 @@ function createForkLauncher(options: {
       // names that process, not this one; a core comparing it against its
       // parent would conclude its supervisor is gone.
       delete env[INHERITED_SUPERVISOR_BIRTH_ENV];
+      delete env[TEST_FORCE_CATCHING_ENV];
       const child = fork(entry, [], {
         env,
         // The supervisor's own Node flags are not the core's.
@@ -148,12 +154,28 @@ function createForkLauncher(options: {
           return child.pid ?? null;
         },
         send(message, handle) {
-          if (!child.connected) return;
+          // A held connection that is not sent is closed here; a listening
+          // handle is the supervisor's own copy and stays open.
+          const unsent = () => {
+            if (message.type === 'connection.adopt' && handle) {
+              try {
+                (handle as { destroy(): void }).destroy();
+              } catch {
+                // Already gone.
+              }
+            }
+          };
+          if (!child.connected) {
+            unsent();
+            return;
+          }
           child.send(message, handle as SendHandle | undefined, (error) => {
-            if (error)
+            if (error) {
+              unsent();
               options.log(
                 `send to generation ${generation} failed: ${String(error)}`,
               );
+            }
           });
         },
         kill(signal) {
@@ -218,8 +240,8 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
       ? {
           catchConnections: {
             spares: CATCH_SPARES,
-            createCatcher: (name, handle, now) =>
-              createNetCatcher(name, handle, now, log),
+            createCatcher: (name, handle, now, onCatch) =>
+              createNetCatcher(name, handle, now, onCatch, log),
           },
         }
       : {}),

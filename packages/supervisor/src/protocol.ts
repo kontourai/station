@@ -394,8 +394,9 @@ export interface ListenerAdoptMessage {
 }
 
 /**
- * Protocol 1.1, sent only on Windows, to a generation that listens on the
- * named listener, before it is drained: answer with `count` (1 to
+ * Protocol 1.1, sent when the supervisor catches connections (it decides:
+ * on Windows only, unless a test forces it), to a generation that listens on
+ * the named listener, before it is drained: answer with `count` (1 to
  * MAX_LISTENER_SPARES) `listener.spare` messages for that listener, then,
  * when the drain comes, close it only once no connection has reached it for
  * a short quiet window.
@@ -425,7 +426,9 @@ export const MAX_LISTENER_SPARES = 32;
 /**
  * Protocol 1.1: a connection the supervisor accepted during a handoff, sent
  * with the connected socket; nothing has been read from it. Serve it on the
- * named listener as if that listener had accepted it.
+ * named listener as if that listener had accepted it. A core that has no
+ * such listener closes it: a connection held for a listener the adopting
+ * generation never binds is lost.
  */
 export interface ConnectionAdoptMessage {
   type: 'connection.adopt';
