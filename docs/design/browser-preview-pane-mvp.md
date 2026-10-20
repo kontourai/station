@@ -1,4 +1,4 @@
-# Browser Preview Pane MVP (Station #1375)
+# Browser Preview Pane MVP (archive#1375)
 
 > **Historical `1.0` design:** the server-hosted Browser pane and `2.0`
 > migration are now implemented. The dated status and future tense below
@@ -7,22 +7,23 @@
 > Current operator instructions and source boundaries are in the
 > [Browser workspace guide](../guides/browser-workspace.md).
 
-**Status (2026-09-22):** This is the archive#1375 MVP. It describes the
-shipped `1.0` Browser Preview pane and is superseded in part by
-[ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md),
-which is not yet implemented.
+**Status (2026-09-22, superseded):** This is the archive#1375 MVP. It
+described the `1.0` Browser Preview pane. [ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md)
+superseded it, and its `2.0` state and migration have since shipped:
 
-- Browser pane state `2.0` will persist a reference to a server-owned browser
+- Browser pane state `2.0` persists a reference to a server-owned browser
   session instead of a loopback address.
-- Targets widen to any `http(s)` URL on personal hosts, except Station's own
+- Targets widened to any `http(s)` URL on personal hosts, except Station's own
   listeners, for the operator and Project admins and owners.
-- Browser automation comes into scope.
-- The streamed pane renders in Web/PWA, Android and iOS. That supersedes the
-  closing statement "Web/PWA and Android/iOS remain unavailable".
+- Browser automation is in scope.
+- The streamed pane is the route for Web/PWA, Android and iOS clients, which
+  supersedes the closing statement "Web/PWA and Android/iOS remain
+  unavailable". The Browser workspace guide records which platforms have
+  verification evidence.
 
-The "Not included" list below is superseded for remote targets,
-automation, and Web/PWA and Android/iOS availability. This record keeps describing `1.0` until the migration
-ships.
+The "Not included" list below is superseded for remote targets, automation,
+and Web/PWA and Android/iOS availability. The rest of this record still
+describes `1.0` as it was built, and is kept as history.
 
 Browser Preview is a Project-scoped Workspace Pane for a user-selected local
 HTTP(S) address. Its durable state contains only the canonical Project ID, a
@@ -44,7 +45,7 @@ opaque Pane instance and state keys do not encode the address or grant.
 ## Availability and rendering boundary
 
 - Browser Preview is discoverable from the known Pane catalog. Availability
-  composes the #1370 native capability adapter with a native-owned service
+  composes the archive#1370 native capability adapter with a native-owned service
   authority check at launch. A local-looking URL, platform name, browser user
   agent, or renderer connection cannot establish locality.
 - The Rust host resolves the running per-user service, then accepts only one
@@ -102,5 +103,5 @@ Child-webview hosting, remote targets, arbitrary request headers, credential
 transport to preview content, response rewriting, and browser automation are
 outside this MVP. Separate-window package interaction remains explicitly
 `NOT_VERIFIED` on macOS, Windows, Linux X11/Wayland; Web/PWA and Android/iOS
-remain unavailable. See the #1376 host spike for the conditional native-host
+remain unavailable. See the archive#1376 host spike for the conditional native-host
 record and scorecard.

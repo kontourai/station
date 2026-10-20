@@ -1,5 +1,11 @@
 # Owner-backed learning source observation — grounding proposal
 
+> **Implemented.** Current behaviour lives in the
+> [request policy](../../src-server/knowledge-store/knowledge-source-observation-policy.ts),
+> the [SDK reader](../../packages/sdk/src/client/learning-source.ts), and the SDK
+> reference section [Inspect a learning source](../reference/sdk.md#inspect-a-learning-source).
+> This proposal is kept as the grounding record for that design.
+
 This design covers Station-owned source observation and its narrowly authorized
 personal-root HTTP/SDK/UI consumer. Station #1364 remains the owner of broader
 learning lifecycle work; verification receipts and GitHub own live delivery state.
