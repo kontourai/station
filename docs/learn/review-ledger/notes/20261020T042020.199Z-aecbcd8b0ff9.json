@@ -1,0 +1,7 @@
+{
+  "revision": "a6faa275ae2fd1c49efb4c9ed20e47b13d222317",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Fix round 1 from independent review. Checked against source and PR text: terminal target and alias wording against PR #3894's diff of docs/design/terminal.md (closed terminal target, presentation aliases, terminal:operate/observe); coding-layout file counts (29 TS/TSX, 11 CSS) at e880e9c92; builtinWorkspacePaneCanonical.ts :106, :151, :168 coding suffix and source-id checks; SHARED_EXTERNALS_REGEX in build.ts, the shim in pluginSharedRuntime.ts and the station dev mock in template-scripts.ts; @kontourai/ui 1.20.1 has no Tabs or ErrorState. Sigstore timestamp and trusted_root claims are reasoned from the bundle specification, not executed. Owner holds recorded as OPEN-12, OPEN-13, OPEN-14 without choosing. No test executed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}
