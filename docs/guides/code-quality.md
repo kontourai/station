@@ -385,8 +385,10 @@ it. A `catch` that returns a clean zero has decided on evidence it does not have
 
 Push only the branch and remote authorized for the task, after its required
 local checks. A configured remote is not publication permission. Do not bypass
-pre-push checks. Follow [AGENTS.md](../../AGENTS.md) for the merge queue and
-current handoff rules; do not manually merge or arm another lane's pull request.
+pre-push checks. Follow
+[Landing a pull request](development.md#landing-a-pull-request) for the merge
+queue and [AGENTS.md](../../AGENTS.md) for handoff rules; do not manually merge
+or arm another lane's pull request.
 For the merge queue, arm and confirm once, then stop polling it. When checking
 CI, inspect the actual job and failure before deciding what to rerun; silence is
 not success. Follow the task's required verification through its real outcome.

@@ -2,7 +2,7 @@
 
 > **Reading status: historical restructuring proposal with later supersession notes.**
 > The unchecked phases, old tab layouts, and original absence claims are not a
-> live backlog or the current UI contract. [Agents](../guides/agents.md),
+> live backlog or the current UI contract. [Agents](../guides/agent-configuration.md),
 > [Connections](../guides/connections.md), and [Skills](../reference/station-docs.md#skills)
 > own current usage. The [agent editor](../../src-ui/src/views/AgentEditorForm.tsx)
 > is now one scrolling form whose sections follow the engine capability matrix,

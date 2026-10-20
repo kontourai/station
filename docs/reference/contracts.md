@@ -157,7 +157,7 @@ loading. The session resolver carries these as `toolServerMode` and
 `toolServerLoading`. A resolved server's `allowedTools` contains exact original
 MCP names (empty means none); `disabledTools` excludes names independently, and
 `toolNames` is catalog metadata for known-tool exclusions. See the
-[Agent Tools guide](../guides/agents.md#mcp-tool-configuration) for delivery limits.
+[Agent Tools guide](../guides/agent-configuration.md#mcp-tool-configuration) for delivery limits.
 
 `OrchestrationSessionSummary.openRequestIds` is present when the server reads
 its durable request state. An empty array means no requests remain open;

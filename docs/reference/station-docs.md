@@ -101,7 +101,7 @@ override must preserve required profile delivery and refuses unsupported or
 undelivered content instead of starting a reduced profile. See
 [execution overrides](session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
-Use the [Agent guide](../guides/agents.md) and [Session API](session-api.md) for
+Use the [Agent guide](../guides/agent-configuration.md) and [Session API](session-api.md) for
 current setup, capability, turn, idle, terminal, and recovery behavior. A matrix
 entry describes a supported mechanism; it is not proof that a live engine
 accepted a particular request.
@@ -276,7 +276,7 @@ Claude Code to Station's Project browser; other engines show its unavailability.
 Claude and Codex can keep their configured harness MCP integrations while adding
 Station's selections. Claude also offers native on-demand tool loading. Generic
 connected engines receive whole integrations and disclose unsupported restrictions.
-The [Agent guide](../guides/agents.md#mcp-tool-configuration) owns setup and limits.
+The [Agent guide](../guides/agent-configuration.md#mcp-tool-configuration) owns setup and limits.
 
 Mutating tools remain subject to their authorization and approval rules.
 Inspect the specific tool result and the approval or execution evidence

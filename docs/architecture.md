@@ -149,10 +149,10 @@ These are navigation entry points, not an exhaustive inventory:
 | --- | --- | --- |
 | Startup and composition | `src-server/runtime/bootstrap/station-runtime.ts`, `runtime-initialize.ts` | [Development](guides/development.md) |
 | Session commands, reads and recovery | `src-server/services/orchestration/` | [Module map](architecture/module-map.md#sessioncommandmodule) |
-| Engine adaptation | `src-server/providers/adapters/` | [Agent guide](guides/agents.md) |
+| Engine adaptation | `src-server/providers/adapters/` | [Agent guide](guides/agent-configuration.md) |
 | Station-engine stream composition | `src-server/runtime/conversation/stream-orchestrator.ts` | [Streaming pipeline](#streaming-pipeline) |
 | MCP connection and tool adaptation | `src-server/runtime/mcp/mcp-manager.ts` | [Plugin and tool contracts](guides/plugins.md) |
-| Agent configuration | `src-server/services/agents/agent-service.ts`, `src-server/domain/config-loader.ts` | [Agent guide](guides/agents.md) |
+| Agent configuration | `src-server/services/agents/agent-service.ts`, `src-server/domain/config-loader.ts` | [Agent guide](guides/agent-configuration.md) |
 | Scheduling | `src-server/services/scheduling/scheduler-service.ts` | [Scheduler ledger](architecture/module-map.md#schedulerledger-and-builtinscheduler) |
 | Browser sessions and streamed input | `src-server/services/browser/browser-service.ts`, `src-server/services/live-surface/registry.ts` | [Browser workspace](guides/browser-workspace.md) |
 | Knowledge source and derived indexes | `src-server/knowledge-store/`, `src-server/knowledge-index/` | [Knowledge guide](guides/knowledge.md) |
@@ -527,7 +527,7 @@ packaged shell. See [native-shell verification](guides/native-shell-verification
 
 - [Module map](architecture/module-map.md) — deeper interfaces, invariants and tests.
 - [Repository layout](guides/repository-layout.md) — directory and package ownership.
-- [Agents](guides/agents.md), [Plugins](guides/plugins.md), and [Session API](reference/session-api.md) — authoring and execution contracts.
+- [Agents](guides/agent-configuration.md), [Plugins](guides/plugins.md), and [Session API](reference/session-api.md) — authoring and execution contracts.
 - [Connections](guides/connections.md) and [deployment authentication](guides/deployment-authentication.md) — reachability and authority.
 - [Knowledge](guides/knowledge.md), [Browser](guides/browser-workspace.md), and [Device workspace](guides/mobile-device-workspace.md) — subsystem journeys.
 - [Flow integration](../src-server/services/flow/flow-run-service.ts) — optional Project workflow/evidence integration through public Kontour package contracts, not a prerequisite for ordinary chat.

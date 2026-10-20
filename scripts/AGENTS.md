@@ -6,7 +6,7 @@ Before delivery, review the new-versus-inherited code-health report from `ci:fas
 
 Every new `spawn`, `spawnSync`, or `execFile` call must pass `windowsHide: true`. Capture synchronous child output through `scripts/lib/bounded-capture.mjs`: Node's 1 MiB default overflows on listings that grow with the repository (`git ls-files`, `tsc --listFiles`), and the helper refuses an overflow by name instead of truncating.
 
-The generated verification schedule and detailed reuse/failure policy have one owner: [docs/guides/testing.md](../docs/guides/testing.md). Regenerate from `scripts/verification-lanes.mjs`; do not copy generated blocks into an instruction file. Use the focused policy tests, not a broad verification lane, while iterating.
+The generated verification schedule and reuse/failure policy live in [docs/guides/testing.md](../docs/guides/testing.md), regenerated from `scripts/verification-lanes.mjs`. Iterate with the focused policy tests, not a broad lane.
 
 For evidence tooling, use the [fixture/profile/mutation commands](../docs/guides/testing.md#fixture-fidelity-and-test-effectiveness) rather than another bespoke runner. Reuse `scripts/lib/owned-process.mjs` for process-tree ownership and bounded output. A nonzero command exit is not automatically a caught mutation: distinguish assertion failure from missing dependencies, empty selection, timeout, and wrong-root execution. Restoration must preserve intervening edits. New policy needs known-bad catch tests and false-positive controls before joining `verification:policy:gate`.
 

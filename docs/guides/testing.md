@@ -76,6 +76,10 @@ even complete disposition coverage does not prove that no other defects exist.
 
 ## Fixture fidelity and test effectiveness
 
+Structural scans prove only structural rules. Use typed fixtures and real user
+actions, and profile before adding a performance abstraction. Review the delta
+of every fix round, and bind each measurement to its revision and environment.
+
 Blocking checks must name the failure they prevent. Documentation gates should
 verify runnable commands, links, schemas, generated references, and disclosure
 boundaries; prose wording and line wrapping are editorial, not release criteria.
