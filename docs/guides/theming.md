@@ -162,7 +162,12 @@ all or nothing: an unknown key, a non-hex value or a failed contrast check in
 either mode keeps the defaults. The check is `validateBrandOverride` from
 `@kontourai/ui/contrast`, which rates the brand as text at 4.5:1 on the page,
 the panel and the raised panel; Station adds the flat-key input shape and one
-stricter text-contrast rule for the action fill. The raised-panel check came
+stricter text-contrast rule for the action fill. Under a named color theme an
+accepted override is rated again on that theme's page, panel and raised panel;
+a slot group that fails there (brand and its text, action and its text, or
+focus) is not written, so the theme's value shows, and the rejection is logged
+with the same prefix. The rating reruns on a mode, theme or channel change.
+The raised-panel check came
 with `@kontourai/ui` 1.18, so an upgrade can reject a theme that was applied
 before: a stored theme whose dark brand is under 4.5:1 on the dark raised panel
 `#16202d` (relative luminance from about 0.2155 up to 0.2377, such as
