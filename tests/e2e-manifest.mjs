@@ -958,6 +958,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/related-panes.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves an installed plugin opens its own registered panes beside its list through the SDK related-pane capability on a real Station: open, replace, focus, Keep, close, a tool landing with the Tools, the kept occurrence surviving a reload, and a removed plugin leaving its pane unavailable without running its code.',
+    exceptions: [],
+  },
+  {
     path: 'tests/plugin-pane-sdk-context.spec.ts',
     bucket: 'extended',
     surface: 'Plugins',
