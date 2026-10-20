@@ -298,7 +298,7 @@ describe('Up to a plugin opener', () => {
 });
 
 describe('Up to an exact Project plugin pane', () => {
-  const projectOpener: PaneOpener = {
+  const projectOpener = {
     occurrenceId: 'instance:plugin:alpha-id:reports',
     label: 'Reports',
     source: {
@@ -310,7 +310,7 @@ describe('Up to an exact Project plugin pane', () => {
         instanceId: 'instance:plugin:alpha-id:reports',
       },
     },
-  };
+  } satisfies PaneOpener;
   const path =
     '/projects/alpha/panes/pane%3Aplugin%253Areports%3Alist/instance%3Aplugin%3Aalpha-id%3Areports';
 

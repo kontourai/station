@@ -5,9 +5,9 @@
 
   "state": "partial",
 
-  "summary": "Accepted pane workspace contract, reviewed against the implemented part: the bounded relations side record and its locked, fresh-read transactions and bound (pane-relations.ts, PaneRelationsContext.tsx), the per-occurrence Station fence and reader gate (pane-fence.ts, RelatedPaneStrip.tsx), related file-preview opens and focus with their refusals (openRelatedFilePreview.ts), Up and Keep (RelatedPaneStrip.tsx), the phone layer (RegionModelContext.tsx), Left as advanced and the Files default (region-model.ts) and the footer account control (SidebarAccountControl.tsx).",
+  "summary": "Accepted pane workspace contract reviewed against the implemented file-preview and direct/frame SDK related-pane owners: bounded locked relations, immutable Station fences, exact targets, Keep and guards, phone history, and host-stamped exact Project-pane opener references for canonical Up.",
 
-  "limits": "Partial by design: Coding presentation, the phone inbox and conversation root, quick review, cold child links and the SDK capability are target behaviour with no implementation yet, and their sections were read for consistency only. Source review, not runtime or native acceptance; executed evidence is in the pull request.",
+  "limits": "Partial qualification: Coding presentation, phone inbox/conversation roots, selection inspectors and cold child links remain separate planned work. Activity is implemented and held for review in sibling #3981, not in this SDK repair branch. Source/focused/browser evidence does not establish native acceptance, hosted checks, registry publication or landing. Older plugin opener records without a direct Project-pane reference retain their legacy fallback.",
 
   "sources": [
     "src-ui/src/regions/pane-relations.ts",
