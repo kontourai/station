@@ -19,9 +19,10 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
  * Every directory from the outermost Git work tree containing the cwd (or
  * the cwd alone when there is none) down to the cwd is checked, the lexical
  * path and the resolved one both: a superset of the layers Codex reads. A
- * `.codex` there is accepted only when it is a real directory, inside that
- * outermost repository (not a nested one), whose every file is a blob of
- * `HEAD` with the same bytes. That is the repository's own configuration,
+ * `.codex` there is accepted only when it is a real directory whose every
+ * file is a blob of that outermost repository's `HEAD` with the same bytes
+ * (so a `.codex` committed only in a nested repository or submodule, whose
+ * files the outer `HEAD` does not hold, is not). That is the repository's own configuration,
  * with the trust its root `.codex` already has. Anything else (untracked,
  * modified, ignored, a symlink, inside a nested or planted repository, or a
  * project with no repository at all) is reported, including an untracked
@@ -92,17 +93,10 @@ function findOnPath(
   const walk = outer
     ? chain.slice(0, chain.indexOf(outer) + 1).reverse()
     : [cwd];
-  let inOuterRepository = outer !== undefined;
   for (const dir of walk) {
-    if (dir !== outer && exists(join(dir, '.git'))) inOuterRepository = false;
     const config = join(dir, '.codex');
     if (skipped.has(config) || !exists(config)) continue;
-    if (
-      !inOuterRepository ||
-      !outer ||
-      !matchesHead(outer, config, gitTimeoutMs)
-    )
-      return config;
+    if (!outer || !matchesHead(outer, config, gitTimeoutMs)) return config;
   }
   return undefined;
 }

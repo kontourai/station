@@ -888,9 +888,10 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
       cannot tell an operator's local file from one an agent placed. Commit
       it, or run the session as `host`. The user's `~/.codex` and
       `CODEX_HOME` are user configuration and are skipped.
-    - A `.codex` inside a nested repository (including a submodule) is
-      refused: a planted repository is nested by construction, so only the
-      outermost one is trusted.
+    - A `.codex` committed only in a nested repository (including a
+      submodule) is refused: its files are not in the outermost `HEAD`, and
+      a planted repository is nested by construction, so only the outermost
+      one is trusted.
     - **Residual:** a workspace that is not inside any Git repository has no
       such anchor, so an agent that moves in a whole committed repository is
       not told apart from a real one. Closing it needs the Project root from
