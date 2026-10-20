@@ -26,7 +26,7 @@
       "explicit roadmap task or issue reference in prompt/branch/PR title",
       "matching initiative plan under docs/plans/**",
       "matching Veritas governance artifact under .veritas/**",
-      "active initiative from docs/strategy/README.md",
+      "default Phase S1 resolution from the strategy index (docs/strategy/README.md); live priorities are tracked in GitHub issues",
       "multi-workstream fallback suppresses promotion"
     ],
     "resolutionRules": [
