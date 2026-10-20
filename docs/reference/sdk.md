@@ -132,6 +132,14 @@ This client cache policy leaves server read-time observations unchanged and does
 not replace dispatch authorization. Fetching session summaries directly still
 returns the latest server timestamps.
 
+`useOrchestrationSessionActivityQuery(threadId, apiBase?, config?)` reads only
+one newest turn through the bounded session event-window endpoint. It has a
+separate cache by API base and Session, does not paginate older history, and
+forwards cancellation when the final active observer leaves. Running child
+rows poll this window for their own latest reported tool; full-history usage
+accounting is loaded only on expansion. A new turn clears the previous tool
+name. A missing tool report remains absent.
+
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
 provider is required. Project identity comes from the server-issued Pane
