@@ -382,6 +382,8 @@ function aggregateCommand(
     const message = `fast-checks deferred ${suiteDeferrals.join(', ')}: the affected suite did not run in this check; ${MERGE_QUEUE_REGRESSION_CHECK} runs full regression before merge`;
     if (env.GITHUB_ACTIONS === 'true')
       report(`::warning title=fast-checks is provisional::${message}\n`);
+    if (env.GITHUB_OUTPUT)
+      appendFileSync(env.GITHUB_OUTPUT, 'provisional=true\n');
     report(
       `[fast-checks] PASS (provisional): every part job succeeded and every shard ran its slice of the plan; ${message}\n`,
     );

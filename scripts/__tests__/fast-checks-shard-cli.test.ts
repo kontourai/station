@@ -227,22 +227,25 @@ describe('fast-checks aggregator exit status (child process)', () => {
   ])(
     'a plan deferred to ci-fast that $label passes only as provisional, naming its owner',
     ({ files }) => {
+      const directory = aggregateFixture({
+        files,
+        deferredLanes: [
+          { id: 'ci-fast', reasons: ['escalation: package.json'] },
+        ],
+        receipt: (_index, value) =>
+          value.status === 'completed'
+            ? { ...value, status: 'provisional' }
+            : value,
+      });
+      writeFileSync(join(directory, 'github-output'), '');
       const result = cli(
         ['aggregate', '--plan-dir=plan', '--receipts-dir=receipts'],
         {
-          cwd: aggregateFixture({
-            files,
-            deferredLanes: [
-              { id: 'ci-fast', reasons: ['escalation: package.json'] },
-            ],
-            receipt: (_index, value) =>
-              value.status === 'completed'
-                ? { ...value, status: 'provisional' }
-                : value,
-          }),
+          cwd: directory,
           env: {
             GITHUB_RUN_ID: '4242',
             GITHUB_ACTIONS: 'true',
+            GITHUB_OUTPUT: join(directory, 'github-output'),
             NEEDS: JSON.stringify(successNeeds),
           },
         },
@@ -253,29 +256,36 @@ describe('fast-checks aggregator exit status (child process)', () => {
       );
       expect(result.stdout).toContain('[fast-checks] PASS (provisional):');
       expect(result.stdout).not.toContain('[fast-checks] PASS: ');
+      // The marker step the source policy reads keys on this output.
+      expect(readFileSync(join(directory, 'github-output'), 'utf8')).toBe(
+        'provisional=true\n',
+      );
     },
   );
 
   test('a deferral owned outside fast-checks keeps the plain pass', () => {
+    const directory = aggregateFixture({
+      files: ['a/a.test.ts'],
+      deferredLanes: [
+        {
+          id: 'verify-e2e-full',
+          reasons: ['E2E manifest/spec boundary: tests/e2e/x.spec.ts'],
+        },
+      ],
+      receipt: (_index, value) =>
+        value.status === 'completed'
+          ? { ...value, status: 'provisional' }
+          : value,
+    });
+    writeFileSync(join(directory, 'github-output'), '');
     const result = cli(
       ['aggregate', '--plan-dir=plan', '--receipts-dir=receipts'],
       {
-        cwd: aggregateFixture({
-          files: ['a/a.test.ts'],
-          deferredLanes: [
-            {
-              id: 'verify-e2e-full',
-              reasons: ['E2E manifest/spec boundary: tests/e2e/x.spec.ts'],
-            },
-          ],
-          receipt: (_index, value) =>
-            value.status === 'completed'
-              ? { ...value, status: 'provisional' }
-              : value,
-        }),
+        cwd: directory,
         env: {
           GITHUB_RUN_ID: '4242',
           GITHUB_ACTIONS: 'true',
+          GITHUB_OUTPUT: join(directory, 'github-output'),
           NEEDS: JSON.stringify(successNeeds),
         },
       },
@@ -283,6 +293,7 @@ describe('fast-checks aggregator exit status (child process)', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('[fast-checks] PASS: ');
     expect(result.stdout).not.toContain('::warning');
+    expect(readFileSync(join(directory, 'github-output'), 'utf8')).toBe('');
   });
 
   test('refuses a shard that reports completed for a deferred plan', () => {

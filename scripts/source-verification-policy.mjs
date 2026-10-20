@@ -4,6 +4,15 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const SOURCE_VERIFICATION_CONTEXT = 'Source verification policy';
 const CI_PATH = '.github/workflows/ci.yml';
 const SHA = /^[a-f0-9]{40}$/;
+/**
+ * #1706: the fast-checks aggregate runs this step only when it passed a plan
+ * that deferred ci-fast or test-full. The jobs API reports step names and
+ * conclusions, so the required status can say its green was provisional
+ * without trusting an artifact. ci-workflow-governance pins the step.
+ */
+export const FAST_CHECKS_PROVISIONAL_STEP = 'Mark fast-checks provisional';
+const PROVISIONAL_NOTE =
+  ' (provisional: ci-fast/test-full deferred to Merge-queue regression)';
 const pending = (description) => ({ state: 'pending', description });
 const failure = (description) => ({ state: 'failure', description });
 
@@ -140,11 +149,21 @@ function sourceVerdict(jobs, fork, run) {
       ];
   if (required.includes('failure'))
     return failure('Newest source proof failed or was cancelled');
-  if (required.every((state) => state === 'success'))
+  if (required.every((state) => state === 'success')) {
+    const provisional =
+      !fork &&
+      (
+        proofJob(jobs, ['fast-checks', 'Fast checks execution'])?.steps ?? []
+      ).some(
+        (step) =>
+          step?.name === FAST_CHECKS_PROVISIONAL_STEP &&
+          step?.conclusion === 'success',
+      );
     return {
       state: 'success',
-      description: 'Newest exact-owner source proof succeeded',
+      description: `Newest exact-owner source proof succeeded${provisional ? PROVISIONAL_NOTE : ''}`,
     };
+  }
   return pending('Newest source proof is incomplete or unavailable');
 }
 
@@ -423,7 +442,7 @@ export async function reconcileSourceVerification({
       const verdict = verdicts.find((value) => value.state === 'failure') ??
         verdicts.find((value) => value.state === 'pending') ?? {
           state: 'success',
-          description: 'All exact-owner source proofs succeeded',
+          description: `All exact-owner source proofs succeeded${verdicts.some((value) => value.description.endsWith(PROVISIONAL_NOTE)) ? PROVISIONAL_NOTE : ''}`,
         };
       return {
         verdict,

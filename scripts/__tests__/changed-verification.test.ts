@@ -2605,6 +2605,19 @@ setInterval(() => {}, 1000);`,
     ).toEqual([
       'ci-fast deferred: its suite did not run here; Merge-queue regression runs it before merge',
     ]);
+    // An owned deferral does not excuse selected suites that never ran:
+    // nothing outside this selection runs them either.
+    expect(
+      incompleteDiagnosticReasons({
+        selection: {
+          relatedPathCount: 1,
+          exactTestCount: 0,
+          deferredLanes: ['verify-e2e-full'],
+          escalated: false,
+        },
+        executions: [],
+      }),
+    ).toEqual(['1 selected target(s), and no test executed']);
   });
   test('escalates a selection in which every test declined to run', async () => {
     const writeReceipt = vi.fn();
