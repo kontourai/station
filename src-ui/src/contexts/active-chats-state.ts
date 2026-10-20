@@ -316,6 +316,7 @@ export type ChatBackgroundTask = {
    * Codex child carries none.
    */
   stop?: 'provider-task-stop';
+  latestTool?: string;
   /** #2457: the child's latest one-line status (`ChildWorkItem.progress`). */
   progress?: string;
 };

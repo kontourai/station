@@ -47,6 +47,10 @@ For the plugin walkthrough these contracts describe, see the
 [`@kontourai/station-sdk`](../sdk/README.md)
 README.
 
+The `/child-work` contract's optional `latestTool` carries only a reported child
+tool name, independently of its progress summary. Reducers retain it across
+updates and settlement; no tool arguments or inferred activity are added.
+
 ## Subpaths without a reference section
 
 The [contracts reference](../../docs/reference/contracts.md) documents most

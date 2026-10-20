@@ -1399,6 +1399,15 @@ export interface OrchestrationSessionEventWindow {
   nextCursor?: string;
   /** Thread-filtered stream watermark at the snapshot transaction boundary. */
   watermark: number;
+  /**
+   * Session's latest tool start in its latest turn, as of `watermark`,
+   * independent of the transcript window's event/byte caps. The name is at
+   * most 256 UTF-8 bytes. `null` means no usable bounded fact; absence means
+   * this read does not support the projection. Never use an event fallback
+   * for `null`, which also clears activity when a different turn starts.
+   * Re-announcing the same turn (steering) preserves that turn's last tool.
+   */
+  latestTool?: { turnId: string; name: string } | null;
 }
 
 /**

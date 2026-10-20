@@ -1,0 +1,7 @@
+{
+  "revision": "f3e160b18f837f2b9c6b706497afbd38411d1fa4",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reference formatting only: four multi-location source references rewritten as path plus (lines ...) so docs:reference:gate can parse them; no claim changed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}

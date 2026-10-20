@@ -1,0 +1,7 @@
+{
+  "revision": "ffcf8cab69c91124dd7de3c3222eb78d83caf320",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Fix round 3: OPEN-14 exception stated in Trust and grants, d2 and d3 with high-risk capabilities excluded (engineering reading); shared-Station disclosure of lock grants; i0 depends on jG and d2, graph acyclic; code-owner options costed against .github/CODEOWNERS (owner listed on workflows and scripts) and main's rule (require_code_owner_review false); jF handshake checked against openFilePreviewInRegion in src-ui/src/contexts/useOpenInRegion.ts (write before open, rollback on refusal, dedupe by stored project/path/thread, startsWith('file-preview:')) and the file-preview:<32 hex> pattern in filePreviewPaneStateStorage.ts. The GitHub ruleset capability claim is stated as not verified. No test executed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}

@@ -35,6 +35,7 @@ import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import type {
   ConversationHandoffProjection,
   OrchestrationCommandReceipt,
+  OrchestrationSessionEventWindow,
   RuntimeEventElisionReason,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
@@ -432,6 +433,7 @@ const MAX_BASIS_ATTACHMENT_MIME_BYTES = 128;
 const MAX_BASIS_STATUS_BYTES = 16;
 const MAX_BASIS_INPUT_KIND_BYTES = 16;
 const MAX_SESSION_WORK_ITEM_ASSOCIATION_ROW_BYTES = 8 * 1024;
+const MAX_SESSION_ACTIVITY_TOOL_NAME_BYTES = 256;
 
 /** Descriptor-only row for the Session Outputs owner. No event payload crosses it. */
 export interface DeclaredOutputDescriptorRow {
@@ -7644,6 +7646,54 @@ export class EventStore {
       ...open,
       ...(lastTool ? { lastTool } : {}),
     };
+  }
+
+  /**
+   * Latest turn's tool identity only. Anchor to its first start: a steer
+   * re-announces the same turn and must not discard that turn's last tool.
+   */
+  readCurrentTurnLatestTool(
+    threadId: string,
+    watermark: number,
+  ): NonNullable<OrchestrationSessionEventWindow['latestTool']> | null {
+    const started = this.db
+      .prepare(
+        `SELECT CASE WHEN length(CAST(turn_id AS BLOB)) BETWEEN 1 AND ?
+                       THEN turn_id END AS turn_id
+         FROM orchestration_events INDEXED BY idx_events_history_projection
+         WHERE thread_id = ? AND method = 'turn.started' AND global_sequence <= ?
+         ORDER BY sequence DESC LIMIT 1`,
+      )
+      .get(MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES, threadId, watermark) as
+      | { turn_id: string | null }
+      | undefined;
+    if (!started?.turn_id) return null;
+    const tool = this.db
+      .prepare(
+        `SELECT CASE WHEN json_type(payload, '$.toolName') = 'text'
+                       AND length(CAST(json_extract(payload, '$.toolName') AS BLOB)) BETWEEN 1 AND ?
+                       THEN json_extract(payload, '$.toolName') END AS name
+         FROM orchestration_events INDEXED BY idx_events_history_projection
+         WHERE thread_id = ? AND method = 'tool.started' AND turn_id = ?
+           AND sequence > (
+             SELECT sequence
+             FROM orchestration_events INDEXED BY idx_events_thread_turn_sequence
+             WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
+             ORDER BY sequence ASC LIMIT 1
+           ) AND global_sequence <= ?
+         ORDER BY sequence DESC LIMIT 1`,
+      )
+      .get(
+        MAX_SESSION_ACTIVITY_TOOL_NAME_BYTES,
+        threadId,
+        started.turn_id,
+        threadId,
+        started.turn_id,
+        watermark,
+      ) as { name: string | null } | undefined;
+    return typeof tool?.name === 'string'
+      ? { turnId: started.turn_id, name: tool.name }
+      : null;
   }
 
   /**

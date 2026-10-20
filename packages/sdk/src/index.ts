@@ -977,6 +977,7 @@ export {
   useOrchestrationCommandReceiptQuery,
   useOrchestrationCommandReceiptsQuery,
   useOrchestrationProvidersQuery,
+  useOrchestrationSessionActivityQuery,
   useOrchestrationSessionQuery,
   useOrchestrationSessionsQuery,
   useOwnAccessTokensQuery,

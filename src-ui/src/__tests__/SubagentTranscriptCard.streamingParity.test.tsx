@@ -11,7 +11,13 @@ import capturedCodexEvents from './fixtures/codex-subagent-transcript-events.jso
 
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const useStreamingContent = vi.fn();
@@ -25,6 +31,7 @@ vi.mock('../hooks/useStreamingContent', () => ({
 
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import { StreamingMessage } from '../components/chat/StreamingMessage';
+import { SubagentCardsForCalls } from '../components/chat/SubagentTranscriptCard';
 import {
   foldTranscriptChildren,
   TranscriptChildrenContext,
@@ -139,6 +146,91 @@ afterEach(() => {
 });
 
 describe('subagent card streaming parity', () => {
+  test('a second child preserves an expanded card and its keyboard focus', () => {
+    const tree = (items: ChildWorkItem[]) => (
+      <TranscriptChildrenContext.Provider
+        value={
+          new Map(
+            items.map((item) => [
+              item.childId,
+              { item, toolAnchor: true, provider: 'claude' },
+            ]),
+          )
+        }
+      >
+        <SubagentCardsForCalls calls={[{ part: toolPart, index: 0 }]} />
+      </TranscriptChildrenContext.Provider>
+    );
+    const first = { ...child, progress: 'Reading the decision records' };
+    const view = render(tree([first]));
+    const disclosure = screen.getByRole('button', { expanded: false });
+    disclosure.focus();
+    fireEvent.click(disclosure);
+    expect(screen.getByText('Reading the decision records')).toBeTruthy();
+    view.rerender(
+      tree([first, { ...child, childId: 'second', title: 'Second review' }]),
+    );
+    expect(document.activeElement).toBe(disclosure);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen
+        .getByRole('button', { name: /2 subagents/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(screen.getByText('Second review')).toBeTruthy();
+  });
+
+  test('settled phone folding keeps separate spawn runs out of one roster', () => {
+    const other = {
+      ...child,
+      childId: 'second',
+      title: 'Second review',
+      parent: { toolCallId: 'toolu_second', turnId: 'turn-1' },
+    };
+    const tree = (foldWork: boolean) => (
+      <TranscriptChildrenContext.Provider
+        value={
+          new Map(
+            [child, other].map((item) => [
+              item.childId,
+              { item, toolAnchor: true, provider: 'claude' },
+            ]),
+          )
+        }
+      >
+        <MessageContent
+          contentParts={[
+            toolPart,
+            {
+              type: 'text',
+              content: 'A separate decision before the next child.',
+            },
+            { ...toolPart, toolCallId: 'toolu_second' },
+            { type: 'text', content: 'Both reviews are underway.' },
+          ]}
+          textContent=""
+          chatFontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+          isStreamingMessage={false}
+          foldWork={foldWork}
+        />
+      </TranscriptChildrenContext.Provider>
+    );
+    const view = render(tree(false));
+    const second = within(screen.getAllByTestId('subagent-card')[1]).getByRole(
+      'button',
+      { expanded: false },
+    );
+    second.focus();
+    fireEvent.click(second);
+    view.rerender(tree(true));
+    expect(document.activeElement).toBe(second);
+    expect(second.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getAllByTestId('subagent-card')).toHaveLength(2);
+    expect(screen.queryByText('2 subagents')).toBeNull();
+  });
+
   test('Codex streaming text keeps a spawned card between pre-spawn and post-spawn prose before the turn settles', () => {
     const captured = capturedCodexEvents[0];
     const spawnAt = captured.findIndex(
@@ -300,13 +392,17 @@ describe('subagent card streaming parity', () => {
         within(card).getByText('Survey the decision records'),
       ).toBeTruthy();
       expect(within(card).getByText('Failed')).toBeTruthy();
-      expect(within(card).getByText('claude-haiku-5')).toBeTruthy();
+      expect(within(card).queryByText('claude-haiku-5')).toBeNull();
       expect(within(card).getByText('0:30')).toBeTruthy();
       expect(
         within(card).getByText(
           'Could not read docs/decisions: permission denied',
         ),
       ).toBeTruthy();
+    }
+    for (const card of [live, settled]) {
+      fireEvent.click(within(card).getByRole('button', { expanded: false }));
+      expect(within(card).getByText('claude-haiku-5')).toBeTruthy();
     }
     expect(live.textContent).toBe(settled.textContent);
   });

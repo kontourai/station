@@ -1,0 +1,7 @@
+{
+  "revision": "529162ff5263beb500ca35878cb1b498a89e8e3c",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Recorded the owner decisions of 2026-10-20 (Sigstore keyless for OPEN-4, Coding fully into the plugin, plugins.lock and the offline default set, UI kit upstream, OPEN-5 adopted) and the new slices. Checked the capability map and every type === 'coding' site by source inspection at e880e9c92: project-layout-kind.ts, ProjectLayoutRenderer.tsx, useChatDockViewModel.ts, ProjectPage.tsx, useHomeViewModel.ts, ProjectLayoutChips.tsx, LayoutWorkspacePane.tsx, workspacePaneDirectRoute.ts, builtinWorkspacePaneCanonical.ts, region-surface-panes.ts, layout.ts, workspace-pane-builtin-renderers.ts, workspace-coding-*-composition.ts, layout-working-directory.ts, project-layout-admission.ts, projects.ts; core imports of coding-layout (TaskWorkspaceView, FilePreviewPane, builtinWorkspacePaneRegistry, NewChatModal); SDKAdapter hooks: {}; SHARED_EXTERNALS in build.ts; station-components in pluginSharedRuntime.ts; pane ids in workspace-coding-panels.ts and the minted plugin pane id form in layout-pane-reference.ts; @kontourai/ui 1.20.1 react exports. Sigstore offline-verification claims are reasoned from the bundle format, not executed. No test was executed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}

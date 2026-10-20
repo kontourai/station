@@ -835,6 +835,28 @@ after a queued follow-up. The transcript's loaded `child-work.updated`
 events retain every child whose spawn is loaded, independently of the live
 registry's settled-item retention limit. Completion notices carry child
 identity and remain visible only when no inline card represents that child.
+Children anchored to the same tool-call run share a collapsed roster with counts
+for each reported status. Expanding the roster reveals the children in call order;
+children at separate prose or standalone spawn anchors keep their original positions.
+Settled phone tool folding leaves child-bearing messages in their original runs,
+so resizing cannot reparent a child and discard its expansion or keyboard focus.
+A collapsed card shows title, status, elapsed time and a progress or result preview.
+Reported engine marks identify native children; known Station delegates use their
+configured Agent artwork with the recorded engine as a badge. The roster stacks
+up to three child marks. Running rows show the latest reported tool name beside
+progress, with a reflection that stops on settlement and respects reduced motion.
+Claude supplies tool names from child-scoped replies and task progress independently
+of its summary. Engines that report no child tool name do not borrow their parent's.
+A running Station delegate reads its own current-turn tool activity through the
+bounded newest-turn session window. Its separate latest-tool fact survives
+transcript caps and clears when a different turn starts; same-turn steering
+preserves it. Full-history accounting loads only on expansion. The background sheet resolves running and finished delegates from
+their own catalog Agent and keeps the task title stable. A native child's reporter
+window supplies engine identity only; its prompt, tools and accounting never
+become the child's data.
+Its expansion reveals model provenance and the full result without repeating that
+preview; usage and transcript access share a wrapping footer. The Agents pane keeps
+open/stop actions beside each row and reveals usage on expansion.
 The Agents pane remains the complete list and stop surface, including
 children with no loaded spawn anchor. The card and pane share status words
 and time formatting (`utils/child-work-display.ts`).
