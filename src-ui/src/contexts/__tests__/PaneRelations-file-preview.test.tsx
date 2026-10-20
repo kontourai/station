@@ -414,6 +414,26 @@ describe('refusals leave everything as it was', () => {
     expect(localStorage.getItem(PANE_RELATIONS_STORAGE_KEY)).toBe(newer);
   });
 
+  test('the arrangement refuses after the record, fence and state were written: all three roll back', async () => {
+    await mount();
+    const arrangement = structuredClone(probe.model?.regions);
+    const before = await settledStorageSnapshot();
+    let outcome: RelatedOpenOutcome | undefined;
+    await act(async () => {
+      const openPreview = probe.open;
+      if (!openPreview) throw new Error('no opener');
+      // A file preview may not occupy Main: refused at the arrangement step,
+      // the last one, after everything else this open writes.
+      outcome = await openPreview(
+        { ...PROJECT, path: 'src/a.ts' },
+        { region: 'main' },
+      );
+    });
+    expect(outcome).toEqual({ ok: false, reason: 'refused' });
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(probe.model?.regions).toEqual(arrangement);
+  });
+
   test('the bound: live entries of OTHER tabs are never evicted', async () => {
     await refusedWith('capacity', () => {
       // Occurrences another tab shows: each fenced, the previews with their
