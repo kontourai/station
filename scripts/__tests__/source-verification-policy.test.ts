@@ -555,6 +555,28 @@ describe('source verification reconciler API boundary', () => {
     },
   );
 
+  test('binds metadata to its actual referenced workflow after GitHub advances the reported PR base', async () => {
+    const { state, execute, newer } = fixture();
+    newer('skipped');
+    state.owners[0].base.sha = advanced;
+    state.runs[0].pull_requests[0].base.sha = advanced;
+    const item = state.runs[0];
+    item.conclusion = 'cancelled';
+    item.name = 'PR metadata';
+    item.display_title = 'PR metadata';
+    item.referenced_workflows = [
+      {
+        path: `kontourai/station/.github/workflows/source-verification-policy.yml@${base}`,
+        sha: base,
+        ref: 'refs/heads/main',
+      },
+    ];
+    state.jobs.get(item.id)![0].conclusion = 'cancelled';
+    expect((await execute()).state).toBe('success');
+    state.comparison.status = 'diverged';
+    expect((await execute()).state).toBe('failure');
+  });
+
   test('unavailable immutable metadata policy cannot reuse older green', async () => {
     const { state, execute, newer } = fixture();
     newer('skipped');

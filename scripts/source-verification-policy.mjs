@@ -286,14 +286,23 @@ export async function reconcileSourceVerification({
         return false;
       const refs = (run.referenced_workflows ?? []).filter(
         (ref) =>
+          SHA.test(ref.sha ?? '') &&
           ref.path ===
-            `${repository}/.github/workflows/source-verification-policy.yml@${sourceBase}` &&
-          ref.sha === sourceBase &&
+            `${repository}/.github/workflows/source-verification-policy.yml@${ref.sha}` &&
           ref.ref === 'refs/heads/main',
       );
       if (refs.length !== 1) return false;
-      if (!metadataWorkflows.has(sourceBase)) {
-        const file = await request(`contents/${CI_PATH}?ref=${sourceBase}`);
+      const revision = refs[0].sha;
+      if (revision !== sourceBase) {
+        const comparison = await request(`compare/${revision}...${sourceBase}`);
+        if (
+          !['ahead', 'identical'].includes(comparison.status) ||
+          comparison.merge_base_commit?.sha !== revision
+        )
+          return false;
+      }
+      if (!metadataWorkflows.has(revision)) {
+        const file = await request(`contents/${CI_PATH}?ref=${revision}`);
         if (
           file.path !== CI_PATH ||
           file.encoding !== 'base64' ||
@@ -304,11 +313,11 @@ export async function reconcileSourceVerification({
           .toString('utf8')
           .split(/\r?\n/);
         metadataWorkflows.set(
-          sourceBase,
+          revision,
           header[0] === 'name: "PR: CI"' && header[1] === METADATA_RUN_NAME,
         );
       }
-      return metadataWorkflows.get(sourceBase);
+      return metadataWorkflows.get(revision) ? revision : false;
     };
 
     const snapshot = async () => {
@@ -405,7 +414,7 @@ export async function reconcileSourceVerification({
             jobs,
             owner.head.repo.id !== repo.id,
             run,
-            verifiedMetadata,
+            Boolean(verifiedMetadata),
           );
           const proof = classified;
           examined.push([
@@ -417,7 +426,7 @@ export async function reconcileSourceVerification({
             compatibleBase,
             classified === null ? run.status : null,
             proofRows(jobs),
-            verifiedMetadata ? sourceBase : null,
+            verifiedMetadata || null,
           ]);
           if (proof) {
             selectedTime = started;
