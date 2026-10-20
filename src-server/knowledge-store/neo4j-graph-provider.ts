@@ -1,10 +1,9 @@
 /**
  * Neo4j read surface — `readGraph(rootId)` + `shortestPath(rootId, fromId, toId)`,
- * the ONLY two structural queries this slice ships. Per the Q1-ratified scope
- * recorded in `s203-knowledge-meeting-notes--pull-work.md` ("Graph view, synced")
- * and `s203-knowledge-meeting-notes--plan.md`'s Wave 1 Task 1: `transitiveBlockers`/
- * `contradictionCandidates`/`orphans`/`duplicateCandidates` are named-deferred, K6+
- * follow-up scope — intentionally NOT built here, not silently dropped.
+ * the ONLY two structural queries this module ships. Other graph queries
+ * (`transitiveBlockers`/`contradictionCandidates`/`orphans`/`duplicateCandidates`)
+ * are deliberately deferred follow-up scope — intentionally NOT built here, not
+ * silently dropped.
  *
  * These functions read whatever `./neo4j-graph-sync.ts`'s `syncRootToNeo4j` last
  * projected into Neo4j for a root; this module never touches the file-adapter store
@@ -23,7 +22,7 @@
  * try/catch — a Station install where that package fails to resolve (or any future
  * environment where its native/optional pieces don't load) degrades to an honest
  * `{ok: false, reason}` result instead of crashing the server at module-load time.
- * This mirrors `./neo4j-connection.ts`'s own documented degrade posture (K2's
+ * This mirrors `./neo4j-connection.ts`'s own documented degrade posture (its
  * "TCP-reachable, but not verifiable" stance — never overclaim, never throw for an
  * absent/unreachable dependency).
  */

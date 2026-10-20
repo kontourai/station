@@ -136,8 +136,8 @@ describe('createRuntimeServiceBundle', () => {
     // which probes prepare private connection-scoped workspaces.
     const acpManagerArgs = createACPManager.mock
       .calls[0] as unknown as unknown[];
-    expect(acpManagerArgs[2]).toBe('/tmp/project');
-    expect(acpManagerArgs[2]).not.toBe(process.cwd());
+    expect(acpManagerArgs[1]).toBe('/tmp/project');
+    expect(acpManagerArgs[1]).not.toBe(process.cwd());
     expect(terminalWsServer.start).not.toHaveBeenCalled();
     expect(bundle.storageAdapter).toBe(storageAdapter);
     expect(bundle.agentService).toEqual({ kind: 'agent-service' });

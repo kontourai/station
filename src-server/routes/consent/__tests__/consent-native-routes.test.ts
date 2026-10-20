@@ -288,7 +288,7 @@ describe('consent native broker routes (station#3677 PR 3)', () => {
     expect(commitApproval).not.toHaveBeenCalled();
   });
 
-  // Scope note (review round 1): this proves the ROUTES do not consult
+  // Scope note: this proves the ROUTES do not consult
   // listener state for an already-created transaction — which is what the
   // header claims. It deliberately creates through the store rather than a
   // production creator, because both creators still refuse while the

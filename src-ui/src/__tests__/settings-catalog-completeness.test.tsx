@@ -420,7 +420,10 @@ vi.mock('../contexts/KeyboardShortcutsContext', () => {
     useShortcutRegistry: () => store,
   };
 });
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useFeatureSettings', () => ({
   useFeatureSettings: () => ({
     settings: {

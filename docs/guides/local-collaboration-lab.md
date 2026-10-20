@@ -360,7 +360,7 @@ reliability fix; the repository's dependency-age policy refused it at the time
 of evaluation. The older eligible release is not production approval.
 
 An independent **Pion peer profile** is available under `--peer=pion`. Build the
-[pinned Go fixture](../../experiments/browser-transport-peer/README.md) first,
+[pinned Go fixture](../../src-server/services/connections/pion-peer/README.md) first,
 then run `npm run lab:browser-transport -- --peer=pion --browser-turn=tcp`.
 Pion uses TURN/TCP; both TCP and UDP browser control paths must qualify
 individually. The report includes the actual linked Pion/Go versions and binary

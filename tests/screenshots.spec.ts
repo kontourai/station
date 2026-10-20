@@ -43,6 +43,10 @@ import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-seque
 const GALLERY_DIR = process.env.STATION_E2E_GALLERY_DIR
   ? resolve(process.env.STATION_E2E_GALLERY_DIR)
   : join(process.cwd(), 'gallery');
+// Auxiliary screenshots live in a subdirectory: the gallery review requires
+// every top-level PNG to be a capture.json screen, so extra files there fail
+// the Nightly capture-coverage check (#3508).
+const GALLERY_DIAGNOSTICS = 'diagnostics';
 
 /**
  * Parses `STATION_E2E_SCREENS` into a requested-name list, or `null` when
@@ -1113,7 +1117,11 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
   expect(box!.x + box!.width).toBeLessThanOrEqual(width);
   if (width === 390) expect(box!.height).toBeGreaterThanOrEqual(44);
   await page.screenshot({
-    path: join(GALLERY_DIR, `freshness-failed-${width}.png`),
+    path: join(
+      GALLERY_DIR,
+      GALLERY_DIAGNOSTICS,
+      `freshness-failed-${width}.png`,
+    ),
     animations: 'disabled',
   });
   if (width > 600) {
@@ -1136,7 +1144,11 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       'Last known:',
     );
     await page.screenshot({
-      path: join(GALLERY_DIR, `freshness-failed-picker-${width}.png`),
+      path: join(
+        GALLERY_DIR,
+        GALLERY_DIAGNOSTICS,
+        `freshness-failed-picker-${width}.png`,
+      ),
       animations: 'disabled',
     });
     await page.keyboard.press('Escape');
@@ -1298,7 +1310,11 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         );
       }
       await page.screenshot({
-        path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+        path: join(
+          GALLERY_DIR,
+          GALLERY_DIAGNOSTICS,
+          `freshness-recovered-${width}.png`,
+        ),
         animations: 'disabled',
       });
       if (width === 390) {
@@ -1309,7 +1325,11 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
           'Last known:',
         );
         await page.screenshot({
-          path: join(GALLERY_DIR, `freshness-recovered-picker-${width}.png`),
+          path: join(
+            GALLERY_DIR,
+            GALLERY_DIAGNOSTICS,
+            `freshness-recovered-picker-${width}.png`,
+          ),
           animations: 'disabled',
         });
         await page.keyboard.press('Escape');
@@ -1378,7 +1398,11 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
           'Last known:',
         );
         await page.screenshot({
-          path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+          path: join(
+            GALLERY_DIR,
+            GALLERY_DIAGNOSTICS,
+            `freshness-recovered-${width}.png`,
+          ),
           animations: 'disabled',
         });
         expect(inventoryReads).toBe(1);
@@ -3352,7 +3376,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   // of raising the shared Playwright default used by smaller specs.
   test.setTimeout(Math.max(90_000, selectedScreens.length * 7_000));
 
-  mkdirSync(GALLERY_DIR, { recursive: true });
+  mkdirSync(join(GALLERY_DIR, GALLERY_DIAGNOSTICS), { recursive: true });
   const capturedAt = new Date().toISOString();
   const shots: Shot[] = [];
 
@@ -3653,7 +3677,7 @@ test('build gallery — capture key screens', async ({ page }) => {
                   ),
               );
               const after = await statusRasterState(page);
-              const diagnosticFile = `${screen.name}.retired-effects-diagnostic.png`;
+              const diagnosticFile = `${GALLERY_DIAGNOSTICS}/${screen.name}.retired-effects-diagnostic.png`;
               await page.screenshot({
                 path: join(GALLERY_DIR, diagnosticFile),
                 fullPage: true,

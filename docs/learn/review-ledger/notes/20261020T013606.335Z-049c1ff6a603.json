@@ -1,0 +1,11 @@
+{
+  "revision": "fad5d6b2230c08fdd9c65b0a3f2e8ff621390bc4",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Issue references section reworded to fit the 8192-byte budget (now 8178; verification:policy:gate passes): the re-filed-numbers sentence links docs/migration/issue-number-map.json, and docs/adr is listed among areas with pre-reset bare numbers. Governance block untouched.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"Still imports AGENTS.md; the AGENTS.md change is confined to the Issue references section.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"AGENTS.md changed only in its Issue references section; no hook, readiness or publication claim here depends on it.","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}

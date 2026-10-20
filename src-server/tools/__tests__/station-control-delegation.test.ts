@@ -1022,7 +1022,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     },
   );
 
-  // archive#4543 LOW-2: a caller-supplied `sessionId` is stamped into
+  // archive#4543: a caller-supplied `sessionId` is stamped into
   // `metadata.conversationId` via the `conversationIdentity` internal
   // escape hatch — a reserved key whose contract (provider.ts's
   // `CONVERSATION_ID_RESERVED_METADATA_KEY` docblock) promises it is
@@ -1319,7 +1319,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(fallbackSignal).toBeInstanceOf(AbortSignal);
   });
 
-  // #2377 C2b review: the target Station's words are replaced by this
+  // #2377: the target Station's words are replaced by this
   // Station's fixed copy and the status (they reach an agent's tool result);
   // there is still exactly one request and no fallback.
   test('reports a target-side validation error as fixed copy, without a fallback', async () => {
@@ -1536,7 +1536,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
   });
 
   /**
-   * #2436 HIGH-1: a Station that predates the approval command validates the
+   * #2436: a Station that predates the approval command validates the
    * body with a schema that has no `setApprovalMode`, and zod strips unknown
    * keys. The pick must still reach such a Station through the channel it
    * has always applied: `model.options.approvalMode`.
@@ -2696,7 +2696,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
-  // #764 review round 2: the only tool-layer proof of the reserved-unstarted
+  // #764: the only tool-layer proof of the reserved-unstarted
   // tail used the stub double above, whose readSession answers for ANY id and
   // therefore cannot fail. This one builds the real EventStore and real
   // OrchestrationService so the reservation, the lineage read, and the
@@ -3650,7 +3650,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
-  // #3158 fix round 6: the stop's derived outcome reaches the route, which
+  // #3158: the stop's derived outcome reaches the route, which
   // undoes a delegated-result cancel when nothing was interrupted.
   test('reports the outcome the orchestration service derived for the interrupt', async () => {
     installCurrentStationFetch();
@@ -5070,7 +5070,7 @@ describe('readRelayingLocalRefusal', () => {
     });
   });
 
-  // #2377 C2b review: another Station's words are dropped as well as its
+  // #2377: another Station's words are dropped as well as its
   // code; only the status survives, in this Station's fixed copy.
   test.each(['peer', 'ssh'])(
     'a %s Station’s coded refusal loses its code and its words',

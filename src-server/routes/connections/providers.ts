@@ -48,7 +48,7 @@ import {
  *
  * `getModelConnectionCheck` READS the standing receipt for one connection:
  * no provider is constructed, no request is made, no other connection is
- * touched (archive#3654 review round 2). The first version of this consulted the
+ * touched (archive#3654). The first version of this consulted the
  * whole model listing, which runs catalogue discovery against every
  * configured provider — a GET for one connection amplified into network
  * traffic to all of them, at a polling frequency no one here can see.

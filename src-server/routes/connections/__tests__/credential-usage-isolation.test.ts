@@ -3,14 +3,14 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { createAppHomeRoutes } from '../app-home.js';
 
 /**
- * archive#3552, review round 2 (independent, Codex).
+ * archive#3552.
  *
  * The route catches each account's read individually so one failure cannot 500
  * the others. Proving that needs a REJECTED read — and the reader is now fenced
  * so thoroughly (`getJson` catches fetch/body failures, `normalizedOrUnknown`
- * catches parsing) that it does not reject in practice. The reviewer removed
- * the route's `.catch()` and every route test stayed green for exactly that
- * reason: they exercised a fulfilled `unknown`.
+ * catches parsing) that it does not reject in practice. With the route's
+ * `.catch()` removed, every route test stayed green for exactly that reason:
+ * they exercised a fulfilled `unknown`.
  *
  * So the reader is mocked to reject here. That makes this a test of the ROUTE's
  * guard rather than of the reader, which is the point: the route must not

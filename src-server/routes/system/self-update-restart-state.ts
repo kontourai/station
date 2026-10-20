@@ -12,7 +12,6 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-export type SelfUpdateRestartStatus = 'pending' | 'verified' | 'failed';
 export type SelfUpdateRestartFailureCode =
   | 'health-unreachable'
   | 'identity-mismatch'

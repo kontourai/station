@@ -205,7 +205,7 @@ function loadPlaybooksFrom(homeDir: string): LegacyPlaybookRecord[] {
 }
 
 /** The file whose presence means "this home has already been migrated". */
-export const PLAYBOOK_MIGRATION_MARKER = '.migrated.json';
+const PLAYBOOK_MIGRATION_MARKER = '.migrated.json';
 
 /**
  * The `origin` this pass stamps on every skill it writes. It is what makes a

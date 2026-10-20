@@ -116,8 +116,6 @@
 
     "packages/shared/src/usage-fold.ts",
 
-    "packages/shared/src/mcp-elicitation-form.ts",
-
     "packages/shared/src/product-telemetry.ts",
 
     "packages/shared/package.json#/name",

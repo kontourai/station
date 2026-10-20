@@ -15,7 +15,10 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const useStreamingContent = vi.fn();
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useStreamingContent', () => ({
   useStreamingContent: (sessionId: string) => useStreamingContent(sessionId),
 }));

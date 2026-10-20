@@ -107,7 +107,7 @@ export const APPROVAL_MODE_OPTIONS: Array<{
     value: 'never',
     label: 'Never ask (full access)',
     description:
-      'Turns off approval prompts where the engine allows it. A start without a full-access grant still runs inside Station’s workspace confinement.',
+      'Turns off approval prompts where the engine allows it. Without a full-access grant, Station applies a narrower setting, so some actions may still ask.',
   },
 ];
 
@@ -132,7 +132,7 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // #3290: nothing asks; the built-in subagents may run (their rules cannot
     // ask either); plan mode's own edit block stays.
     opencode:
-      'Every action runs without asking, and subagents may run. Plan mode still blocks edits.',
+      'With full access granted, permitted actions run without approval prompts. Questions, plan exits and network-host requests may still ask. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
   },
   'connection-default': {
     // #3290 (owner decision): Station sends OpenCode no mode until it takes

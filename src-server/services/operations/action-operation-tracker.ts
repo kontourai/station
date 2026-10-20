@@ -14,7 +14,7 @@ export type ActionOperationTrackingService = Pick<
   'create' | 'update'
 >;
 
-export class ActionOperationTrackingHandle {
+class ActionOperationTrackingHandle {
   constructor(
     private readonly service: ActionOperationTrackingService,
     private readonly actor: ActionOperationActor,

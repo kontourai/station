@@ -409,7 +409,7 @@ export function resolveViewFromPath(
     return { type: 'project-new' };
   }
   // archive#4079: /board/session/:id and /board/task/:projectId/:id
-  // URL-reachable, no sidebar item this slice (page-frame-registry.ts).
+  // URL-reachable only, with no sidebar item (page-frame-registry.ts).
   if (path.startsWith('/board/session/')) {
     const encodedId = path.slice('/board/session/'.length);
     if (!encodedId || encodedId.includes('/')) {
@@ -539,8 +539,7 @@ export function resolveViewFromPath(
   //
   // Placed AFTER the layout-tab match rather than before it: the long comment
   // above belongs to that regex, and inserting this between the two made the
-  // rationale read as documentation for the Board matcher (#2062 review
-  // LOW-11). The two patterns are disjoint — `/boards/...` can never match a
+  // rationale read as documentation for the Board matcher (#2062). The two patterns are disjoint — `/boards/...` can never match a
   // `/projects/...` path — so the order is a readability choice, not a
   // precedence one.
   const boardSlug = parseBoardPath(path);

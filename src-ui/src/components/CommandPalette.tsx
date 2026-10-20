@@ -328,24 +328,20 @@ export function CommandPalette() {
     openChatIdentitiesSnapshot,
     openChatIdentitiesSnapshot,
   );
-  // #1418/#1419 review, MEDIUM: a global "focused chat" signal DOES exist —
+  // #1418/#1419: a global "focused chat" signal DOES exist —
   // navigationStore's `activeChat`/`activeConversation` name it, and
-  // `toolActivityNotifications.ts` already treats them as the on-screen chat
-  // while a Chat surface is showing (`isDockOpen`). `getChatKeyForExecutionSession`
-  // resolves either identifier (chat key, execution session id, or
-  // conversationId) against the registered chats the same way that reader
-  // does. Gated on `isDockOpen` so this never claims a chat is focused while
-  // no Chat surface is actually showing it, and it never guesses among
-  // several open chats — only the one navigationStore itself calls active.
+  // `isChatInForeground` (hooks/orchestration/chatForeground.ts) treats them
+  // as the on-screen chat while a Chat surface is showing.
+  // `getChatKeyForExecutionSession` resolves either identifier (chat key,
+  // execution session id, or conversationId) against the registered chats.
+  // Gated on `isDockOpen` so this never claims a chat is focused while no
+  // Chat surface is actually showing it, and it never guesses among several
+  // open chats — only the one navigationStore itself calls active.
   //
-  // Forward coupling (#1418/#1419 review round 2, MEDIUM): `isDockOpen` is
-  // incomplete — a full-screen Chat surface never sets it, so a plugin
-  // seed-composer command run while Chat is full-screen wrongly sees no
-  // active chat here. The sibling branch fix/reduce-tool-toasts-20260924
-  // (not merged; do not import it from here) adds
-  // `src-ui/src/hooks/orchestration/chatForeground.ts` with
-  // `isChatInForeground`, which covers both cases. Switch this gate to it
-  // once that branch merges.
+  // Known gap: `isDockOpen` is incomplete — a full-screen Chat surface never
+  // sets it, so a plugin seed-composer command run while Chat is full-screen
+  // sees no active chat here. `chatForeground.ts` counts full-screen Chat
+  // surfaces for exactly that case; this gate does not use it yet.
   const activeChatId = useMemo(() => {
     if (!isDockOpen) return null;
     const resolved =
