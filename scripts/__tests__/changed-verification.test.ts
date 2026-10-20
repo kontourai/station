@@ -476,6 +476,19 @@ describe('changed verification selection', () => {
     ]);
     expect(selection.lanes).toEqual([]);
   });
+  test('a Basis pane manifest change names its readers instead of reaching related discovery (#3860)', () => {
+    // Vitest's default forceRerunTriggers match any package.json, so a
+    // manifest handed to related discovery selects all ~3,700 suites on a
+    // hosted checkout and overruns the fast-checks shard budget.
+    const selection = selectChangedVerification([
+      'packages/basis-pane/package.json',
+    ]);
+    expect(selection.relatedPaths).toEqual([]);
+    expect(selection.tests.map(({ path }) => path)).toEqual([
+      'packages/basis-pane/src/__tests__/task-basis-collection-boundary.test.ts',
+      'scripts/__tests__/basis-mcp-apps.test.ts',
+    ]);
+  });
   test('a root package.json change escalates and still names its readers (#2176)', () => {
     // Before, its ordinary doc-example edge cancelled the escalation, so a
     // package.json-only change completed on one documentation suite.
