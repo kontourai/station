@@ -88,13 +88,17 @@ export function prepareActivityReviewPane(state: ActivityReviewPaneState) {
       if (!parseState(state)) return false;
       const raw = JSON.stringify(state);
       if (raw.length > 4096) return false;
-      let count = 0;
-      for (let index = 0; index < storage.length; index += 1)
-        if (storage.key(index)?.startsWith(STATE_PREFIX)) count += 1;
-      if (count >= 48 || storage.getItem(key) !== null) return false;
-      storage.setItem(key, raw);
-      written = true;
-      return true;
+      try {
+        let count = 0;
+        for (let index = 0; index < storage.length; index += 1)
+          if (storage.key(index)?.startsWith(STATE_PREFIX)) count += 1;
+        if (count >= 48 || storage.getItem(key) !== null) return false;
+        storage.setItem(key, raw);
+        written = true;
+        return true;
+      } catch {
+        return false;
+      }
     },
     rollback() {
       if (written) removeActivityReviewPane(storage, id);

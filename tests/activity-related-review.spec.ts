@@ -83,7 +83,7 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
     .getByRole('button', { name: 'Review activity 01', exact: true })
     .click();
   const search = main.getByPlaceholder('Search activity…');
-  await search.fill('Review');
+  await search.fill('Review activity');
   const list = main.locator('.split-pane__list');
   await expect(
     main.getByRole('button', { name: 'Other activity 02', exact: true }),
@@ -91,6 +91,9 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   await list.hover();
   await page.mouse.wheel(0, 200);
   const scrollBefore = await list.evaluate((element) => element.scrollTop);
+  await page.screenshot({
+    path: testInfo.outputPath('activity-review-before.png'),
+  });
   await reviewItem(page, 'Review activity 04');
   const review = page.getByRole('region', {
     name: 'Activity quick review',
@@ -106,7 +109,7 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   await expect(
     main.getByRole('button', { name: 'Review activity 01', exact: true }),
   ).toHaveAttribute('aria-current', 'true');
-  await expect(search).toHaveValue('Review');
+  await expect(search).toHaveValue('Review activity');
   expect(await list.evaluate((element) => element.scrollTop)).toBe(
     scrollBefore,
   );
@@ -174,7 +177,7 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   await review
     .getByRole('button', { name: 'Close review', exact: true })
     .click();
-  await expect(search).toHaveValue('Review');
+  await expect(search).toHaveValue('Review activity');
   await page.setViewportSize({ width: 390, height: 844 });
   await reviewItem(page, 'Review activity 04');
   await expect(
@@ -187,7 +190,7 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   await page.goBack();
   await expect(review).toHaveCount(0);
   await expect(search).toBeVisible();
-  await expect(search).toHaveValue('Review');
+  await expect(search).toHaveValue('Review activity');
   await reviewItem(page, 'Review activity 04');
   await expect(
     review.getByRole('heading', { name: 'Review activity 04', exact: true }),

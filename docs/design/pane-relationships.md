@@ -36,6 +36,24 @@ does not fabricate a parent history entry. Reload restores the exact validated
 child. Resizing changes presentation without creating history or controllers.
 Loading, offline, missing, denied and wrong-Station outcomes remain distinct.
 
+### Activity quick review
+
+Main Activity's row menu offers **Quick review** without selecting the row. The
+review is a Related destination using the existing SessionDetail reader and
+controls. It is a child screen on a phone, not a properties sheet. Its typed
+target captures the Session and Project; the occurrence's Station fence runs
+before any Session reader mounts.
+
+Previous and Next follow the list owner's current visible ordered rows,
+including search, filters, conversation folds, pagination and collapsed groups.
+If the reviewed row leaves that set, both controls disable and disclose why;
+they never choose a row from the unfiltered inventory. Main's selection,
+search, filters and list scroll stay with Activity. **Open** keeps the exact
+review target as durable work, and **Open conversation**, when the canonical
+open policy offers it, uses that owner. Typing a reply protects the review
+through the existing draft store and unsaved guard. Closing the review asks
+its owner guard and returns focus to the invoking row control when it survives.
+
 ## Persistence and authority
 
 The existing arrangement owns position and tab order. A bounded, versioned side

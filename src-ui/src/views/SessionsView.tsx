@@ -376,7 +376,7 @@ export function SessionsView({
   const review = useActivityReview();
   const relations = usePaneRelations();
   const regionModel = useRegionModelOptional();
-  const hasRegionModel = regionModel !== null;
+  const hasReviewSource = regionModel?.regions.main.occupant === 'activity';
   const regionModelRef = useRef(regionModel);
   useLayoutEffect(() => {
     regionModelRef.current = regionModel;
@@ -398,7 +398,7 @@ export function SessionsView({
     [selectedId],
   );
   usePublishOpenerSelection(
-    regionModel ? 'activity' : null,
+    hasReviewSource ? 'activity' : null,
     openerSelectionKey(reviewOpener),
   );
   const reviewItems = useMemo(
@@ -426,7 +426,7 @@ export function SessionsView({
     [relations, review.readSource],
   );
   useLayoutEffect(() => {
-    if (!hasRegionModel) return;
+    if (!hasReviewSource) return;
     return review.publish({
       owner: reviewOwner,
       apiBase,
@@ -441,7 +441,7 @@ export function SessionsView({
     });
   }, [
     apiBase,
-    hasRegionModel,
+    hasReviewSource,
     relations.stationId,
     review.publish,
     reviewOwner,
@@ -861,7 +861,7 @@ export function SessionsView({
     showEvidence: boolean,
   ): ActivityRowAction[] => {
     const actions: ActivityRowAction[] = [];
-    if (regionModel)
+    if (hasReviewSource)
       actions.push({
         id: 'quick-review',
         label: 'Quick review',
