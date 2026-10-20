@@ -1,0 +1,11 @@
+{
+  "revision": "61777c98b0162b7e729ebc04be975222af2a2aaf",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"#3290: contracts.md only gained two diagnostic-code table rows (acp-approval-takeover-failed, acp_approval_governance_refused); this document routes to contracts.md and none of its claims depend on that table.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3290: contracts.md only gained two diagnostic-code table rows (acp-approval-takeover-failed, acp_approval_governance_refused); this document routes to contracts.md and none of its claims depend on that table.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#3290: contracts.md only gained two diagnostic-code table rows (acp-approval-takeover-failed, acp_approval_governance_refused); this document routes to contracts.md and none of its claims depend on that table.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}
