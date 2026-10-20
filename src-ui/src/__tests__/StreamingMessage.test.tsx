@@ -280,6 +280,37 @@ describe('StreamingMessage', () => {
     );
   });
 
+  test('a running-state call waiting on approval is not reported as running', () => {
+    // The row reads "Awaiting approval" (`isToolCallActive` is false); the
+    // streaming status must not claim the tool is running.
+    useStreamingContent.mockReturnValue({
+      streamingText: '',
+      hasContent: true,
+      contentRevision: 1,
+      contentParts: [
+        {
+          type: 'tool-invocation',
+          toolCallId: 'tool-3',
+          toolName: 'run_tests',
+          state: 'running',
+          needsApproval: true,
+          approvalId: 'approval-3',
+        },
+      ],
+    });
+
+    render(
+      <StreamingMessage
+        sessionId="session-3"
+        agentIcon={<div>AI</div>}
+        agentIconStyle={{}}
+        fontSize={14}
+      />,
+    );
+
+    expect(document.body.textContent).not.toContain('Running run tests');
+  });
+
   test('renders ui blocks emitted from tool output parts', () => {
     useStreamingContent.mockReturnValue({
       streamingText: '',

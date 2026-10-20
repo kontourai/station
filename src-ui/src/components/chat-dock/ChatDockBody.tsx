@@ -93,6 +93,7 @@ import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
+import { hasActiveToolCall } from '../chat/tool-call-labels';
 import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
 import {
   ContextPercentage,
@@ -1571,9 +1572,8 @@ export function ChatDockBody({
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,
-            waitingForTools: activeSession.streamingMessage?.contentParts?.some(
-              (part) =>
-                part.type === 'tool-invocation' && part.state === 'running',
+            waitingForTools: hasActiveToolCall(
+              activeSession.streamingMessage?.contentParts,
             ),
             sendNowPending:
               activeSession.queueSendNowPending ||

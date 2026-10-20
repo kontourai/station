@@ -149,6 +149,64 @@ export function isToolCallActive(part: ToolCallPhaseInput): boolean {
   return !isToolCallAwaitingApproval(part);
 }
 
+type ToolContentPart = ToolCallPhaseInput & {
+  type: string;
+  activityAt?: string;
+  name?: string;
+  toolName?: string;
+  progressMessage?: string;
+};
+
+/** Whether any tool call in `parts` is executing ({@link isToolCallActive}). */
+export function hasActiveToolCall(
+  parts: readonly ToolContentPart[] | undefined,
+): boolean {
+  return Boolean(
+    parts?.some(
+      (part) => part.type === 'tool-invocation' && isToolCallActive(part),
+    ),
+  );
+}
+
+export interface ToolProgressSummary {
+  label: string;
+  toolName: string;
+}
+
+function activityTimestamp(part: ToolContentPart): number {
+  const timestamp = part.activityAt ? Date.parse(part.activityAt) : NaN;
+  return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+}
+
+/**
+ * The streaming row's tool status: the most recently active call that
+ * {@link isToolCallActive} says is executing, by its progress text or
+ * "Running <tool>". A call waiting on approval or already failed is not
+ * running here either, so this line and the tool rows agree.
+ */
+export function deriveToolProgressSummary(
+  parts: readonly ToolContentPart[] | undefined,
+): ToolProgressSummary | null {
+  const running = (parts ?? []).filter(
+    (part) => part.type === 'tool-invocation' && isToolCallActive(part),
+  );
+  if (running.length === 0) return null;
+  const latest = running.reduce((newest, candidate) =>
+    activityTimestamp(candidate) >= activityTimestamp(newest)
+      ? candidate
+      : newest,
+  );
+  const toolName = formatToolName(latest.toolName ?? latest.name);
+  const progressMessage =
+    typeof latest.progressMessage === 'string'
+      ? latest.progressMessage.trim()
+      : '';
+  return {
+    label: progressMessage || `Running ${toolName}`,
+    toolName,
+  };
+}
+
 /**
  * Same derivation `ToolCallDisplay` uses for the row verb. `done` is only
  * returned when a successful completion was observed — never as the

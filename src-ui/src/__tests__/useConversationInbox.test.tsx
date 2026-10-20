@@ -407,9 +407,7 @@ test('reads every 2s while anything is held, and slowly while nothing is', async
     // The observer's options land on the query at runtime; QueryOptions'
     // type omits the observer-only `refetchInterval`.
     const option = (query.options as { refetchInterval?: unknown })
-      .refetchInterval as (
-      q: typeof query,
-    ) => unknown;
+      .refetchInterval as (q: typeof query) => unknown;
     return option(query);
   };
   expect(interval()).toBe(INBOX_IDLE_POLL_MS);

@@ -8,6 +8,10 @@ import type { ReactNode } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useAgentSchedule } from '../../hooks/useAgentSchedule';
 import {
+  PRESENCE_FALLBACK_MS,
+  usePresenceList,
+} from '../../hooks/usePresenceList';
+import {
   useRunJob,
   useSchedulerJobs,
   useToggleJob,
@@ -17,10 +21,6 @@ import { Button } from '../Button';
 import { CalendarGlyph, EditGlyph, PlayGlyph, TimeGlyph } from '../icons/Glyph';
 import { Toggle } from '../Toggle';
 import { everyText } from './agentScheduleText';
-import {
-  PRESENCE_FALLBACK_MS,
-  usePresenceList,
-} from '../../hooks/usePresenceList';
 import './SessionScheduledSection.css';
 
 type ScheduledRow =
