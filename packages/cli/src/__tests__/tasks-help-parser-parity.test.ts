@@ -1,8 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { encodeTaskToolResultReference } from '@kontourai/station-contracts';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { commandHelpText } from '../help.js';
 
 /**
@@ -229,10 +228,11 @@ function tasksUsageLines(): string[] {
 
 describe('tasks help agrees with the tasks parser', () => {
   const fetchMock = vi.fn<typeof fetch>();
+  const makeTempDir = trackTempDirs();
   let outDir: string;
 
   beforeEach(() => {
-    outDir = mkdtempSync(join(tmpdir(), 'station-tasks-help-'));
+    outDir = makeTempDir('station-tasks-help-');
     fetchMock.mockImplementation(async (input, init) => {
       const url = new URL(String(input));
       const body =
@@ -249,7 +249,6 @@ describe('tasks help agrees with the tasks parser', () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     fetchMock.mockReset();
-    rmSync(outDir, { recursive: true, force: true });
   });
 
   test('finds the usage lines it checks', () => {
