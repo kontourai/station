@@ -1,3 +1,4 @@
+// UNWIRED(#495): no production caller; operator reconciliation transport will call it.
 import type { RuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import { plainDataObject } from './bounded-json.js';

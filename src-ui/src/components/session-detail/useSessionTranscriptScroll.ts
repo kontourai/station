@@ -147,7 +147,7 @@ export function useSessionTranscriptScroll({
       } else if (top < lastSeenTop.current - 1) {
         follow.current = false;
       } else if (
-        top > lastSeenTop.current + 1 &&
+        top > lastSeenTop.current &&
         (reachedReaderTail || (!anchored && distance <= lastGrowthDelta + 2))
       ) {
         follow.current = true;

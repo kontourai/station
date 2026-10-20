@@ -1,14 +1,13 @@
 /**
- * K3 knowledge-index management fetchers (`s201-knowledge-retrieval` Wave 4) —
- * the DRY client for the two explicit, user/CLI-triggered index-management
- * verbs (`docs/design/knowledge-foundation.md`'s K3 section):
+ * K3 knowledge-index management fetchers: the client for the two explicit,
+ * user/CLI-triggered index-management verbs
+ * (`docs/design/knowledge-foundation.md`'s K3 section),
  * `POST /api/knowledge/index/rebuild` and `POST /api/knowledge/migrate`
- * (`src-server/routes/knowledge/knowledge-index-routes.ts`, Wave 3). Both the CLI
- * (`station knowledge reindex`/`migrate`, Wave 4) and station-control tool
- * wiring (`reindex_knowledge`/`migrate_knowledge`, Wave 4) call through these
- * two fetchers — the HTTP call is never re-implemented inline in either
- * caller, per this module family's own portability contract
- * (`./index.ts`'s header comment).
+ * (`src-server/routes/knowledge/knowledge-index-routes.ts`). Both the CLI
+ * (`station knowledge reindex`/`migrate`) and the station-control tools
+ * (`reindex_knowledge`/`migrate_knowledge`) call through these two fetchers;
+ * the HTTP call is never re-implemented inline in either caller, per this
+ * module family's portability contract (`./index.ts`'s header comment).
  */
 
 import { envelopeError } from './api-error-message';
@@ -141,9 +140,9 @@ export async function migratePreIndexKnowledge(
 }
 
 /**
- * K4 knowledge-store-root fetchers (`s202-knowledge-onboarding` Wave 1) —
- * thin delegations to the new `/api/knowledge/roots`, `/api/knowledge/roots/
- * validate`, and `/api/knowledge/adapters` routes
+ * K4 knowledge-store-root fetchers: thin delegations to the
+ * `/api/knowledge/roots`, `/api/knowledge/roots/validate`, and
+ * `/api/knowledge/adapters` routes
  * (`src-server/routes/knowledge/knowledge-store-routes.ts`), which themselves delegate
  * to K2's `KnowledgeStoreProvider` (`listRoots`/`createRoot`/`removeRoot`/
  * `listAdapters`/`validateRootForAdapter`). Same envelope shape and
@@ -263,8 +262,7 @@ export async function deleteKnowledgeRoot(
 }
 
 /**
- * K5 knowledge-record + index-search fetchers (`s203-knowledge-meeting-notes`
- * Wave 1 Task 2) — the DRY client for the record-CRUD routes
+ * K5 knowledge-record + index-search fetchers: the client for the record-CRUD routes
  * (`src-server/routes/knowledge/knowledge-record-routes.ts`) and the K3 index-search route
  * (`POST /api/knowledge/index/search`, `src-server/routes/knowledge/knowledge-index-routes.ts`).
  * Same envelope shape and `unwrapKnowledgeResponse` pattern as every other
@@ -478,10 +476,9 @@ export async function searchKnowledgeIndexWithReport(
 }
 
 /**
- * K5 Neo4j graph-view fetchers (`s203-knowledge-meeting-notes` Wave 3 cleanup,
- * plan item 1c) — the DRY client for the Neo4j-backed graph read/sync routes
- * (`src-server/routes/knowledge/neo4j-graph-routes.ts`, Wave 1 Task 1's Q1-ratified
- * "Graph view, synced" scope). Same envelope + `unwrapKnowledgeResponse`
+ * K5 Neo4j graph-view fetchers: the client for the Neo4j-backed graph read/sync
+ * routes (`src-server/routes/knowledge/neo4j-graph-routes.ts`), scoped to a
+ * synced graph view rather than a graph store. Same envelope + `unwrapKnowledgeResponse`
  * convention as every other `/api/knowledge/*` fetcher in this file. Both
  * routes answer an honest `503` when no Neo4j graph-view connection is
  * registered (or the driver failed to load) — that surfaces here as a thrown

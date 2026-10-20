@@ -6,17 +6,20 @@
 > has both an [in-process adapter](../../src-ui/src/workspace-panes/inProcessPaneHost.tsx)
 > and a [frame adapter](../../src-ui/src/components/plugins/framePaneHost.tsx),
 > consumed by [PluginFrameHost](../../src-ui/src/components/plugins/PluginFrameHost.tsx).
-> Use [pane authoring](../guides/workspace-pane-authoring.md) for current usage.
+> Use [the pane-host contract, from a frame](../guides/plugins.md#the-pane-host-contract-from-a-frame)
+> for current frame usage and [pane authoring](../guides/workspace-pane-authoring.md)
+> for descriptors and placement.
 > This owner map does not certify every payload's clone safety, both-runtime
 > artifact compatibility, or the proposed install-time trust flow.
 
-Status: design for station#4201, feeding #4220 and #4190. Follows
+Status: design for #465 (closed; the contract and both adapters named in the
+banner above shipped), feeding #469 and #461 (both open). Follows
 `docs/design/pane-or-shell.md` (criterion, runtime tiers, and the iframe
 threat model).
 
 ## The problem, from evidence
 
-The Board extraction (#4200) found a first-party pane leaning on five shell
+The Board extraction (archive#4200) found a first-party pane leaning on five shell
 capabilities with no published equivalent, and resolved them for ONE pane by
 hand-injecting a typed host (`ConsoleBoardPaneHost`). The iframe runtime
 (`PluginFrameHost`) meanwhile speaks its own ad-hoc message set. Every future
@@ -24,7 +27,7 @@ extraction re-deriving its own host, and every iframe capability added ad
 hoc, is the same divergence this repo keeps paying for — two expressions of
 one need, drifting.
 
-The destination (#4220): a pane written against ONE host contract runs in
+The destination (#469): a pane written against ONE host contract runs in
 either tier — direct calls in-process, postMessage across the iframe — and
 the runtime becomes a user trust decision. This document is that contract's
 design.
@@ -103,7 +106,7 @@ cases rather than staying bespoke).
    in-process adapter, and the Board's host refits onto them — deleting both
    component slots. The Board is the proof that tier 2 rides the contract.
 3. The frame adapter lands in `PluginFrameHost`, absorbing `navigate`/`toast`
-   into it. #4190's dogfood plugin is then written against the contract and
+   into it. #461's dogfood plugin is then written against the contract and
    must run in BOTH tiers — one artifact, both runtimes, or the contract is
-   not done (#4220's success criterion).
-4. The install-time trust prompt (#4220) rides on 1–3.
+   not done (#469's success criterion).
+4. The install-time trust prompt (#469) rides on 1–3.

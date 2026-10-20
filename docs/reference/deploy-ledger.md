@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-20T05:54:27Z | nightly-npm | 0.9.0-nightly.2484.39374315524 | `e0c9c64` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39374315524) |
 | 2026-10-19T21:59:06Z | nightly-desktop | 0.1.11-nightly.2483.2 | `cd19298` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39321642672) |
 | 2026-10-19T21:59:01Z | nightly-android | 0.1.11-nightly.2483.2 | `cd19298` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39321642672) |
 | 2026-10-19T20:55:48Z | nightly-npm | 0.9.0-nightly.2483.39321642672 | `cd19298` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39321642672) |
@@ -309,6 +310,43 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-20T05:54:27Z · nightly-npm · 0.9.0-nightly.2484.39374315524
+
+- Ship SHA: `e0c9c64081f5901e3d1533f386bede1249b403f4`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.9.0-nightly.2484.39374315524 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `cd19298` ([full sha](https://github.com/kontourai/station/commit/cd1929819a5dba3ab71596d37e2df7dcd1f4cb55)):
+
+**Features**
+
+- [#3855](https://github.com/kontourai/station/pull/3855) feat(ui): put Basis on the answer; fix session inventory refetch loop
+- [#3868](https://github.com/kontourai/station/pull/3868) feat(chat): show and remove server-held follow-ups across clients
+- [#3856](https://github.com/kontourai/station/pull/3856) feat(ui): add a session context card beside the chat transcript
+- [#3854](https://github.com/kontourai/station/pull/3854) feat(ui): add a live turn rail beside the transcript
+
+**Fixes**
+
+- [#3918](https://github.com/kontourai/station/pull/3918) fix(ui): delete dead UI code and fix four #2722 UI defects
+- [#3914](https://github.com/kontourai/station/pull/3914) fix(basis): never count a grounding-refused Fieldwork source as accepted
+- [#3904](https://github.com/kontourai/station/pull/3904) fix(answers): accept a symlinked Station home; docs: stop listing required checks in AGENTS.md
+- [#3919](https://github.com/kontourai/station/pull/3919) fix(ci): defer global Vitest triggers from fast feedback
+- [#3874](https://github.com/kontourai/station/pull/3874) fix(ui): resume transcript follow on one-pixel keyboard steps
+
+**Docs**
+
+- [#3911](https://github.com/kontourai/station/pull/3911) docs(strategy): state retention for dated evidence sets and fix the archive location
+- [#3906](https://github.com/kontourai/station/pull/3906) docs(packages): supervisor README, contracts helper rule, subpath indexes and comment hygiene
+- [#3893](https://github.com/kontourai/station/pull/3893) docs(design): align lifecycle status with banners and retire stale records
+
+**Other**
+
+- [#3917](https://github.com/kontourai/station/pull/3917) refactor(scripts): Node.js pin in assemble, shared canonical JSON, dead scripts, daily-driver doc
+- [#3905](https://github.com/kontourai/station/pull/3905) chore(deploy): remove committed PR screenshots and the historical GCP recipe
 
 ## 2026-10-19T21:59:06Z · nightly-desktop · 0.1.11-nightly.2483.2
 

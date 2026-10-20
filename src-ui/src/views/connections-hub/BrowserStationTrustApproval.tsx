@@ -15,6 +15,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
+import { isRecord } from '../../utils/isRecord';
 
 const MAX_REPORT_BYTES = 4096;
 const REPORT_SCHEMA = 'station.connection-key/v1';
@@ -32,10 +33,6 @@ type TrustDecision = {
   readonly detail: string;
   readonly canApprove: boolean;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 async function parseOperatorKeyReport(
   text: string,
