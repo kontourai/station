@@ -168,13 +168,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test.each(['unverified', 'Station B', 'unmount', 'source', 'api'])(
+test.each([
+  'unverified',
+  'Station B',
+  'Station recovery',
+  'unmount',
+  'source',
+  'api',
+])(
   'real recipient adoption after %s cannot open or send the old child',
   async (change) => {
     const adoption = deferred<AdoptedSessionResult>();
     boundary.adopt.mockReturnValue(adoption.promise);
     const view = mount();
     await start();
+    if (change === 'Station recovery') {
+      act(() => authoritySwitch.set?.('unverified'));
+      act(() => authoritySwitch.set?.({ station: 'station-a' }));
+    }
     act(() => {
       if (change === 'unverified') authoritySwitch.set?.('unverified');
       if (change === 'Station B')
@@ -193,21 +204,27 @@ test.each(['unverified', 'Station B', 'unmount', 'source', 'api'])(
   },
 );
 
-test('a scope lost while canonical opening awaits cannot write the confirmed draft or send', async () => {
-  boundary.adopt.mockResolvedValue(child);
-  const opening = deferred<boolean>();
-  boundary.open.mockReturnValue(opening.promise);
-  mount();
-  await start();
-  await waitFor(() => expect(boundary.open).toHaveBeenCalledTimes(1));
-  act(() => authoritySwitch.set?.('unverified'));
-  await act(async () => {
-    opening.resolve(true);
-    await opening.promise;
-  });
-  expect(boundary.send).not.toHaveBeenCalled();
-  expect(activeChatsStore.getSnapshot()['child-tab'].input ?? '').toBe('');
-});
+test.each(['unverified', 'unmount'])(
+  'a scope lost by %s while canonical opening awaits cannot write the confirmed draft or send',
+  async (change) => {
+    boundary.adopt.mockResolvedValue(child);
+    const opening = deferred<boolean>();
+    boundary.open.mockReturnValue(opening.promise);
+    const view = mount();
+    await start();
+    await waitFor(() => expect(boundary.open).toHaveBeenCalledTimes(1));
+    act(() => {
+      if (change === 'unmount') view.unmount();
+      else authoritySwitch.set?.('unverified');
+    });
+    await act(async () => {
+      opening.resolve(true);
+      await opening.promise;
+    });
+    expect(boundary.send).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()['child-tab'].input ?? '').toBe('');
+  },
+);
 
 test('the real recipient takes a review handoff and continues only after confirmation', async () => {
   boundary.adopt.mockResolvedValue(child);
