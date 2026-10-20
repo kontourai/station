@@ -314,6 +314,8 @@ export class AttachedSessionFollowService {
   private readonly stopPollWaitMs: number;
   private readonly maxSeenEventIds: number;
   private readonly followStates = new Map<string, FollowState>();
+  /** Threads whose refused write was already logged; cleared on success. */
+  private readonly staleWriteLogged = new Set<string>();
   private timer: NodeJS.Timeout | undefined;
   private activePoll: Promise<void> | undefined;
   private readonly adoptionLedger: AdoptionLedger;
@@ -809,16 +811,12 @@ export class AttachedSessionFollowService {
       this.rejectFollow(source, descriptor);
       return;
     }
-    let appendOperations = 0;
-    let lastAppendYieldAt = performance.now();
-    for (const event of read.events) {
-      if (
-        event.threadId !== descriptor.threadId ||
-        state.seen.has(event.eventId) ||
-        persistedEventIds.has(event.eventId)
-      ) {
-        continue;
-      }
+    // Check the current row semantically once per page, then let each append
+    // compare cheap raw columns inside its own queued write: another writer
+    // may run between any two appends, and a full row parse per event made
+    // large backfills pay for it.
+    let attachmentFingerprint: string | undefined;
+    if (hasNewEvents) {
       const current = this.options.eventStore.readSessionByThread(
         descriptor.threadId,
       );
@@ -830,10 +828,39 @@ export class AttachedSessionFollowService {
           snapshot.get(descriptor.threadId)?.resumeCursor,
         )
       ) {
-        this.rejectFollow(source, descriptor);
+        this.refuseStaleWrite(source, descriptor, 'event');
         return;
       }
-      if (await this.appendIngestibleEvent(state, event)) {
+      attachmentFingerprint =
+        this.options.eventStore.sessionAttachmentFingerprint(
+          descriptor.threadId,
+        );
+    }
+    const attachmentUnchanged = () =>
+      attachmentFingerprint !== undefined &&
+      this.options.eventStore.sessionAttachmentFingerprint(
+        descriptor.threadId,
+      ) === attachmentFingerprint;
+    let appendOperations = 0;
+    let lastAppendYieldAt = performance.now();
+    for (const event of read.events) {
+      if (
+        event.threadId !== descriptor.threadId ||
+        state.seen.has(event.eventId) ||
+        persistedEventIds.has(event.eventId)
+      ) {
+        continue;
+      }
+      const appended = await this.appendIngestibleEvent(
+        state,
+        event,
+        attachmentUnchanged,
+      );
+      if (appended === 'stale') {
+        this.refuseStaleWrite(source, descriptor, 'event');
+        return;
+      }
+      if (appended) {
         if (!state.latestEventAt || event.createdAt > state.latestEventAt) {
           state.latestEventAt = event.createdAt;
         }
@@ -1138,9 +1165,33 @@ export class AttachedSessionFollowService {
         return next;
       },
     );
-    if (typeof outcome === 'boolean') return outcome;
+    if (outcome === false) {
+      this.logStaleWriteOnce(descriptor.threadId, 'session');
+      return false;
+    }
+    this.staleWriteLogged.delete(descriptor.threadId);
+    if (outcome === true) return true;
     snapshot.set(outcome);
     return true;
+  }
+
+  /** A refused write retries every poll, so it is logged once per thread. */
+  private logStaleWriteOnce(threadId: string, write: 'session' | 'event') {
+    if (this.staleWriteLogged.has(threadId)) return;
+    this.staleWriteLogged.add(threadId);
+    this.options.logger?.warn(
+      'Attached-session write refused: the stored session changed since it was read; following stops until the next poll',
+      { threadId, write },
+    );
+  }
+
+  private refuseStaleWrite(
+    source: AttachedSessionSource,
+    descriptor: AttachedSessionDescriptor,
+    write: 'session' | 'event',
+  ): void {
+    this.logStaleWriteOnce(descriptor.threadId, write);
+    this.rejectFollow(source, descriptor);
   }
 
   private rejectFollow(
@@ -1179,15 +1230,22 @@ export class AttachedSessionFollowService {
   private async appendAndPublish(
     event: CanonicalRuntimeEvent,
     onIngressRefusal?: (error: EventStoreIngressError) => void,
-  ): Promise<boolean> {
+    guard?: () => boolean,
+  ): Promise<boolean | 'stale'> {
     this.options.eventStore.assertNoOuterTransactionForPublication();
     event = safeSanitizeUIBlockEventProvenance(event, (message, meta) =>
       this.options.logger?.warn(message, meta),
     );
     let sequence: number | undefined;
     try {
-      sequence =
-        await this.options.eventStore.appendEventIfAbsentInBackground(event);
+      const appended = guard
+        ? await this.options.eventStore.appendEventIfAbsentInBackgroundIf(
+            event,
+            guard,
+          )
+        : await this.options.eventStore.appendEventIfAbsentInBackground(event);
+      if (appended === false) return 'stale';
+      sequence = appended;
     } catch (error) {
       if (!(error instanceof EventStoreIngressError) || !onIngressRefusal)
         throw error;
@@ -1218,18 +1276,25 @@ export class AttachedSessionFollowService {
   private async appendIngestibleEvent(
     state: FollowState,
     event: CanonicalRuntimeEvent,
-  ): Promise<boolean> {
-    const committed = await this.appendAndPublish(event, (error) => {
-      this.options.logger?.warn(
-        'Attached-session event cannot be persisted; skipping it and advancing',
-        {
-          method: event.method,
-          threadId: event.threadId,
-          eventId: event.eventId,
-          error: error.message,
-        },
-      );
-    });
+    guard?: () => boolean,
+  ): Promise<boolean | 'stale'> {
+    const committed = await this.appendAndPublish(
+      event,
+      (error) => {
+        this.options.logger?.warn(
+          'Attached-session event cannot be persisted; skipping it and advancing',
+          {
+            method: event.method,
+            threadId: event.threadId,
+            eventId: event.eventId,
+            error: error.message,
+          },
+        );
+      },
+      guard,
+    );
+    // Nothing was written, so a later page must still import this event.
+    if (committed === 'stale') return committed;
     rememberEvent(state.seen, event.eventId, this.maxSeenEventIds);
     return committed;
   }

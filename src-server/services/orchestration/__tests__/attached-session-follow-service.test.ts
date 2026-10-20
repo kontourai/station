@@ -1743,10 +1743,12 @@ describe('AttachedSessionFollowService', () => {
       discover: async () => ({ outcome: 'ok', sessions: [session] }),
       read: async () => ({ outcome: 'ok', events: [], cursor: 20 }),
     };
+    const logger = { warn: vi.fn() };
     const service = new AttachedSessionFollowService({
       sources: [source],
       eventStore: store,
       eventBus,
+      logger,
       listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
     });
     await service.pollNow();
@@ -1775,6 +1777,67 @@ describe('AttachedSessionFollowService', () => {
         controlMode: 'station-owned',
         resumeCursor: 'new-owner',
       });
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('write refused'),
+        { threadId: session.threadId, write: 'session' },
+      );
+    } finally {
+      if (peer.isTransaction) peer.exec('ROLLBACK');
+      peer.close();
+    }
+  });
+
+  test('each page append rechecks the attachment inside its queued write, after contention backoff', async () => {
+    const first = event('queued-append-guard');
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: async () => ({ outcome: 'ok', sessions: [session] }),
+      read: async () => ({ outcome: 'ok', events: [], cursor: 20 }),
+    };
+    const logger = { warn: vi.fn() };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    });
+    await service.pollNow();
+    const peer = new DatabaseSync(join(dir, 'orchestration.sqlite'));
+    let takenOver = false;
+    source.read = async () => {
+      // The unchanged-row check reads under the held lock; the append then
+      // backs off and a station-owned writer takes the row before its retry.
+      peer.exec('BEGIN IMMEDIATE');
+      setTimeout(() => {
+        peer.exec('ROLLBACK');
+        store.upsertSession({
+          ...persistedAttachment(),
+          controlMode: 'station-owned',
+          attachedSource: undefined,
+          resumeCursor: 'new-owner',
+        });
+        takenOver = true;
+      }, 0);
+      return { outcome: 'ok', events: [first], cursor: 20 };
+    };
+    try {
+      await service.pollNow();
+      expect(takenOver).toBe(true);
+      expect(persistedAttachment()).toMatchObject({
+        controlMode: 'station-owned',
+        resumeCursor: 'new-owner',
+      });
+      expect(
+        store.listEvents(session.threadId).map((row) => row.id),
+      ).not.toContain(first.eventId);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('write refused'),
+        { threadId: session.threadId, write: 'event' },
+      );
     } finally {
       if (peer.isTransaction) peer.exec('ROLLBACK');
       peer.close();
