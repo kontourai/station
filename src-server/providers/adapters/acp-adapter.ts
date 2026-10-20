@@ -55,6 +55,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
+import { TURN_ENGINE_DISPLAY_NAME_METADATA_KEY } from '@kontourai/station-contracts/turn-provenance';
 import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
 import {
   delegatedApprovalDenial,
@@ -504,6 +505,12 @@ export interface AcpSessionRecord {
   session: ProviderSession;
   process: ACPProcess;
   connectionId: string;
+  /**
+   * The connection's configured name when this session started (the name the
+   * chat header shows). Stamped on each turn so its provenance names the
+   * engine instead of the generic `acp` provider.
+   */
+  connectionName?: string;
   command: string;
   args?: string[];
   /**
@@ -1102,6 +1109,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       session,
       process: undefined as unknown as ACPProcess,
       connectionId: config.id,
+      ...(config.name ? { connectionName: config.name } : {}),
       command: config.command,
       args: config.args,
       promptEpoch: 0,
@@ -2177,6 +2185,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           input.modelId ?? record.session.model,
           input.modelOptions,
         ),
+        ...(record.connectionName
+          ? { [TURN_ENGINE_DISPLAY_NAME_METADATA_KEY]: record.connectionName }
+          : {}),
         // Carries the server-owned
         // `firstTurnInstructionsComposed` marker onto THIS turn's own
         // persisted record — see the constant's doc comment in

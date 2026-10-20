@@ -1,7 +1,9 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   isSupportedTurnProvenanceEnvelope,
+  TURN_ENGINE_DISPLAY_NAME_METADATA_KEY,
   TURN_PROVENANCE_ENVELOPE_VERSION,
+  turnProvenanceEngineLabel,
 } from '@kontourai/station-contracts/turn-provenance';
 import { describe, expect, it } from 'vitest';
 import { assembleTurnProvenanceEnvelopes } from '../turn-provenance-fold.js';
@@ -816,5 +818,83 @@ describe('assembleTurnProvenanceEnvelopes', () => {
         reason: 'not-captured-by-station',
       });
     });
+  });
+});
+
+describe('engine display name (ACP connections)', () => {
+  // Pinned literal next to the constant under test.
+  it('reads the documented metadata key', () => {
+    expect(TURN_ENGINE_DISPLAY_NAME_METADATA_KEY).toBe('engineDisplayName');
+  });
+
+  function acpTurn(startedMetadata?: Record<string, unknown>) {
+    return [
+      event({
+        eventId: 'acp-start',
+        provider: 'acp',
+        method: 'turn.started',
+        turnId: 't1',
+        ...(startedMetadata ? { metadata: startedMetadata } : {}),
+      }),
+      event({
+        eventId: 'acp-done',
+        provider: 'acp',
+        method: 'turn.completed',
+        turnId: 't1',
+      }),
+    ];
+  }
+
+  it("names the turn's own connection and cites the event it came from", () => {
+    const [envelope] = assembleTurnProvenanceEnvelopes(
+      acpTurn({ engineDisplayName: '  OpenCode ' }),
+    );
+    expect(envelope?.engine).toEqual({
+      state: 'observed',
+      value: { provider: 'acp', displayName: 'OpenCode' },
+      observedFrom: [
+        { eventId: 'acp-done', method: 'turn.completed' },
+        { eventId: 'acp-start', method: 'turn.started' },
+      ],
+    });
+    expect(isSupportedTurnProvenanceEnvelope(envelope)).toBe(true);
+    expect(
+      envelope?.engine.state === 'observed' &&
+        turnProvenanceEngineLabel(envelope.engine.value),
+    ).toBe('OpenCode');
+  });
+
+  it('keeps the generic label when the turn recorded no connection name', () => {
+    const [envelope] = assembleTurnProvenanceEnvelopes(acpTurn());
+    expect(envelope?.engine).toMatchObject({ value: { provider: 'acp' } });
+    expect(
+      envelope?.engine.state === 'observed' &&
+        turnProvenanceEngineLabel(envelope.engine.value),
+    ).toBe('Custom engine');
+  });
+
+  it('ignores a name stamped by a different engine than the one that finished the turn', () => {
+    const events = acpTurn({ engineDisplayName: 'OpenCode' });
+    events[0] = { ...events[0]!, provider: 'codex' } as CanonicalRuntimeEvent;
+    const [envelope] = assembleTurnProvenanceEnvelopes(events);
+    expect(envelope?.engine).toMatchObject({ value: { provider: 'acp' } });
+    expect(
+      envelope?.engine.state === 'observed' &&
+        envelope.engine.value.displayName,
+    ).toBeUndefined();
+  });
+
+  it('rejects an envelope whose display name is present but empty', () => {
+    const [envelope] = assembleTurnProvenanceEnvelopes(acpTurn());
+    expect(
+      isSupportedTurnProvenanceEnvelope({
+        ...envelope,
+        engine: {
+          state: 'observed',
+          value: { provider: 'acp', displayName: '' },
+          observedFrom: [],
+        },
+      }),
+    ).toBe(false);
   });
 });
