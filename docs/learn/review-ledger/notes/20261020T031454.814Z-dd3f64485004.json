@@ -1,0 +1,27 @@
+{
+  "revision": "8a33112ad65935502b969fe402a240274f1c0fe6",
+
+  "notes": [
+    {"path":"README.md","note":"cli.md review fixes only add replace-support/remove-support retry semantics (task-answer-support-module.ts) and that recovery-plan text lists only stores with entries (cli.ts); README claims unchanged.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"cli.md review fixes only add replace-support/remove-support retry semantics (task-answer-support-module.ts) and that recovery-plan text lists only stores with entries (cli.ts); and a keyboard-shortcuts note on Reset command history; this dated audit's findings are unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"cli.md review fixes only add replace-support/remove-support retry semantics (task-answer-support-module.ts) and that recovery-plan text lists only stores with entries (cli.ts); triage claims unchanged.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"cli.md review fixes only add replace-support/remove-support retry semantics (task-answer-support-module.ts) and that recovery-plan text lists only stores with entries (cli.ts); routing unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"cli.md review fixes only add replace-support/remove-support retry semantics (task-answer-support-module.ts) and that recovery-plan text lists only stores with entries (cli.ts); README claims unchanged.","inputs":["packages/cli/README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Review round 1: replace-support returns the current record when the caller retries with revision current-1 and the bundle and claim already match, and remove-support of an absent item succeeds (task-answer-support-module.ts update/remove); home recovery-plan text prints only stores with entries (packages/cli/src/cli.ts).","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Review round 1: Discord turns continue the bound conversation with its existing approval posture and confinement (no full-access grant, no recorded decision); a mid-turn revocation still produces the completion acknowledgement and session link because relayTurnCompletion re-checks only transcript:read (discord-gateway-service.ts); the gateway connection keeps the startup token while replies reread the token from the file.","inputs":["docs/guides/discord-gateway.md"]},
+
+    {"path":"docs/guides/inbound-webhooks.md","note":"Review round 1: webhook starts carry no full-access grant (webhook-turn-starter.ts), so startConfinement is workspace and applicableMode turns never into auto unless the engine can confine it (approval-posture.ts); noted the settings help mismatch. Rewrote the response table from inbound-webhooks.ts and authorizeHeaders/authorizeBody: success body shape, check order (rate limit, config, disabled, token, revoked, timestamp/nonce presence, freshness, body, signature, grant, replay), 401 for a missing token header, 403 stale_timestamp for a malformed timestamp, 403 invalid_signature for a missing signature, and bad-body 400s without retryable.","inputs":["docs/guides/inbound-webhooks.md"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Review round 1: Reset command history has closeOnRun:false and shows a notice instead of closing (CommandPalette.tsx).","inputs":["docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Review round 1: interpolate returns a placeholder-free template unchanged and does not check extra values (LocaleContext.tsx).","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/user/settings.md","note":"Review round 1: Developer appears in Customize and the palette; Monitoring is hiddenFromNav and appears only in the palette (destination-registry.ts).","inputs":["docs/user/settings.md"]}
+  ]
+}

@@ -511,13 +511,13 @@ If a metric is load-bearing for a decision, it needs a local record as well.
 Station's own server logs are one instance of this: `station.logs.read` counts
 read-path *queries*, but the durable local record is the NDJSON store itself
 (`<STATION_HOME>/logs/server/`) plus its self-read path — `GET
-/api/diagnostics/logs` and the `read_logs` MCP tool (archive#1896 slice 2, see
+/api/diagnostics/logs` and the `read_logs` MCP tool (archive#1896; see
 [docs/reference/config.md#logging](../reference/config.md#logging)) — so the logs
 this section's own counters describe are themselves locally readable, not just
 counted.
 
 The worked example is the project-resource migration shadow
-(archive#1501 slice 3a): alongside `station.project_resource.shadow_comparisons`
+(archive#1501): alongside `station.project_resource.shadow_comparisons`
 it aggregates comparison counts by dimension in a per-home
 record at `<STATION_HOME>/project-resource-shadow.json`
 (`src-server/services/projects/project-resource-shadow-record.ts`). Read it
@@ -640,7 +640,7 @@ domain operations, so their totals are not counts of one business action.
 | `station.filetree.operations` | Filesystem route and file-tree/preview service operations | `op` or `operation`, sometimes `outcome` |
 | `station.registry.operations` | Registry operations | `operation`, with `outcome`, `source`, `item` where supplied |
 | <a id="skills"></a>`station.skill.discoveries` | Discovery passes; the discovered count is an attribute | `count`, `projectSlug` |
-| `station.skill.activations` | `skill_read` calls, including failed reads; not proof an Agent executed a skill | `skill` |
+| `station.skill.activations` | `activate_skill` tool calls, including failed reads; not proof an Agent executed a skill | `skill` |
 | <a id="other"></a>`station.analytics.operations` | Analytics route operations | `op` |
 | `station.bedrock.operations` | Model catalog and Bedrock operations | `op` |
 | `station.config.operations` | Config and connection operations | `op`, sometimes `id` |
@@ -669,7 +669,7 @@ a confirmed deferral.
 | `station.tool.duration` | Matched call/result elapsed time from MetadataHandler **and** the external-engine bridge | `tool` when reported, `plugin` | ms |
 | `station.scheduler.job.duration` | Scheduler execution duration | `job` | ms |
 | `station.approval.duration` | Explicit registry settlement time | `action` | ms |
-| `station.skill.activation.duration` | `skill_read` duration, including failed reads | `skill` | ms |
+| `station.skill.activation.duration` | `activate_skill` call duration, including failed reads | `skill` | ms |
 | `station.mcp.negotiation.duration` | Negotiation plus discovery duration | Negotiation attributes above | ms |
 
 The cost counter has USD semantics in its producer but no declared instrument
