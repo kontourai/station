@@ -107,9 +107,9 @@ function sentBody(fetchMock: FetchMock, call = 0): unknown {
 
 const OTHER_FOLDER = '/work/acme/web';
 
-/** Seed the status and log reads of the written folder and of another one. */
+/** Seed the status, branch and log reads of the written folder and another one. */
 function seedGitReads(queryClient: QueryClient) {
-  for (const read of ['git-status', 'git-log']) {
+  for (const read of ['git-status', 'git-branches', 'git-log']) {
     queryClient.setQueryData([read, API_REPO.root], { seeded: true });
     queryClient.setQueryData([read, OTHER_FOLDER], { seeded: true });
   }
@@ -117,7 +117,7 @@ function seedGitReads(queryClient: QueryClient) {
 
 /** The written folder's reads are stale; another folder's are untouched. */
 function expectOnlyFolderRefreshed(queryClient: QueryClient) {
-  for (const read of ['git-status', 'git-log']) {
+  for (const read of ['git-status', 'git-branches', 'git-log']) {
     expect(
       queryClient.getQueryState([read, API_REPO.root])?.isInvalidated,
     ).toBe(true);
