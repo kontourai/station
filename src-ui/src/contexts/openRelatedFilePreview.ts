@@ -1,10 +1,6 @@
 import type { WorkspaceFilePreviewPaneState } from '@kontourai/station-contracts/workspace-file-preview';
 import { useCallback, useLayoutEffect, useRef } from 'react';
-import {
-  readPaneFence,
-  removePaneFence,
-  writePaneFence,
-} from '../regions/pane-fence';
+import { readPaneFence, writePaneFence } from '../regions/pane-fence';
 import {
   BUILTIN_PANE_GENERATION,
   keptPaneForTarget,
@@ -461,7 +457,8 @@ async function openWatched(
         state,
       );
       if (!preparation.prepare()) {
-        removePaneFence(storage, nextId);
+        // Its own rollback: the fence goes only with no state under it.
+        preparation.rollback();
         return { ok: false, reason: 'storage' };
       }
       // Rollback removes the new state and, with it, the new fence.
