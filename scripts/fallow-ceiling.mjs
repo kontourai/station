@@ -41,9 +41,38 @@ export function headroom(recorded) {
   return Math.max(HEADROOM_MINIMUM, Math.ceil(recorded * HEADROOM_FRACTION));
 }
 
-/** Per-category counts and the total from a `fallow dead-code --format json` report. */
-export function countsFromReport(report) {
-  const summary = report?.summary;
+/** The `fallow dead-code --format json` report this script understands. */
+export const REPORT_KIND = 'dead-code';
+export const REPORT_SCHEMA_VERSION = 10;
+/**
+ * The summary folds these finding arrays into one `unused_dependencies`
+ * count; every other summary count names the array of the same key.
+ */
+const DEPENDENCY_ARRAYS = [
+  'unused_dependencies',
+  'unused_dev_dependencies',
+  'unused_optional_dependencies',
+];
+
+/**
+ * Per-category counts and the total from a fallow dead-code report. The
+ * report must be the kind and schema version this script was written for,
+ * every count must agree with its findings array, the total must be the sum
+ * of the categories, and every category the ceiling records must be present:
+ * an incomplete or different report is refused, never read as zero.
+ * @param {any} report
+ * @param {readonly string[]} [required] categories the ceiling records
+ */
+export function countsFromReport(report, required = []) {
+  if (report?.kind !== REPORT_KIND)
+    throw new Error(
+      `the report is kind ${JSON.stringify(report?.kind)}, not ${REPORT_KIND}`,
+    );
+  if (report.schema_version !== REPORT_SCHEMA_VERSION)
+    throw new Error(
+      `the report has schema version ${JSON.stringify(report.schema_version)}; this script reads version ${REPORT_SCHEMA_VERSION}`,
+    );
+  const summary = report.summary;
   if (!summary || typeof summary !== 'object')
     throw new Error('the fallow report has no summary');
   const counts = {};
@@ -54,6 +83,41 @@ export function countsFromReport(report) {
   }
   if (!Object.hasOwn(counts, 'total_issues'))
     throw new Error('the fallow report has no total_issues count');
+  for (const category of required)
+    if (!Object.hasOwn(counts, category))
+      throw new Error(
+        `the fallow report has no ${category} count, which the ceiling records`,
+      );
+  let sum = 0;
+  for (const [category, count] of Object.entries(counts)) {
+    if (category === 'total_issues') continue;
+    sum += count;
+    const arrays =
+      category === 'unused_dependencies' ? DEPENDENCY_ARRAYS : [category];
+    if (!arrays.some((key) => Array.isArray(report[key]))) continue;
+    const listed = arrays.reduce(
+      (total, key) =>
+        total + (Array.isArray(report[key]) ? report[key].length : 0),
+      0,
+    );
+    if (listed !== count)
+      throw new Error(
+        `the fallow report counts ${count} ${category} but lists ${listed}`,
+      );
+  }
+  for (const [key, value] of Object.entries(report))
+    if (
+      Array.isArray(value) &&
+      !DEPENDENCY_ARRAYS.includes(key) &&
+      value.length &&
+      key.startsWith('unused_') &&
+      !Object.hasOwn(counts, key)
+    )
+      throw new Error(`the fallow report lists ${key} but has no count for it`);
+  if (sum !== counts.total_issues)
+    throw new Error(
+      `the fallow report totals ${counts.total_issues} but its categories sum to ${sum}`,
+    );
   return counts;
 }
 
@@ -152,9 +216,9 @@ export function main(
     reportIndex >= 0
       ? JSON.parse(readFileSync(resolve(root, argv[reportIndex + 1]), 'utf8'))
       : analyzeDeadCode(root, { launcher });
-  const observed = countsFromReport(report);
   const ceilingPath = resolve(root, CEILING_FILE);
   if (write) {
+    const observed = countsFromReport(report);
     mkdirSync(dirname(ceilingPath), { recursive: true });
     writeFileSync(
       ceilingPath,
@@ -179,6 +243,7 @@ export function main(
   const recorded = JSON.parse(readFileSync(ceilingPath, 'utf8'));
   if (!recorded?.counts || typeof recorded.counts !== 'object')
     throw new Error(`${CEILING_FILE} has no counts`);
+  const observed = countsFromReport(report, Object.keys(recorded.counts));
   const { grown, lowered } = compareWithCeiling(observed, recorded.counts);
   for (const entry of grown)
     console.log(

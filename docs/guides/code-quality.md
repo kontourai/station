@@ -234,6 +234,13 @@ ceiling. Commit the four files together, in their own commit, and state in the
 pull request why the counts changed. Raising a ceiling to admit new dead code
 needs the same justification as any other new finding.
 
+Regenerate after every fallow upgrade. The command accepts only the report
+kind and schema version it was written for. It refuses, with `NOT_VERIFIED`,
+a report whose counts disagree with its findings, whose total is not the sum
+of its categories, or that lacks a category the ceiling records. A category
+that fallow renames or adds is held at zero plus 3, so it can fail a run whose
+total did not change until the ceiling is regenerated.
+
 ## Local CI pipeline
 
 Use `npm run gate:for -- <paths>` before editing and run its focused checks.
