@@ -297,8 +297,13 @@ describe('family stylesheets load on demand', () => {
     expect(sheets().map((s) => s.href)).toEqual([
       expect.stringContaining('/gruvbox.css'),
     ]);
-    // The next apply asks again, and this time it loads.
+    // The same selection does not ask again by itself (even with another
+    // mode); an explicit retry does, and this time it loads.
     applyColorTheme(root, { ...base, theme: 'light', colorTheme: 'rose-pine' });
+    expect(sheets().map((s) => s.href)).toEqual([
+      expect.stringContaining('/gruvbox.css'),
+    ]);
+    retryColorTheme(root);
     settleSheets('load');
     expect(root.getAttribute('data-color-theme')).toBe('rose-pine');
     expect(sheets().map((s) => s.href)).toEqual([
@@ -340,6 +345,39 @@ describe('family stylesheets load on demand', () => {
     expect(failed()).toBe('rose-pine');
     applyColorTheme(root, { ...base, colorTheme: 'station' });
     expect(failed()).toBeNull();
+  });
+
+  test('after a failure only a selection change or an explicit retry asks again, never an unrelated setting', () => {
+    const requests = () =>
+      sheets().filter((s) => s.href?.includes('/nord.css')).length;
+    applySettled(root, { ...base, colorTheme: 'gruvbox' });
+    applyColorTheme(root, { ...base, colorTheme: 'nord' });
+    expect(requests()).toBe(1);
+    settleSheets('error');
+    expect(requests()).toBe(0);
+    expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    // A background save of unrelated settings re-applies the same selection
+    // (and a mode change too): no request, the failure mark stays put.
+    for (const theme of ['dark', 'light', 'dark'] as const) {
+      applyColorTheme(root, { ...base, theme, colorTheme: 'nord' });
+      expect(requests()).toBe(0);
+      expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    }
+    // The previous family stays claimed, with theme-color for the mode.
+    expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
+    // Changing the selection (here the accent) does ask again.
+    applyColorTheme(root, {
+      ...base,
+      colorTheme: 'nord',
+      colorThemeAccent: 'red',
+    });
+    expect(requests()).toBe(1);
+    expect(root.hasAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe(false);
+    settleSheets('error');
+    expect(root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE)).toBe('nord');
+    // And so does an explicit retry.
+    retryColorTheme(root);
+    expect(requests()).toBe(1);
   });
 
   test('a startup sheet that fails is not claimed, and is requested again', () => {

@@ -108,9 +108,47 @@ function dropPending(doc: Document): void {
   pendingSheets.delete(doc);
 }
 
-function requestSheet(root: HTMLElement, family: string, href: string): void {
+/**
+ * The selection (family/flavor/accent) whose sheet request last failed, per
+ * root. An apply for the same selection does not ask again: only a changed
+ * selection, the single automatic retry of the startup request, or
+ * `retryColorTheme()` does. Otherwise every unrelated settings change (a
+ * background account-preference save) would re-request a blocked sheet and
+ * flip the failure mark on and off.
+ */
+const failedSelection = new WeakMap<HTMLElement, string>();
+
+function selectionKey(
+  resolved: Exclude<ResolvedColorTheme, { id: 'station' }>,
+): string {
+  return `${resolved.id}/${resolved.darkFlavor}/${resolved.accent}`;
+}
+
+/** What the root currently claims, re-stamped for `mode` (theme-color). */
+function currentSelection(
+  root: HTMLElement,
+  mode: 'dark' | 'light',
+): ResolvedColorTheme {
+  const current = resolveColorThemeSelection({
+    colorTheme: root.getAttribute(COLOR_THEME_ATTRIBUTE),
+    colorThemeFlavor: root.getAttribute(COLOR_THEME_FLAVOR_ATTRIBUTE),
+    colorThemeAccent: root.getAttribute(COLOR_THEME_ACCENT_ATTRIBUTE),
+  });
+  if (current.id !== 'station') stamp(root, current, mode);
+  return current;
+}
+
+function requestSheet(
+  root: HTMLElement,
+  family: string,
+  key: string,
+  href: string,
+): void {
   const doc = root.ownerDocument;
-  if (pendingSheets.get(doc)?.getAttribute('href') === href) return;
+  const pending = pendingSheets.get(doc);
+  // A request already in flight for this sheet is enough; one that left the
+  // document (removed by other code) can never settle, so ask afresh.
+  if (pending?.isConnected && pending.getAttribute('href') === href) return;
   dropPending(doc);
   // A request is starting: this family is retrying, not failed, until the
   // request settles (and is marked failed again only if it fails).
@@ -129,8 +167,10 @@ function requestSheet(root: HTMLElement, family: string, href: string): void {
       // sheet that keeps failing cannot loop.
       link.remove();
       root.setAttribute(COLOR_THEME_FAILED_ATTRIBUTE, family);
+      failedSelection.set(root, key);
       return;
     }
+    failedSelection.delete(root);
     activeSheet(doc)?.remove();
     link.id = COLOR_THEME_STYLESHEET_ID;
     const settings = latestSettings.get(root);
@@ -151,6 +191,8 @@ function requestSheet(root: HTMLElement, family: string, href: string): void {
 export function applyColorTheme(
   root: HTMLElement,
   settings: AppliedSettings,
+  /** Ask for a failed sheet again even if the selection did not change. */
+  retry = false,
 ): ResolvedColorTheme {
   const doc = root.ownerDocument;
   const resolved = resolveColorThemeSelection(settings);
@@ -160,11 +202,13 @@ export function applyColorTheme(
   if (failedFor !== null && failedFor !== resolved.id)
     root.removeAttribute(COLOR_THEME_FAILED_ATTRIBUTE);
   if (resolved.id === 'station') {
+    failedSelection.delete(root);
     dropPending(doc);
     activeSheet(doc)?.remove();
     stamp(root, resolved, mode);
     return resolved;
   }
+  const key = selectionKey(resolved);
   const href = colorThemeStylesheet(resolved);
   const active = activeSheet(doc);
   if (active?.getAttribute('href') === href) {
@@ -181,7 +225,15 @@ export function applyColorTheme(
     active.remove();
     stamp(root, { id: 'station' }, mode);
   }
-  requestSheet(root, resolved.id, href);
+  // This exact selection's request already failed and nothing asked again:
+  // keep what is in force (and the failure mark) rather than re-requesting.
+  if (
+    !retry &&
+    failedSelection.get(root) === key &&
+    root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE) === resolved.id
+  )
+    return currentSelection(root, mode);
+  requestSheet(root, resolved.id, key, href);
   return resolveColorThemeSelection({
     colorTheme: root.getAttribute(COLOR_THEME_ATTRIBUTE),
     colorThemeFlavor: root.getAttribute(COLOR_THEME_FLAVOR_ATTRIBUTE),
@@ -216,7 +268,7 @@ export function retryColorTheme(
   root: HTMLElement = document.documentElement,
 ): void {
   const settings = latestSettings.get(root);
-  if (settings) applyColorTheme(root, settings);
+  if (settings) applyColorTheme(root, settings, true);
 }
 
 /**
