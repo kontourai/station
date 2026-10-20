@@ -806,7 +806,9 @@ connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
 push with your SSH agent. In a linked worktree it can commit to its own
 branch, but `git stash`, `fetch` and `pull` are refused: they write shared
 refs (`refs/stash`, remote-tracking refs, `packed-refs`) that it may not
-change. It also cannot create or change any `.claude` or `.codex`
+change. In a folder whose `.git` is inside it, `fetch`, `pull` and ref
+packing are refused too: its remote-tracking refs are what a later Codex
+session trusts the folder's `.codex` by. It also cannot create or change any `.claude` or `.codex`
 directory in the folder, at any depth, which other sessions there would
 load. On Linux and
 Windows such a session is
@@ -823,13 +825,14 @@ other sessions there would load. It ignores every
 `default_permissions` setting, whether from the folder's configuration or
 your own. It also ignores `sandbox_workspace_write.network_access`: to give
 these sessions network, set `[permissions.station-workspace.network]
-enabled = true` in your own Codex configuration. A `.codex` the repository
-has committed still applies, as the top-level one does. A `.codex` it does
-not account for (uncommitted, changed since the last commit, inside a nested
-repository, or in a folder outside any repository), anywhere from the
-repository root down to the session's folder, stops the session from
-starting, with the directory named: commit or remove it, or run the session
-as `host`. If Codex does not
+enabled = true` in your own Codex configuration. A `.codex` that came from the
+repository's upstream (its exact bytes are on a remote-tracking branch, such
+as `origin/main` after a fetch) still applies, as the top-level one does. Any
+other `.codex` anywhere from the repository root down to the session's folder
+(uncommitted, committed only locally, changed, inside a nested repository,
+or in a folder with no repository or no remote) stops the session from
+starting, with the directory named: commit and push `.codex` to its
+upstream and fetch, remove it, or run the session as `host`. If Codex does not
 report the profile applied (a Codex version without permission profiles),
 a session that must be confined is refused, and any other is recorded as
 `configured-but-failed`. On Linux, Codex cannot deny a `.codex` the session

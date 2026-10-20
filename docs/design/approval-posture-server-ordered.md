@@ -838,7 +838,11 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
     agent cannot read these directories either; Codex's own configuration
     loading runs outside the sandbox and is unaffected. The subtree patterns
     are needed: the bare directory pattern refuses creating a `.codex` but
-    not writing inside a checked-in one.
+    not writing inside a checked-in one. The profile also restates
+    `".git" = "read"` and `".agents" = "read"`: `:workspace` keeps a root's
+    `.git` and `.agents` read-only, but a profile with its own
+    `:workspace_roots` entries loses that (EXECUTED, codex-cli 0.162.1:
+    `.git/hooks`, `refs/remotes` and `packed-refs` became writable).
   - `-c sandbox_workspace_write.writable_roots=[]`, for a thread not under
     the profile (a `read-only` review start, or a Codex that does not apply
     it), whose tightening restores the reported workspace baseline.
@@ -877,43 +881,53 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
     directory from the outermost Git work tree containing the cwd down to
     the cwd, on the lexical and the resolved path
     ([codex-project-config-provenance.ts](../../src-server/providers/adapters/codex-project-config-provenance.ts)).
-    A `.codex` there must be a real directory inside that outermost
-    repository whose every file is a `HEAD` blob with the same bytes (Git is
-    asked only for `ls-tree` and `hash-object --no-filters`, which run no
-    hooks or filters). Otherwise the start is refused with
-    `confinement_workspace_incompatible`, naming the directory, whether or
+    A `.codex` there must be a real directory whose every file is a regular
+    file whose bytes are the blob at the same path in one remote-tracking
+    ref (`refs/remotes/*`) of that outermost repository: content that came
+    from upstream. Otherwise the start is refused with
+    `confinement_workspace_incompatible`, naming the directory and saying to
+    commit and push `.codex` to its upstream or run as `host`, whether or
     not the session requires confinement, since the command would run
     unconfined either way.
-    - An uncommitted `.codex` at the repository root is refused too: Station
-      cannot tell an operator's local file from one an agent placed. Commit
-      it, or run the session as `host`. The user's `~/.codex` and
+    - **Why upstream, not `HEAD`.** Local commits are no anchor: a confined
+      Claude session holds Seatbelt grants for the object store and its own
+      branch ref, so it can commit `sub/pkg/.codex/config.toml` with git
+      plumbing while a confined Codex session stages the same bytes through
+      temp (EXECUTED in review, in a linked worktree and in a main
+      checkout). Neither engine can write the remote-tracking refs: Seatbelt
+      denies `refs/remotes` and `packed-refs` where `.git` is inside the
+      workspace (a linked worktree never had them), and Station's Codex
+      profile keeps a root's `.git` read-only. The objects those refs name
+      are writable, so every commit and tree on the path is read with
+      `cat-file --batch` (replace objects off) and re-hashed against its id:
+      a forged loose object under an upstream id is refused. A repository
+      with no remote-tracking refs, using the reftable backend, or no
+      repository at all trusts no `.codex`.
+    - An uncommitted or local-only `.codex` at the repository root is refused
+      too. Push it, or run the session as `host`. The user's `~/.codex` and
       `CODEX_HOME` are user configuration and are skipped.
-    - A `.codex` committed only in a nested repository (including a
-      submodule) is refused: its files are not in the outermost `HEAD`, and
-      a planted repository is nested by construction, so only the outermost
-      one is trusted. The exception is a linked worktree the outermost
-      repository registered (for example a gitignored `.worktrees/lane`):
-      its gitfile names `<common dir>/worktrees/<name>`, whose `gitdir`
-      points back at it, and its `.codex` is judged against its own `HEAD`.
+    - A `.codex` known only to a nested repository (including a submodule)
+      is refused: only the outermost repository's refs count, and a planted
+      repository is nested by construction. The exception is a linked
+      worktree the outermost repository registered (for example a
+      gitignored `.worktrees/lane`): its gitfile names
+      `<common dir>/worktrees/<name>`, whose `gitdir` points back at it, so
+      its paths are judged from its own root against the same shared refs.
       A staged repository with its own `.git`, or a gitfile borrowing
       another worktree's entry, is not one.
     - A start without a cwd checks the server's own directory, where Codex
       then runs.
-    - **Limit: a project inside another repository.** The anchor is the
+    - **Not covered: a project inside another repository.** The anchor is the
       outermost repository, so a project inside, say, a home-directory
-      dotfiles repository has its own committed `.codex` judged against the
-      outer one and refused. The refusal says so. Bounding the walk needs
+      dotfiles repository has its own upstream `.codex` judged against the
+      outer one and refused; the refusal says so. Bounding the walk needs
       the Project root on the start input.
-    - **Limit: a committed `.codex` that is not on disk.** One that `HEAD`
-      tracks but the folder lacks is accepted once it appears with the same
-      bytes, by any route. A Codex session cannot commit, but a confined
-      Claude session holds Seatbelt git grants (objects and its branch
-      ref), so it could commit a `.codex` and then stage the matching bytes
-      through temp.
-    - **Residual:** a workspace that is not inside any Git repository has no
-      such anchor, so an agent that moves in a whole committed repository is
-      not told apart from a real one. Closing it needs the Project root from
-      the server, which the start input does not carry.
+    - **Not covered: a workspace outside any repository.** There the
+      outermost repository is whichever one is found, and an agent can build
+      a whole repository, remote-tracking refs included, in temp and move it
+      in. Closing it also needs the Project root from the server.
+    - Content that reaches the upstream (an agent that can push, then an
+      operator fetch) is trusted like any other upstream content.
   - **Checked-in configuration is still honoured.** A committed `.codex`, at
     any depth, is repository content with the same trust as the top-level
     one: its `mcp_servers` still run, and its keys merge into the profile. A
@@ -1039,7 +1053,10 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
     work in both layouts; a checkout with `.git` inside the workspace can
     also stash and switch branches. A linked worktree cannot stash, fetch or
     pull, by design: those write shared refs (`refs/stash`, remote-tracking
-    refs, `packed-refs`).
+    refs, `packed-refs`). Since #3800 neither can a checkout whose `.git` is
+    inside the workspace fetch or pull, or pack refs: its `refs/remotes` and
+    `packed-refs` are denied, because a Codex start trusts a nested `.codex`
+    only by remote-tracking refs.
   - Writes are denied to every directory named `.codex` or `.claude`, in
     any case and at any depth, inside every writable grant (#3800): a
     session can start in a subdirectory, and Codex loads each `.codex` from

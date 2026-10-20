@@ -38,10 +38,12 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
  * linked worktree it registered is judged with its own path (it shares the
  * same refs); a repository moved in from elsewhere is not one.
  *
- * Known limit: a project inside another repository (a home-directory
- * dotfiles repository, say) is judged against that outer one, so its own
- * upstream `.codex` is refused. Bounding the walk needs the Project root,
- * which the start input does not carry. Content an agent manages to push
+ * Known limits, both needing the Project root, which the start input does
+ * not carry: a project inside another repository (a home-directory dotfiles
+ * repository, say) is judged against that outer one, so its own upstream
+ * `.codex` is refused; and in a workspace outside any repository, an agent
+ * can build a whole repository (remote-tracking refs included) in temp and
+ * move it in, which is then the outermost one. Content an agent manages to push
  * upstream, and that the operator then fetches, is trusted like any other
  * upstream content.
  *
