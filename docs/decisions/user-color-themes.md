@@ -5,10 +5,14 @@ decided: 2026-10-20
 evidence:
   - kind: commit
     ref: 26fa8748790
+  - kind: commit
+    ref: d12b32b0732
   - kind: doc
     ref: src-ui/src/lib/color-theme-catalog.ts
   - kind: doc
     ref: src-ui/src/lib/color-theme-css.ts
+  - kind: doc
+    ref: src-ui/src/lib/appearance-cache.ts
   - kind: doc
     ref: docs/guides/theming.md
 ---
@@ -17,7 +21,8 @@ evidence:
 
 A person can choose a named palette on top of light and dark: Catppuccin,
 Rosé Pine, Gruvbox, Nord or Tokyo Night. `station`, the default, is today's
-look and sets nothing. This sits on `@kontourai/ui`'s shipped `--k-*` roles
+look: it sets no attribute, loads no theme stylesheet and adds no
+`theme-color`. This sits on `@kontourai/ui`'s shipped `--k-*` roles
 (DESIGN.md "Colors", "White-label overrides", "Modes" and "Theme and mode
 scoping") without changing any shipped token or product theme. It is a Station
 preference, not a new `.theme-*` product theme.
@@ -32,17 +37,32 @@ Three account-scope settings, like `theme` and `accentColor`:
 - `colorThemeAccent`: a named accent from the family's list, `null` for the
   family default. A custom hex `accentColor` still wins on Station's accent.
 
-Values come from device storage, imports, other tabs and the account server,
-any of which can be older or newer than the client. The UI resolves them
-(`resolveColorThemeSelection`): an unknown family is `station`, an unknown
-flavor or accent is the family default, and nothing throws. The server stores
-them as parsed ids (`^[a-z][a-z0-9-]{0,47}$`), not today's family list, so a
-newer client's family is kept rather than failing the whole patch. A server
-from before this change refuses a patch that contains these keys (its patch
-schema is strict), so the client shows its existing save-failure notice and
-keeps the server's value; other preferences in a separate patch are
-unaffected. "Import previous preferences" sends one patch, so against such a
-server it fails whole while this device holds a color theme.
+Values come from device storage, imports, other tabs, the account server and
+the appearance cache, any of which can be older or newer than the client. The
+UI resolves them (`color-theme-selection.ts`): an unknown family is `station`,
+an unknown flavor or accent is the family default, and nothing throws. Ids
+share one shape, `COLOR_THEME_ID_PATTERN` in the contracts: the server parses
+with it, and the device registry imports flavor and accent under it, so an
+import cannot produce a value the server refuses (a refused field fails the
+whole patch). The server stores ids, not today's family list, so a newer
+client's family is kept.
+
+### Older servers
+
+Downgrades are supported (rollback installs, a launcher's trial rollback, and
+deliberately shared homes; see the release-rings and release-channel-ports
+guides). A server from before color themes parses its account document
+strictly, so the three keys are stored in a sibling `<key>.appearance.json`
+that such a server never opens; a test parses what this server writes with
+the previous schema verbatim. This server now keeps unknown stored keys on
+write and leaves them out of what it serves, so later additions need no
+sibling. Its patch schema stays strict: a key it cannot validate is refused,
+not silently dropped.
+
+An older server still refuses a patch that contains these keys, so the client
+shows its existing save-failure notice and keeps the server's value. "Import
+previous preferences" sends one patch, so against such a server it fails whole
+while this device holds a color theme.
 
 ## Catalog and contrast
 
@@ -65,28 +85,66 @@ flavor × accent and proves each adjustment was needed and kept its hue.
 
 ## Application before first paint
 
-`npm run gen:color-themes` renders the catalog into checked-in artifacts: the
-app stylesheet `color-themes.generated.css`, the splash subset, and an index
-block in `public/startup-theme.js`. The startup script runs before any
-stylesheet, validates the stored selection, sets `data-color-theme`,
-`data-color-theme-flavor` and `data-color-theme-accent` on `<html>`, and adds
-`<meta name="theme-color">` with the effective canvas. After load,
-`bindColorThemeToSettings` keeps them in step with the settings store.
-`color-scheme` is already set per mode by the tokens. A drift test fails when
-an artifact differs from what the catalog renders.
+`npm run gen:color-themes` renders the catalog into checked-in artifacts, and
+a drift test fails when any differs:
 
-Pre-paint reads device storage only. For a signed-in person the account value
-applies once account preferences load, exactly as for `theme` today: account
-values are never written to device storage.
+- one stylesheet per family, `public/color-themes/<family>.css`, served as a
+  static file and loaded only when that family is selected. Nothing themed is
+  in the entry bundle, so default users pay for none of it: entry CSS is
+  51858 gzip bytes at the base commit and 52462 with this change (the splash
+  subset), against 62698 when every theme sat in the entry sheet;
+- the splash subset (surfaces, text and focus for every flavor), imported by
+  the splash stylesheet so the first paint is themed while the family sheet
+  loads;
+- a small runtime index the startup path resolves against, so the full
+  catalog (about 7.5 KB gzip) loads only with the picker;
+- an index block in `public/startup-theme.js`.
+
+The startup script runs before any stylesheet. It validates the selection,
+sets `data-color-theme`, `data-color-theme-flavor` and
+`data-color-theme-accent` on `<html>`, inserts the family's sheet and a
+`<meta name="theme-color">` with the effective canvas. A script-inserted sheet
+does not block rendering, so `main.tsx` waits for it (at most three seconds)
+before the first render: the splash is themed from the subset, and the app
+never appears in Station's colours after it. With no theme it renders
+synchronously as before. On a live switch the applier changes the attributes
+only once the new family's sheet has settled. `color-scheme` is already set per
+mode by the tokens.
+
+### Signed-in people
+
+Account values never enter the device-settings envelope. So the color-theme
+applier records what it rendered, mode and color theme, and whether the
+account supplied it, in `station-appearance-v1` (`lib/appearance-cache.ts`). It
+is a cache of what was rendered, not a copy of account values into device
+settings: nothing edits it and it decides nothing once the account answers.
+Precedence, the same in the startup script, `resolveBootTheme` and the
+settings store's boot snapshot:
+
+1. An account-sourced cache wins until the page knows whose appearance
+   applies: the account's values arrive, the account boundary reports no
+   person, or the device's own appearance is chosen.
+2. Otherwise the device envelope, then the legacy `theme` key, as before. A
+   device-sourced cache is never read; the envelope is its source.
+
+So a signed-in person's last appearance is in force before first paint on a
+device that has rendered it once. A first visit, or a change made on another
+device since, still shows the previous appearance until the account answers.
 
 ## Precedence
 
-- White-label branding (inline style on `<html>`) wins on every brand slot.
+- White-label branding (inline style on `<html>`) wins on every brand slot,
+  but it was validated against Station's own surfaces. Under a named theme
+  each slot group (brand and its text, action and its text, focus) is rated
+  again on the theme's page, panel and raised panel with the same thresholds;
+  a group that fails is left to the theme's value and reported like any
+  branding rejection. The rating reruns when the mode, theme or channel
+  changes.
 - A Dev, Beta or Nightly build keeps its identity on `--k-brand`, using the
   catalog's per-flavor shade of the channel colour because the channel's own
   colour fails as text on several theme surfaces. The theme owns action and
   focus.
 - A custom `accentColor` still wins on `--accent-primary`.
-- An element with its own `data-theme` below the root resolves the theme's
-  flavor for that mode. Station has no such islands today; the rules cover
-  them so a future one does not fall back to Station's colours.
+- Only the root is themed. An element with its own `data-theme` below it (an
+  island) keeps Station's tokens. Station has none today, and rules for them
+  doubled every sheet; a future island needs its own decision.

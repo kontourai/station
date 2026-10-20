@@ -548,28 +548,35 @@ compatibility and precedence.
 **Interface.** The [catalog](../../src-ui/src/lib/color-theme-catalog.ts) is the
 single source of every value: per family, flavors mapped onto the `--k-*`
 roles and Station's functional colours, named accents and per-flavor channel
-brands. [color-themes.ts](../../src-ui/src/lib/color-themes.ts) resolves the
-`colorTheme`, `colorThemeFlavor` and `colorThemeAccent` settings (unknown ids
-fall back, nothing throws) and exposes `COLOR_THEME_OPTIONS` for a picker.
-[color-theme-apply.ts](../../src-ui/src/lib/color-theme-apply.ts) stamps
-`data-color-theme*` and `theme-color` on the document and stays bound to the
-settings store from `main.tsx`.
+brands. [color-theme-selection.ts](../../src-ui/src/lib/color-theme-selection.ts)
+resolves the `colorTheme`, `colorThemeFlavor` and `colorThemeAccent` settings
+against a small generated index (unknown ids fall back, nothing throws), so
+the startup path never loads the catalog;
+[color-themes.ts](../../src-ui/src/lib/color-themes.ts) exposes
+`COLOR_THEME_OPTIONS` for a picker. [color-theme-apply.ts](../../src-ui/src/lib/color-theme-apply.ts)
+loads the selected family's stylesheet, stamps `data-color-theme*` and
+`theme-color` once it has settled, records the rendered appearance in
+[appearance-cache.ts](../../src-ui/src/lib/appearance-cache.ts), and stays
+bound to the settings store from `main.tsx`.
+[branding-theme.ts](../../src-ui/src/lib/branding-theme.ts) re-rates a
+white-label brand on the theme's surfaces.
 
 **Generated artifacts.** [color-theme-css.ts](../../src-ui/src/lib/color-theme-css.ts)
-renders the stylesheets and the index block in
-[startup-theme.js](../../src-ui/public/startup-theme.js);
+renders one stylesheet per family, the splash subset, the runtime index and
+the index block in [startup-theme.js](../../src-ui/public/startup-theme.js);
 [gen-color-themes.ts](../../scripts/gen-color-themes.ts)
-(`npm run gen:color-themes`) only writes them. Selector weight, not import
+(`npm run gen:color-themes`) only writes them. Selector weight, not load
 order, decides precedence against `index.css` and the channel blocks.
 
 **Evidence.** [Contrast](../../src-ui/src/__tests__/color-theme-contrast.test.ts)
 rates every family, flavor and accent with `@kontourai/ui/contrast`;
 [artifacts](../../src-ui/src/__tests__/color-theme-artifacts.test.ts) fails on
-drift; [cascade](../../src-ui/src/__tests__/color-theme-cascade.test.ts) runs the
-real startup script, store and applier against the real stylesheets in
-Chromium, including Station's unchanged default. Pre-paint reads device
-storage only, so a signed-in person's account theme applies once preferences
-load. No native shell or rendered screenshot is covered.
+drift or a startup bundle that reaches the catalog;
+[cascade](../../src-ui/src/__tests__/color-theme-cascade.test.ts) runs the real
+startup script, store and applier against the real stylesheets in Chromium,
+including the appearance cache, a slow sheet and Station's unchanged default.
+A signed-in person's appearance is in force before first paint only once this
+device has rendered it. No native shell or rendered screenshot is covered.
 
 ## UnifiedSearchService
 
