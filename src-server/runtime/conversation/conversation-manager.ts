@@ -17,6 +17,9 @@ import {
   type ConversationStats,
   resolveConversationUserMessageTokens,
 } from './conversation-stats-view.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'conversation-manager' });
 
 // Type extensions for conversation manager
 interface ConversationMetadata {
@@ -174,7 +177,7 @@ export async function getConversationStats(
   try {
     spec = await configLoader.loadAgent(slug);
   } catch (e) {
-    console.debug('Failed to load agent spec, using defaults:', e);
+    logger.debug('Failed to load agent spec, using defaults', { error: e });
     // Default/temp agents don't have agent.json on disk — use minimal defaults
     spec = { prompt: '', model: appConfig.defaultModel };
   }
