@@ -1,0 +1,7 @@
+{
+  "revision": "5ac22350a2d8580f2251f625471636b15983c7d2",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"station-runtime.ts change only adds activeVoiceSessionCount for supervisor drain; the MCP UI host custody, loader and publication claims are untouched.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}
