@@ -15,6 +15,7 @@ import {
   type PluginPaneState,
   parsePluginPaneState,
   readPluginPaneState,
+  removePluginPaneState,
 } from '../pluginPaneOccurrence';
 
 const STATE: PluginPaneState = {
@@ -95,5 +96,54 @@ describe('a related plugin occurrence record', () => {
     preparation.rollback();
     expect(readPluginPaneState(localStorage, id(1))).toBeNull();
     expect(readPaneFence(localStorage, id(1)).status).toBe('none');
+  });
+
+  /** localStorage, except that removing `failing` throws, as a locked or full store can. */
+  function storageFailingToRemove(failing: string): Storage {
+    return new Proxy(localStorage, {
+      get(target, property) {
+        if (property === 'removeItem')
+          return (key: string) => {
+            if (key === failing) throw new Error('storage refused');
+            target.removeItem(key);
+          };
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  }
+
+  test('a record that cannot be removed keeps its fence, so it never reads as unfenced', () => {
+    expect(
+      createPluginPaneStatePreparation(localStorage, id(3), STATE).prepare(),
+    ).toBe(true);
+    writePaneFence(localStorage, id(3), 'station-a');
+    const storage = storageFailingToRemove(
+      `station:plugin-pane-state:v1:${id(3)}`,
+    );
+    expect(removePluginPaneState(storage, id(3))).toBe(false);
+    expect(readPluginPaneState(localStorage, id(3))).toEqual(STATE);
+    expect(readPaneFence(localStorage, id(3))).toEqual({
+      status: 'fenced',
+      stationId: 'station-a',
+    });
+    // Removed for real, the fence goes with it.
+    expect(removePluginPaneState(localStorage, id(3))).toBe(true);
+    expect(readPaneFence(localStorage, id(3)).status).toBe('none');
+  });
+
+  test('a rollback that wrote nothing leaves a record already there fenced', () => {
+    expect(
+      createPluginPaneStatePreparation(localStorage, id(4), STATE).prepare(),
+    ).toBe(true);
+    writePaneFence(localStorage, id(4), 'station-a');
+    const duplicate = createPluginPaneStatePreparation(localStorage, id(4), {
+      ...STATE,
+      key: 'other',
+    });
+    expect(duplicate.prepare()).toBe(false);
+    duplicate.rollback();
+    expect(readPluginPaneState(localStorage, id(4))).toEqual(STATE);
+    expect(readPaneFence(localStorage, id(4)).status).toBe('fenced');
   });
 });

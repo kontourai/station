@@ -1,8 +1,4 @@
-import {
-  readPaneFence,
-  removePaneFence,
-  writePaneFence,
-} from '../regions/pane-fence';
+import { readPaneFence, writePaneFence } from '../regions/pane-fence';
 import {
   keptPaneForTarget,
   openerSelectionKey,
@@ -19,6 +15,8 @@ import {
   type DockRegionId,
   isDockRegion,
   occupiedRegion,
+  type RegionArrangement,
+  type RegionId,
 } from '../regions/region-model';
 import { forgetRegionPaneState } from '../regions/region-surface-panes';
 import { readFilePreviewPaneState } from '../workspace-panes/filePreviewPaneStateStorage';
@@ -31,6 +29,7 @@ import type {
 import type {
   OpenInRegionOptions,
   OpenInRegionOutcome,
+  OpenSurfacePreview,
   RegionModelValue,
 } from './RegionModelContext';
 import type { OpenPaneRefusal } from './useOpenInRegion';
@@ -82,7 +81,12 @@ export type RelatedOpenOutcome<AdapterRefusal extends string = never> =
 
 export type RelatedOpenModel = Pick<
   RegionModelValue,
-  'readRegions' | 'readPhoneLayer' | 'openSurfaceInRegion' | 'replacePane'
+  | 'readRegions'
+  | 'readPhoneLayer'
+  | 'openSurfaceInRegion'
+  | 'previewOpenSurfaceInRegion'
+  | 'replacePane'
+  | 'previewReplacePane'
 >;
 
 /** A new occurrence's identity and state, staged but not yet written. */
@@ -114,7 +118,11 @@ export interface RelatedOccurrenceAdapter<AdapterRefusal extends string> {
    * vouches for what the occurrence is bound to.
    */
   confirms?(instanceId: string): boolean;
-  /** Reveal an existing occurrence, carrying anything this request adds. */
+  /**
+   * Reveal an existing occurrence, carrying anything this request adds. It
+   * opens the occurrence with `{ ...options, focusExisting: true }`, which is
+   * the open the pipeline previews to know what the reveal takes off screen.
+   */
   reveal(
     model: RelatedOpenModel,
     instanceId: string,
@@ -164,25 +172,67 @@ function occurrenceToFocus(
   return undefined;
 }
 
+/** The panes an arrangement shows: every visible region's selected pane. */
+function panesOnScreen(arrangement: RegionArrangement): Set<string> {
+  const shown = new Set<string>();
+  for (const id of Object.keys(arrangement) as RegionId[]) {
+    const state = arrangement[id];
+    if (state.visible && state.occupant !== null) shown.add(state.occupant);
+  }
+  return shown;
+}
+
 /**
- * The pane on screen this open would take off screen, if any: the phone
- * layer's pane, else the selected pane of the region the new occurrence lands
- * in (the replaced preview's region, or `landing`).
+ * The panes on screen now that the model's own plan for a request takes off
+ * screen — other than `subject`, the occurrence being opened or revealed —
+ * sorted; or the plan's refusal. Read from the plan rather than from the
+ * landing the request asked for: on a phone the fold puts a first related
+ * pane over Chat, in whichever region Chat holds, not in the side region
+ * requested.
  */
-function paneHiddenBy(
+function hiddenByPlan(
   model: RelatedOpenModel,
-  landingBeside: string | undefined,
-  landing: DockRegionId,
-): string | null {
-  const layer = model.readPhoneLayer();
-  if (layer) return layer.surfaceId;
-  const regions = model.readRegions();
-  const region = landingBeside
-    ? occupiedRegion(regions, landingBeside)
-    : landing;
-  if (!region || !isDockRegion(region)) return null;
-  const state = regions[region];
-  return state.visible ? state.occupant : null;
+  preview: OpenSurfacePreview,
+  subject: string,
+): { ok: true; hidden: string[] } | { ok: false; reason: OpenPaneRefusal } {
+  if (!preview.ok) return { ok: false, reason: preview.reason };
+  const after = panesOnScreen(preview.arrangement);
+  const hidden = [...panesOnScreen(model.readRegions())]
+    .filter((id) => id !== subject && !after.has(id))
+    .sort();
+  return { ok: true, hidden };
+}
+
+function samePanes(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}
+
+function samePlan(
+  a: { inPlace: boolean; planned: ReturnType<typeof hiddenByPlan> },
+  b: { inPlace: boolean; planned: ReturnType<typeof hiddenByPlan> },
+): boolean {
+  return (
+    a.inPlace === b.inPlace &&
+    a.planned.ok &&
+    b.planned.ok &&
+    samePanes(a.planned.hidden, b.planned.hidden)
+  );
+}
+
+/** What revealing an existing occurrence takes off screen (see `reveal`). */
+function hiddenByReveal(
+  model: RelatedOpenModel,
+  instanceId: string,
+  options?: OpenInRegionOptions,
+) {
+  return hiddenByPlan(
+    model,
+    model.previewOpenSurfaceInRegion(instanceId, {
+      ...options,
+      focusExisting: true,
+    }),
+    instanceId,
+  );
 }
 
 /**
@@ -289,9 +339,10 @@ async function openWatched<AdapterRefusal extends string>(
   );
   if (focus) {
     const focusId = focus.instanceId;
-    const asked = paneHiddenBy(before, focusId, landing);
-    const hidden = asked === focusId ? null : asked;
-    if (!(await guardsAllow([hidden])))
+    const planned = hiddenByReveal(before, focusId, options);
+    if (!planned.ok) return { ok: false, reason: planned.reason };
+    const hidden = planned.hidden;
+    if (!(await guardsAllow(hidden)))
       return { ok: false, reason: 'guard-cancelled' };
     // Focusing writes too — the arrangement, and anything the reveal carries
     // onto the occurrence's state — so it commits under the same lock, after
@@ -305,7 +356,7 @@ async function openWatched<AdapterRefusal extends string>(
         if (!readmitted()) return { ok: false, reason: 'refused' };
         const fresh = prunePaneRelations(tx.record, relatedOccurrenceExists);
         const model = getModel();
-        const coveredNow = paneHiddenBy(model, focusId, landing);
+        const now = hiddenByReveal(model, focusId, options);
         if (
           occurrenceToFocus(
             keptPaneForTarget(fresh, station, target),
@@ -314,8 +365,9 @@ async function openWatched<AdapterRefusal extends string>(
             target,
             confirms,
           )?.instanceId !== focusId ||
-          (coveredNow === focusId ? null : coveredNow) !== hidden ||
-          !noneRegistered(watch, [hidden, coveredNow])
+          !now.ok ||
+          !samePanes(now.hidden, hidden) ||
+          !noneRegistered(watch, hidden)
         )
           return { ok: false, reason: 'superseded' };
         const outcome = adapter.reveal(model, focusId, options);
@@ -336,14 +388,40 @@ async function openWatched<AdapterRefusal extends string>(
     transient && relatedOccurrenceExists(transient.instanceId)
       ? transient.instanceId
       : undefined;
-  const covered = paneHiddenBy(before, replacing, landing);
-  if (!(await guardsAllow([replacing, covered])))
-    return { ok: false, reason: 'guard-cancelled' };
-
+  // Minting writes nothing until `prepare`; the id is what the plan places.
   const minted = adapter.mint();
   if (!minted) return { ok: false, reason: 'no-surface' };
   const nextId = minted.instanceId;
   const storage = window.localStorage;
+  // In place: the new occurrence takes the replaced one's tab slot. A phone
+  // layer replaces its own pane; a preview this tab does not place is left
+  // to whichever tab places it, beside a new one.
+  const placementPlan = (model: RelatedOpenModel) => {
+    const inPlace =
+      replacing !== undefined &&
+      model.readPhoneLayer()?.surfaceId !== replacing &&
+      isDockRegion(occupiedRegion(model.readRegions(), replacing) ?? 'main');
+    return {
+      inPlace,
+      planned: hiddenByPlan(
+        model,
+        inPlace && replacing !== undefined
+          ? model.previewReplacePane(replacing, nextId)
+          : model.previewOpenSurfaceInRegion(nextId, {
+              region: landing,
+              ...options,
+            }),
+        nextId,
+      ),
+    };
+  };
+  const plan = placementPlan(before);
+  if (!plan.planned.ok) return { ok: false, reason: plan.planned.reason };
+  const asked = [
+    ...new Set([...(replacing ? [replacing] : []), ...plan.planned.hidden]),
+  ];
+  if (!(await guardsAllow(asked)))
+    return { ok: false, reason: 'guard-cancelled' };
 
   const result = await relations.transact<RelatedOpenOutcome<AdapterRefusal>>(
     (tx) => {
@@ -363,8 +441,8 @@ async function openWatched<AdapterRefusal extends string>(
           target,
           confirms,
         ) !== undefined ||
-        paneHiddenBy(getModel(), replacing, landing) !== covered ||
-        !noneRegistered(watch, [replacing, covered])
+        !samePlan(placementPlan(getModel()), plan) ||
+        !noneRegistered(watch, asked)
       )
         return { ok: false, reason: 'superseded' };
       const written = withPaneRelation(
@@ -385,7 +463,8 @@ async function openWatched<AdapterRefusal extends string>(
       if (!writePaneFence(storage, nextId, station))
         return { ok: false, reason: 'storage' };
       if (!minted.prepare()) {
-        removePaneFence(storage, nextId);
+        // Its own rollback: the fence goes only with no state under it.
+        minted.rollback();
         return { ok: false, reason: 'storage' };
       }
       // Rollback removes the new state and, with it, the new fence.
@@ -394,13 +473,7 @@ async function openWatched<AdapterRefusal extends string>(
         return { ok: false, reason: 'storage' };
       }
       const model = getModel();
-      // In place: the new occurrence takes the replaced one's tab slot. A
-      // phone layer replaces its own pane; a preview this tab does not place
-      // is left to whichever tab places it, beside a new one.
-      const inPlace =
-        replacing !== undefined &&
-        model.readPhoneLayer()?.surfaceId !== replacing &&
-        isDockRegion(occupiedRegion(model.readRegions(), replacing) ?? 'main');
+      const inPlace = plan.inPlace && replacing !== undefined;
       const outcome: OpenInRegionOutcome = inPlace
         ? model.replacePane(replacing, nextId)
         : model.openSurfaceInRegion(nextId, { region: landing, ...options });
@@ -481,9 +554,10 @@ async function revealWatched<AdapterRefusal extends string>(
   station: string,
   watch: { readonly registered: ReadonlySet<string> },
 ): Promise<RelatedOpenOutcome<AdapterRefusal | 'unknown-handle'>> {
-  const asked = paneHiddenBy(getModel(), instanceId, adapter.landing);
-  const hidden = asked === instanceId ? null : asked;
-  if (!(await guardsAllow([hidden])))
+  const planned = hiddenByReveal(getModel(), instanceId);
+  if (!planned.ok) return { ok: false, reason: planned.reason };
+  const hidden = planned.hidden;
+  if (!(await guardsAllow(hidden)))
     return { ok: false, reason: 'guard-cancelled' };
   let stepRefusal:
     | RelatedOpenRefusal
@@ -505,10 +579,11 @@ async function revealWatched<AdapterRefusal extends string>(
         return { ok: false, reason: 'refused' };
       }
       const model = getModel();
-      const coveredNow = paneHiddenBy(model, instanceId, adapter.landing);
+      const now = hiddenByReveal(model, instanceId);
       if (
-        (coveredNow === instanceId ? null : coveredNow) !== hidden ||
-        !noneRegistered(watch, [hidden, coveredNow])
+        !now.ok ||
+        !samePanes(now.hidden, hidden) ||
+        !noneRegistered(watch, hidden)
       )
         return { ok: false, reason: 'superseded' };
       const outcome = adapter.reveal(model, instanceId);

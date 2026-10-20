@@ -1,6 +1,6 @@
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { describe, expect, test } from 'vitest';
-import { writePaneFence } from '../../regions/pane-fence';
+import { readPaneFence, writePaneFence } from '../../regions/pane-fence';
 import { createFilePreviewPaneInstance } from '../filePreviewPaneInstance';
 import {
   filePreviewPaneStateStorageKey,
@@ -139,6 +139,43 @@ describe('File Preview pane state storage', () => {
         key.startsWith('station:pane-fence:v1:'),
       ),
     ).toEqual([]);
+  });
+
+  test('a state that cannot be removed keeps its fence, explicitly or when the cap is reclaimed', () => {
+    const target = storage();
+    const stuck = preview(1);
+    const stuckKey = filePreviewPaneStateStorageKey(stuck.instance.stateKey);
+    target.values.set(stuckKey, JSON.stringify(stuck.state));
+    writePaneFence(target, stuck.instance.stateKey, 'station-a');
+    const failing = {
+      ...target,
+      removeItem: (key: string) => {
+        if (key === stuckKey) throw new Error('storage refused');
+        return target.removeItem(key);
+      },
+    };
+    expect(removeFilePreviewPaneState(failing, stuck.instance.stateKey)).toBe(
+      false,
+    );
+    expect(readPaneFence(failing, stuck.instance.stateKey)).toEqual({
+      status: 'fenced',
+      stationId: 'station-a',
+    });
+    // An unreferenced orphan the cap reclaims, whose removal also fails.
+    for (let index = 2; index <= 24; index += 1) {
+      const entry = preview(index);
+      target.values.set(
+        filePreviewPaneStateStorageKey(entry.instance.stateKey),
+        JSON.stringify(entry.state),
+      );
+      writePaneFence(target, entry.instance.stateKey, 'station-a');
+    }
+    const next = preview(30);
+    writeFilePreviewPaneState(failing, next.instance.stateKey, next.state);
+    expect(target.values.has(stuckKey)).toBe(true);
+    expect(readPaneFence(failing, stuck.instance.stateKey).status).toBe(
+      'fenced',
+    );
   });
 
   test('preserves references owned by persisted and live hosts in other layouts and projects', () => {

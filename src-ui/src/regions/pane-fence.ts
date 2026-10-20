@@ -116,6 +116,34 @@ export function removePaneFence(
 }
 
 /**
+ * Remove an occurrence's own record (its state, under `recordKey`), and its
+ * fence only once that record is confirmed gone. A record whose removal
+ * failed keeps its fence: unfenced, it would read as a legacy occurrence and
+ * be admitted on any Station. True when the record is gone; the fence's own
+ * removal stays best effort (an orphaned fence only closes a pane that no
+ * longer exists).
+ */
+export function removeFencedRecord(
+  storage: PaneFenceStorage,
+  instanceId: string,
+  recordKey: string,
+): boolean {
+  try {
+    storage.removeItem(recordKey);
+  } catch {
+    // Whether it went is read below, not assumed from the throw.
+  }
+  let gone: boolean;
+  try {
+    gone = storage.getItem(recordKey) === null;
+  } catch {
+    gone = false;
+  }
+  if (gone) removePaneFence(storage, instanceId);
+  return gone;
+}
+
+/**
  * Whether a reader may read a fenced occurrence now. `verifiedStationId` is
  * the verified authority observation's Station, or null while it is unknown.
  */

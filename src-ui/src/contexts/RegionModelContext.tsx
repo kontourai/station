@@ -120,6 +120,62 @@ export type OpenInRegionRefusal =
   | 'region-unavailable'
   | 'refused';
 
+/** What `replacePane` would commit: one decision for the run and its preview. */
+function planReplacePane(
+  current: RegionArrangement,
+  previous: string,
+  next: string,
+):
+  | { ok: true; arrangement: RegionArrangement; region: DockRegionId }
+  | {
+      ok: false;
+      reason: Extract<OpenInRegionOutcome, { ok: false }>['reason'];
+    } {
+  if (!resolveRegionSurface(next)) return { ok: false, reason: 'no-surface' };
+  const held = occupiedRegion(current, previous);
+  if (held === undefined || !isDockRegion(held))
+    return { ok: false, reason: 'refused' };
+  const replaced = replaceRegionPane(current, held, previous, next);
+  if (replaced === current) return { ok: false, reason: 'refused' };
+  return { ok: true, arrangement: replaced, region: held };
+}
+
+/** What an open would commit (`planOpenSurfaceInRegion`). */
+type OpenSurfacePlan =
+  | {
+      kind: 'refused';
+      reason: Extract<OpenInRegionOutcome, { ok: false }>['reason'];
+    }
+  | {
+      kind: 'layer';
+      arrangement: RegionArrangement;
+      layer: PhonePaneLayer;
+      existing: boolean;
+    }
+  | {
+      kind: 'commit';
+      arrangement: RegionArrangement;
+      region: RegionId;
+      existing: boolean;
+      /** The `main` origin to remember for the surface, forget, or keep. */
+      mainOrigin: DockRegionId | 'forget' | 'keep';
+    };
+
+/**
+ * `previewOpenSurfaceInRegion`: the arrangement and phone layer an open would
+ * commit, or the refusal it would answer. Nothing is committed.
+ */
+export type OpenSurfacePreview =
+  | {
+      ok: true;
+      arrangement: RegionArrangement;
+      layer: { region: DockRegionId; surfaceId: string } | null;
+    }
+  | {
+      ok: false;
+      reason: Extract<OpenInRegionOutcome, { ok: false }>['reason'];
+    };
+
 export type OpenInRegionOutcome =
   | {
       readonly ok: true;
@@ -200,6 +256,16 @@ export interface RegionModelValue {
     options?: OpenInRegionOptions,
   ): OpenInRegionOutcome;
   /**
+   * What `openSurfaceInRegion` would commit for the same request, now:
+   * the same decision, with nothing committed — so a caller that asks the
+   * guards of the panes an open takes off screen asks about where it will
+   * really land (a phone's fold included), not where it asked it to.
+   */
+  previewOpenSurfaceInRegion(
+    surfaceId: string,
+    options?: OpenInRegionOptions,
+  ): OpenSurfacePreview;
+  /**
    * Replace a placed dock pane with an unplaced one IN ITS TAB SLOT, selected
    * and shown (`replaceRegionPane`): a transient preview's reuse
    * (docs/design/pane-relationships.md). Refused — the arrangement unchanged —
@@ -207,6 +273,8 @@ export interface RegionModelValue {
    * may not occupy that region. Never a history entry.
    */
   replacePane(previous: string, next: string): OpenInRegionOutcome;
+  /** What `replacePane` would commit for the same request, now (see `previewOpenSurfaceInRegion`). */
+  previewReplacePane(previous: string, next: string): OpenSurfacePreview;
   /**
    * Make the pane a phone layer put over Chat an ORDINARY tab of Chat's
    * region: Back, the "‹ Chat" control and a later replacement then leave it
@@ -884,34 +952,23 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const openSurfaceInRegion = useCallback(
+  // Where an open lands, decided once (#3964): `openSurfaceInRegion` runs
+  // the plan, and `previewOpenSurfaceInRegion` returns it without committing,
+  // so a caller that asks the guards of what an open will take off screen
+  // asks about the arrangement the open will actually commit — the phone
+  // layer's fold included — rather than a landing it guessed. Reads the
+  // model's refs; writes none of them.
+  const planOpenSurfaceInRegion = useCallback(
     (
+      current: RegionArrangement,
       surfaceId: string,
-      options: OpenInRegionOptions = {},
-    ): OpenInRegionOutcome => {
-      // The id-keyed resolution, not the shell registry: an instance-keyed
-      // pane (#2049) is a surface its prefix describes, and this is the one
-      // gate a link click passes through.
+      options: OpenInRegionOptions,
+    ): OpenSurfacePlan => {
       const surface = resolveRegionSurface(surfaceId);
-      if (!surface) return { ok: false, reason: 'no-surface' };
+      if (!surface) return { kind: 'refused', reason: 'no-surface' };
       if (options.placement === 'split')
-        return { ok: false, reason: 'unsupported-placement' };
+        return { kind: 'refused', reason: 'unsupported-placement' };
       const target = options.region;
-      // Opening as the page a pane the phone layer is showing over Chat ends
-      // that layer first, through its own restore (the pane goes back to
-      // where the layer found it, Chat's region to its pre-layer state), so
-      // the page placement below starts from the arrangement the reader had
-      // before the layer — and the layer's history entry goes with it.
-      //
-      // It does not ask the layer pane's unsaved-changes guards (Back and
-      // "‹ Chat" do): it runs only when the pane being opened as the page IS
-      // the layer's pane, and a pane that can be both a phone layer and a
-      // `main` page (Activity) registers no guard — the move remounts it
-      // either way. A guarded surface that declares `main` would need to
-      // route this through `closePhoneLayer` instead.
-      if (target === 'main' && phoneLayerRef.current?.surfaceId === surfaceId)
-        restorePhoneLayerRef.current();
-      const current = regionsRef.current;
       const held = occupiedRegion(current, surfaceId);
       // The phone layer: on a bottom-only device, a pane opened with no
       // explicit region — or with a side region the fold does not offer,
@@ -934,31 +991,13 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           maximize: isMobile,
           layer: phoneLayerRef.current,
         });
-        if (opened) {
-          // The maximize memory as the layer found it: the layer's own
-          // maximize is mirrored into it, and a close from a hidden Chat
-          // would otherwise forward that as the memory (see the restore).
-          if (!phoneLayerRef.current) {
-            layerDockMemoryRef.current = navigationStore.lastDockMaximized;
-            layerEntryRef.current += 1;
-            const chatAt = chatRegion(current);
-            layerPreStateRef.current = {
-              visible: chatAt ? current[chatAt].visible : false,
-              maximized: chatAt ? current[chatAt].maximized : false,
-              dockMemory: navigationStore.lastDockMaximized,
-            };
-          }
-          layerMaximizedRef.current =
-            opened.arrangement[opened.layer.region].maximized;
-          commit(opened.arrangement, opened.layer.region);
-          setPhoneLayer(opened.layer);
+        if (opened)
           return {
-            ok: true,
-            region: opened.layer.region,
-            surfaceId,
+            kind: 'layer',
+            arrangement: opened.arrangement,
+            layer: opened.layer,
             existing: held !== undefined,
           };
-        }
       }
       // Already open somewhere, and not asked to go elsewhere: reveal it
       // there (region shown, tab selected) rather than opening a second time.
@@ -970,30 +1009,38 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         const shown = bottomOnly
           ? showSurfaceAlone(current, surfaceId, held)
           : revealSurface(current, surfaceId, held);
-        commit(shown.arrangement, shown.region);
-        return { ok: true, region: shown.region, surfaceId, existing: true };
+        return {
+          kind: 'commit',
+          arrangement: shown.arrangement,
+          region: shown.region,
+          existing: true,
+          mainOrigin: 'keep',
+        };
       }
       if (target !== undefined) {
         if (!surfaceMayOccupy(surfaceId, target))
-          return { ok: false, reason: 'refused' };
+          return { kind: 'refused', reason: 'refused' };
         if (
           isDockRegion(target) &&
           !(available as readonly RegionId[]).includes(target)
         )
-          return { ok: false, reason: 'region-unavailable' };
-        // A page taken from a dock region remembers that region, so the
-        // chord's return (`toggleSurface`'s `main` case) goes back to where
-        // the user had docked it rather than to `defaultRegion`.
-        if (target === 'main' && held && isDockRegion(held))
-          mainOriginRef.current.set(surfaceId, held);
-        else mainOriginRef.current.delete(surfaceId);
+          return { kind: 'refused', reason: 'region-unavailable' };
         let next = placeSurfaceInArrangement(current, surfaceId, target);
         if (bottomOnly && isDockRegion(target))
           for (const id of DOCK_REGION_IDS)
             if (id !== target)
               next = updateRegion(next, id, { visible: false });
-        commit(next, target);
-        return { ok: true, region: target, surfaceId, existing: false };
+        return {
+          kind: 'commit',
+          arrangement: next,
+          region: target,
+          existing: false,
+          // A page taken from a dock region remembers that region, so the
+          // chord's return (`toggleSurface`'s `main` case) goes back to where
+          // the user had docked it rather than to `defaultRegion`.
+          mainOrigin:
+            target === 'main' && held && isDockRegion(held) ? held : 'forget',
+        };
       }
       // No target: the surface's own rule — its region if it has one, else
       // its default (the first free dock region when that is taken); on a
@@ -1008,35 +1055,149 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         remembered && (available as readonly RegionId[]).includes(remembered)
           ? remembered
           : surface.defaultRegion;
-      mainOriginRef.current.delete(surfaceId);
       const shown = bottomOnly
         ? showSurfaceAlone(current, surfaceId, preferred)
         : revealSurface(current, surfaceId, preferred);
-      commit(shown.arrangement, shown.region);
       return {
-        ok: true,
+        kind: 'commit',
+        arrangement: shown.arrangement,
         region: shown.region,
-        surfaceId,
         existing: held !== undefined,
+        mainOrigin: 'forget',
       };
     },
-    [available, bottomOnly, commit, isMobile, setPhoneLayer],
+    [available, bottomOnly, isMobile],
+  );
+
+  const openSurfaceInRegion = useCallback(
+    (
+      surfaceId: string,
+      options: OpenInRegionOptions = {},
+    ): OpenInRegionOutcome => {
+      // Opening as the page a pane the phone layer is showing over Chat ends
+      // that layer first, through its own restore (the pane goes back to
+      // where the layer found it, Chat's region to its pre-layer state), so
+      // the page placement below starts from the arrangement the reader had
+      // before the layer — and the layer's history entry goes with it.
+      //
+      // It does not ask the layer pane's unsaved-changes guards (Back and
+      // "‹ Chat" do): it runs only when the pane being opened as the page IS
+      // the layer's pane, and a pane that can be both a phone layer and a
+      // `main` page (Activity) registers no guard — the move remounts it
+      // either way. A guarded surface that declares `main` would need to
+      // route this through `closePhoneLayer` instead.
+      if (
+        resolveRegionSurface(surfaceId) &&
+        options.placement !== 'split' &&
+        options.region === 'main' &&
+        phoneLayerRef.current?.surfaceId === surfaceId
+      )
+        restorePhoneLayerRef.current();
+      const current = regionsRef.current;
+      const plan = planOpenSurfaceInRegion(current, surfaceId, options);
+      if (plan.kind === 'refused') return { ok: false, reason: plan.reason };
+      if (plan.kind === 'layer') {
+        // The maximize memory as the layer found it: the layer's own
+        // maximize is mirrored into it, and a close from a hidden Chat
+        // would otherwise forward that as the memory (see the restore).
+        if (!phoneLayerRef.current) {
+          layerDockMemoryRef.current = navigationStore.lastDockMaximized;
+          layerEntryRef.current += 1;
+          const chatAt = chatRegion(current);
+          layerPreStateRef.current = {
+            visible: chatAt ? current[chatAt].visible : false,
+            maximized: chatAt ? current[chatAt].maximized : false,
+            dockMemory: navigationStore.lastDockMaximized,
+          };
+        }
+        layerMaximizedRef.current =
+          plan.arrangement[plan.layer.region].maximized;
+        commit(plan.arrangement, plan.layer.region);
+        setPhoneLayer(plan.layer);
+        return {
+          ok: true,
+          region: plan.layer.region,
+          surfaceId,
+          existing: plan.existing,
+        };
+      }
+      if (plan.mainOrigin === 'forget') mainOriginRef.current.delete(surfaceId);
+      else if (plan.mainOrigin !== 'keep')
+        mainOriginRef.current.set(surfaceId, plan.mainOrigin);
+      commit(plan.arrangement, plan.region);
+      return {
+        ok: true,
+        region: plan.region,
+        surfaceId,
+        existing: plan.existing,
+      };
+    },
+    [commit, planOpenSurfaceInRegion, setPhoneLayer],
+  );
+
+  const previewOpenSurfaceInRegion = useCallback(
+    (
+      surfaceId: string,
+      options: OpenInRegionOptions = {},
+    ): OpenSurfacePreview => {
+      // Opening the layer's own pane as the page restores the layer first,
+      // an effect a dry run cannot take; no caller that previews opens one.
+      if (
+        options.region === 'main' &&
+        phoneLayerRef.current?.surfaceId === surfaceId
+      )
+        return { ok: false, reason: 'refused' };
+      const plan = planOpenSurfaceInRegion(
+        regionsRef.current,
+        surfaceId,
+        options,
+      );
+      if (plan.kind === 'refused') return { ok: false, reason: plan.reason };
+      return plan.kind === 'layer'
+        ? { ok: true, arrangement: plan.arrangement, layer: plan.layer }
+        : {
+            ok: true,
+            arrangement: plan.arrangement,
+            layer: phoneLayerRef.current
+              ? {
+                  region: phoneLayerRef.current.region,
+                  surfaceId: phoneLayerRef.current.surfaceId,
+                }
+              : null,
+          };
+    },
+    [planOpenSurfaceInRegion],
   );
 
   const replacePane = useCallback(
     (previous: string, next: string): OpenInRegionOutcome => {
-      if (!resolveRegionSurface(next))
-        return { ok: false, reason: 'no-surface' };
-      const current = regionsRef.current;
-      const held = occupiedRegion(current, previous);
-      if (held === undefined || !isDockRegion(held))
-        return { ok: false, reason: 'refused' };
-      const replaced = replaceRegionPane(current, held, previous, next);
-      if (replaced === current) return { ok: false, reason: 'refused' };
-      commit(replaced, held);
-      return { ok: true, region: held, surfaceId: next, existing: false };
+      const plan = planReplacePane(regionsRef.current, previous, next);
+      if (!plan.ok) return plan;
+      commit(plan.arrangement, plan.region);
+      return {
+        ok: true,
+        region: plan.region,
+        surfaceId: next,
+        existing: false,
+      };
     },
     [commit],
+  );
+
+  const previewReplacePane = useCallback(
+    (previous: string, next: string): OpenSurfacePreview => {
+      const plan = planReplacePane(regionsRef.current, previous, next);
+      if (!plan.ok) return plan;
+      const layer = phoneLayerRef.current;
+      return {
+        ok: true,
+        arrangement: plan.arrangement,
+        layer: layer
+          ? { region: layer.region, surfaceId: layer.surfaceId }
+          : null,
+      };
+    },
+    [],
   );
 
   const retainLayerPane = useCallback(
@@ -1633,7 +1794,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       placeSurface,
       showSurface,
       openSurfaceInRegion,
+      previewOpenSurfaceInRegion,
       replacePane,
+      previewReplacePane,
       retainLayerPane,
       selectPane,
       removePane,
@@ -1656,7 +1819,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       placeSurface,
       showSurface,
       openSurfaceInRegion,
+      previewOpenSurfaceInRegion,
       replacePane,
+      previewReplacePane,
       retainLayerPane,
       selectPane,
       removePane,

@@ -3,7 +3,7 @@ import {
   WORKSPACE_PANE_CONTRACT_VERSION,
   type WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
-import { removePaneFence } from '../regions/pane-fence';
+import { removeFencedRecord, removePaneFence } from '../regions/pane-fence';
 import {
   type PaneRelationTarget,
   RELATED_TARGET_SCOPE_KEYS,
@@ -184,24 +184,26 @@ export function createPluginPaneStatePreparation(
     },
     rollback() {
       if (written) removePluginPaneState(storage, id);
-      else removePaneFence(storage, id);
+      // Nothing of ours was written; the fence goes only with no record
+      // under it, so a record that was there already keeps its fence.
+      else if (storage.getItem(storageKey(id)) === null)
+        removePaneFence(storage, id);
       written = false;
     },
   };
 }
 
-/** Remove an occurrence's record, and with it the occurrence's Station fence. */
+/**
+ * Remove an occurrence's record, and with it the occurrence's Station fence —
+ * the fence only once the record is gone (`removeFencedRecord`). True when
+ * the record is gone.
+ */
 export function removePluginPaneState(
   storage: Pick<PluginPaneStateStorage, 'getItem' | 'setItem' | 'removeItem'>,
   id: string,
-): void {
-  if (!PLUGIN_PANE_ID.test(id)) return;
-  try {
-    storage.removeItem(storageKey(id));
-  } catch {
-    // Per-device storage is optional.
-  }
-  removePaneFence(storage, id);
+): boolean {
+  if (!PLUGIN_PANE_ID.test(id)) return false;
+  return removeFencedRecord(storage, id, storageKey(id));
 }
 
 export function mintPluginPaneId(): string {

@@ -45,6 +45,7 @@ import {
   RegionModelProvider,
   useRegionModel,
 } from '../../contexts/RegionModelContext';
+import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { readPaneFence } from '../../regions/pane-fence';
 import {
@@ -1157,4 +1158,125 @@ describe('an installation enabled again or reinstalled is a new generation', () 
       expect(outcome.handle).not.toBe(kept.handle);
     },
   );
+});
+
+function stubPhone() {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: 390,
+  });
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === MOBILE_MEDIA_QUERY || query === '(pointer: coarse)',
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+}
+
+describe('on a phone, what an open folds over is what it asks', () => {
+  test.each(['cancel', 'proceed'] as const)(
+    'a first related pane over Chat asks the guarded pane Chat’s region shows, once, and %s',
+    async (answer) => {
+      stubPhone();
+      await mount();
+      act(() => probe.model?.placeSurface('chat', 'bottom'));
+      act(() => probe.model?.placeSurface('workspace-agents', 'bottom'));
+      expect(regions().bottom.occupant).toBe('workspace-agents');
+      expect(probe.model?.phoneLayer).toBeNull();
+      const asked = vi.fn();
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('agents draft'),
+        (proceed, cancel) => {
+          asked();
+          if (answer === 'cancel') cancel?.();
+          else proceed();
+        },
+        'workspace-agents',
+      );
+      try {
+        const before = await settledStorageSnapshot();
+        const arrangement = structuredClone(regions());
+        const outcome = await open({});
+        expect(asked).toHaveBeenCalledTimes(1);
+        if (answer === 'cancel') {
+          expect(outcome).toEqual({
+            status: 'unavailable',
+            reason: 'guard-cancelled',
+          });
+          expect(await settledStorageSnapshot()).toEqual(before);
+          expect(regions()).toEqual(arrangement);
+        } else
+          expect(outcome).toMatchObject({
+            status: 'opened',
+            presentation: 'child',
+          });
+      } finally {
+        unregister();
+      }
+    },
+  );
+});
+
+describe('a close or replacement whose storage fails never unfences what remains', () => {
+  const stateKey = (handle: string) => `station:plugin-pane-state:v1:${handle}`;
+  function failRemoving(key: string) {
+    const original = Storage.prototype.removeItem;
+    return vi
+      .spyOn(Storage.prototype, 'removeItem')
+      .mockImplementation(function (this: Storage, name: string) {
+        if (name === key) throw new Error('storage refused');
+        return original.call(this, name);
+      });
+  }
+
+  test('a closed pane whose record cannot be removed keeps it fenced to its Station', async () => {
+    await mount();
+    const { handle } = (await open({})) as { handle: string };
+    failRemoving(stateKey(handle));
+    expect(await run(() => host().close(handle))).toEqual({ status: 'closed' });
+    expect(
+      Object.values(regions()).flatMap((region) => region.panes),
+    ).not.toContain(handle);
+    expect(readPluginPaneState(localStorage, handle)).not.toBeNull();
+    expect(readPaneFence(localStorage, handle)).toEqual({
+      status: 'fenced',
+      stationId: 'station-a',
+    });
+  });
+
+  test('a close whose relation record cannot be written removes nothing', async () => {
+    await mount();
+    const { handle } = (await open({})) as { handle: string };
+    const before = await settledStorageSnapshot();
+    const arrangement = structuredClone(regions());
+    const original = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      name: string,
+      value: string,
+    ) {
+      if (name === PANE_RELATIONS_STORAGE_KEY)
+        throw new Error('storage refused');
+      return original.call(this, name, value);
+    });
+    expect(await run(() => host().close(handle))).toMatchObject({
+      status: 'unavailable',
+    });
+    vi.restoreAllMocks();
+    expect(regions()).toEqual(arrangement);
+    expect(await settledStorageSnapshot()).toEqual(before);
+  });
+
+  test('a replaced preview whose record cannot be removed keeps it fenced to its Station', async () => {
+    await mount();
+    const first = (await open({ key: 'a' })) as { handle: string };
+    failRemoving(stateKey(first.handle));
+    expect(await open({ key: 'b' })).toMatchObject({ status: 'replaced' });
+    expect(regions().right.panes).not.toContain(first.handle);
+    expect(readPluginPaneState(localStorage, first.handle)).not.toBeNull();
+    expect(readPaneFence(localStorage, first.handle)).toEqual({
+      status: 'fenced',
+      stationId: 'station-a',
+    });
+  });
 });

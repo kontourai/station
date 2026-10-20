@@ -13,6 +13,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ShellSurfaceSuspension } from '../../app-shell/ShellSurfaceSuspension';
+import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { readPaneFence, writePaneFence } from '../../regions/pane-fence';
 import {
@@ -804,4 +805,54 @@ describe('focusing a kept target while a guard is answering', () => {
     expect(outcome).toEqual({ ok: false, reason: 'contended' });
     expect(unchanged).toBe(true);
   });
+});
+
+function stubPhone() {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: 390,
+  });
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === MOBILE_MEDIA_QUERY || query === '(pointer: coarse)',
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+}
+
+describe('on a phone, what a related preview folds over is what it asks', () => {
+  test.each(['cancel', 'proceed'] as const)(
+    'a first preview over Chat asks the guarded pane Chat’s region shows, once, and %s',
+    async (answer) => {
+      stubPhone();
+      await mount();
+      act(() => probe.model?.placeSurface('chat', 'bottom'));
+      act(() => probe.model?.placeSurface('workspace-agents', 'bottom'));
+      expect(probe.model?.regions.bottom.occupant).toBe('workspace-agents');
+      expect(probe.model?.phoneLayer).toBeNull();
+      const asked = vi.fn();
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('agents draft'),
+        (proceed, cancel) => {
+          asked();
+          if (answer === 'cancel') cancel?.();
+          else proceed();
+        },
+        'workspace-agents',
+      );
+      try {
+        const before = await settledStorageSnapshot();
+        const arrangement = structuredClone(probe.model?.regions);
+        const outcome = await open('src/a.ts');
+        expect(asked).toHaveBeenCalledTimes(1);
+        if (answer === 'cancel') {
+          expect(outcome).toEqual({ ok: false, reason: 'guard-cancelled' });
+          expect(await settledStorageSnapshot()).toEqual(before);
+          expect(probe.model?.regions).toEqual(arrangement);
+        } else expect(outcome).toMatchObject({ ok: true });
+      } finally {
+        unregister();
+      }
+    },
+  );
 });
