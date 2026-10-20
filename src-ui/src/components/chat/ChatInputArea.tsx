@@ -1,4 +1,7 @@
-import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
+import type {
+  AcpApprovalControl,
+  ToolPolicyDelivery,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   EXECUTION_MODE,
   type ExecutionMode,
@@ -37,6 +40,7 @@ import {
 } from '../../utils/modelCapabilities';
 import { Button } from '../Button';
 import { ApprovalModeChip } from '../badges/ApprovalModeChip';
+import { EngineApprovalDisclosureChip } from '../badges/EngineApprovalDisclosureChip';
 import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
@@ -239,6 +243,17 @@ interface ChatInputAreaProps {
   approvalModeOverride?: SessionApprovalOverride;
   acpSessionModes?: AdvertisedAcpMode[];
   acpCurrentModeId?: string;
+  /**
+   * #3290: an ACP session's approval control, from its connection
+   * (`acpApprovalControl`). `engineId` is the engine identity the approval
+   * surfaces read (`acpApprovalFor`), `null` when the engine decides.
+   * Absent for every other engine, which uses `agentConnectionId`.
+   */
+  acpApproval?: {
+    control: AcpApprovalControl;
+    engineId: string | null;
+    engineName?: string;
+  };
   // Slash commands
   commandQuery: string | null;
   slashCommands: SlashCommand[];
@@ -448,6 +463,7 @@ export function ChatInputArea({
   lastAppliedApprovalMode,
   approvalModeOverride,
   acpSessionModes = [],
+  acpApproval,
   acpCurrentModeId,
   commandQuery,
   slashCommands,
@@ -511,6 +527,20 @@ export function ChatInputArea({
     input.trim() || hasQuotedContext || attachments.length,
   );
   const hideMobileSubmit = isMobile && !hasSendableDraft;
+  // #3290: while Station governs OpenCode (it reports running a Station
+  // mode), only build and plan are offered: the server refuses the user's own
+  // agents then. On OpenCode's own settings the full list stays.
+  const modeChoices =
+    acpApproval?.control === 'station' &&
+    lastAppliedApprovalMode &&
+    lastAppliedApprovalMode !== 'connection-default'
+      ? acpSessionModes.filter((mode) => /^(build|plan)$/.test(mode.id))
+      : acpSessionModes;
+  // #3290: an ACP session's approval identity comes from its connection's
+  // command, never the connection id.
+  const approvalEngineId = acpApproval
+    ? acpApproval.engineId
+    : (agentConnectionId ?? null);
   // Steering takes text only (`steerTurn` carries an input string) and the
   // mid-turn follow-up queue holds text only, so a draft with files cannot
   // join a running turn. The paperclip stays usable — the next message can
@@ -1062,11 +1092,11 @@ export function ChatInputArea({
               Use {modelResetSourceLabel(defaultModelSource)}
             </button>
           )}
-          {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
+          {modeChoices.length > 0 && onAcpSessionModeChange ? (
             <React.Suspense fallback={null}>
               <AcpSessionModeChip
                 key={sessionId}
-                modes={acpSessionModes}
+                modes={modeChoices}
                 currentModeId={
                   typeof modelRuntimeOptions?.mode === 'string'
                     ? modelRuntimeOptions.mode
@@ -1075,16 +1105,28 @@ export function ChatInputArea({
                 onChange={onAcpSessionModeChange}
               />
             </React.Suspense>
+          ) : null}
+          {/* #3290: an ACP engine's Mode (OpenCode's build or plan agent) is a
+              choice beside the approval control, not a second one: an engine
+              Station governs gets Station's modes, and one that decides for
+              itself says so instead of offering a mode nothing applies. */}
+          {executionMode === EXECUTION_MODE.EXTERNAL &&
+          acpApproval?.control === 'engine' ? (
+            <EngineApprovalDisclosureChip
+              key={sessionId}
+              engineName={acpApproval.engineName}
+              engineHasModes={acpSessionModes.length > 0}
+            />
           ) : (
             executionMode === EXECUTION_MODE.EXTERNAL &&
-            approvalModeKnobSupported(agentConnectionId) && (
+            approvalModeKnobSupported(approvalEngineId) && (
               <ApprovalModeChip
                 // Structural reset (not blur-dependent) for the chip's local
                 // confirm state when the active session changes — this
                 // subtree persists across session switches with no natural
                 // remount otherwise (archive#727 3).
                 key={sessionId}
-                engineConnectionId={agentConnectionId}
+                engineConnectionId={approvalEngineId}
                 toolPolicyDelivery={toolPolicyDelivery}
                 sessionOverride={approvalModeOverride?.mode}
                 sessionOverrideState={approvalModeOverride?.state}

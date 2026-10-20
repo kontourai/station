@@ -18,14 +18,6 @@ names a successor, read the successor rather than treating the older body as
 current guidance. Historical terminology remains in superseded records when
 rewriting it would falsify the decision that was made.
 
-Issue numbers follow the root [AGENTS.md](../../AGENTS.md#issue-references)
-convention: `#NNNN` is this repository and `archive#NNNN` is
-[kontourai/station-archive](https://github.com/kontourai/station-archive), the
-history before the 2026-08-28 public reset.
-[`issue-number-map.json`](../migration/issue-number-map.json) maps each
-re-filed archive issue to its number here. If an older record still cites a
-bare number that does not fit its context, look it up in the archive.
-
 For agent identity and vocabulary specifically,
 [agent-engine-unification.md](agent-engine-unification.md) supersedes the
 type-based portions of [entity-hierarchy.md](entity-hierarchy.md). Current
@@ -43,13 +35,12 @@ category.
 - [approval-posture-server-ordered.md](approval-posture-server-ordered.md) — Design: server-ordered approval posture
 - [automations.md](automations.md) — Station Automations
 - [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (archive#1376)
-- [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (Station #1375)
+- [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (archive#1375)
 - [channel-home-authority.md](channel-home-authority.md) — Channel home authority and planned transfer
 - [chat-composer.md](chat-composer.md) — Design: Chat composer & the agent-navigability principle
 - [cli-product.md](cli-product.md) — Design: the Station CLI as a published product
 - [cli-triage.md](cli-triage.md) — Design: bounded guided triage
 - [cloud-move.md](cloud-move.md) — Move a Station setup to the cloud
-- [collaborative-editor-pane.md](collaborative-editor-pane.md) — Collaborative editor pane
 - [conduit-runtime-integration.md](conduit-runtime-integration.md) — Conduit runtime integration
 - [connection-broker.md](connection-broker.md) — Optional Station connection broker
 - [connections-onboarding.md](connections-onboarding.md) — Design: Connections onboarding & capability passthrough
@@ -102,7 +93,7 @@ category.
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (archive#193 shell convergence)
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
-- [station-peer-pairing.md](station-peer-pairing.md) — Design: Station-to-Station peer pairing (spike, station#1123)
+- [station-peer-pairing.md](station-peer-pairing.md) — Design: Station-to-Station peer pairing (spike, #70)
 - [station-topology.md](station-topology.md) — Design: Station topology and role vocabulary
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
 - [task-dispatcher.md](task-dispatcher.md) — Task Dispatcher

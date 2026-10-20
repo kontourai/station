@@ -3,21 +3,12 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { PNG } from 'pngjs';
+import { canonicalValue } from './lib/canonical-json.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { baselineImagesDir, runDiff } from './screenshot-diff.mjs';
 
 const hash = (value) => createHash('sha256').update(value).digest('hex');
-const canonical = (value) => {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object')
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((key) => [key, canonical(value[key])]),
-    );
-  return value;
-};
-const digest = (value) => hash(JSON.stringify(canonical(value)));
+const digest = (value) => hash(JSON.stringify(canonicalValue(value)));
 
 /** Review identity only: callers still retain this run's comparator verdict. */
 export function buildGalleryReviewEvidence({

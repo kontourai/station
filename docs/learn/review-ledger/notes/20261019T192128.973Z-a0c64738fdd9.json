@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed against chat.css (.turn-footer__bar and .answer-basis-chip only): no pane, region or placement claim changes; no prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

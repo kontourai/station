@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed against the glossary's new Chat inventory row: the context map does not define inventory or Basis terms; no prose change.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

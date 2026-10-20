@@ -1,9 +1,17 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   acquirePluginPublicServerModule,
   buildPluginRequestContext,
@@ -17,6 +25,7 @@ import {
 } from '../plugin-public-server.js';
 
 const cleanupDirs: string[] = [];
+const makeTempDir = trackTempDirs();
 
 afterEach(async () => {
   await Promise.all(
@@ -86,6 +95,43 @@ describe('plugin-public-server helpers', () => {
         { warn: vi.fn() } as any,
       ),
     ).rejects.toThrow(/Plugin server module escapes root/);
+  });
+
+  test('refuses a server module whose symlink chain resolves outside the plugin root (#1502)', async () => {
+    const root = realpathSync.native(
+      makeTempDir('station-plugin-server-chain-'),
+    );
+    const pluginsDir = join(root, 'plugins');
+    const pluginDir = join(pluginsDir, 'demo-plugin');
+    mkdirSync(join(pluginDir, 'dir'), { recursive: true });
+    const manifest = {
+      name: 'demo-plugin',
+      version: '1.0.0',
+      serverModule: 'server.mjs',
+    };
+    writeFileSync(join(pluginDir, 'plugin.json'), JSON.stringify(manifest));
+    // `dir/up -> ..` makes `dir/up/../outside.mjs` the plugins directory's
+    // file to the OS, while the JS realpath names the inside decoy.
+    const witness = '__stationPluginServerChainWitness';
+    writeFileSync(
+      join(pluginsDir, 'outside.mjs'),
+      `globalThis.${witness} = 'outside'; export function register() {}`,
+    );
+    writeFileSync(
+      join(pluginDir, 'dir', 'outside.mjs'),
+      `globalThis.${witness} = 'decoy'; export function register() {}`,
+    );
+    symlinkSync('..', join(pluginDir, 'dir', 'up'));
+    symlinkSync('dir/up/../outside.mjs', join(pluginDir, 'server.mjs'));
+    const globals = globalThis as Record<string, unknown>;
+    delete globals[witness];
+
+    await expect(
+      loadPluginPublicServerModule(pluginsDir, 'demo-plugin', manifest, {
+        warn: vi.fn(),
+      } as any),
+    ).rejects.toThrow(/^Plugin server module escapes root$/);
+    expect(globals[witness]).toBeUndefined();
   });
 
   test('disposes a loaded plugin server module before authority is removed', async () => {

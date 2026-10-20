@@ -1,5 +1,7 @@
 # Isolated Agent Runs
 
+Status: Proposal — unscheduled; no tracking issue as of 2026-10-20.
+
 > **Reading status: design proposal.** The run record and `station run isolate`
 > command below describe a proposed interface, not an installation instruction
 > or a claim about current command availability. Use the [CLI reference](../reference/cli.md)
@@ -9,7 +11,6 @@
 > and [foreground executor](../../src-server/services/execution-target/execution-target-execution.ts).
 > Their existence does not establish this proposal's complete isolated-run lifecycle.
 
-Status: design note
 
 ## Current Project worktree source identity
 

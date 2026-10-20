@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { copyToClipboard } from '../../lib/clipboard';
 import { cancelNativeRelayLink } from '../../platform/native/nativeRelayLinkCancellation';
 import { publishNativeRelaySetupChange } from '../../platform/native/nativeRelaySetupState';
 import {
@@ -311,12 +312,11 @@ export function RelayRouteKeyApproval({
   );
   async function copySurfaceMetadata() {
     if (!surfaceMatchesRoute || !surface) return;
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(surface, null, 2));
-      setMessage('Setup info copied. Send it to the owner.');
-    } catch {
-      setMessage('Couldn’t copy. Open Setup info and send it to the owner.');
-    }
+    setMessage(
+      (await copyToClipboard(JSON.stringify(surface, null, 2)))
+        ? 'Setup info copied. Send it to the owner.'
+        : 'Couldn’t copy. Open Setup info and send it to the owner.',
+    );
   }
   function cancelKeyReview() {
     setRotationReview(false);

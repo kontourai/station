@@ -1,0 +1,7 @@
+{
+  "revision": "a67a63fa6fafb31ef5fea485df93fe8483e130e3",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed against the sdk.md enable-transition sentence: SDK scope rules still hold; no prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
