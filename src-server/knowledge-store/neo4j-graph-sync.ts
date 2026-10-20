@@ -1,12 +1,10 @@
 /**
  * Neo4j graph-sync — idempotent projection of a root's records+links into Neo4j.
- * Resolves the Q1 verdict recorded in `s203-knowledge-meeting-notes--plan.md` /
- * ratified in `s203-knowledge-meeting-notes--pull-work.md` ("Graph view, synced"):
- * a personal root's storage stays on a real file adapter (`kit-default-store`/
+ * A personal root's storage stays on a real file adapter (`kit-default-store`/
  * `kit-obsidian-store`); Neo4j is a read-side materialized graph view SYNCED FROM
  * that adapter, never a write target of its own (see `./neo4j-connection.ts`'s
- * module doc for the full K2 architecture citation). This module owns the one
- * direction of that sync: file adapter -> Neo4j.
+ * module doc). This module owns the one direction of that sync: file adapter ->
+ * Neo4j.
  *
  * This mirrors the *behavior* the Kit's own published `sync.js` documents (content-
  * hash-guarded MERGE, per ADR-0009) as a spec reference only — nothing here imports
@@ -18,7 +16,7 @@
  *
  * Idempotency (this file's core acceptance criterion): each record projects to a
  * `(:KitRecord {rootId, recordId})` node carrying only the fields the graph view
- * actually needs — `type`/`title`/`category` (the plan's own node-shape decision;
+ * actually needs — `type`/`title`/`category` (a deliberate node-shape decision;
  * record `body` is deliberately NOT projected, so a body-only edit doesn't dirty
  * the synced node) — plus a content hash of exactly those projected fields. Before
  * writing, this module reads back the node's currently-stored hash and skips the
@@ -27,8 +25,8 @@
  * guard for each forward link, projected to a `(:KitRecord)-[:LINKS_TO {kind}]
  * ->(:KitRecord)` edge hashed over `{source, target, kind, label}`.
  *
- * Two-pass sync (fixes a code-review HIGH finding, `s203-knowledge-meeting-notes
- * --code-review.md`): `records` is a single flat array collected across every
+ * Two-pass sync (fixes a past forward-reference defect): `records` is a single
+ * flat array collected across every
  * `KitRecordType` in `ALL_KIT_RECORD_TYPES` order, and nothing about that order
  * is a same-type or cross-type dependency guarantee for a record's own links. A
  * single interleaved pass (merge a record's node, then immediately its outgoing
@@ -48,7 +46,7 @@
  * guaranteed to already exist, so `mergeEdge`'s `MATCH` can never silently no-op
  * for a link this module chose to write.
  *
- * Scope boundary (Q1 verdict, deliberately NOT built here): no deletion/orphan
+ * Scope boundary (deliberately NOT built here): no deletion/orphan
  * pruning of nodes/edges whose source record was removed from the file store since
  * the last sync (an accepted, named gap — same "additive projection only" scope
  * `./neo4j-graph-provider.ts`'s doc comment names for the read side's four
@@ -57,9 +55,8 @@
  * as an edge to a node that doesn't exist; same "never silently invent success"
  * honesty bar the rest of this store package already holds.
  *
- * Performance (named-deferred, per a code-review MEDIUM finding — not scoped out
- * of this doc comment the way the pruning gap above is, but flagged the same
- * way): each record issues up to 2 sequential `session.run` round-trips (a hash
+ * Performance (a known, deferred gap, flagged the same way as the pruning gap
+ * above): each record issues up to 2 sequential `session.run` round-trips (a hash
  * read, then a conditional write) and each link the same, none batched into a
  * single Cypher statement or `Promise.all`'d. Fine at this demo's scale; a future
  * caller syncing a much larger root should batch (e.g. `UNWIND` over a list

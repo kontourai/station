@@ -429,7 +429,7 @@ export async function listSkillConfigs(
  * another skill's identity — `resolveSkillName` would route that skill's legacy
  * ids to it, and an update reads `name` back off the record, so a record
  * claiming `foo` under `<home>/skills/bar` renamed `bar` to `foo` on a request
- * that asked for no rename at all (review round 2, L3).
+ * that asked for no rename at all.
  *
  * THE rule, exported so both readers share it rather than restate it: this
  * loader, and `SkillService`'s read of the record beside a discovered body.
