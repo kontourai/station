@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, sep, win32 } from 'node:path';
 import { RequestError } from '@agentclientprotocol/sdk';
 import { describe, expect, test } from 'vitest';
