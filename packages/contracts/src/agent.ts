@@ -399,6 +399,13 @@ export interface AgentSpec {
   region?: string;
   maxSteps?: number;
   guardrails?: AgentGuardrails;
+  /**
+   * @deprecated Nothing reads this block. It stays declared because the
+   * agent schema rejects unknown keys, so removing it would stop existing
+   * agent files that carry it from loading.
+   * SUNSET(#3879): remove from this type and `schemas/agent.schema.json` once
+   * agent files no longer carry it.
+   */
   streaming?: {
     useNewPipeline?: boolean;
     enableThinking?: boolean;

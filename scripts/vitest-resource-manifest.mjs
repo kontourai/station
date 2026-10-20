@@ -644,6 +644,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // reads the ledger from origin/main, peels real ledger commit-backs with
   // git, and its exit status. Bounded, single-shot children.
   'scripts/__tests__/nightly-qualification-decide.cli.test.ts',
+  // Runs the evidence-archive generator once as a real child process in a
+  // throwaway repository layout to check the manifest note it writes.
+  'scripts/__tests__/dogfood-evidence-retention.test.ts',
   // Bounded real CLI with local Actions HTTP responses; no corpus or provider effects.
   'scripts/__tests__/release-pipeline.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
@@ -1051,6 +1054,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // that starts a grandchild in its group, then sweeps and terminates it.
   // Same process-tree shape as owned-process-reaping.test.ts.
   'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
+  // #3800: starts the real `codex app-server` (when this host has one) with a
+  // fresh CODEX_HOME to read the sandbox it reports over a planted workspace
+  // config; skips loudly where no codex binary resolves.
+  'src-server/providers/__tests__/codex-project-config.process.test.ts',
   // #561: runs a real Flow shell command (a stub script that leaves a
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.
@@ -1083,6 +1090,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Vitest workers or hide a leaked child behind a timing failure.
   'src-server/services/__tests__/scheduler.test.ts',
   'src-server/services/acp/__tests__/acp-process-spawn-failure.test.ts',
+  // #3290: spawns an OpenCode-shaped ACP engine through the real
+  // ACPProcess, so the launch environment is the one actually delivered.
+  'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
   // Runs npm and the real lockfile gate against an isolated two-workspace
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
