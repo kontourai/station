@@ -2290,6 +2290,16 @@ The [Agent Plugins reference](agent-plugins.md) covers the package format;
 [installation lifecycle](../design/plugin-installation-lifecycle.md) covers
 retained generations and recovery.
 
+### Preview a plugin installation
+
+`POST /api/plugins/preview` stages the source and returns its parsed `manifest`,
+components, conflicts and consent basis. The top-level `hasBundle` reports whether
+that staged source contains `dist/bundle.js`; it is not a manifest field or proof
+that the bundle can run. A declared `manifest.entrypoint` may build client code
+during installation. Native install previews use these facts to offer a separate
+extension-access review. A layout declaration alone does not require this access:
+a layout can use built-in views without loading plugin code.
+
 ### List Installed Plugins
 
 `GET /api/plugins` returns `{plugins}` after projecting the installed inventory
