@@ -1315,6 +1315,21 @@ describe('a plugin whose lifecycle history the Station cannot vouch for', () => 
     ).toBeNull();
   });
 
+  // Treating `null` as "no lifecycle generation issued" would make it the
+  // plain installation tuple again, which a caller or an occurrence from
+  // such a host already carries.
+  test('admits nothing for a caller whose generation names no lifecycle', async () => {
+    installed(null);
+    callers.first = caller('instance:list');
+    await mount();
+    const before = await settledStorageSnapshot();
+    expect(await open({})).toEqual({
+      status: 'unavailable',
+      reason: 'not-authorized',
+    });
+    expect(await settledStorageSnapshot()).toEqual(before);
+  });
+
   test('admits nothing for a caller mounted before its history was lost', async () => {
     installed('incarnation-1:aaaa.r0');
     callers.first = caller('instance:list', {}, null, {

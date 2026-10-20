@@ -306,6 +306,19 @@ describe('a related plugin occurrence in a region', () => {
     },
   );
 
+  test('an occurrence recorded with no lifecycle generation renders nothing while the history is unvouched', async () => {
+    seen.lifecycle = null;
+    store({
+      generation: 'plugin:reports@1.0.0:local:reports:plugins/reports',
+    });
+    writePaneFence(localStorage, ID, 'station-a');
+    mount({ station: 'station-a' });
+    expect(
+      await screen.findByText('This plugin pane is unavailable'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Report renderer')).toBeNull();
+  });
+
   test('an occurrence whose record is gone says so', async () => {
     writePaneFence(localStorage, ID, 'station-a');
     mount({ station: 'station-a' });
