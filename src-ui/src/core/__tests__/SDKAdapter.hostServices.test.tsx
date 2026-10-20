@@ -21,7 +21,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { type ReactNode, StrictMode, useEffect } from 'react';
+import { type ReactNode, StrictMode, useEffect, useMemo } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const inputs = vi.hoisted(() => ({ isMobile: false }));
@@ -766,16 +766,20 @@ describe('useHost through the real adapter', () => {
       confirm?: Promise<string>;
     } = {};
     function Child({
-      prompt,
-      confirm,
+      dialogs,
     }: {
-      prompt: ReturnType<typeof usePanePromptChrome>['prompt'];
-      confirm: ReturnType<typeof usePaneConfirmChrome>['confirm'];
+      dialogs: {
+        prompt: ReturnType<typeof usePanePromptChrome>['prompt'];
+        confirm: ReturnType<typeof usePaneConfirmChrome>['confirm'];
+      };
     }) {
       useEffect(() => {
-        answers.confirm = confirm({ title: 'Activated confirm', message: 'm' });
-        answers.prompt = prompt({ title: 'Activated prompt' });
-      }, [prompt, confirm]);
+        answers.confirm = dialogs.confirm({
+          title: 'Activated confirm',
+          message: 'm',
+        });
+        answers.prompt = dialogs.prompt({ title: 'Activated prompt' });
+      }, [dialogs]);
       return null;
     }
     function Placement({ active }: { active: boolean }) {
@@ -785,9 +789,10 @@ describe('useHost through the real adapter', () => {
         undefined,
         'p',
       );
+      const dialogs = useMemo(() => ({ prompt, confirm }), [prompt, confirm]);
       return (
         <>
-          {active ? <Child prompt={prompt} confirm={confirm} /> : null}
+          {active ? <Child dialogs={dialogs} /> : null}
           {confirmChrome}
           {promptChrome}
         </>
