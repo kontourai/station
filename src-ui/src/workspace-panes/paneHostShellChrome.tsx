@@ -10,6 +10,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -184,8 +185,10 @@ function usePlacementLiveness(active: boolean) {
   // placement, runs before this hook's effects and must already see `true`.
   const activeRef = useRef(active);
   activeRef.current = active;
+  // A layout effect, so a StrictMode remount (and any re-attach) clears the
+  // flag before descendants' passive mount effects run.
   const unmounted = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     unmounted.current = false;
     return () => {
       unmounted.current = true;

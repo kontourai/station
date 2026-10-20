@@ -21,7 +21,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, StrictMode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const inputs = vi.hoisted(() => ({ isMobile: false }));
@@ -793,7 +793,8 @@ describe('useHost through the real adapter', () => {
         <Placement active />
       </Shell>,
     );
-    // Still open, not settled `null`/`cancelled` by a stale liveness read.
+    // Both shown, not settled `null`/`cancelled` by a stale liveness read.
+    await screen.findByText('Activated confirm');
     await screen.findByRole('dialog', { name: 'Activated prompt' });
     fireEvent.click(
       screen.getByRole('button', { name: 'Close Activated prompt' }),
@@ -805,6 +806,27 @@ describe('useHost through the real adapter', () => {
     });
     await Promise.resolve();
     expect(settled).toBe(false);
+  });
+
+  test('under StrictMode a pane that confirms in its mount effect still shows the dialog', async () => {
+    let answer: Promise<string> | undefined;
+    function Child() {
+      const host = useHost();
+      useEffect(() => {
+        answer = host.confirm({ title: 'Strict confirm', message: 'm' });
+      }, [host]);
+      return null;
+    }
+    render(
+      <StrictMode>
+        <Shell>
+          <Child />
+        </Shell>
+      </StrictMode>,
+    );
+    await screen.findByText('Strict confirm');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await expect(answer).resolves.toBe('confirmed');
   });
 
   test('a host captured before unmount settles prompt and confirm at once', async () => {
