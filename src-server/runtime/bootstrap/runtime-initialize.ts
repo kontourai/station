@@ -412,6 +412,8 @@ export async function initializeRuntime(
   const features = (process.env.STATION_FEATURES || '')
     .split(',')
     .filter(Boolean);
+  // SUNSET(#3909): delete once the persisted `runtime` setting is the only
+  // runtime selector, or Strands is the default.
   if (features.includes('strands-runtime')) {
     appConfig.runtime = 'strands';
   }
