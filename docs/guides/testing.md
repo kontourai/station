@@ -478,6 +478,11 @@ suites that import that package by name are selected (#3149). A version bump
 changes no source file, and both files escalate, so these explicit targets are
 what such a diff runs. Transitive lockfile changes are not followed, and a
 package imported by more than 16 suites defers them to `test-full`.
+A workspace `package.json` must not reach related discovery: Vitest's default
+`forceRerunTriggers` match every `package.json`, so a hosted checkout selects
+the whole corpus and overruns the shard budget, while a checkout under a
+dot-directory selects nothing. Give a changed manifest explicit readers in the
+impact manifest instead, as the contracts, SDK and Basis pane manifests do.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
