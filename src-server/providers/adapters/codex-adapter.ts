@@ -1790,6 +1790,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       // A start the orchestration service did not stamp (a session recorded
       // before the stamp, or a direct adapter call) is authorized for its
       // cwd, as a session with no Project is.
+      // An empty stamp (a folder outside every Project) trusts nothing.
       const unaccounted = findUnaccountedCodexConfig(cwd, {
         root: typeof stamped === 'string' ? stamped : cwd,
         codexHome: process.env.CODEX_HOME,

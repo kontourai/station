@@ -69,6 +69,23 @@ describe('findUnaccountedCodexConfig (#3800)', () => {
     const { root, pkg, config } = repository();
     expect(check(pkg, root)).toBeUndefined();
     expect(check(pkg)).toBe(config);
+    // The stamp for a folder outside every Project.
+    expect(findUnaccountedCodexConfig(pkg, { root: '' })).toBe(config);
+  });
+
+  test('a nested repository ends trust even where the outer upstream holds the same bytes', () => {
+    // The outer upstream commits `sub/vendored/.codex/config.toml`; then a
+    // repository of its own appears at `sub/vendored` (unregistered).
+    const { root } = repository();
+    const nested = join(root, 'sub', 'vendored');
+    mkdirSync(join(nested, '.codex'), { recursive: true });
+    writeFileSync(join(nested, '.codex', 'config.toml'), '# outer upstream\n');
+    git(root, 'add', '-A');
+    git(root, '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'vendored');
+    git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    expect(check(nested, root)).toBeUndefined();
+    git(nested, 'init', '-q');
+    expect(check(nested, root)).toBe(join(nested, '.codex'));
   });
 
   test('a repository an agent built and moved into a Project with no repository anchors nothing', () => {

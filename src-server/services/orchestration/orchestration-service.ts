@@ -444,6 +444,7 @@ import {
   SESSION_CONFINEMENT_ROOT_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY,
+  sessionConfinementRoot,
 } from './session-project-identity.js';
 import {
   createSessionQueryModule,
@@ -1650,44 +1651,37 @@ function withSessionLocalProjectId(
 }
 
 /**
- * #3800: stamps `SESSION_CONFINEMENT_ROOT_METADATA_KEY` from this Station's
- * own project list and the resolved start cwd, replacing whatever the caller
- * sent. The Project's directory when the cwd lies inside it (lexically, as
- * `withSessionLocalProjectId` checks), else the cwd itself: a provisioned
- * worktree or an unbound session is authorized for exactly its folder.
+ * #3800: stamps `SESSION_CONFINEMENT_ROOT_METADATA_KEY`
+ * (`sessionConfinementRoot`) from this Station's own Project list and the
+ * resolved start cwd, replacing whatever the caller sent.
  */
 function withSessionConfinementRoot(
   input: ProviderSessionStartInput,
   listProjects?: () => AttachedProjectRoot[],
+  admittedWorkspace?: { threadId: string; cwd: string },
 ): ProviderSessionStartInput {
   const { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: _untrusted, ...rest } =
     input.metadata ?? {};
-  const cwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
-  const slug =
-    typeof input.metadata?.projectSlug === 'string'
-      ? input.metadata.projectSlug
-      : undefined;
-  const project = slug
-    ? listProjects?.().find((entry) => entry.slug === slug)
-    : undefined;
-  const projectRoot = project?.workingDirectory
-    ? resolve(expandTilde(project.workingDirectory))
-    : undefined;
-  const root =
-    cwd === undefined
-      ? undefined
-      : projectRoot !== undefined && isWithinDirectory(projectRoot, cwd)
-        ? projectRoot
-        : cwd;
-  if (root === undefined && _untrusted === undefined) return input;
-  return {
-    ...input,
-    metadata: {
-      ...rest,
-      ...(root !== undefined
-        ? { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: root }
+  const root = sessionConfinementRoot(
+    input.cwd ? expandTilde(input.cwd) : undefined,
+    (listProjects?.() ?? []).map((project) => ({
+      ...project,
+      ...(project.workingDirectory
+        ? { workingDirectory: expandTilde(project.workingDirectory) }
+        : {}),
+    })),
+    {
+      ...(typeof input.metadata?.projectSlug === 'string'
+        ? { projectSlug: input.metadata.projectSlug }
+        : {}),
+      ...(admittedWorkspace?.threadId === input.threadId
+        ? { admittedCwd: admittedWorkspace.cwd }
         : {}),
     },
+  );
+  return {
+    ...input,
+    metadata: { ...rest, [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: root },
   };
 }
 
@@ -6410,6 +6404,7 @@ export class OrchestrationService {
           startInput = withSessionConfinementRoot(
             startInput,
             this.options.listProjects,
+            admittedStartWorkspace,
           );
           // #2873: record the canonical folder a scoped dispatch was
           // admitted into (decided again here, for the directory this start

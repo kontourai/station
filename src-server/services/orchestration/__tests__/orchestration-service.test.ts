@@ -1029,8 +1029,17 @@ describe('OrchestrationService', () => {
       });
     });
 
-    test('#3800: the confinement root is the Project directory containing the cwd, else the cwd, never the caller value', async () => {
+    test('#3800: the confinement root is the Project directory containing the cwd, never the caller value or the cwd', async () => {
       publishStarts();
+      // Outside every Project (configuredProjects is reset per test): trust
+      // nothing, whatever the caller claimed.
+      await started('outside-session', {
+        userId: 'human:test:alice',
+        confinementRoot: tmp,
+      });
+      expect(
+        service.firstStartedMetadataOfThread('outside-session'),
+      ).toMatchObject({ confinementRoot: '' });
       const projectRoot = resolve(tmp, '..');
       configuredProjects.push({
         slug: 'rooted',
@@ -1045,13 +1054,15 @@ describe('OrchestrationService', () => {
       expect(
         service.firstStartedMetadataOfThread('rooted-session'),
       ).toMatchObject({ confinementRoot: projectRoot });
-      await started('unbound-session', {
+      // A start naming no Project (a station-control dispatch to a plain
+      // folder, say) still belongs to the deepest Project around its cwd.
+      await started('slugless-session', {
         userId: 'human:test:alice',
-        confinementRoot: '/forged',
+        confinementRoot: tmp,
       });
       expect(
-        service.firstStartedMetadataOfThread('unbound-session'),
-      ).toMatchObject({ confinementRoot: resolve(tmp) });
+        service.firstStartedMetadataOfThread('slugless-session'),
+      ).toMatchObject({ confinementRoot: projectRoot });
     });
 
     test('S2: only a session that predates the stamp gets the slug-lookup fallback', async () => {

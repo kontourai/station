@@ -56,7 +56,10 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 export function findUnaccountedCodexConfig(
   cwd: string,
   options: {
-    /** The directory the server authorized the session for. */
+    /**
+     * The directory the server authorized the session for; `''` (a folder
+     * outside every Project) or absent trusts nothing.
+     */
     root?: string;
     codexHome?: string;
     gitTimeoutMs?: number;
