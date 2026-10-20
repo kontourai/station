@@ -121,7 +121,7 @@ test.describe('Agents pane child work (#2459)', () => {
 
   test('per chat keeps Claude’s Stop; All shows a CLI delegate and a chatless subagent live, with provenance', async ({
     page,
-  }) => {
+  }, testInfo) => {
     // Home, not the Coding layout: this journey hides the Chat DOCK to prove
     // the pane alone keeps the read model fresh, and on a wide screen the
     // Coding layout's Chat is its centre, not a dock (#928 coding stack).
@@ -238,6 +238,19 @@ test.describe('Agents pane child work (#2459)', () => {
       runningRow('Chatless survey').getByRole('button', { name: 'Stop' }),
     ).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(2);
+
+    const childRow = runningRow('Investigate flaky test');
+    const main = await childRow.locator('.child-work-row__main').boundingBox();
+    const stop = await childRow
+      .getByRole('button', { name: 'Stop' })
+      .boundingBox();
+    expect(main).not.toBeNull();
+    expect(stop).not.toBeNull();
+    expect(stop!.y).toBeLessThan(main!.y + main!.height);
+    expect(stop!.x).toBeGreaterThanOrEqual(main!.x + main!.width - 1);
+    await childRow.screenshot({
+      path: testInfo.outputPath('agents-row-inline-actions.png'),
+    });
 
     // The scope is remembered on this device.
     await page.reload();

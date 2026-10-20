@@ -224,8 +224,13 @@ test.describe('subagent transcript cards', () => {
       status: 'success',
       output: 'Reviews started',
     });
+    await emit(page, {
+      method: 'turn.completed',
+      turnId: 'turn-1',
+      finishReason: 'stop',
+    });
     const group = page.locator('.subagent-group');
-    const heading = group.locator('summary');
+    const heading = group.locator('.subagent-group__heading');
     await expect(heading).toContainText('6 subagents');
     await expect(heading).toContainText('6 running');
     await expect(
@@ -240,15 +245,16 @@ test.describe('subagent transcript cards', () => {
     });
     await heading.click();
     await emit(page, {
+      createdAt: ENDED_AT,
       method: 'child-work.updated',
       delta: {
-        kind: 'upsert',
-        item: {
-          ...children[0],
-          status: 'failed',
-          endedAt: ENDED_AT,
-          result: { summary: 'Could not read the project' },
-        },
+        kind: 'settle',
+        producer: 'engine-subagent',
+        reporterThreadId: SESSION_ID,
+        childId: children[0].childId,
+        status: 'failed',
+        identity: { ...children[0], endedAt: ENDED_AT },
+        result: { summary: 'Could not read the project' },
       },
     });
     await expect(heading).toContainText('5 running');
@@ -347,7 +353,7 @@ test.describe('subagent transcript cards', () => {
         ).toBe(true);
       }
       await expect(card.getByText('Completed')).toBeVisible();
-      await expect(card.getByText('gpt-5.5')).toBeVisible();
+      await expect(card.getByText('gpt-5.5')).toHaveCount(0);
       await expect(card.getByText('done', { exact: true })).toBeVisible();
       await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:05');
       await card.scrollIntoViewIfNeeded();
@@ -372,7 +378,7 @@ test.describe('subagent transcript cards', () => {
       await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
       await card.getByRole('button').click();
       await card.scrollIntoViewIfNeeded();
-      await expect(card.getByText('done', { exact: true })).toHaveCount(2);
+      await expect(card.getByText('done', { exact: true })).toHaveCount(1);
       await expectDockFits(page);
       const box = await card.boundingBox();
       expect(box).not.toBeNull();

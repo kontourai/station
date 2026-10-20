@@ -80,7 +80,6 @@ export function TaskRow({
   onOpenTranscript: (threadId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const hasDetail = Boolean(entry.detail);
   const delegateThreadId = entry.delegateThreadId ?? '';
   const isRunningDelegate =
     entry.state === 'running' &&
@@ -108,6 +107,7 @@ export function TaskRow({
   const usageTokens = usage
     ? (cacheInclusiveTotalTokens(usage.provider, usage) ?? usage.totalTokens)
     : undefined;
+  const hasDetail = Boolean(entry.detail) || Boolean(usage);
   const transcriptTitle = useMemo(() => {
     const started = detail.data?.events.find(
       (event) => event.method === 'turn.started',
@@ -169,10 +169,8 @@ export function TaskRow({
         )}
       </button>
       {expanded && hasDetail && (
-        <div className="background-tasks-sheet__detail">{entry.detail}</div>
-      )}
-      {delegateThreadId && (
-        <div className="background-tasks-sheet__task-footer">
+        <div className="background-tasks-sheet__detail">
+          {entry.detail}
           {usage && (
             <span className="background-tasks-sheet__usage">
               {/* An engine that reported no token count (ACP reports context
@@ -185,6 +183,10 @@ export function TaskRow({
               {usage.toolCalls} tool {usage.toolCalls === 1 ? 'use' : 'uses'}
             </span>
           )}
+        </div>
+      )}
+      {delegateThreadId && (
+        <div className="background-tasks-sheet__task-footer">
           <span className="background-tasks-sheet__task-actions">
             <button
               type="button"

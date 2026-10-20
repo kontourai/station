@@ -282,6 +282,8 @@ describe('BackgroundTasksSheet', () => {
       finished: [],
     });
 
+    expect(screen.queryByText('150 tokens · 1 tool use')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('150 tokens · 1 tool use')).not.toBeNull();
     expect(screen.getByText('Audit the release workflow')).not.toBeNull();
   });
@@ -330,6 +332,8 @@ describe('BackgroundTasksSheet', () => {
 
     // 150 + 9,000 + 400 — the pre-fix line said "150 tokens" while the
     // session had put 9,520 prompt-side tokens in front of the model.
+    expect(screen.queryByText('9,550 tokens · 1 tool use')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('9,550 tokens · 1 tool use')).not.toBeNull();
   });
 
@@ -373,6 +377,8 @@ describe('BackgroundTasksSheet', () => {
 
     // Codex's inclusivity is 'unverified': 35 + 4 could double-count, so
     // the provider's own total stands.
+    expect(screen.queryByText('35 tokens · 1 tool use')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('35 tokens · 1 tool use')).not.toBeNull();
   });
 });

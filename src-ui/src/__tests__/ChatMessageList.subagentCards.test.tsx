@@ -1124,10 +1124,10 @@ describe('subagent transcript cards', () => {
     ];
     renderTranscript();
     const group = await screen.findByText('2 subagents');
-    const disclosure = group.closest('details')!;
-    expect(disclosure.open).toBe(false);
+    const disclosure = group.closest('button')!;
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
     expect(within(disclosure).getByText('2 running')).toBeTruthy();
-    fireEvent.click(group.closest('summary')!);
+    fireEvent.click(disclosure);
     await screen.findByText('second');
     const cards = screen.getAllByTestId('subagent-card');
     expect(cards).toHaveLength(2);

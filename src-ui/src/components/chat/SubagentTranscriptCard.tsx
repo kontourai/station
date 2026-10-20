@@ -24,12 +24,7 @@ import {
 } from './transcript-child-work';
 import './SubagentTranscriptCard.css';
 
-/**
- * One card per subagent, inline at its reported spawn anchor. Everything on it comes from the child's own contract record
- * (`transcript-child-work.ts`); a fact no engine reported is either absent
- * or named as a gap, never a zero or a guess. The child's reasoning effort
- * has no producer at all, so the card has no slot for it.
- */
+/** One card at each reported spawn anchor; never borrow facts from the parent. */
 
 const loadChildWorkTranscript = () =>
   import('../../workspace-panes/agents/ChildWorkTranscript').then((module) => ({
@@ -165,7 +160,7 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               </span>
             </span>
           )}
-          {!expanded && preview ? (
+          {(running || !expanded) && preview ? (
             <span className="subagent-card__preview">{preview}</span>
           ) : !expanded && !running && item.status === 'completed' ? (
             <span className="subagent-card__preview subagent-card__preview--gap">
@@ -250,8 +245,27 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
   );
 }
 
-/** Group only children anchored to this tool run; never move them across prose. */
+/** Reconstruct original runs even when the phone folds their tool work together. */
 export function SubagentCardsForCalls({
+  calls,
+}: {
+  calls: readonly { part: ToolCallLike; index: number }[];
+}) {
+  const runs: (typeof calls)[number][][] = [];
+  for (const call of calls) {
+    const run = runs.at(-1);
+    if (run && run.at(-1)!.index + 1 === call.index) run.push(call);
+    else runs.push([call]);
+  }
+  return runs.map((run) => (
+    <SubagentCallGroup
+      key={run[0].part.toolCallId ?? run[0].index}
+      calls={run}
+    />
+  ));
+}
+
+function SubagentCallGroup({
   calls,
 }: {
   calls: readonly { part: ToolCallLike }[];
@@ -259,35 +273,48 @@ export function SubagentCardsForCalls({
   const children = useTranscriptChildrenForCalls(
     calls.flatMap(({ part }) => (part.toolCallId ? [part.toolCallId] : [])),
   );
+  const [expanded, setExpanded] = useState(false);
   const groupId = useId();
-  if (children.length < 2)
-    return children.map((child) => (
-      <SubagentTranscriptCard key={child.item.childId} child={child} />
-    ));
-
+  const grouped = children.length > 1;
+  if (!children.length) return null;
   const counts = new Map<TranscriptChild['item']['status'], number>();
   for (const child of children)
     counts.set(child.item.status, (counts.get(child.item.status) ?? 0) + 1);
 
   return (
-    <details className="subagent-group">
-      <summary className="subagent-group__heading" aria-controls={groupId}>
-        <AgentGlyph />
-        <strong>{children.length} subagents</strong>
-        <span className="subagent-group__counts" aria-live="polite">
-          {[...counts]
-            .map(
-              ([status, count]) =>
-                `${count} ${CHILD_WORK_STATUS_LABEL[status].toLowerCase()}`,
-            )
-            .join(' · ')}
-        </span>
-      </summary>
-      <div className="subagent-group__children" id={groupId}>
+    <div className="subagent-group" data-grouped={grouped}>
+      {grouped && (
+        <button
+          type="button"
+          className="subagent-group__heading"
+          aria-expanded={expanded}
+          aria-controls={groupId}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <AgentGlyph />
+          <strong>{children.length} subagents</strong>
+          <span className="subagent-group__counts" aria-live="polite">
+            {[...counts]
+              .map(
+                ([status, count]) =>
+                  `${count} ${CHILD_WORK_STATUS_LABEL[status].toLowerCase()}`,
+              )
+              .join(' · ')}
+          </span>
+          {expanded ? <ArrowDownGlyph /> : <ArrowRightGlyph />}
+        </button>
+      )}
+      <div
+        className="subagent-group__children"
+        id={groupId}
+        hidden={grouped && !expanded}
+        onFocusCapture={() => setExpanded(true)}
+        onClickCapture={() => setExpanded(true)}
+      >
         {children.map((child) => (
           <SubagentTranscriptCard key={child.item.childId} child={child} />
         ))}
       </div>
-    </details>
+    </div>
   );
 }

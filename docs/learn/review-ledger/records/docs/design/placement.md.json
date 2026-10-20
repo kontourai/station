@@ -154,7 +154,13 @@
 
     "src-ui/src/hooks/orchestration/childWorkHandlers.ts",
 
-    "src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx"
+    "src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx",
+
+    "src-ui/src/components/chat/SubagentTranscriptCard.tsx",
+
+    "src-ui/src/components/chat/SubagentTranscriptCard.css",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkRow.css"
   ],
 
   "checks": [

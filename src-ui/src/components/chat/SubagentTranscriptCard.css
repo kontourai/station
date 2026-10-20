@@ -208,7 +208,14 @@
   flex-wrap: wrap;
   gap: var(--k-space-2);
   padding: var(--k-space-2) var(--k-space-3);
+  width: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
   cursor: pointer;
+  font: inherit;
   font-size: var(--k-text-sm);
 }
 
@@ -217,13 +224,17 @@
   outline-offset: calc(-1 * var(--k-focus-ring-width, 2px));
 }
 
-.subagent-group__heading::after {
-  content: "▸";
+.subagent-group__heading > svg:last-child {
   margin-inline-start: auto;
 }
 
-.subagent-group[open] > .subagent-group__heading::after {
-  content: "▾";
+.subagent-group[data-grouped="false"] {
+  margin: 0;
+  border: 0;
+}
+
+.subagent-group[data-grouped="false"] > .subagent-group__children {
+  padding: 0;
 }
 
 .subagent-group__counts {
@@ -235,7 +246,9 @@
   padding-inline: var(--k-space-2);
 }
 
-.subagent-group__children > .subagent-card {
+.subagent-group[data-grouped="true"]
+  > .subagent-group__children
+  > .subagent-card {
   border: 0;
   background: transparent;
   margin: 0;
@@ -245,4 +258,9 @@
   .subagent-card__actions > button {
     min-height: 44px;
   }
+}
+
+.subagent-card__main[aria-expanded="true"] .subagent-card__title {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }

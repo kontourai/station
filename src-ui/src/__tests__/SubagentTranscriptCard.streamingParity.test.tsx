@@ -31,6 +31,7 @@ vi.mock('../hooks/useStreamingContent', () => ({
 
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import { StreamingMessage } from '../components/chat/StreamingMessage';
+import { SubagentCardsForCalls } from '../components/chat/SubagentTranscriptCard';
 import {
   foldTranscriptChildren,
   TranscriptChildrenContext,
@@ -145,6 +146,81 @@ afterEach(() => {
 });
 
 describe('subagent card streaming parity', () => {
+  test('a second child preserves an expanded card and its keyboard focus', () => {
+    const tree = (items: ChildWorkItem[]) => (
+      <TranscriptChildrenContext.Provider
+        value={
+          new Map(
+            items.map((item) => [
+              item.childId,
+              { item, toolAnchor: true, provider: 'claude' },
+            ]),
+          )
+        }
+      >
+        <SubagentCardsForCalls calls={[{ part: toolPart, index: 0 }]} />
+      </TranscriptChildrenContext.Provider>
+    );
+    const first = { ...child, progress: 'Reading the decision records' };
+    const view = render(tree([first]));
+    const disclosure = screen.getByRole('button', { expanded: false });
+    disclosure.focus();
+    fireEvent.click(disclosure);
+    expect(screen.getByText('Reading the decision records')).toBeTruthy();
+    view.rerender(
+      tree([first, { ...child, childId: 'second', title: 'Second review' }]),
+    );
+    expect(document.activeElement).toBe(disclosure);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen
+        .getByRole('button', { name: /2 subagents/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(screen.getByText('Second review')).toBeTruthy();
+  });
+
+  test('settled phone folding keeps separate spawn runs out of one roster', () => {
+    const other = {
+      ...child,
+      childId: 'second',
+      title: 'Second review',
+      parent: { toolCallId: 'toolu_second', turnId: 'turn-1' },
+    };
+    render(
+      <TranscriptChildrenContext.Provider
+        value={
+          new Map(
+            [child, other].map((item) => [
+              item.childId,
+              { item, toolAnchor: true, provider: 'claude' },
+            ]),
+          )
+        }
+      >
+        <MessageContent
+          contentParts={[
+            toolPart,
+            {
+              type: 'text',
+              content: 'A separate decision before the next child.',
+            },
+            { ...toolPart, toolCallId: 'toolu_second' },
+            { type: 'text', content: 'Both reviews are underway.' },
+          ]}
+          textContent=""
+          chatFontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+          isStreamingMessage={false}
+          foldWork
+        />
+      </TranscriptChildrenContext.Provider>,
+    );
+    expect(screen.getAllByTestId('subagent-card')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /2 subagents/ })).toBeNull();
+  });
+
   test('Codex streaming text keeps a spawned card between pre-spawn and post-spawn prose before the turn settles', () => {
     const captured = capturedCodexEvents[0];
     const spawnAt = captured.findIndex(
