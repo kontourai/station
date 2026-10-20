@@ -116,7 +116,27 @@
 
     "src-ui/src/components/DeferredCapabilityBoundary.tsx",
 
-    "src-ui/src/views/RegistryView.tsx"
+    "src-ui/src/views/RegistryView.tsx",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "packages/shared/src/public-network.ts",
+
+    "src-server/services/plugin-telemetry-transport.ts",
+
+    "src-server/security/plugin-pane-context.ts"
   ],
 
   "checks": [

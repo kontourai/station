@@ -243,8 +243,28 @@ export const APP_SETTINGS_REGISTRY = [
     label: 'Telemetry tiers',
     help: 'Choose Off, Lite aggregates, or acknowledged Full events independently for each publisher.',
     description:
-      'Per-publisher consent. Absent choices default to Lite; DO_NOT_TRACK forces Off. Full requires the current disclosure. Lite collection is not available yet.',
+      'Per-publisher consent. Absent choices default to Lite; DO_NOT_TRACK forces Off. Full requires the current disclosure. Lite sends only after the current publisher notice is shown.',
     defaultValue: { kontour: 'lite', operator: 'lite' },
+  }),
+  defineSetting({
+    key: 'publicTelemetryRegistries',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    userFacing: false,
+    label: 'Public telemetry registries',
+    help: 'Operator classification of public catalog source keys. Signature verification is also required.',
+    description:
+      'Only these public registries may supply publisher telemetry declarations.',
+  }),
+  defineSetting({
+    key: 'telemetryPublisherPolicy',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    userFacing: false,
+    label: 'Telemetry publisher defaults',
+    help: 'Lower a publisher default; user choices take precedence and Full is never a default.',
+    description:
+      'Operator policy for publisher defaults. Distribution manifests will use the same resolver.',
   }),
   defineSetting({
     key: 'telemetryEnabled',

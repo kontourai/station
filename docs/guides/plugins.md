@@ -134,6 +134,7 @@ Common fields:
 |-------|------|----------|-------------|
 | `name` | string | yes | Unique logical plugin identifier; the host owns its storage location |
 | `version` | string | yes | Semver version |
+| `telemetry` | PublisherTelemetryDeclaration | no | Bounded publisher analytics declaration. Agent Plugins puts it in the Station extension; install requires a signed, verified public registry identity. See [Publisher analytics](#publisher-analytics). |
 | `sdkVersion` | string | no | Semver range of `@kontourai/station-sdk` required |
 | `displayName` | string | no | Human-readable name shown in UI |
 | `description` | string | no | Short description |
@@ -1794,3 +1795,117 @@ Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistry
 [deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
 These presentation changes do not enable bundles or alter consent storage,
 origin binding, plugin permissions or native bridge authority.
+
+
+## Publisher analytics
+
+Station owns publisher consent and delivery. Declare analytics only in a signed
+package installed from a public registry. The operator must classify its catalog
+source key in `publicTelemetryRegistries`, and the existing applied registry trust
+policy must verify the package signature. A trusted signature alone does not
+classify a private catalog as public. The declaration's `publisher` must equal the
+verified public registry item ID. Unsigned, private, direct-source and unverified
+installs with telemetry are rejected before activation with an install diagnostic.
+
+Agent Plugins 1.0 puts the declaration in the Station extension:
+
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "writer",
+  "version": "1.0.0",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "telemetry": {
+        "publisher": "writer",
+        "endpoint": "https://publisher.example.test/counts",
+        "events": {
+          "opened": {
+            "properties": {
+              "surface": ["main", "dock"],
+              "items": { "countBuckets": [0, 1, 3, 10] }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+The same `PublisherTelemetryDeclaration` contract can be used by a future
+distribution manifest; distribution manifest loading is still designed, not built.
+Legacy manifests may declare `telemetry` at the root, but the current signed
+registry acquisition path supports Agent Plugins 1.0 only. Prefer that format.
+
+Declarations allow at most 16 events, 8 properties per event, 16 enum values or
+count boundaries per property, and 256 total property-value cells. Event, property
+and enum tokens are lowercase ASCII identifiers up to 48 characters. There are no
+free-text properties. `countBuckets` must start at zero, increase strictly and end
+at or below 65,535; input values are integers from 0 to 65,535. For the example,
+2 becomes `2-3`, 9 becomes `4-10`, and 11 becomes `11+`. The HTTPS destination
+cannot contain credentials, a query or a fragment. Non-public literals (including loopback, private, link-local and metadata addresses) are rejected at parse time. Every DNS answer is checked before each send, and the TLS connection is pinned to a validated address. Redirects are refused. Every count supplies exactly
+the declared properties; undeclared names/values and extra fields are rejected.
+
+In a Pane, `const telemetry = useTelemetry()` provides
+`await telemetry.count('opened', { surface: 'main', items: 2 })`. See the
+[SDK reference](../reference/sdk.md#plugin-publisher-counts) for non-React callers.
+The kernel sends; this API gives the plugin no transport to its endpoint. It does
+not restrict other networking performed by separately trusted plugin code.
+
+Publishers are namespaced as `publisher:<24 hex registry-key digest>/writer` so identical item IDs in different registries have separate state and consent. Third-party plugin publishers default **Off**. The notice prompts the user to choose Lite, Full, or keep Off; a notice receipt alone never enables sending. After an explicit Lite choice and its current notice,
+its receiver gets at most one `plugin_daily` v1 ping for the completed previous
+UTC day. Each declared event has a total count and separate property-value
+histograms, with counts bucketed as `0`, `1`, `2-3`, `4+`. These are marginal
+histograms, never cross-property combinations. Zero cells are included. Pings
+carry a random deduplication event ID, publisher, schema/data and inventory
+revisions. Station adds no installation ID, raw date, timestamp or cross-day key. The content is plugin-chosen within the declared inventory and can encode a stable identifier, so plugin Lite is not identifier-free.
+Days without collection and older offline days are not backfilled. Attempts are
+reserved before network I/O and are not retried, so network loss can reduce totals.
+
+Full additionally requires that publisher's own current inventory/destination
+acknowledgement and an explicit user Full choice. Each flush sends one `plugin_events` batch containing `plugin_event` v1 records
+with the declared event and bucketed properties, random event ID, server timestamp,
+revisions and a publisher-specific monthly hash of the existing random installation
+secret. Full is pseudonymous. Receivers must not treat monthly hashes as people.
+Inventory or destination changes invalidate receipts and discard old accumulators.
+Uninstall retires pending counts and receipts; reinstall does not revive them.
+
+`DO_NOT_TRACK` except empty/0 forces Off. Operator
+`telemetryPublisherPolicy` may lower defaults to Off; Lite/Full policy values never
+raise the plugin Off default. Explicit user choices take precedence. Distributions cannot
+hide, rebrand or restyle kernel consent surfaces. Status, choices, disclosures and
+the 30-day/5-MiB outbox use the same kernel APIs as built-in publishers. An uninstall
+request may carry `?telemetryFeedbackReason=not-useful` (or another fixed reason
+from the [telemetry reference](../reference/usage-telemetry.md)); it sends only to
+that publisher before removal, at most once per publisher per UTC day. Skip or an
+omitted reason sends nothing; Off and DNT suppress plugin feedback. Already transmitted bodies
+cannot be recalled.
+
+The shared [plugin_daily parser](../../packages/shared/src/plugin-telemetry.ts) is
+available for receiver authors. The Station broker does not yet accept this
+contract. A direct HTTPS receiver sees network metadata, including source IP;
+these shapes do not establish network unlinkability or aggregate-only reception.
+
+The mounted Pane receives a kernel-issued five-minute telemetry capability bound to its
+plugin, namespaced publisher, installation and declaration revision. `useTelemetry()`
+uses that capability; `x-station-plugin` cannot authorize counts. Agent principals
+cannot use the count route. Capability-bearing or Pane-marked requests cannot raise a
+tier, acknowledge Full, or write an opt-in/notice receipt.
+
+These Pane-context checks prevent accidental or well-behaved SDK misuse. They recognize
+only the explicit `x-station-plugin-capability` and `x-station-plugin` headers; browser
+fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
+Same-origin plugin code shares the existing shell trust model: it can omit those
+headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the
+shared query cache. It can also mint tokens under another plugin’s name to evict that
+plugin’s live tokens within the 16-token limit. Distinct-origin isolation is tracked
+in [#3826](https://github.com/kontourai/station/issues/3826).
+
+Legacy global `count`/`track` and automatic `instrument()` observations are no-ops; development instrumentation warns. Each publisher is capped at 100 count requests and 100 Full observations per UTC day. Dropped records coalesce by publisher/day/reason, and Full observations are batched once per flush.
+
+Pane telemetry capabilities are limited to 16 live tokens per plugin, with the oldest
+token evicted when another is minted; a global 1024-token limit also applies. An aborted
+uninstall restores persisted telemetry state and permits fresh tokens, while sends
+admitted before withdrawal stay fenced.

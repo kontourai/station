@@ -116,7 +116,7 @@ Disclosed product observations use a separate
 [UsageTelemetryService](../src-server/services/usage-telemetry-service.ts) and
 [standalone receiver](../packages/telemetry-broker/README.md), with an explicit
 destination. Full requires current disclosure and supports source credentials;
-Lite is identifier-free and requires a shown notice. The receiver's dedicated
+Built-in Lite is identifier-free and requires a shown notice. Plugin publishers default Off and require opt-in; their plugin-chosen counts can encode identifiers even though Station adds none. The receiver's dedicated
 PostgreSQL store returns a commit receipt for retained source/event identities.
 This optional product path does not feed canonical EventStore accounting or
 establish collector delivery. Settings health describes the current process;

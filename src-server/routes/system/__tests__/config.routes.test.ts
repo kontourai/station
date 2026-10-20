@@ -936,6 +936,114 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     }
   });
 
+  test('publisher tier choices and operator policy persist through the real app schema and restart', async () => {
+    const home = makeTempDir('station-plugin-tier-persistence-');
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
+    try {
+      await loader.loadAppConfig();
+      const response = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telemetryTier: { 'publisher:writer': 'off' } }),
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      const policy = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          publicTelemetryRegistries: [
+            'https://registry.example.test/catalog.json',
+          ],
+          telemetryPublisherPolicy: { 'publisher:writer': 'off' },
+        }),
+      });
+      expect(policy.status, await policy.clone().text()).toBe(200);
+      const restarted = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      try {
+        expect(await restarted.loadAppConfig()).toMatchObject({
+          telemetryTier: { 'publisher:writer': 'off' },
+          publicTelemetryRegistries: [
+            'https://registry.example.test/catalog.json',
+          ],
+          telemetryPublisherPolicy: { 'publisher:writer': 'off' },
+        });
+      } finally {
+        restarted.dispose();
+      }
+    } finally {
+      loader.dispose();
+    }
+  });
+
+  test('paired devices cannot raise a plugin publisher above its policy default, while the operator can choose and peers can lower', async () => {
+    const home = makeTempDir('station-plugin-policy-authority-');
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    await loader.loadAppConfig();
+    await loader.updateAppConfig({
+      telemetryPublisherPolicy: { 'publisher:writer': 'off' },
+    });
+    const paired = new Hono<{ Variables: Record<string, unknown> }>();
+    paired.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'credential',
+        credential: 'paired',
+        authority: undefined,
+        deviceId: 'paired',
+        deviceKind: 'device',
+        source: 'bearer',
+      });
+      setGrantedPairingScope(c, 'orchestration:read orchestration:operate');
+      await next();
+    });
+    paired.route('/', createConfigRoutes(loader, mockLogger));
+    const operator = withOperatorPrincipal(
+      createConfigRoutes(loader, mockLogger),
+    );
+    const put = (app: Pick<Hono, 'request'>, tier: 'off' | 'lite') =>
+      app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telemetryTier: { 'publisher:writer': tier } }),
+      });
+    try {
+      expect((await put(paired, 'lite')).status).toBe(403);
+      expect(
+        (await loader.loadAppConfig()).telemetryTier?.['publisher:writer'],
+      ).toBeUndefined();
+      for (const context of [
+        { 'x-station-plugin-capability': 'forged' },
+        { 'x-station-plugin': 'writer' },
+        { 'sec-fetch-dest': 'iframe' },
+      ]) {
+        const response = await operator.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json', ...context },
+          body: JSON.stringify({
+            telemetryTier: { 'publisher:writer': 'lite' },
+          }),
+        });
+        expect(response.status).toBe(403);
+      }
+      expect((await put(operator, 'lite')).status).toBe(200);
+      expect((await put(paired, 'off')).status).toBe(200);
+      expect(
+        (await loader.loadAppConfig()).telemetryTier?.['publisher:writer'],
+      ).toBe('off');
+    } finally {
+      loader.dispose();
+    }
+  });
+
   test.each([
     { foo: 'full' },
     'full',
@@ -965,7 +1073,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
         expect(await response.json()).toEqual({
           success: false,
           error:
-            'telemetryTier must be an object with only kontour/operator publishers and off/lite/full values.',
+            'telemetryTier must be an object with valid publisher IDs and off/lite/full values.',
         });
         expect(readFileSync(join(home, 'config', 'app.json'), 'utf8')).toBe(
           before,

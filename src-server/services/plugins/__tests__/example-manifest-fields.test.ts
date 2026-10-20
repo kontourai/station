@@ -41,6 +41,7 @@ const EXAMPLES_DIR = join(process.cwd(), 'examples');
  * excess property.
  */
 const LEGACY_MANIFEST_FIELDS = {
+  telemetry: true,
   name: true,
   version: true,
   sdkVersion: true,

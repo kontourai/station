@@ -1,3 +1,6 @@
+import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
+import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
+import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
 /**
  * Config Routes - app configuration management
  */
@@ -259,7 +262,7 @@ export function createConfigRoutes(
   authorizeContributionMutation?: (request: Request) => boolean,
   onAppConfigPersisted?: (config: AppConfig) => void,
   onTelemetryTierLowering?: (
-    publisher: 'kontour' | 'operator',
+    publisher: TelemetryPublisherId,
     reason?: TelemetryFeedbackReason,
   ) => Promise<void>,
   canSaveAuthorFull?: () => Promise<boolean>,
@@ -434,7 +437,7 @@ export function createConfigRoutes(
     let telemetryChanges:
       | Partial<
           Record<
-            'kontour' | 'operator',
+            TelemetryPublisherId,
             { before: TelemetryTier; after: TelemetryTier }
           >
         >
@@ -478,9 +481,10 @@ export function createConfigRoutes(
           !tiers ||
           typeof tiers !== 'object' ||
           Array.isArray(tiers) ||
+          Object.keys(tiers).length > 128 ||
           Object.entries(tiers).some(
             ([publisher, tier]) =>
-              !['kontour', 'operator'].includes(publisher) ||
+              !isTelemetryPublisherId(publisher) ||
               !['off', 'lite', 'full'].includes(tier),
           )
         )
@@ -488,12 +492,44 @@ export function createConfigRoutes(
             {
               success: false,
               error:
-                'telemetryTier must be an object with only kontour/operator publishers and off/lite/full values.',
+                'telemetryTier must be an object with valid publisher IDs and off/lite/full values.',
             },
             400,
           );
       }
 
+      for (const field of [
+        'publicTelemetryRegistries',
+        'telemetryPublisherPolicy',
+      ] as const) {
+        if (!Object.hasOwn(body as object, field)) continue;
+        const value = (body as Record<string, unknown>)[field];
+        const valid =
+          field === 'publicTelemetryRegistries'
+            ? Array.isArray(value) &&
+              value.length <= 32 &&
+              value.every(
+                (key) =>
+                  typeof key === 'string' &&
+                  key.length > 0 &&
+                  key.length <= 2048,
+              ) &&
+              new Set(value).size === value.length
+            : value &&
+              typeof value === 'object' &&
+              !Array.isArray(value) &&
+              Object.keys(value).length <= 128 &&
+              Object.entries(value).every(
+                ([id, tier]) =>
+                  isTelemetryPublisherId(id) &&
+                  ['off', 'lite', 'full'].includes(tier),
+              );
+        if (!valid)
+          return c.json(
+            { success: false, error: 'Invalid publisher telemetry policy.' },
+            400,
+          );
+      }
       // The first-run record is a TRANSITION, not a setting (review M1). Left
       // on this route it was an ordinary composite: an `orchestration:operate`
       // peer could re-arm an existing home as `pending` and re-run the guided
@@ -793,42 +829,55 @@ export function createConfigRoutes(
       const priorBuiltinEngineConnectionId =
         priorConfig.builtinAgentEngineConnectionId;
       const contributionRequested = Object.hasOwn(accepted, 'contribution');
-      const lowerings: Array<'kontour' | 'operator'> = [];
+      const lowerings: TelemetryPublisherId[] = [];
       const update = async (beginMutation: () => void) => {
         beginMutation();
         const updated = await configLoader.mutateAppConfig(async (current) => {
+          if (
+            ['publicTelemetryRegistries', 'telemetryPublisherPolicy'].some(
+              (key) =>
+                Object.hasOwn(accepted, key) &&
+                !isDeepStrictEqual(
+                  current[key as keyof AppConfig],
+                  accepted[key as keyof AppConfig],
+                ),
+            ) &&
+            !isOperatorInPersonNotAgent(c.req.raw)
+          )
+            throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
           if (writesTelemetryChoice) {
             const next = mergeAppConfigUpdate(current, accepted);
             const rank = { off: 0, lite: 1, full: 2 } as const;
-            // DNT blocks sending without changing the underlying choice/default.
-            const defaults = resolveTelemetryConfiguration(
-              { ...current, telemetryTier: {} },
-              { ...process.env, DO_NOT_TRACK: '' },
-            ).publishers;
             const publishers = new Set([
               ...Object.keys(current.telemetryTier ?? {}),
               ...Object.keys(next.telemetryTier ?? {}),
             ]);
+            const defaults = resolveTelemetryConfiguration(
+              { ...current, telemetryTier: {} },
+              { ...process.env, DO_NOT_TRACK: '' },
+              {},
+              {},
+              [...publishers].filter(isTelemetryPublisherId),
+            ).publishers;
             telemetryChanges = {};
+            let raisesTelemetry = false;
             for (const publisher of publishers) {
               const key = publisher as keyof NonNullable<
                 AppConfig['telemetryTier']
               >;
-              const before = current.telemetryTier?.[key] ?? defaults[key].tier;
-              const after = next.telemetryTier?.[key] ?? defaults[key].tier;
-              if (
-                rank[after] < rank[before] &&
-                (key === 'kontour' || key === 'operator')
-              )
-                lowerings.push(key);
+              const fallback = key.startsWith('publisher:') ? 'off' : 'lite';
+              const before =
+                current.telemetryTier?.[key] ?? defaults[key]?.tier ?? fallback;
+              const after =
+                next.telemetryTier?.[key] ?? defaults[key]?.tier ?? fallback;
               telemetryChanges[key] = { before, after };
+              if (rank[after] < rank[before]) lowerings.push(key);
+              if (rank[after] > rank[before]) raisesTelemetry = true;
             }
             if (
               requestMayBeAnAgent(c.req.raw) ||
-              (Object.values(telemetryChanges).some(
-                ({ before, after }) => rank[after] > rank[before],
-              ) &&
-                !mayRaiseTelemetry)
+              (raisesTelemetry &&
+                (!mayRaiseTelemetry || requestFromPluginPane(c.req.raw)))
             )
               throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             if (

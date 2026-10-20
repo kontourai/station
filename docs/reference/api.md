@@ -1215,7 +1215,7 @@ Save a choice with `PUT /config/app`, for example
 preserved. Raising a tier requires the operator or `access:manage`; a standard
 paired device may lower or keep it. Agent-originated requests cannot change
 telemetry choices. `telemetryTier` must be an object
-with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed maps
+with `kontour`, `operator` or valid `publisher:<id>` keys and `off`/`lite`/`full` values; malformed maps
 return a validation error with 400 before mutation. A previously saved Full
 preference whose confirmation becomes stale remains effectively Lite. A new
 configured Kontour Full save without its current confirmation returns 400;
@@ -1255,6 +1255,22 @@ sharing surface. Save persists the preference before recording, so notices may
 also be recorded for Off or Full without enabling sending or granting Full
 consent. Stale inventory and DNT return 409 without recording a receipt. Both writes require `access:manage` and refuse agent
 principals. See the exact feedback enum and notice behavior in the usage reference.
+Verified plugin publishers use the same map and endpoints. Each publisher entry
+also carries its destination, Lite inventory/revision, Full revision and notice
+status; use its own revision for a shown-notice receipt. Full acknowledgements
+include its displayed destination. `POST /api/telemetry/panes` mints a five-minute token for the host mounting a Pane, bound to the current plugin, namespaced publisher, installation generation and declaration revision. Pane-marked requests cannot mint it. Plugin publishers default Off; notice receipts alone do not enable sending. Capability-bearing or Pane-marked requests cannot raise tiers, acknowledge Full or write notice receipts. Same-origin plugin frames remain a platform-wide trust boundary tracked separately. `POST /api/telemetry/events` accepts at most 100
+bounded `{event, attributes}` records with a kernel-issued `x-station-plugin-capability` token. `x-station-plugin` is ignored for attribution; Agents are refused. The kernel
+rejects undeclared names/properties/values and unverified installations. It counts
+locally at Lite and batches acknowledged Full observations into one `plugin_events` request per flush. Per publisher, 100 count requests and 100 Full observations are admitted per UTC day; drops coalesce by publisher/day/reason;
+raw observations are no longer logged. `DELETE /api/plugins/:name` can carry
+`?telemetryFeedbackReason=<fixed reason>` to submit feedback before removal only while enabled; Off and DNT suppress it.
+The standalone feedback endpoint cannot authorize an uninstall action.
+
+Operator-only `publicTelemetryRegistries` classifies eligible public catalog source
+keys; applied signature trust remains independently required.
+`telemetryPublisherPolicy` can only lower defaults. These inputs never raise a
+user's choice or authorize Full. See [Publisher analytics](../guides/plugins.md#publisher-analytics).
+
 The [usage reference](usage-telemetry.md) owns the program and deployment limits.
 
 ### Telemetry delivery status and connection checks

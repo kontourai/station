@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
   type StationDailyPing,
@@ -10,7 +11,8 @@ import {
   readJsonFile,
 } from '@kontourai/station-shared/json-file-storage';
 
-type Publisher = 'kontour' | 'operator';
+type Publisher =
+  import('@kontourai/station-contracts/product-telemetry').TelemetryPublisherId;
 export interface TelemetryDailyState {
   lowerings?: Partial<Record<Publisher, { at: string; feedbackSent: boolean }>>;
   feedbackDays?: Partial<Record<Publisher, string>>;
@@ -31,9 +33,11 @@ export interface TelemetryDailyState {
 
 /** Atomic read/derive/publish also serializes two processes sharing a home. */
 export class TelemetryLocalState {
+  private readonly homeDir: string;
   private readonly dailyPath: string;
   private readonly outboxPath: string;
   constructor(homeDir: string) {
+    this.homeDir = homeDir;
     this.dailyPath = join(homeDir, 'config', 'telemetry-daily.json');
     this.outboxPath = join(homeDir, 'config', 'telemetry-outbox.json');
   }
@@ -51,6 +55,18 @@ export class TelemetryLocalState {
       null,
       update,
       { maxBytes: 16 * 1024, label: 'Telemetry daily state' },
+    );
+  }
+  publisherDaily<T>(
+    publisher: Publisher,
+    update: (state: T | null) => T | null,
+  ) {
+    const key = createHash('sha256').update(publisher).digest('hex');
+    return mutateJsonFile<T | null>(
+      join(this.homeDir, 'config', 'telemetry-publishers', `${key}.json`),
+      null,
+      update,
+      { maxBytes: 256 * 1024, label: 'Publisher telemetry state' },
     );
   }
   async outbox(publisher?: Publisher): Promise<TelemetryOutboxEntry[]> {

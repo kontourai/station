@@ -1,5 +1,6 @@
-import { useContext } from 'react';
+import { useContext, useMemo } from 'react';
 import { getPluginHeaders } from '../api-core';
+import { createPluginTelemetry } from '../client/plugin-telemetry';
 import type {
   SDKAuthContext,
   SDKAuthState,
@@ -16,8 +17,19 @@ export function useSDK() {
   return {
     apiBase: sdk.apiBase,
     pluginName: sdk.pluginApiIdentity?.pluginName ?? '',
+    telemetryCapability: sdk.pluginApiIdentity?.telemetryCapability,
     getPluginHeaders: sdk.pluginApiIdentity?.getHeaders ?? getPluginHeaders,
   };
+}
+
+/** The calling Pane's publisher counts, through its Station kernel. */
+export function useTelemetry() {
+  const { apiBase, telemetryCapability } = useSDK();
+  return useMemo(
+    () =>
+      createPluginTelemetry(apiBase, telemetryCapability ?? (() => undefined)),
+    [apiBase, telemetryCapability],
+  );
 }
 
 export function useAgents(): AgentSummary[] {

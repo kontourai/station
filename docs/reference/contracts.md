@@ -1201,3 +1201,15 @@ stop, excerpt, run, and result shapes. Completed guides name `headSha`,
 `Failed`. Results carry `currentHeadSha` independently of the guide head and
 validated `excerptContents` for rendering. Stale results omit line anchors.
 The [user guide](../user/pull-request-guides.md) describes generation and limits.
+
+
+## Publisher analytics declarations
+
+`@kontourai/station-contracts/plugin-telemetry` owns
+`PublisherTelemetryDeclaration`, `PluginDailyPing`, `PluginTelemetryEvent` and the Full `PluginTelemetryBatch` envelope.
+The declaration is reusable by future distribution manifests. The
+[shared parser](../../packages/shared/src/plugin-telemetry.ts) owns runtime bounds,
+canonical inventory fingerprints and the independent plugin data revision.
+`parsePluginDailyPing(payload, declaration, namespacedPublisher)` requires exact declared event/property
+histograms and rejects identifying/undeclared fields. Broker acceptance is deferred.
+See [Publisher analytics](../guides/plugins.md#publisher-analytics).

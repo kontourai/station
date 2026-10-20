@@ -56,6 +56,82 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'plugin-telemetry-undeclared-event',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'real signed install and kernel route reject undeclared events, props and values before admitting a batch',
+    files: [
+      {
+        path: 'src-server/services/plugin-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const parsed = events.map((event) =>',
+            'const parsed = events.filter(event => Object.hasOwn(binding.declaration.events, event.event)).map((event) =>',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-unsigned-declaration',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure: 'installation rejects telemetry from unqualified registry',
+    files: [
+      {
+        path: 'src-server/services/plugins/plugin-telemetry-admission.ts',
+        change: (source) =>
+          exactReplace(source, '!receipt?.signer ||', '!receipt ||'),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-policy-raises',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'publisher policy only lowers defaults, and a user choice wins downward through status and DNT',
+    files: [
+      {
+        path: 'packages/contracts/src/product-telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'rank[policy] < rank[tier]',
+            'rank[policy] > rank[tier]',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-no-notice',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'Lite needs its own notice and sends only bucketed yesterday counts once',
+    files: [
+      {
+        path: 'src-server/services/plugin-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(source, '!currentNotice(binding, state)', 'false'),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-uninstall-queued-send',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'uninstall aborts an already admitted Full send still waiting to reach the receiver',
+    files: [
+      {
+        path: 'src-server/services/plugin-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (owner === publisher) request.abort();',
+            'if (owner === publisher) continue;',
+          ),
+      },
+    ],
+  },
+  {
     id: 'worktree-diff-untracked-inclusion',
     test: 'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
     failure:

@@ -180,13 +180,13 @@ describe('telemetry commands', () => {
       'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
     );
   });
-  test.each(['operator', 'kontour'] as const)(
+  test.each(['operator', 'kontour', 'publisher:writer'] as const)(
     'set sends %s through the live configuration API then reports effective state',
     async (publisher) => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse({
           success: true,
-          data: { telemetryTier: { kontour: 'off', operator: 'full' } },
+          data: { telemetryTier: { kontour: 'off', [publisher]: 'full' } },
         }),
       );
       fetchMock.mockResolvedValueOnce(
@@ -195,7 +195,7 @@ describe('telemetry commands', () => {
           data: {
             publishers: {
               kontour: { tier: 'off', reason: 'user' },
-              operator: { tier: 'lite', reason: 'disclosure' },
+              [publisher]: { tier: 'lite', reason: 'disclosure' },
             },
           },
         }),
@@ -215,16 +215,23 @@ describe('telemetry commands', () => {
         telemetryTier: { [publisher]: 'full' },
       });
       expect(consoleLog).toHaveBeenCalledWith(
-        'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
+        publisher === 'publisher:writer'
+          ? "writer: Plugin usage counts (lite); Detailed plugin sharing is waiting for this publisher's confirmation"
+          : `${publisher === 'kontour' ? 'Kontour' : 'Additional destination'}: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing`,
       );
     },
   );
-  test.each([['--publisher=operator'], ['--publisher', 'operator']])(
+  test.each([
+    ['operator', '--publisher=operator'],
+    ['operator', '--publisher', 'operator'],
+    ['kontour', '--publisher', 'kontour'],
+    ['publisher:writer', '--publisher', 'publisher:writer'],
+  ])(
     'outbox prints the server ledger with publisher filter %j',
-    async (...filter) => {
+    async (publisher, ...filter) => {
       const entries = [
         {
-          publisher: 'operator',
+          publisher,
           tier: 'lite',
           outcome: 'dropped',
           reason: 'off',
@@ -242,7 +249,7 @@ describe('telemetry commands', () => {
         '--api-base=http://127.0.0.1:43129',
       ]);
       expect(fetchMock.mock.calls[0][0]).toBe(
-        'http://127.0.0.1:43129/api/usage-telemetry/outbox?publisher=operator',
+        `http://127.0.0.1:43129/api/usage-telemetry/outbox?publisher=${encodeURIComponent(publisher)}`,
       );
       expect(consoleLog).toHaveBeenCalledWith(JSON.stringify(entries));
     },

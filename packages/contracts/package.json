@@ -27,6 +27,7 @@
   "exports": {
     "./pull-request-review-guide": "./src/pull-request-review-guide.ts",
     "./tool-library": "./src/tool-library.ts",
+    "./plugin-telemetry": "./src/plugin-telemetry.ts",
     "./product-telemetry": "./src/product-telemetry.ts",
     "./telemetry-delivery": "./src/telemetry-delivery.ts",
     "./relay-management": "./src/relay-management.ts",

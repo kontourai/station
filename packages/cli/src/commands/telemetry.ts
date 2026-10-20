@@ -1,8 +1,10 @@
 import { closeSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import {
   TELEMETRY_TIERS,
+  type TelemetryPublisherId,
   type TelemetryPublisherStatus,
 } from '@kontourai/station-contracts/product-telemetry';
+import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import {
   configureApiCredential,
   type ParsedCoreArgs,
@@ -265,12 +267,12 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
   const [action = 'status', publisher, tier, ...extra] = parsed.positionals;
   if (action === 'set') {
     if (
-      !['kontour', 'operator'].includes(publisher) ||
+      !isTelemetryPublisherId(publisher) ||
       !TELEMETRY_TIERS.some((value) => value === tier) ||
       extra.length
     )
       throw new Error(
-        'Usage: station telemetry set <kontour|operator> <off|lite|full>',
+        'Usage: station telemetry set <kontour|operator|publisher:id> <off|lite|full>',
       );
     if (parsed.flags.offline)
       throw new Error(
@@ -280,10 +282,10 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
     if (
       publisher !== undefined ||
       (parsed.flags.publisher !== undefined &&
-        !['kontour', 'operator'].includes(String(parsed.flags.publisher)))
+        !isTelemetryPublisherId(parsed.flags.publisher))
     )
       throw new Error(
-        'Usage: station telemetry outbox [--publisher=kontour|operator]',
+        'Usage: station telemetry outbox [--publisher=kontour|operator|publisher:id]',
       );
   } else if (action !== 'status' || publisher !== undefined) {
     throw new Error(
@@ -312,18 +314,46 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       body: JSON.stringify({ telemetryTier: { [publisher]: tier } }),
     });
   const status = await requestJson<{
-    publishers: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
+    publishers: Record<TelemetryPublisherId, TelemetryPublisherStatus>;
   }>(resolved.apiBase, '/api/usage-telemetry/status');
   if (!('publishers' in status))
     throw new Error('Telemetry status unavailable');
   if (parsed.flags.json) console.log(JSON.stringify(status));
-  else
-    for (const [name, value] of Object.entries(status.publishers))
-      console.log(
-        `${name === 'kontour' ? 'Kontour' : 'Additional destination'}: ${{ off: "Don't share", lite: 'Anonymous usage counts', full: 'Detailed usage to help improve Station' }[value.tier]} (${value.tier})${value.reason === 'DNT' ? '; Do Not Track is on, so nothing is shared' : name === 'kontour' && value.fullAvailable === false ? '; This build has no Station usage destination, so nothing is sent to Kontour' : value.reason === 'disclosure' ? '; Detailed sharing is waiting for your review in Privacy & sharing' : ''}${
-          name === 'operator' && value.reason === 'environment'
-            ? '; environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.'
-            : ''
-        }`,
-      );
+  else {
+    for (const [name, value] of Object.entries(status.publishers)) {
+      const plugin = name.startsWith('publisher:');
+      const label =
+        name === 'kontour'
+          ? 'Kontour'
+          : name === 'operator'
+            ? 'Additional destination'
+            : name.replace(/^publisher:/, '');
+      const choice = plugin
+        ? {
+            off: "Don't share",
+            lite: 'Plugin usage counts',
+            full: 'Detailed plugin usage',
+          }[value.tier]
+        : {
+            off: "Don't share",
+            lite: 'Anonymous usage counts',
+            full: 'Detailed usage to help improve Station',
+          }[value.tier];
+      const notice =
+        value.reason === 'DNT'
+          ? '; Do Not Track is on, so nothing is shared'
+          : name === 'kontour' && value.fullAvailable === false
+            ? '; This build has no Station usage destination, so nothing is sent to Kontour'
+            : value.reason === 'disclosure'
+              ? plugin
+                ? "; Detailed plugin sharing is waiting for this publisher's confirmation"
+                : '; Detailed sharing is waiting for your review in Privacy & sharing'
+              : '';
+      const environment =
+        name === 'operator' && value.reason === 'environment'
+          ? '; environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.'
+          : '';
+      console.log(`${label}: ${choice} (${value.tier})${notice}${environment}`);
+    }
+  }
 }

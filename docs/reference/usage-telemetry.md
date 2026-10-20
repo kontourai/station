@@ -96,7 +96,7 @@ translated into tier changes under the same authorization rules.
 
 ## Disclosure and activation
 
-Telemetry has per-publisher `off`, `lite`, and `full` tiers. Lite is the default;
+Telemetry has per-publisher `off`, `lite`, and `full` tiers. Kontour/operator default to Lite; third-party plugin publishers default Off and require explicit opt-in;
 Off permits no product traffic to that publisher, and Full requires explicit choice
 and the current disclosure receipt. `DO_NOT_TRACK` with any value except empty or
 `0` forces Off for every publisher. Saved `telemetryTier` choices precede
@@ -631,3 +631,62 @@ A public or custom plugin was disabled after a crash.
 - `engine_connect_failures`: {"domain":"engine-count-buckets","arrayMax":8}
 - `safe_mode_entered`: {"domain":"count","max":65535}
 - `plugin_disabled_after_crash`: {"domain":"count","max":65535}
+
+
+## Plugin publishers
+
+Signed public-registry plugins can declare their own bounded event/property
+inventory and HTTPS destination. See [Publisher analytics](../guides/plugins.md#publisher-analytics)
+for manifest syntax, receipt boundaries, counts and receiver payloads. Installation
+requires both applied signature trust and an operator public-catalog classification
+in `publicTelemetryRegistries`; absent classification refuses the declaration.
+Distribution manifests remain design-only and will share the declaration schema
+and tier resolver.
+
+Publishers appear in the existing status map as `publisher:<24 hex registry-key digest>/<verified registry item id>`. `station telemetry set publisher:<digest>/writer off` stores an independent choice;
+`station telemetry outbox --publisher publisher:<digest>/writer` filters the shared ledger.
+The status API keeps its top-level built-in inventory fields. Each plugin publisher
+adds `destination`, `endpointConfigured`, `liteInventoryRevision`, `liteInventory`,
+`fullInventoryRevision` and `liteNoticeShown` to its tier/reason/source/choice entry.
+The UI lane consumes these entries generically; this lane does not implement UI.
+
+Plugin publishers default Off. A notice prompts the user to choose Lite, Full, or keep Off; a notice receipt alone does not enable sending. Plugin-chosen counts can encode a stable identifier, even though Station adds none to Lite. Use that publisher's `liteInventoryRevision` with the existing Lite notice POST.
+Its disclosure and acknowledgement use `?publisher=publisher:<digest>/writer` and the
+existing acknowledgement body, including the displayed `destination`. Built-in
+operator or Kontour receipts do not authorize it. Headless servers show a separate
+log notice for each discovered plugin publisher; desktop sidecars require the UI
+receipt. Full uses the existing installation secret with a publisher-specific
+monthly ID. DO_NOT_TRACK applies to every publisher.
+
+Operator `telemetryPublisherPolicy` maps publisher IDs to tiers. It lowers defaults
+through `resolveTelemetryTier`, never raises the plugin Off default or grants Full.
+Saved choices win; setting a user choice Off still wins over a Full/Lite policy.
+Changing public registry classification or withdrawing applied signature trust
+stops admission and dispatch. Kernel choice/disclosure surfaces remain unbrandable.
+Uninstall stops queued sends, withdraws accumulators/receipts, and accepts an
+optional fixed-enum reason on the uninstall request before removal only while the publisher is enabled. Off and DNT suppress that reason. The ordinary
+standalone feedback route cannot manufacture an uninstall action.
+
+`plugin_daily` and `plugin_event` have an independent data revision. The reusable
+strict daily parser is in `@kontourai/station-shared/plugin-telemetry`; broker
+acceptance is deferred. No endpoint is enabled by these changes.
+
+Plugin count requests require a short-lived kernel-issued Pane capability bound to
+plugin, namespaced publisher, installation generation and declaration revision. A plugin
+header is ignored for attribution. Agent principals are refused. Capability-bearing and
+Pane-marked requests cannot raise tiers or write Full acknowledgements or notice
+receipts.
+
+These Pane-context checks prevent accidental or well-behaved SDK misuse. They recognize
+only the explicit `x-station-plugin-capability` and `x-station-plugin` headers; browser
+fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
+Same-origin plugin code shares the existing shell trust model: it can omit those
+headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the
+shared query cache. Isolating that code remains a separate platform item.
+
+Plugin declarations reject non-public literals. Each send checks every DNS answer with the shared development-proxy validator and pins TLS to a validated address; redirects are refused. Each publisher admits at most 100 count requests and 100 Full observations per UTC day. Full delivery sends one `plugin_events` batch per flush containing the queued `plugin_event` records. Dropped records coalesce per publisher/day/reason. Synchronous uninstall fencing prevents pending ordinary sends from crossing asynchronous withdrawal.
+
+Pane telemetry capabilities are limited to 16 live tokens per plugin, with the oldest
+token evicted when another is minted; a global 1024-token limit also applies. An aborted
+uninstall restores persisted telemetry state and permits fresh tokens, while sends
+admitted before withdrawal stay fenced.

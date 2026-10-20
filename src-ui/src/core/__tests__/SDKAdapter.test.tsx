@@ -1,6 +1,14 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  cleanup,
+  fireEvent,
+  render as renderView,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -10,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   setProviderFunctions: vi.fn(),
   shellToast: vi.fn(),
   useShellToast: vi.fn(),
+  mountTelemetryPane: vi.fn(),
 }));
 
 const ambientNavigation = {
@@ -26,6 +35,24 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useProjectLayoutsQuery: mocks.layoutsQuery,
   useProjectLayoutQuery: mocks.activeLayoutQuery,
 }));
+
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  mountPluginTelemetryPane: mocks.mountTelemetryPane,
+}));
+
+const queryClients: QueryClient[] = [];
+function render(ui: ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  queryClients.push(client);
+  return renderView(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
 
 vi.mock('../../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({}),
@@ -65,6 +92,7 @@ import {
   useLayout,
   useNavigation,
   useSDK,
+  useTelemetry,
   useToast,
 } from '@kontourai/station-sdk';
 import { ToastProvider, toastStore } from '../../contexts/ToastContext';
@@ -134,6 +162,13 @@ function IdentityProbe({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  let occurrence = 0;
+  mocks.mountTelemetryPane.mockImplementation(
+    async (_apiBase: string, plugin: string) => ({
+      token: `${plugin}-${++occurrence}`,
+      expiresAt: new Date(Date.now() + 300000).toISOString(),
+    }),
+  );
   mocks.useShellToast.mockImplementation(() => ({
     showToast: mocks.shellToast,
   }));
@@ -142,6 +177,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
+  for (const client of queryClients.splice(0)) client.clear();
+  vi.unstubAllGlobals();
   toastStore.dismissAll();
   toastStore.clearHistory();
 });
@@ -415,4 +453,59 @@ test('renders every button an object-form toast names, in order', async () => {
   toast.actions?.[1].onClick();
   expect(second).toHaveBeenCalledTimes(1);
   expect(first).not.toHaveBeenCalled();
+});
+
+test('two mounted Panes of one plugin obtain separate capabilities and count using their own token', async () => {
+  const fetch = vi.fn(
+    async (_url: RequestInfo | URL, _init?: RequestInit) => new Response('{}'),
+  );
+  vi.stubGlobal('fetch', fetch);
+  function TelemetryProbe({ label }: { label: string }) {
+    const sdk = useSDK();
+    const telemetry = useTelemetry();
+    return (
+      <>
+        <output data-testid={`token-${label}`}>
+          {sdk.telemetryCapability?.() ?? 'pending'}
+        </output>
+        <button type="button" onClick={() => telemetry.count('closed')}>
+          Count {label}
+        </button>
+      </>
+    );
+  }
+  render(
+    <>
+      <SDKAdapter
+        layout={paneLayout}
+        boundProjectSlug="project-alpha"
+        boundPluginName="plugin-alpha"
+      >
+        <TelemetryProbe label="first" />
+      </SDKAdapter>
+      <SDKAdapter
+        layout={paneLayout}
+        boundProjectSlug="project-alpha"
+        boundPluginName="plugin-alpha"
+      >
+        <TelemetryProbe label="second" />
+      </SDKAdapter>
+    </>,
+  );
+  await waitFor(() => {
+    expect(screen.getByTestId('token-first').textContent).not.toBe('pending');
+    expect(screen.getByTestId('token-second').textContent).not.toBe('pending');
+  });
+  const first = screen.getByTestId('token-first').textContent;
+  const second = screen.getByTestId('token-second').textContent;
+  expect(first).not.toBe(second);
+  expect(mocks.mountTelemetryPane).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Count first' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Count second' }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  expect(
+    fetch.mock.calls.map((call) =>
+      new Headers(call[1]?.headers).get('x-station-plugin-capability'),
+    ),
+  ).toEqual([first, second]);
 });

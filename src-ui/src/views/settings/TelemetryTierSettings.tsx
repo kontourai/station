@@ -178,15 +178,18 @@ export function TelemetryTierSettings({
           ).map((publisher) => {
             const label = `${telemetryPublisherLabel(publisher)} telemetry`;
             const status = publishers?.[publisher];
+            const isPlugin = publisher.startsWith('publisher:');
             const choice = choices?.[publisher] ?? status?.userChoice ?? '';
             return (
               <div key={publisher} className="telemetry-publisher">
                 <SettingsPageRow
                   label={label}
                   description={
-                    publisher === 'kontour'
-                      ? "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice. Detailed sharing needs a configured Kontour destination and your review before saving."
-                      : "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice, when a destination is configured. Detailed usage uses a monthly rotating installation code, never an account identity. Review What's included before saving detailed sharing."
+                    isPlugin
+                      ? "Don't share stops automatic sending. Plugin usage counts can encode identifiers; Station adds no installation identifier. Detailed plugin usage also adds a monthly publisher identifier. Sending requires this plugin's own current notice or destination-bound confirmation; these choices do not confirm it."
+                      : publisher === 'kontour'
+                        ? "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice. Detailed sharing needs a configured Kontour destination and your review before saving."
+                        : "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice, when a destination is configured. Detailed usage uses a monthly rotating installation code, never an account identity. Review What's included before saving detailed sharing."
                   }
                   control={
                     <select
@@ -207,7 +210,7 @@ export function TelemetryTierSettings({
                           savedChoices?.[publisher] ??
                           status?.userChoice ??
                           status?.tier ??
-                          'lite';
+                          (isPlugin ? 'off' : 'lite');
                         if (
                           onFeedback &&
                           status?.reason !== 'DNT' &&
@@ -225,12 +228,16 @@ export function TelemetryTierSettings({
                         No saved choice
                       </option>
                       <option value="off">{SHARING_LABELS.off}</option>
-                      <option value="lite">{SHARING_LABELS.lite}</option>
+                      <option value="lite">
+                        {isPlugin ? 'Plugin usage counts' : SHARING_LABELS.lite}
+                      </option>
                       <option
                         value="full"
                         disabled={statusError || !status?.fullAvailable}
                       >
-                        {SHARING_LABELS.full}
+                        {isPlugin
+                          ? 'Detailed plugin usage'
+                          : SHARING_LABELS.full}
                         {!status?.fullAvailable ? ' (unavailable)' : ''}
                       </option>
                     </select>
@@ -292,7 +299,9 @@ function effectiveSummary(
   if (publisher === 'kontour' && status.fullAvailable === false)
     return 'This build has no Station usage destination, so nothing is sent to Kontour.';
   if (status.reason === 'disclosure')
-    return 'Effective: Lite — Full is awaiting disclosure acknowledgement.';
+    return publisher.startsWith('publisher:')
+      ? "Detailed plugin sharing is waiting for this publisher's confirmation."
+      : 'Effective: Lite — Full is awaiting disclosure acknowledgement.';
   if (status.reason === 'environment')
     return `Effective: ${status.tier} (environment). Environment defaults cannot enable Full.`;
   return `Effective: ${status.tier} (${status.reason})`;

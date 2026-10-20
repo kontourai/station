@@ -3215,6 +3215,14 @@ export class StationRuntime {
         continue;
       // HTTP is already listening: a saved withdrawal must survive late construction.
       const telemetry = new UsageTelemetryService({
+        pluginTelemetry: this.registryTrustPolicyAuthority
+          ? {
+              homeDir: this.configLoader.getProjectHomeDir(),
+              journal:
+                this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+              trustPolicy: this.registryTrustPolicyAuthority,
+            }
+          : undefined,
         homeDir: this.configLoader.getProjectHomeDir(),
         appConfig: snapshot.config,
         version: packageJson.version,

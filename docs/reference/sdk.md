@@ -3422,31 +3422,32 @@ the `HostResourceSnapshot` contract from
 keep omitted memory/process values unknown. CPU and resource sample timestamps
 are independent.
 
-### `telemetry`
+### Plugin publisher counts
 
-Best-effort client telemetry for plugins. `track(event, attributes?)` buffers
-up to 1,000 events at a time, drops new events while full, and schedules a flush
-after ten seconds. `flush()` also allows an explicit flush. Only one request is
-in flight at a time, with a five-second abort deadline.
+Declare the bounded event/property inventory in the plugin manifest first; see
+[Publisher analytics](../guides/plugins.md#publisher-analytics). In a Pane:
 
 ```ts
-import { telemetry } from '@kontourai/station-sdk';
+import { useTelemetry } from '@kontourai/station-sdk';
 
-telemetry.track('panel.opened', { panel: 'overview' });
+const telemetry = useTelemetry();
+await telemetry.count('opened', { surface: 'main', items: 2 });
 ```
 
-The buffer is removed before dispatch. Network failures are swallowed, HTTP
-status is not checked, and events are not retried; a resolved `flush()` is not
-proof of server receipt. The sender uses direct browser `fetch`, outside the
-SDK's authenticated transport. The legacy imperative plugin label is currently
-empty, so this helper does not establish package attribution.
+`useTelemetry()` captures that Pane's Station and kernel-issued five-minute capability, renewed by the host while mounted. Outside React, pass a capability supplied by the owning host to `createPluginTelemetry(apiBase, paneCapability)` from the root or `@kontourai/station-sdk/client`. Plugin names and headers cannot substitute for a capability.
+`count(event, props?)` returns a Promise; a kernel rejection rejects it. It sends
+only to `/api/telemetry/events`, through the SDK's authenticated request boundary,
+with a five-second deadline and no retry. Broker routes are unavailable for this
+optional feature. It never contacts the publisher endpoint.
 
-With the host's raw-egress policy installed, a changed connection/account
-authority drops its captured events instead of retargeting them. Browser broker
-routes drop optional telemetry. Without that policy, the helper compares only
-the configured API base. Do not put secrets in events or use this buffer as an
-accounting record. See [telemetry](../../packages/sdk/src/telemetry.ts) and the
-[identity getter](../../packages/sdk/src/api-core.ts).
+The kernel requires a currently selected signed public-registry installation,
+validates the complete event/property/value inventory, then admits collection
+under that publisher's effective tier. Count properties are bounded integers at
+input and bucket labels at output. Collection and receiver delivery are separate:
+a successful kernel response does not prove receiver acceptance. Inspect
+`station telemetry outbox --publisher publisher:<id>` for local delivery results.
+
+The old unqualified `telemetry.count`/`track` and automatic `instrument()` diagnostics are no-ops. In development, instrumentation warns. Use a Pane-scoped object and declared inventory; do not put prompts, paths, names, account identifiers or error text in telemetry properties.
 
 ---
 

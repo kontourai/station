@@ -4,6 +4,7 @@ import type {
   OperationalEventProjection,
   OperationalEventScope,
 } from './operational-event.js';
+import type { PublisherTelemetryDeclaration } from './plugin-telemetry.js';
 import type { WorkspacePaneDescriptor } from './workspace-pane.js';
 import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
@@ -218,6 +219,7 @@ export interface PluginReviewedSourcesModule {
 }
 
 export interface PluginManifest {
+  telemetry?: PublisherTelemetryDeclaration;
   name: string;
   version: string;
   sdkVersion?: string;

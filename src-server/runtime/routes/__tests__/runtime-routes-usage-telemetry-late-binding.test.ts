@@ -249,82 +249,6 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
 
     // `StationRuntime` finishes constructing it. No re-registration happens in
     // production, and none happens here.
-    const acknowledgeDisclosure = vi.fn().mockResolvedValue(undefined);
-    usageTelemetry = {
-      disclosure: vi.fn().mockResolvedValue(disclosure),
-      acknowledgeDisclosure,
-    } as unknown as UsageTelemetryService;
-
-    const afterReady = await app.request(
-      '/api/usage-telemetry/disclosure',
-      undefined,
-      loopbackEnv(),
-    );
-    expect(afterReady.status).toBe(200);
-    await expect(afterReady.json()).resolves.toEqual({
-      success: true,
-      data: disclosure,
-    });
-
-    for (const [body, status] of [
-      [undefined, 426],
-      [
-        JSON.stringify({
-          acknowledgementProtocol: 1,
-          inventoryRevision: disclosure.inventoryRevision,
-        }),
-        426,
-      ],
-      [
-        JSON.stringify({
-          acknowledgementProtocol: 3,
-          inventoryRevision: disclosure.inventoryRevision,
-        }),
-        426,
-      ],
-      [JSON.stringify({ acknowledgementProtocol: 2 }), 400],
-      [
-        JSON.stringify({
-          acknowledgementProtocol: 2,
-          inventoryRevision: 'stale-revision',
-        }),
-        409,
-      ],
-    ] as const) {
-      const refused = await app.request(
-        '/api/usage-telemetry/disclosure/acknowledgements',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          ...(body ? { body } : {}),
-        },
-        loopbackEnv(),
-      );
-      expect(refused.status).toBe(status);
-      expect(acknowledgeDisclosure).not.toHaveBeenCalled();
-    }
-
-    const acknowledged = await app.request(
-      '/api/usage-telemetry/disclosure/acknowledgements',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          acknowledgementProtocol: 2,
-          inventoryRevision: disclosure.inventoryRevision,
-        }),
-      },
-      loopbackEnv(),
-    );
-    expect(acknowledged.status).toBe(200);
-    expect(acknowledgeDisclosure).toHaveBeenCalledExactlyOnceWith(
-      disclosure.inventoryRevision,
-    );
-    await expect(acknowledged.json()).resolves.toEqual({
-      success: true,
-      data: disclosure,
-    });
-
     const fetch = vi.fn();
     const live = new UsageTelemetryService({
       homeDir,
@@ -344,6 +268,84 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
     });
     usageTelemetry = live;
     try {
+      const disclosureSpy = vi
+        .spyOn(live, 'disclosure')
+        .mockResolvedValue(disclosure);
+      const acknowledgeDisclosure = vi
+        .spyOn(live, 'acknowledgeDisclosure')
+        .mockResolvedValue(undefined);
+      const afterReady = await app.request(
+        '/api/usage-telemetry/disclosure',
+        undefined,
+        loopbackEnv(),
+      );
+      expect(afterReady.status).toBe(200);
+      await expect(afterReady.json()).resolves.toEqual({
+        success: true,
+        data: disclosure,
+      });
+
+      for (const [body, status] of [
+        [undefined, 426],
+        [
+          JSON.stringify({
+            acknowledgementProtocol: 1,
+            inventoryRevision: disclosure.inventoryRevision,
+          }),
+          426,
+        ],
+        [
+          JSON.stringify({
+            acknowledgementProtocol: 3,
+            inventoryRevision: disclosure.inventoryRevision,
+          }),
+          426,
+        ],
+        [JSON.stringify({ acknowledgementProtocol: 2 }), 400],
+        [
+          JSON.stringify({
+            acknowledgementProtocol: 2,
+            inventoryRevision: 'stale-revision',
+          }),
+          409,
+        ],
+      ] as const) {
+        const refused = await app.request(
+          '/api/usage-telemetry/disclosure/acknowledgements',
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            ...(body ? { body } : {}),
+          },
+          loopbackEnv(),
+        );
+        expect(refused.status).toBe(status);
+        expect(acknowledgeDisclosure).not.toHaveBeenCalled();
+      }
+
+      const acknowledged = await app.request(
+        '/api/usage-telemetry/disclosure/acknowledgements',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            acknowledgementProtocol: 2,
+            inventoryRevision: disclosure.inventoryRevision,
+          }),
+        },
+        loopbackEnv(),
+      );
+      expect(acknowledged.status).toBe(200);
+      expect(acknowledgeDisclosure).toHaveBeenCalledExactlyOnceWith(
+        disclosure.inventoryRevision,
+      );
+      await expect(acknowledged.json()).resolves.toEqual({
+        success: true,
+        data: disclosure,
+      });
+
+      disclosureSpy.mockRestore();
+      acknowledgeDisclosure.mockRestore();
       const status = await app.request(
         '/api/usage-telemetry/delivery-status',
         undefined,

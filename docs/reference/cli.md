@@ -701,7 +701,7 @@ by every installed agent version.
 
 ### `telemetry`
 
-Read effective per-publisher tiers from a running Station or save a built-in
+Read effective per-publisher tiers from a running Station or save a
 publisher's choice through its authenticated configuration API:
 
 ```sh
@@ -709,7 +709,11 @@ station telemetry status
 station telemetry set kontour off
 station telemetry set operator full
 station telemetry outbox --publisher operator
+station telemetry set publisher:<registry-digest>/writer off
+station telemetry outbox --publisher publisher:<registry-digest>/writer
 ```
+
+Plugin publishers default Off. Choose Lite or Full explicitly after reviewing the opt-in prompt; a notice receipt does not enable sending. Plugin Lite contains plugin-chosen counts which can encode identifiers.
 
 Status prints each destination's plain sharing label with its `off`, `lite` or
 `full` configuration value. Do Not Track and pending review use readable

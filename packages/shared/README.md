@@ -144,3 +144,11 @@ library inspection and revision-bound author review. Use the
 agent proposal and evaluation process. It checks source/package/transcript bytes
 and reviewer assertions; it grants no runtime authority or model/device/release
 qualification.
+
+
+## Publisher telemetry parsing
+
+The Node-only `@kontourai/station-shared/plugin-telemetry` subpath validates
+publisher declarations and declared `plugin_daily` histograms. See the
+[shared reference](../../docs/reference/shared.md#plugin-publisher-telemetry).
+Broker acceptance and distribution manifest loading are separate work.

@@ -1,3 +1,8 @@
+import type {
+  PluginDailyPing,
+  PluginTelemetryBatch,
+  PluginTelemetryEvent,
+} from './plugin-telemetry.js';
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL = 2;
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY =
   'productTelemetryAcknowledgement';
@@ -24,6 +29,12 @@ export interface TelemetryPublisherStatus extends TelemetryTierResolution {
   userChoice?: TelemetryTier;
   /** Absent on older servers; consumers must wait for explicit availability. */
   fullAvailable?: boolean;
+  destination?: string;
+  endpointConfigured?: boolean;
+  liteInventoryRevision?: string;
+  liteInventory?: Record<string, unknown>;
+  fullInventoryRevision?: string;
+  liteNoticeShown?: boolean;
 }
 
 /** Policies affect defaults only; an identifying stream is never a default. */
@@ -230,6 +241,9 @@ export interface TelemetryOutboxEntry {
     | 'invalid';
   payload:
     | StationDailyPing
+    | PluginDailyPing
+    | PluginTelemetryEvent
+    | PluginTelemetryBatch
     | ProductTelemetryBatch
     | TelemetryFeedback
     | { event: 'telemetry_dropped'; count: number };
