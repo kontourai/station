@@ -234,11 +234,9 @@ export function applyColorTheme(
   )
     return currentSelection(root, mode);
   requestSheet(root, resolved.id, key, href);
-  return resolveColorThemeSelection({
-    colorTheme: root.getAttribute(COLOR_THEME_ATTRIBUTE),
-    colorThemeFlavor: root.getAttribute(COLOR_THEME_FLAVOR_ATTRIBUTE),
-    colorThemeAccent: root.getAttribute(COLOR_THEME_ACCENT_ATTRIBUTE),
-  });
+  // Until it settles the previous selection stays in force; a mode change
+  // meanwhile still re-stamps its theme-color.
+  return currentSelection(root, mode);
 }
 
 /**

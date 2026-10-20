@@ -347,6 +347,25 @@ describe('family stylesheets load on demand', () => {
     expect(failed()).toBeNull();
   });
 
+  test('a mode change while another family is loading re-stamps the theme-color in force', () => {
+    const themeColor = () =>
+      document.head
+        .querySelector('meta[name="theme-color"]')
+        ?.getAttribute('content');
+    const gruvbox = COLOR_THEME_FAMILIES.find((f) => f.id === 'gruvbox')!;
+    applySettled(root, { ...base, colorTheme: 'gruvbox' });
+    expect(themeColor()).toBe(gruvbox.dark[0]!.roles['--k-bg']);
+    // nord is requested and still loading; the mode flips meanwhile.
+    applyColorTheme(root, { ...base, colorTheme: 'nord' });
+    applyColorTheme(root, { ...base, theme: 'light', colorTheme: 'nord' });
+    expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
+    expect(themeColor()).toBe(gruvbox.light.roles['--k-bg']);
+    // Once it loads, nord takes over in the current mode.
+    settleSheets('load');
+    const nord = COLOR_THEME_FAMILIES.find((f) => f.id === 'nord')!;
+    expect(themeColor()).toBe(nord.light.roles['--k-bg']);
+  });
+
   test('after a failure only a selection change or an explicit retry asks again, never an unrelated setting', () => {
     const requests = () =>
       sheets().filter((s) => s.href?.includes('/nord.css')).length;
