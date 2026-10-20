@@ -48,7 +48,8 @@ vi.mock('../../contexts/ConfigContext', () => ({
 }));
 
 let coarsePointer = false;
-vi.mock('../../hooks/useIsMobile', () => ({
+vi.mock('../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useIsMobile')>()),
   useIsMobile: () => coarsePointer,
 }));
 

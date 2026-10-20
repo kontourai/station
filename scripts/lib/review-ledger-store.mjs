@@ -296,7 +296,7 @@ function parseCanonical(file, text, keys, serialize, requireLayout = true) {
   if (requireLayout && serialize(value) !== text)
     throw reviewError(
       'not-canonical',
-      `Review ledger file is not in its canonical layout: ${file}; write it with npm run docs:review:record (docs/guides/documentation.md)`,
+      `Review ledger file is not in its canonical layout: ${file}; write it with npm run docs:review:record (docs/guides/documentation-review-ledger.md)`,
       { file },
     );
   return value;

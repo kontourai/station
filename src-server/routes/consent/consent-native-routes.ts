@@ -103,8 +103,8 @@ export function registerConsentNativeRoutes(
   const requireChannel = () => deps.consentChannel ?? null;
 
   /**
-   * Whether THIS caller may use the native broker at all (archive#3677 PR 3,
-   * review round 1). The host capability answers "can this shell draw an OS
+   * Whether THIS caller may use the native broker at all (archive#3677 PR 3).
+   * The host capability answers "can this shell draw an OS
    * dialog"; only the server can answer "may this credential decide", and
    * the two are independent: a phone or a desktop app connected to a REMOTE
    * Station reports the capability but pairs through the ordinary exchange,

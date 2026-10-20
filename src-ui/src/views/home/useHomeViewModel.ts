@@ -170,7 +170,7 @@ function useHomeWorkData(): HomeWorkData {
 }
 
 /**
- * U1 (design round 2026-10): where a chat opened from Home LIVES. A chat
+ * #3239: where a chat opened from Home LIVES. A chat
  * whose project has a Coding layout belongs in that layout's centre, not in
  * a dock squeezed under Home; a chat with no project, or whose project has
  * no Coding layout, stays in the dock, and a device that folds every region

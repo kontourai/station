@@ -81,6 +81,7 @@ use std::{
     net::{SocketAddr, TcpStream},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+#[cfg(not(mobile))]
 use tauri::Emitter;
 use tauri::{ipc::Channel, AppHandle, State};
 #[cfg(not(mobile))]
@@ -544,7 +545,7 @@ struct CredentialProfile {
     configuration_state: String,
     created_at: f64,
     updated_at: f64,
-    /// station#1818 R3 review round 1 (MEDIUM): persisted, not derived. See
+    /// Persisted, not derived (archive#1818). See
     /// `resolve_local_self_provision_client_instance_id`'s doc comment for
     /// why a computed value (this file previously hashed one from
     /// `local_service.instance_id`) is the wrong shape for something the
@@ -1692,13 +1693,11 @@ fn station_profile_authorize_active_internal(
         authority,
         profile_name,
     )?;
-    // The renderer may have attempted its bounded readiness proof before the
-    // active credential was available. Reuse its mounted retry subscription
-    // once the host has committed the selected profile.
+    // The native startup identity proof may have run before the active
+    // credential was available. Retry it once the host has committed the
+    // selected profile.
     #[cfg(not(mobile))]
     notify_startup_readiness_if_waiting(app);
-    #[cfg(mobile)]
-    let _ = app.emit("station://startup-readiness-retry", ());
     Ok(receipt)
 }
 
@@ -2805,7 +2804,7 @@ fn percent_decode_path_lossy(path: &str) -> String {
 }
 
 /// The webview relay must never ferry the native consent broker's family
-/// (station#3677 PR 3). The relay attaches THIS APP'S keyring credential —
+/// (archive#3677). The relay attaches THIS APP'S keyring credential —
 /// the local-grant mint the broker's server routes require — to whatever
 /// path the webview asks for, so without this refusal any JS in the webview
 /// (including plugin-contributed UI) could review and approve consent
@@ -2816,17 +2815,16 @@ fn percent_decode_path_lossy(path: &str) -> String {
 /// router decodes percent escapes BEFORE matching: `/api/%63onsent/...`
 /// reaches the `/api/consent/...` route (probed live against this repo's
 /// router version). A raw-only comparison — the first version of this
-/// refusal, caught in review round 1 — let exactly that through and was a
-/// silent-approval hole.
+/// refusal — let exactly that through and was a silent-approval hole.
 ///
 /// The family is denied by DEFAULT, with exactly one read allowed through:
 /// `native-eligibility`, which has no server-side effect and answers only
 /// "may the credential you already hold decide?" — a fact the caller could
 /// learn by attempting a review. It has to pass, because on Tauri the app's
 /// own UI reaches the server through THIS relay; blocking it made the
-/// broker unreachable on the only hosts it serves (review round 2), a fix
-/// that defeated itself. A new leaf under this family is refused until
-/// someone deliberately adds it here.
+/// broker unreachable on the only hosts it serves, a fix that defeated
+/// itself. A new leaf under this family is refused until someone
+/// deliberately adds it here.
 const CONSENT_ELIGIBILITY_PATH: &str = "/api/consent/native-eligibility";
 
 fn is_webview_forbidden_native_path(url: &url::Url) -> bool {
@@ -4304,7 +4302,7 @@ async fn station_native_http_request(
     })?
 }
 
-// ── Native consent broker (station#3677 PR 3) ──────────────────────────────
+// ── Native consent broker (archive#3677) ───────────────────────────────────
 //
 // The one place a consent transaction can be decided from the desktop/mobile
 // app. The server half (`/api/consent/requests/:id/native-review|decide`)
@@ -4316,10 +4314,10 @@ async fn station_native_http_request(
 // approval surface: the dialog below is native OS chrome. The decision is
 // committed SERVER-SIDE; this command returns only the settled status.
 
-/// One native consent dialog at a time, per app process (station#3677 PR 3,
-/// review round 1). The command is registered on the main window's invoke
-/// handler, so any JavaScript running in THAT frame can call it — today
-/// that is Station's own bundle: plugin UI loads cross-origin in a sandboxed
+/// One native consent dialog at a time, per app process (archive#3677).
+/// The command is registered on the main window's invoke handler, so any
+/// JavaScript running in THAT frame can call it — today that is Station's
+/// own bundle: plugin UI loads cross-origin in a sandboxed
 /// iframe (`PluginFrameHost` points it at the Station server origin while
 /// the shell is served from the Tauri custom protocol), and no remote-domain
 /// IPC access is configured, so plugin code has no invoke bridge. What this
@@ -4334,7 +4332,7 @@ async fn station_native_http_request(
 /// decision itself.
 /// The lease is held ACROSS the dialog's blocking show, which has no
 /// timeout of its own, so RAII alone cannot recover from a dialog backend
-/// that never returns and never unwinds (review round 2). It therefore also
+/// that never returns and never unwinds. It therefore also
 /// expires: a lease older than this is taken over, bounding a wedged dialog
 /// to an inconvenience rather than consent being denied until the app is
 /// restarted. Long enough that a person reading a real approval is never
@@ -4654,9 +4652,7 @@ struct NativePairingExchangeRequest {
 /// oversized response body, a rejected scheme, or a local resource limit —
 /// it gets a distinct code (`invalid_endpoint`, `insecure_endpoint`,
 /// `invalid_response`, `operation_in_progress`, `capacity_reached`) rather
-/// than being forced into a misleading reuse. (station#1818 review round 1,
-/// LOW: `insecure_endpoint` was minted below but missing from this list —
-/// corrected.)
+/// than being forced into a misleading reuse.
 fn validate_native_pairing_exchange_request(
     request: &NativePairingExchangeRequest,
 ) -> Result<String, NativeCommandError> {
@@ -7561,8 +7557,7 @@ fn local_self_provision_next_store(
             profile._environment_id = Some(environment_id.to_string());
             profile.configuration_state = configuration_state.to_string();
             profile.updated_at = updated_at;
-            // station#1818 R3 review round 1 (MEDIUM): persisted verbatim,
-            // never recomputed — see
+            // Persisted verbatim, never recomputed (archive#1818) — see
             // `resolve_local_self_provision_client_instance_id`'s doc
             // comment for why this must be the same value across every
             // write, once assigned.
@@ -7631,9 +7626,9 @@ fn local_self_provision_next_store(
 /// the rest. Nothing server-side needed to change; this only reaches what
 /// the local-grant route already accepts and already acts on.
 ///
-/// station#1818 R3 review round 1 (MEDIUM): this used to DERIVE a
-/// deterministic id from `local_service.instance_id` via two `DefaultHasher`
-/// passes rather than persist one, on the theory that a drift would cost
+/// This used to DERIVE a deterministic id from `local_service.instance_id`
+/// via two `DefaultHasher` passes rather than persist one, on the theory
+/// that a drift would cost
 /// only "one extra device entry". Traced further: the server's
 /// supersession matches ONLY on an exactly-equal `clientInstanceId`, so a
 /// drifted id supersedes NOTHING — the prior grant stays `revokedAt: null`
@@ -7655,38 +7650,36 @@ fn local_self_provision_next_store(
 /// so the toolchain-stability caveat the derived version carried no longer
 /// applies at all.
 ///
-/// **What this mechanism does and does not reach (accepted gap, review
-/// round 2)**: it makes every FUTURE self-provision for a given local
-/// Station supersede the one before it, closing unbounded accumulation
-/// going forward. It cannot reach a grant minted BEFORE this field
-/// existed. The original station#1715 code sent a fresh random
-/// `uuid::Uuid::new_v4()` on every call and persisted nothing, so the id
-/// that created any already-live grant was never recorded anywhere — there
-/// is no value this function, or anything else, can read to reconstruct
-/// it. The very first self-provision on this binary therefore takes the
-/// `None` branch below, mints a NEW id unrelated to any pre-existing
-/// grant's id, and — correctly, per the server's exact-match supersession —
-/// does not revoke a device it cannot identify. A saved Station with N prior
-/// grants from the pre-persistence code (e.g. the two live, full-scope,
-/// unrevoked devices station#1818's own comment reports:
-/// `local-grant:36471b8f-…` and `local-grant:532d5bc8-…`) reaches this
-/// commit's first self-provision with all N still live, and gains one
-/// more; only that Nth+1 grant and every one after it participate in
-/// supersession from here on. This is a deliberate, disclosed boundary,
-/// not an oversight: the only way to reach further back would be to guess
-/// which OTHER non-revoked device for the same Station the new grant
-/// replaces — by name, scope, or kind, since no field links a device to
-/// the saved Station that created it — and that heuristic could just as easily
-/// revoke the owner's legitimate, unrelated paired phone. Destroying a
-/// real device credential to clean up this bookkeeping gap is a worse
-/// defect than leaving it, so no such auto-revoke is implemented. The
-/// existing REMEDY for the pre-existing devices is manual: the Connections
-/// UI's "Paired devices" panel (`PairedDevicesPanel`,
+/// **What this mechanism does and does not reach (accepted gap)**: it makes
+/// every FUTURE self-provision for a given local Station supersede the one
+/// before it, closing unbounded accumulation going forward. It cannot reach a
+/// grant minted BEFORE this field existed. The original station#1715 code sent
+/// a fresh random `uuid::Uuid::new_v4()` on every call and persisted nothing,
+/// so the id that created any already-live grant was never recorded anywhere —
+/// there is no value this function, or anything else, can read to reconstruct
+/// it. The very first self-provision on this binary therefore takes the `None`
+/// branch below, mints a NEW id unrelated to any pre-existing grant's id, and —
+/// correctly, per the server's exact-match supersession — does not revoke a
+/// device it cannot identify. A saved Station with N prior grants from the
+/// pre-persistence code (e.g. the two live, full-scope, unrevoked devices
+/// station#1818's own comment reports: `local-grant:36471b8f-…` and
+/// `local-grant:532d5bc8-…`) reaches this commit's first self-provision with
+/// all N still live, and gains one more; only that Nth+1 grant and every one
+/// after it participate in supersession from here on. This is a deliberate,
+/// disclosed boundary, not an oversight: the only way to reach further back
+/// would be to guess which OTHER non-revoked device for the same Station the
+/// new grant replaces — by name, scope, or kind, since no field links a device
+/// to the saved Station that created it — and that heuristic could just as
+/// easily revoke the owner's legitimate, unrelated paired phone. Destroying a
+/// real device credential to clean up this bookkeeping gap is a worse defect
+/// than leaving it, so no such auto-revoke is implemented. The existing REMEDY
+/// for the pre-existing devices is manual: the Connections UI's "Paired
+/// devices" panel (`PairedDevicesPanel`,
 /// `packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx`,
 /// reachable via "Manage Connections" → devices) lists every device on the
-/// environment and lets an operator revoke one by hand — the same path
-/// already used to clean up the owner's two live orphans. There is
-/// currently no CLI equivalent.
+/// environment and lets an operator revoke one by hand — the same path already
+/// used to clean up the owner's two live orphans. There is currently no CLI
+/// equivalent.
 ///
 /// One more disclosed, PRE-EXISTING pattern this field now exercises for
 /// the first time: `CredentialProfile` derives `#[serde(deny_unknown_fields)]`
@@ -9948,11 +9941,7 @@ fn notify_startup_readiness_if_waiting(app: &AppHandle) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .phase;
     if startup_readiness_accepts_retry(phase) {
-        // Native owns the credential and identity proof. Claim it before the
-        // compatibility renderer wake so an already-mounted WebView cannot
-        // win the single-flight slot and recreate the bootstrap dependency.
         request_native_startup_commit(app);
-        let _ = app.emit("station://startup-readiness-retry", ());
     }
 }
 
@@ -11089,10 +11078,6 @@ fn observe_startup_ticket(app: &AppHandle, ticket: startup_readiness::StartupTic
         generation
     );
     request_native_startup_commit_for_ticket(app, published_ticket);
-    // A sidecar retry becomes reprobeable only after this exact new generation
-    // is running and has published its ticket; never wake the renderer against
-    // the old child during Restart.
-    let _ = app.emit("station://startup-readiness-retry", ());
 }
 
 #[cfg(not(mobile))]
@@ -11833,57 +11818,6 @@ fn native_startup_page_admitted(label: &str, event: PageLoadEvent) -> bool {
     label == "main" && event == PageLoadEvent::Started
 }
 
-#[cfg(not(mobile))]
-#[tauri::command]
-async fn commit_startup_readiness(
-    app: AppHandle,
-    ticket: startup_readiness::StartupTicket,
-) -> Result<(), String> {
-    let state = app
-        .try_state::<DesktopServerState>()
-        .ok_or("Desktop startup readiness is not initialized.")?;
-    let (phase, identity_committed, epoch) = {
-        let readiness = state
-            .readiness
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        (
-            readiness.phase,
-            readiness.identity_committed,
-            readiness.epoch,
-        )
-    };
-    if !claim_startup_commit(
-        true,
-        phase,
-        identity_committed,
-        epoch,
-        &state.startup_commit_claim,
-    ) {
-        return Err(
-            "Desktop startup identity proof is already committed or in flight.".to_string(),
-        );
-    }
-    let app_for_commit = app.clone();
-    let result = match tauri::async_runtime::spawn_blocking(move || {
-        commit_startup_readiness_blocking(app_for_commit, ticket, epoch)
-    })
-    .await
-    {
-        Ok(result) => result,
-        Err(error) => {
-            release_failed_startup_commit(&app, epoch);
-            return Err(format!("Desktop startup identity task failed: {error}"));
-        }
-    };
-    if result.is_err() {
-        release_failed_startup_commit(&app, epoch);
-    } else {
-        complete_startup_commit(&app, epoch, |app| request_native_startup_commit(app));
-    }
-    result
-}
-
 fn renderer_mount_label_admitted(label: &str) -> bool {
     label == "main"
 }
@@ -11963,20 +11897,6 @@ fn commit_renderer_mount(window: tauri::WebviewWindow, app: AppHandle) -> Result
         reveal_main_window(&app);
     }
     Ok(())
-}
-
-#[cfg(not(mobile))]
-#[tauri::command]
-fn commit_startup_recovery_ui(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), String> {
-    if !renderer_mount_label_admitted(window.label()) {
-        return Err("Startup recovery commits are accepted only from the main WebView.".into());
-    }
-    commit_startup_recovery_ui_for_app(&app)
-}
-
-#[cfg(not(mobile))]
-fn commit_startup_recovery_ui_for_app(app: &AppHandle) -> Result<(), String> {
-    commit_startup_recovery_for_app(app, startup_readiness::ReadinessInput::RecoveryUiCommitted)
 }
 
 #[cfg(not(mobile))]
@@ -13294,7 +13214,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     // Android WebView does not implement, so the app silently never subscribes.
     let builder = builder
         .plugin(tauri_plugin_notification::init())
-        // Native OS dialogs for the consent broker (station#3677 PR 3): the
+        // Native OS dialogs for the consent broker (archive#3677): the
         // approval surface must be chrome webview JS cannot script.
         .plugin(tauri_plugin_dialog::init());
     #[cfg(not(target_os = "ios"))]
@@ -13402,9 +13322,6 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_enrollment_host::station_native_enrollment_resume,
         native_relay_redemption::station_native_relay_application_open,
         native_relay_redemption::station_native_relay_application_read,
-        relay_grant_vault::relay_client_grant_store,
-        relay_grant_vault::relay_client_grant_revoke,
-        relay_grant_vault::relay_client_grant_metadata,
         credential_vault_delete,
         credential_vault_delete_unreferenced,
         credential_vault_commit_pairing,
@@ -13434,8 +13351,6 @@ If a stable instance is running, this launch will focus its window and exit.",
         tray::ack_pending_tray_navigation,
         restart_bundled_server,
         commit_renderer_mount,
-        commit_startup_readiness,
-        commit_startup_recovery_ui,
         startup_window_admitted,
         ssh_env_probe,
         ssh_launch_start,
@@ -13508,9 +13423,6 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_enrollment_host::station_native_enrollment_resume,
         native_relay_redemption::station_native_relay_application_open,
         native_relay_redemption::station_native_relay_application_read,
-        relay_grant_vault::relay_client_grant_store,
-        relay_grant_vault::relay_client_grant_revoke,
-        relay_grant_vault::relay_client_grant_metadata,
         open_external_link,
         credential_vault_delete,
         credential_vault_delete_unreferenced,
@@ -16928,8 +16840,8 @@ mod tests {
             "http://127.0.0.1:3141/api/consent/requests/abc/native-decide?x=1",
             // Percent-encoded segments: the server's router decodes before it
             // matches, so these REACH the consent routes and must be refused
-            // here too (review round 1 BLOCKING — the raw-only comparison let
-            // webview JS approve silently with the app's own bearer).
+            // here too (the first, raw-only comparison let webview JS
+            // approve silently with the app's own bearer).
             "http://127.0.0.1:3141/api/%63onsent/requests/abc/native-review",
             "http://127.0.0.1:3141/api/con%73ent/requests/abc/native-decide",
             "http://127.0.0.1:3141/api/%63%6Fnsent/requests/abc/native-decide",
@@ -16949,7 +16861,7 @@ mod tests {
         let allowed = [
             // The one deliberate allowance: the app's own UI reads its
             // eligibility through this relay, and a refusal here made the
-            // whole broker unreachable (review round 2). Encoded spellings
+            // whole broker unreachable. Encoded spellings
             // of it are allowed too — they decode to the same read.
             "http://127.0.0.1:3141/api/consent/native-eligibility",
             "http://127.0.0.1:3141/api/%63onsent/native-eligibility",
@@ -17000,8 +16912,8 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         // A dialog backend that never returns and never unwinds holds the
-        // lease across its blocking show, where RAII cannot help (review
-        // round 2). Age zero stands in for "older than the limit".
+        // lease across its blocking show, where RAII cannot help. Age zero
+        // stands in for "older than the limit".
         let wedged = NativeConsentDialogLease::acquire(NATIVE_CONSENT_DIALOG_MAX_AGE)
             .expect("first review takes the lease");
         let successor = NativeConsentDialogLease::acquire(Duration::ZERO)
@@ -22290,7 +22202,7 @@ mod tests {
         assert_eq!(outcome_for(-34018), CredentialReadOutcome::StoreUnavailable);
     }
 
-    /// station#1818 R3 review round 1 (MEDIUM) — the persisted replacement
+    /// archive#1818: the persisted replacement
     /// for the derived id: reuses an EXISTING `client_instance_id` verbatim,
     /// mints a fresh one only when the profile has none yet. This is the
     /// fault-injection proof for the reuse half: reverting the production
@@ -22363,7 +22275,7 @@ mod tests {
         assert_eq!(local.credential_ref.as_ref().unwrap(), &reference);
         assert_eq!(local._environment_id.as_deref(), Some("environment-local"));
         assert_eq!(local.updated_at, 12_345.0);
-        // station#1818 R3 review round 1 (MEDIUM) — THE persistence proof:
+        // archive#1818: THE persistence proof:
         // the id this call was given is what actually lands in the
         // serialized document, round-trip through JSON.
         assert_eq!(

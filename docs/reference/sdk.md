@@ -2646,6 +2646,29 @@ the URL hash for the active tab. It is not a reliable way to erase that active
 tab's saved string; a later restoration can read it again. Tracked in
 [#2806](https://github.com/kontourai/station/issues/2806).
 
+To hand state to another tab of the same Layout, write it for that tab and then
+select the tab. The state is a URL search-params string. `setTabState` stores
+it in sessionStorage for this Layout and updates the URL hash immediately only
+when the target is the active tab; selecting a tab restores its stored hash.
+The receiving tab reads its state in an effect keyed on the active tab.
+
+```ts
+import { useNavigation, useLayoutNavigation } from '@kontourai/station-sdk';
+
+const nav = useNavigation();
+const { setTabState, getTabState } = useLayoutNavigation();
+
+// Sender, inside the `my-layout` navigation provider:
+setTabState('crm', new URLSearchParams({ selectedAccount: accountId }).toString());
+nav.setLayoutTab('my-layout', 'crm');
+
+// Receiver, in useEffect(..., [activeTab]):
+const selectedAccountId = new URLSearchParams(getTabState('crm')).get('selectedAccount');
+```
+
+Workspace Pane placement uses its own
+[host contract](../guides/workspace-pane-authoring.md), not tab state.
+
 ---
 
 ## Agent Resolver
@@ -3484,7 +3507,7 @@ family subclasses stay and gain the refusal's fields:
 | `DelegationApiError` | `Error` | `status`, `retryAfterMs` (it already carried `code`, `retryable`, `details`) |
 | `AnswerSupportRequestError` | `Error` | `code`, `details`, `retryAfterMs` |
 | `ActionOperationProtocolError`, `LiveActivityProtocolError` | `Error` | `status`, `code`, `details`, `retryAfterMs`; absent on a malformed response |
-| `AnswerBasisRequestError`, `AnswerNarrativeBindingRequestError`, `FlowGateEvaluationRequestError` | `Error` | `code`, `retryAfterMs`; the message stays fixed |
+| `AnswerBasisRequestError`, `FlowGateEvaluationRequestError` | `Error` | `code`, `retryAfterMs`; the message stays fixed |
 
 Each keeps its earlier constructor; the new form takes the helper's
 `StationHttpError`. A delegation response whose body is not JSON throws a

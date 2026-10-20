@@ -175,113 +175,88 @@ export async function fetchMonitoringMetrics(
 }
 
 /**
- * station#1398 slice 4 — this Station's fleet routing receipts.
- *
- * Unlike its siblings above, a failed read THROWS rather than degrading to
- * an empty array. An empty receipt list is a real, meaningful answer ("this
- * Station has never fleet-routed a turn"), so returning it for a failed read
- * would make the surface state that as fact — the silent-degradation shape
- * §4.5 bans, applied to the receipts themselves. The caller renders the
- * error.
+ * A Station's fleet receipts (#98). Unlike the monitoring reads above, a
+ * failed read THROWS rather than degrading to an empty page: an empty receipt
+ * list is a real answer ("this Station has never fleet-routed or served a
+ * turn"), so returning it for a failed read would state that as fact. The
+ * caller renders the error.
  */
-export async function fetchFleetRoutingReceiptsForStation(
+async function fetchFleetReceipts<Page>(
+  route: 'fleet-routing-receipts' | 'fleet-serve-receipts',
+  messages: { rejected: string; unreadable: string },
   limit?: number,
   signal?: AbortSignal,
-): Promise<FleetRoutingReceiptPage> {
+): Promise<Page> {
   const apiBase = await resolveApiBase();
   const query = typeof limit === 'number' ? `?limit=${limit}` : '';
   const response = await authenticatedFetch(
-    `${apiBase}/monitoring/fleet-routing-receipts${query}`,
+    `${apiBase}/monitoring/${route}${query}`,
     ...signalInit(signal),
   );
-  // Read the body BEFORE branching on status (fix-round HIGH-1): a rejected
-  // response still carries a body the route author wrote on purpose — e.g.
-  // `monitoring.ts`'s 503 "This Station cannot locate its receipt log, so
-  // whether it has fleet-routed anything is unknown rather than empty."
-  // Discarding it in favor of a synthesized "rejected with HTTP 503" throws
-  // away the one sentence that told the reader what actually happened.
-  // `.catch` covers a body that fails to parse at all (or is genuinely
-  // empty), which is the only case a synthesized fallback is honest.
+  // Read the body BEFORE branching on status: a rejected response still
+  // carries a sentence the route wrote on purpose (`monitoring.ts`'s 503
+  // "This Station cannot locate its receipt log, ..."), and a synthesized
+  // "rejected with HTTP 503" would discard it. `.catch` covers a body that
+  // does not parse at all, the only case where a synthesized message is honest.
   const result = (await response
     .json()
     .catch(unlessDeadline(() => undefined))) as
-    | { success: boolean; data?: FleetRoutingReceiptPage; error?: string }
+    | { success: boolean; data?: Page; error?: string }
     | undefined;
   if (!response.ok) {
     // Preserve the status so `resolveFleetReceiptsRefetchInterval`
-    // (station#3444) can stop polling a credential failure that cannot
-    // clear. Deliberately NOT prefixed "Failed to fetch" when synthesized:
-    // `isStationTransportFailure` (`utils/stationTransportFailure.ts`)
-    // pattern-matches that exact prefix to mean "the network is
-    // unreachable" — an HTTP status response is the opposite of that (a
-    // reachable server that rejected the request) — so a fallback message
-    // must not collide with it. The server's own `error` text never does.
+    // (archive#3444) can stop polling a credential failure that cannot
+    // clear. The synthesized message is deliberately NOT prefixed "Failed to
+    // fetch": `isStationTransportFailure` (`utils/stationTransportFailure.ts`)
+    // reads that prefix as "the network is unreachable", the opposite of a
+    // reachable server that rejected the request. The server's own `error`
+    // text never collides.
     throw new StationHttpError(
       response.status,
       apiErrorMessage(
         result ?? {},
-        `Fleet routing receipts request rejected with HTTP ${response.status}`,
+        `${messages.rejected} request rejected with HTTP ${response.status}`,
       ),
     );
   }
   if (!result?.success || !result.data) {
-    throw new Error(
-      apiErrorMessage(
-        result ?? {},
-        'This Station could not read its fleet routing receipts. That is unknown, not empty.',
-      ),
-    );
+    throw new Error(apiErrorMessage(result ?? {}, messages.unreadable));
   }
   return result.data;
 }
 
-/**
- * station#1398 slice 3/4 (security review, M-2) — the SERVING side's own
- * receipts. Throws on failure for the same reason its sibling does: an empty
- * serve log is a real answer ("this Station has served nothing"), so
- * returning it for a failed read would state that as fact.
- */
-export async function fetchFleetServeReceiptsForStation(
+/** This Station's fleet routing receipts; see `fetchFleetReceipts`. */
+export function fetchFleetRoutingReceiptsForStation(
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<FleetRoutingReceiptPage> {
+  return fetchFleetReceipts<FleetRoutingReceiptPage>(
+    'fleet-routing-receipts',
+    {
+      rejected: 'Fleet routing receipts',
+      unreadable:
+        'This Station could not read its fleet routing receipts. That is unknown, not empty.',
+    },
+    limit,
+    signal,
+  );
+}
+
+/** The serving side's own receipts; see `fetchFleetReceipts`. */
+export function fetchFleetServeReceiptsForStation(
   limit?: number,
   signal?: AbortSignal,
 ): Promise<FleetServeReceiptPage> {
-  const apiBase = await resolveApiBase();
-  const query = typeof limit === 'number' ? `?limit=${limit}` : '';
-  const response = await authenticatedFetch(
-    `${apiBase}/monitoring/fleet-serve-receipts${query}`,
-    ...signalInit(signal),
-  );
-  // See the routing-receipt sibling above (fix-round HIGH-1): read the body
-  // before branching on status so a route-authored error sentence — e.g.
-  // `monitoring.ts`'s 503 "This Station cannot locate its receipt log, so
-  // what it has served is unknown rather than empty." — survives.
-  const result = (await response
-    .json()
-    .catch(unlessDeadline(() => undefined))) as
-    | { success: boolean; data?: FleetServeReceiptPage; error?: string }
-    | undefined;
-  if (!response.ok) {
-    // Preserve the status so `resolveFleetReceiptsRefetchInterval`
-    // (station#3444) can stop polling a credential failure that cannot
-    // clear. Not "Failed to fetch" when synthesized — see the routing-receipt
-    // sibling above; the server's own `error` text never collides.
-    throw new StationHttpError(
-      response.status,
-      apiErrorMessage(
-        result ?? {},
-        `Fleet serve receipts request rejected with HTTP ${response.status}`,
-      ),
-    );
-  }
-  if (!result?.success || !result.data) {
-    throw new Error(
-      apiErrorMessage(
-        result ?? {},
+  return fetchFleetReceipts<FleetServeReceiptPage>(
+    'fleet-serve-receipts',
+    {
+      rejected: 'Fleet serve receipts',
+      unreadable:
         'This Station could not read what it has served. That is unknown, not empty.',
-      ),
-    );
-  }
-  return result.data;
+    },
+    limit,
+    signal,
+  );
 }
 
 /**

@@ -72,7 +72,7 @@ describe('Bedrock content-delta itemId (station#3457)', () => {
         yield { type: 'text-delta', content: 'Hel' };
         yield { type: 'text-delta', content: 'lo ' };
         yield { type: 'text-delta', content: 'world' };
-        // archive#3545 review round 2: `AiSdkLLMProvider.createStream`
+        // archive#3545: `AiSdkLLMProvider.createStream`
         // (which `BedrockLLMProvider` inherits) now propagates ai-sdk's own
         // `finishReason`, so `finishReason: 'stop'` IS the ordinary
         // successful-turn shape again — a bare `{ type: 'finish' }` is now

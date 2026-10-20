@@ -814,6 +814,32 @@ previous unqualified route remains a compatibility alias.
 station secret-bindings migrate-stored-env github --data='{"bindings":{"GITHUB_TOKEN":{"bindingId":"github-token","expectedRevision":2}}}'
 ```
 
+### `secret-bindings unbind`
+
+Remove one consumer's use of a secret binding without deleting the binding.
+The positional argument is the **binding id**. Send the consumer to detach as
+JSON with `--data=<json>`, `--file=<path>` or piped stdin; the CLI calls
+`POST /api/secret-bindings/:id/unbind` and prints the response.
+
+```
+station secret-bindings unbind <binding-id> --data=<json> [--api-base=<url>]
+```
+
+| Body | Detaches |
+| --- | --- |
+| `{"integrationId","envName","expectedRevision"}` | One environment variable of a saved MCP integration (the default kind) |
+| `{"kind":"acp-provider-header","connectionId","providerId","headerName","expectedRevision"}` | A header grant on an ACP connection's provider |
+| `{"kind":"instance-telemetry-destination","transport":"product"\|"otel","destination","expectedRevision"}` | A telemetry destination key |
+
+An integration unbind returns `outcome: "complete"`, or `"safe-partial"` (HTTP
+202, still exit 0) with a `configurationError` when the binding was detached
+but the integration's configuration could not be fully updated. Missing input
+or invalid JSON exits 1.
+
+```bash
+station secret-bindings unbind github-token --data='{"integrationId":"github","envName":"GITHUB_TOKEN","expectedRevision":3}'
+```
+
 ### `import`
 
 Import a previously exported configuration file back into this Station home.
@@ -1458,8 +1484,10 @@ is unchanged):
 
 ### `tasks`
 
-List, read, create, and attach exact completed assistant answers to durable
-Project Tasks. Task creation requires an existing Project. Station derives the authoritative working directory and any Git
+List, read and create durable Project Tasks; attach exact answers, authored
+inputs and tool results to them; manage the evidence that supports an answer;
+and keep files a Task produced as Task outputs. Task creation requires an
+existing Project. Station derives the authoritative working directory and any Git
 top-level, worktree, and branch from server-side Project state; optional values
 in `workspaceBinding` are corroborating assertions and contradictory values are
 rejected.
@@ -1470,11 +1498,22 @@ station tasks get <task-id> [--api-base=<url>]
 station tasks create --json='<task-json>' [--api-base=<url>]
 station tasks attach-turn <task-id> --session=<session-id> --turn=<turn-id> [--api-base=<url>]
 station tasks show-turn <task-id> [--api-base=<url>]
+station tasks attach-input <task-id> --session=<session-id> --event=<event-id> [--api-base=<url>]
+station tasks show-inputs <task-id> [--json] [--api-base=<url>]
 station tasks attach-result <task-id> --session=<session-id> --event=<event-id> [--api-base=<url>]
 station tasks show-results <task-id> [--json] [--api-base=<url>]
 station tasks basis <task-id> [--answer-reference=<reference-id>] [--format=summary|json] [--json] [--api-base=<url>]
+station tasks show-support <task-id> [--api-base=<url>]
+station tasks list-support-bundles <task-id> --reference=<reference-id> [--api-base=<url>]
+station tasks list-support-claims <task-id> --reference=<reference-id> --bundle=<bundle-id> [--api-base=<url>]
+station tasks attach-support <task-id> --reference=<reference-id> --bundle=<bundle-id> --claim=<claim-id> [--api-base=<url>]
+station tasks replace-support <task-id> --reference=<reference-id> --bundle=<bundle-id> --claim=<claim-id> --revision=<revision> [--api-base=<url>]
+station tasks remove-support <task-id> --reference=<reference-id> --revision=<revision> [--api-base=<url>]
+station tasks list-outputs <task-id> [--api-base=<url>]
 station tasks get-output <task-id> <output-id> [--api-base=<url>]
 station tasks keep-output <task-id> --path=<relative-path> --title=<title> --operation=<operation-id> [--media=<type>] [--api-base=<url>]
+station tasks download-output <task-id> <output-id> --out=<absolute-destination> [--api-base=<url>]
+station tasks delete-output <task-id> <output-id> [--api-base=<url>]
 ```
 
 Examples:
@@ -1487,6 +1526,9 @@ station tasks attach-turn 61cc19c7-3b56-46e2-b0d4-9ff6ce7c2b4b --session=session
 station tasks show-turn 61cc19c7-3b56-46e2-b0d4-9ff6ce7c2b4b
 station tasks attach-result 61cc19c7-3b56-46e2-b0d4-9ff6ce7c2b4b --session=session-1 --event=tool-result-event-1
 station tasks show-results 61cc19c7-3b56-46e2-b0d4-9ff6ce7c2b4b
+station tasks basis 61cc19c7-3b56-46e2-b0d4-9ff6ce7c2b4b --format=json
+station tasks keep-output 61cc19c7-3b56-46e2-b0d4-9ff6ce7c2b4b --path=dist/report.json --title="Release report" --operation=keep-report-1
+station tasks download-output 61cc19c7-3b56-46e2-b0d4-9ff6ce7c2b4b <output-id> --out=/tmp/report.json
 ```
 
 `attach-turn` persists only the exact Session/turn identity. Station
@@ -1499,6 +1541,49 @@ Station reauthorizes its terminal result before it creates the relation.
 `show-results` reauthorizes every stored tool-result reference and returns only
 the bounded safe result projection. Missing, denied, malformed, and revoked
 results remain generic; resolver outages are retryable.
+
+`attach-input` stores only the exact Session/event identity of something a
+person typed; Station reauthorizes that authored input before it creates the
+relation. `show-inputs` returns the authorized input projections. Its failures
+stay generic; a 503 is reported as retryable.
+
+`basis` summarizes what a Task's answers rest on. Without
+`--answer-reference` it prints one line for the whole Task (answers,
+unassociated answers, kept tool results and kept gate evaluations); with it, one
+line for that answer (its standing and counts of inputs, execution, outcomes
+and support). `--format=json` or `--json` prints the full JSON instead. Write
+the flag with `=`: `--format json` is rejected. Any server failure is reported
+only as `Task basis unavailable`.
+
+Answer support links an attached answer to a claim in an evidence bundle.
+`show-support` lists the authorized answer cards and each one's support
+standing and current `revision`. `list-support-bundles` and
+`list-support-claims` list the opaque IDs you may choose from.
+`attach-support` is idempotent. `replace-support` and `remove-support` are
+compare-and-swap: pass the `--revision` you observed (a positive integer), and a
+stale revision is refused. A `replace-support` retry that sends the previous
+revision with the bundle and claim already in place returns the current record
+instead of failing, and `remove-support` succeeds when nothing is attached.
+`remove-support` does not ask for confirmation.
+Protected answers and support choices report a generic not-found.
+
+Task outputs keep a copy of a file a Task produced. `keep-output` snapshots
+the file at `--path`, relative to the Task's working directory, under
+`--title`; `--media` declares a media type. Repeating the same `--operation`
+with the same inputs returns the earlier record; reusing it with different
+inputs, or after that output was deleted, is refused. `list-outputs` and
+`get-output` print the records (`get-output` needs the output ID even though
+the in-terminal help shows it as optional). `download-output` writes the bytes
+to an absolute `--out` path and prints the destination, size, media type and
+`etag`. It refuses a relative path, a symlink, an existing file and a missing or
+symlinked parent directory. It writes a private temporary file and links it
+into place, so it never replaces an existing file; if it cannot confirm the
+final link it reports the result as uncertain. `delete-output` removes the
+output without asking for confirmation.
+
+With `--json`, the input and support actions print failures as a JSON object
+on stderr (`success`, `error`, and `status` and `retryable` when known) instead
+of an `Error:` line; every failure exits 1.
 
 `get` returns the binding's current `availability`: `available`, `ambiguous`,
 or `unavailable`. Only `available` means Station can safely use the binding for
@@ -2846,6 +2931,35 @@ station fresh [--force] [--allow-default-home-clean] [--home=<dir>] [--base=<dir
 station fresh --temp-home --force
 station fresh --home=/tmp/station-a --force
 station fresh --force --allow-default-home-clean
+```
+
+### `home recovery-plan`
+
+Inspect an existing Station home and report what a recovery would need,
+without changing anything. It reads the home locally and makes no HTTP request.
+Run it from a source checkout as `./station home recovery-plan`; the published
+`@kontourai/station-cli` client refuses contributor commands such as `home`.
+
+```
+station home recovery-plan --base=<existing-home> [--json]
+```
+
+Pass exactly one of `--base=<dir>` or `--home=<dir>`; `--json` is the only
+other accepted flag, and any mutation option is refused. The text report names
+the inspection result and source schema, lists each store that has entries
+with its entry count,
+and ends with limits, unknowns and the decisions you must review. `--json`
+prints one `station.home-recovery-plan/v1` object. The plan never allows apply
+(`applyAllowed: false`), and owner exclusion is always reported as not proven.
+
+| Exit | Meaning |
+|------|---------|
+| `0` | The home was fully observed. This does not prove it is recoverable. |
+| `1` | Usage error |
+| `2` | The inspection was partial or refused; any reported code makes it partial |
+
+```bash
+./station home recovery-plan --base=$HOME/.station/instances/nightly --json
 ```
 
 ### `home verify`

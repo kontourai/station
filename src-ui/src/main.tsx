@@ -63,12 +63,18 @@ import { PermissionManager } from './core/PermissionManager';
 import { EXTENSIONS_UNAVAILABLE_LABEL } from './core/pluginRegistryCopy';
 import { LocaleProvider, resolveDevelopmentLocale } from './i18n/LocaleContext';
 import { applyAccentColor } from './lib/accent-contrast';
+import { readAppearanceCache } from './lib/appearance-cache';
 import {
   applyBrandingTheme,
   BRANDING_THEME_STORAGE_KEY,
   resolveCachedBrandingTheme,
 } from './lib/branding-theme';
 import {
+  bindColorThemeToSettings,
+  renderWhenColorThemeSettled,
+} from './lib/color-theme-apply';
+import {
+  deviceSettingsStore,
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
@@ -214,6 +220,7 @@ const _envelopeRaw = localStorage.getItem('station-device-settings-v1');
 const _bootTheme = resolveBootTheme(
   _envelopeRaw,
   localStorage.getItem('theme'),
+  readAppearanceCache(),
 );
 document.documentElement.setAttribute('data-theme', _bootTheme);
 const _bootAccent = resolveBootAccentColor(
@@ -231,6 +238,10 @@ const _bootBrandingTheme = resolveCachedBrandingTheme(
 );
 if (_bootBrandingTheme)
   applyBrandingTheme(document.documentElement, _bootBrandingTheme);
+// The color theme follows the resolved settings for the page's lifetime:
+// device settings now (startup-theme.js already stamped them before first
+// paint), account preferences once they bind. See lib/color-theme-apply.ts.
+bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
 
 function renderApp(): void {
   ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -363,4 +374,13 @@ function renderApp(): void {
   );
 }
 
-renderApp();
+// A themed person's family sheet was requested by startup-theme.js; the first
+// render waits for it (at most a few seconds) so the app never appears in
+// Station's colours after a themed splash. Without a theme this renders
+// synchronously, as before. boot.ts awaits `rendered`, so a deferred render
+// that throws reaches the same "could not finish loading" recovery as a
+// failed module load (see renderWhenColorThemeSettled for what counts).
+export const rendered: Promise<void> = renderWhenColorThemeSettled(
+  document,
+  renderApp,
+);

@@ -3,7 +3,7 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/o
 // hand-written copy here would be the divergent-copy disease this change is
 // about — and the first version of it guarded on truthiness, so a remote
 // sending `{ answerable: false }` with no observer passed through as an
-// unattributed negative claim (delta review, L-C).
+// unattributed negative claim.
 import { withNormalizedAnswerability } from '@kontourai/station-contracts/orchestration';
 import {
   type ClientRequestOptions,
@@ -24,7 +24,7 @@ const REMOTE_SESSION_FETCH_TIMEOUT_MS = 2_000;
  * whatever limit (if any) the remote Station itself applies. */
 const MAX_REMOTE_SESSIONS_PER_ENVIRONMENT = 200;
 
-/** Defense-in-depth bound (LOW, archive#1097 review round 2) on how many
+/** Defense-in-depth bound (archive#1097) on how many
  * connected environments are fanned out to concurrently — a large saved
  * profile list could otherwise open dozens of simultaneous outbound
  * connections from a single Home-view read. Environments are read in

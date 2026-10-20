@@ -656,6 +656,26 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
         'the import graph (#2176)',
     }),
   ),
+  // The color-theme artifacts are read by path: the drift test regenerates
+  // and compares them, and the cascade test serves the real public files to
+  // Chromium. Neither reaches them through the import graph.
+  ...[
+    'src-ui/public/color-themes/**',
+    'src-ui/public/startup-theme.js',
+    'src-ui/src/color-themes.startup.generated.css',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([
+        'src-ui/src/__tests__/color-theme-artifacts.test.ts',
+        'src-ui/src/__tests__/color-theme-cascade.test.ts',
+      ]),
+      reason:
+        'generated color-theme artifact read by path in the drift and ' +
+        'cascade tests, outside the import graph',
+    }),
+  ),
   // The rest read one named file each, by a path the scan cannot resolve (a
   // `test.each` parameter, a cwd-relative literal, a directory copied into a
   // temp plugin), and import nothing that reaches it.
@@ -772,6 +792,8 @@ const COMPOSITION_EDGES = Object.freeze([
 export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
+  // Walks examples/*/src for the SDK values the station dev mock must provide.
+  'packages/cli/src/__tests__/dev-sdk-mock-parity.test.ts',
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
   // Walks packages/sdk/src/client. Its packages/sdk/src/client/** edge selects
   // it, but a diff that escalates with more than 32 explicit tests runs none

@@ -484,7 +484,7 @@ describe('createLogger resolves STATION_LOG_LEVEL from creation, for EVERY logge
   it('a logger created with no explicit level honors STATION_LOG_LEVEL without its caller resolving it — the module-scope-logger shape used at ~57 call sites', () => {
     process.env.STATION_LOG_LEVEL = 'debug';
     // No `level` option at all — mirrors `createLogger({ name: 'config-loader' })`
-    // and the ~13 other module-scope call sites the review named.
+    // and the ~13 other module-scope call sites archive#1895 found.
     const logger = createLogger({ name: 'module-scope-style' });
     expect(logger.getLevel()).toBe('debug');
   });
@@ -532,7 +532,7 @@ describe('createLogger resolves STATION_LOG_LEVEL from creation, for EVERY logge
     const directory = createTempDir();
     installServerLogSink({ directory });
     process.env.STATION_LOG_LEVEL = 'warn';
-    // HIGH-1(a): createLogger resolves STATION_LOG_LEVEL itself, so both
+    // createLogger resolves STATION_LOG_LEVEL itself, so both
     // loggers already start at 'warn' (the env override), not the 'info'
     // passed here — proving the env win happens at creation, not just in
     // this guard.

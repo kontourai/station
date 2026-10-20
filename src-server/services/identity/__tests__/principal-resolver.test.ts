@@ -137,7 +137,7 @@ describe('resolvePrincipal', () => {
   });
 
   /**
-   * station#4075 stage 2 review round 3: the three hosted outcomes,
+   * station#4075 stage 2: the three hosted outcomes,
    * exhaustively — the exact regression the hosted-composition test caught
    * (a real, currently-supported hostname-fronted tenant with no per-caller
    * identity provider in the loop) and the fix's own contract.

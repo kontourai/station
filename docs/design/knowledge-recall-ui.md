@@ -8,7 +8,7 @@
 > The extraction's original behavior/packaging claims do not replace current
 > provider, live plugin, or real Knowledge-store verification.
 
-Status: accepted for the Station #528 extraction, 2026-07-19.
+Status: accepted for the archive#528 extraction, 2026-07-19.
 
 This decision follows the generic Knowledge Library pilot with a supported
 first-party boundary that Meeting Notes can also consume. It does not change

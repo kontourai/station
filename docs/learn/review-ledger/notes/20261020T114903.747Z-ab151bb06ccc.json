@@ -1,0 +1,21 @@
+{
+  "revision": "5d506678b96fc886409f9059e9e47a819931c70c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read the AccountPreferences and ColorThemes sections. device-settings-store now holds the account's mode and color theme when an account binding with values ends, like the boot cache; the module text (account values stay out of origin-wide storage; settings facade overlays the account) still holds. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Re-read the region-arrangement and device-envelope claims. device-settings-store changed only in what the appearance keys resolve to after an account binding ends; region records, envelope and migration are unchanged. No prose change.","inputs":["docs/design/placement.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Added that only the rendered appearance outlives a retired account overlay, held until the next account answers or a definite no-person answer, checked against device-settings-store's binding cleanup and the reconnect test in AccountPreferencesContext.test.tsx.","inputs":["docs/design/settings-architecture.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Re-read the envelope and export/import claims. device-settings-store changed only the appearance hold after an account binding ends; shortcut storage is unchanged. No prose change.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Re-read the device-store and entry-sheet claims. The store change is the appearance hold after an account binding ends. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-read the personal preference paragraph (lines 119-123). The account preference still replaces the device startup theme after verification and stays local without a person; the new hold only keeps the account's appearance across a reconnect, which the decision record this guide routes to describes. No prose change.","inputs":["docs/guides/theming.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Re-read the composition table; nothing there concerns the device store. No prose change.","inputs":["docs/patterns/backend.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Re-read the token and theming pointer; the store change is the appearance hold after an account binding ends. No prose change.","inputs":["docs/patterns/frontend.md","src-ui/src/lib/device-settings-store.ts"]}
+  ]
+}

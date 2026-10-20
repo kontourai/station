@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-shared",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Shared runtime helpers, config parsing, and compatibility re-exports for Station",
   "type": "module",
   "engines": {
@@ -32,7 +32,6 @@
     "./product-telemetry": "./src/product-telemetry.ts",
     "./connection-proof": "./src/connection-proof.ts",
     ".": "./src/index.ts",
-    "./agent-validation": "./src/agent-validation.ts",
     "./build": "./src/build.ts",
     "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",
@@ -42,7 +41,6 @@
     "./git": "./src/git.ts",
     "./json-file-storage": "./src/json-file-storage.ts",
     "./tool-server-credential-store": "./src/tool-server-credential-store.ts",
-    "./guidance-assets": "./src/guidance-assets.ts",
     "./mcp": "./src/mcp.ts",
     "./mcp-tool-selection": "./src/mcp-tool-selection.ts",
     "./mcp-app-result": "./src/mcp-app-result.ts",
@@ -117,7 +115,6 @@
     "./harness-questions": "./src/harness-questions.ts",
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
-    "./mcp-elicitation-form": "./src/mcp-elicitation-form.ts",
     "./skill-experience-workflow": "./src/skill-experience-workflow.ts",
     "./html-reply-document": "./src/html-reply-document.ts"
   },
@@ -125,7 +122,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.10.0",
+    "@kontourai/station-contracts": "^0.11.0",
     "@kontourai/thread": "0.5.0",
     "@modelcontextprotocol/client": "2.3.1",
     "agent-skills-ts-sdk": "^2.5.0",

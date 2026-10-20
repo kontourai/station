@@ -585,6 +585,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/documentation-value-bindings.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
+  // Runs the dead-code ceiling CLI with the real fallow analyzer against a
+  // disposable project.
+  'scripts/__tests__/fallow-ceiling.test.ts',
   // Runs the hygiene report CLI as a child against disposable Git trees and a
   // fake `gh` child.
   'scripts/__tests__/hygiene-report.test.ts',
@@ -1461,6 +1464,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // geometry, a squatted locator global, a covered button, 300,000
   // elements, a page spinning forever). Explicit skip without a browser.
   'src-server/services/browser/__tests__/browser-agent-hostile.real.test.ts',
+  // The built supervisor bundle runs the built core server: a parked
+  // generation's untouched home, then a handoff under HTTP load across all
+  // four listeners; and the source supervisor beside a real home through a
+  // schema migration. Builds its own dist-server-* directory; no wall-clock
+  // assertion beyond liveness-scaled waits.
+  'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
   // Process supervisor: real supervisor children fork fixture core
   // generations, hand a held listening socket between them, and hammer it
   // with keep-alive HTTP and SSE clients on an ephemeral port.
@@ -1657,23 +1666,72 @@ function explicitFiles(manifest) {
  * and compares it to the exact manifest partition before a run can start.
  */
 export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
-  const siblings = new Map();
-  for (const file of explicitFiles(manifest)) {
-    const slash = file.lastIndexOf('/');
-    const directory = file.slice(0, slash + 1);
-    const names = siblings.get(directory) ?? [];
-    names.push(file.slice(slash + 1));
-    siblings.set(directory, names);
-  }
   return Object.freeze([
-    ...Array.from(siblings, ([directory, names]) =>
-      names.length === 1
-        ? `${directory}${names[0]}`
-        : `${directory}{${names.join(',')}}`,
-    ),
+    ...compactExactPaths(explicitFiles(manifest)),
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
     `${manifest.dogfoodReconcile.prefix}/**`,
   ]);
+}
+
+const BRACE_UNSAFE = /[*?[\]{}(),!+@\\]|\.\./;
+
+/**
+ * The same exact files as fewer patterns: the files of one directory become
+ * one brace alternation of their literal names, `dir/{a.test.ts,b.test.ts}`,
+ * which matches those files and nothing else. A name holding a glob
+ * metacharacter, or `..` (a range inside braces), stays a pattern of its own. Order is deterministic.
+ */
+export function compactExactPaths(paths) {
+  const byDirectory = new Map();
+  const literal = [];
+  for (const path of [...new Set(paths)].sort()) {
+    const slash = path.lastIndexOf('/');
+    const name = path.slice(slash + 1);
+    if (slash <= 0 || BRACE_UNSAFE.test(path)) {
+      literal.push(path);
+      continue;
+    }
+    const directory = path.slice(0, slash);
+    const names = byDirectory.get(directory) ?? [];
+    names.push(name);
+    byDirectory.set(directory, names);
+  }
+  const compact = [];
+  for (const [directory, names] of byDirectory) {
+    compact.push(
+      names.length === 1
+        ? `${directory}/${names[0]}`
+        : `${directory}/{${names.join(',')}}`,
+    );
+  }
+  return [...compact, ...literal];
+}
+
+/**
+ * Windows caps a command line at 32,767 UTF-16 characters. The check takes
+ * the Vitest arguments a runner builds (see buildVitestCommand) and adds a
+ * node path of Windows MAX_PATH (260), longer than any real install, plus a
+ * quote pair and a separating space per argument.
+ */
+export const WINDOWS_COMMAND_LINE_LIMIT = 32_767;
+const WORST_CASE_WINDOWS_PATH_LENGTH = 260;
+
+function windowsCommandLineLength(vitestArguments) {
+  return [
+    'x'.repeat(WORST_CASE_WINDOWS_PATH_LENGTH),
+    ...vitestArguments,
+  ].reduce((total, argument) => total + argument.length + 3, 0);
+}
+
+/** Throws when a Vitest command line could exceed the Windows limit. */
+export function assertWindowsCommandLineFits(vitestArguments) {
+  const length = windowsCommandLineLength(vitestArguments);
+  if (length >= WINDOWS_COMMAND_LINE_LIMIT) {
+    throw new Error(
+      `the Vitest command line could reach ${length} characters, over the Windows limit of ${WINDOWS_COMMAND_LINE_LIMIT}; compact ordinaryVitestExcludes`,
+    );
+  }
+  return length;
 }
 
 export function assertOrdinaryVitestSelection(

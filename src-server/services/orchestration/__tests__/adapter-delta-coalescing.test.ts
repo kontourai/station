@@ -130,7 +130,7 @@ describe('content deltas coalesce for the events the adapters really emit', () =
       createStream: vi.fn(async function* () {
         for (let index = 0; index < CHUNKS; index += 1)
           yield { type: 'text-delta', content: chunkText(index) };
-        // archive#3545 review round 2: `AiSdkLLMProvider.createStream`
+        // archive#3545: `AiSdkLLMProvider.createStream`
         // (which `BedrockLLMProvider` inherits) now propagates ai-sdk's own
         // `finishReason`, so `finishReason: 'stop'` IS the ordinary
         // successful-turn shape again — a bare `{ type: 'finish' }` is now

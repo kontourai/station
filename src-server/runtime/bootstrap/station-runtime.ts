@@ -4908,6 +4908,11 @@ export class StationRuntime {
     return this.activeAgents.get(slug);
   }
 
+  /** Live voice calls; a supervisor drain waits for them to end. */
+  activeVoiceSessionCount(): number {
+    return this.voiceService?.getActiveCount() ?? 0;
+  }
+
   /**
    * List all loaded agents
    */
