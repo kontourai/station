@@ -28,6 +28,31 @@ describe('supervised parent watchdog', () => {
     expect(setInterval).not.toHaveBeenCalled();
   });
 
+  test('does not arm for a process supervisor generation, which exits on IPC disconnect', () => {
+    const setInterval = vi.fn(() => ({ unref: vi.fn() }));
+    armSupervisedParentWatchdog({
+      // A generation forked by the process supervisor, carrying a birth
+      // inherited from another supervisor further up.
+      env: {
+        STATION_SUPERVISOR_IPC: '1',
+        STATION_SUPERVISOR_PID: '123',
+        STATION_SUPERVISOR_BIRTH: 'birth-of-some-other-process',
+      },
+      logger: { error: vi.fn() },
+      onSupervisorGone: vi.fn(),
+      setInterval: setInterval as never,
+    });
+    expect(setInterval).not.toHaveBeenCalled();
+    // The same environment without the IPC marker does arm.
+    armSupervisedParentWatchdog({
+      env: { STATION_SUPERVISOR_PID: '123' },
+      logger: { error: vi.fn() },
+      onSupervisorGone: vi.fn(),
+      setInterval: setInterval as never,
+    });
+    expect(setInterval).toHaveBeenCalledTimes(1);
+  });
+
   test('uses injected parent PID and clock to gracefully stop an orphaned supervised server', async () => {
     let check: (() => void) | undefined;
     let forceExit: (() => void) | undefined;
