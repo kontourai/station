@@ -14,6 +14,7 @@ import type {
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -246,7 +247,7 @@ describe('in-chat notes', () => {
     });
     expect(row.hasAttribute('inert')).toBe(true);
     // The height transition ending first does not cut the fade short.
-    finishTransition(row, 'grid-template-rows');
+    await act(async () => finishTransition(row, 'grid-template-rows'));
     expect(screen.queryByText(/Checking back at/)).not.toBeNull();
     finishTransition(row, 'opacity');
     await waitFor(() =>
