@@ -1781,14 +1781,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     // #3800: refused before Codex is spawned, since a project `mcp_servers`
     // command runs outside the sandbox at thread start (start, resume, fork
     // and respawn all come through here).
-    if (input.confinement !== 'host' && input.cwd) {
-      const unaccounted = findUnaccountedCodexConfig(input.cwd, {
-        codexHome: process.env.CODEX_HOME,
-      });
+    // Without a cwd Codex runs in the server's own directory, so that is the
+    // one checked.
+    if (input.confinement !== 'host') {
+      const unaccounted = findUnaccountedCodexConfig(
+        input.cwd ?? process.cwd(),
+        {
+          codexHome: process.env.CODEX_HOME,
+        },
+      );
       if (unaccounted)
         throw new ConfinementRefusedError(
           'confinement_workspace_incompatible',
-          `This codex session was not started: ${unaccounted} is Codex project configuration its repository does not account for (not committed, changed since HEAD, or inside a nested or missing repository), and a session that does not run as the operator would load it. Commit or remove it, or run the session as the operator (a host session).`,
+          `This codex session was not started: ${unaccounted} is Codex project configuration its repository does not account for (not committed, changed since HEAD, or inside a nested or missing repository), and a session that does not run as the operator would load it. Commit or remove it, or run the session as the operator (a host session). Station judges it against the outermost Git repository containing the folder, so a project inside another repository (a home-directory one, for example) is judged against that one.`,
         );
     }
     const startedAt = Date.now();

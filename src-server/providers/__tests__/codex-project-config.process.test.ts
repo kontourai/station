@@ -465,6 +465,30 @@ describe.skipIf(!codexBinary || !darwin)(
       expect(await ranWithin(marker, 3_000)).toBe(false);
     }, 90_000);
 
+    test('a linked worktree inside its repository starts with its committed .codex', async () => {
+      const root = realpathSync(makeTempDir('codex-inner-worktree-'));
+      const workspace = join(root, 'workspace');
+      const codexHome = join(root, 'codex-home');
+      mkdirSync(join(workspace, '.codex'), { recursive: true });
+      mkdirSync(codexHome);
+      writeFileSync(join(workspace, '.codex', 'config.toml'), '# ok\n');
+      writeFileSync(join(workspace, '.gitignore'), '.worktrees/\n');
+      commitAll(workspace);
+      const lane = join(workspace, '.worktrees', 'lane');
+      const added = spawnSync(
+        'git',
+        ['worktree', 'add', '-q', '-b', 'lane', lane],
+        { cwd: workspace, encoding: 'utf8' },
+      );
+      expect(added.status, added.stderr).toBe(0);
+      const run = await startIn(lane, codexHome, 'workspace');
+      expect(run.ok).toBe(true);
+      if (run.ok) {
+        await run.adapter.stopAll();
+        run.controller.abort();
+      }
+    }, 90_000);
+
     test("a committed nested .codex is the repository's own and still starts", async () => {
       const root = realpathSync(makeTempDir('codex-committed-nested-'));
       const workspace = join(root, 'workspace');

@@ -137,6 +137,44 @@ describe('findUnaccountedCodexConfig (#3800)', () => {
     );
   });
 
+  test('a file inside a committed .codex that is not a regular file is reported', () => {
+    const { pkg, config } = repository();
+    symlinkSync('/etc/hosts', join(config, 'linked.toml'));
+    expect(findUnaccountedCodexConfig(pkg)).toBe(config);
+  });
+
+  /** A repository with a committed root `.codex` and a linked worktree inside it. */
+  function repositoryWithInnerWorktree(): { root: string; lane: string } {
+    const root = realpathSync(makeTempDir('codex-provenance-worktree-'));
+    mkdirSync(join(root, '.codex'));
+    writeFileSync(join(root, '.codex', 'config.toml'), '# checked in\n');
+    writeFileSync(join(root, '.gitignore'), '.worktrees/\n');
+    commitAll(root);
+    const lane = join(root, '.worktrees', 'lane');
+    git(root, 'worktree', 'add', '-q', '-b', 'lane', lane);
+    return { root, lane };
+  }
+
+  test('a linked worktree inside its repository is judged against its own HEAD', () => {
+    const { lane } = repositoryWithInnerWorktree();
+    expect(findUnaccountedCodexConfig(lane)).toBeUndefined();
+    appendFileSync(join(lane, '.codex', 'config.toml'), '[mcp_servers.x]\n');
+    expect(findUnaccountedCodexConfig(lane)).toBe(join(lane, '.codex'));
+  });
+
+  test('a gitfile borrowing a registered worktree entry is not that worktree', () => {
+    const { root, lane } = repositoryWithInnerWorktree();
+    const fake = join(root, '.worktrees', 'fake');
+    mkdirSync(join(fake, '.codex'), { recursive: true });
+    writeFileSync(join(fake, '.codex', 'config.toml'), '# checked in\n');
+    writeFileSync(
+      join(fake, '.git'),
+      `gitdir: ${join(root, '.git', 'worktrees', 'lane')}\n`,
+    );
+    expect(findUnaccountedCodexConfig(lane)).toBeUndefined();
+    expect(findUnaccountedCodexConfig(fake)).toBe(join(fake, '.codex'));
+  });
+
   test("the user's own Codex home is configuration, not a project layer", () => {
     const home = realpathSync(makeTempDir('codex-provenance-home-'));
     mkdirSync(join(home, '.codex'));
