@@ -368,6 +368,26 @@ describe('git writes', () => {
     expect(result.current.error?.message).toBe(error);
   });
 
+  test('a validation refusal reaches the caller with its reason, not "Validation failed" alone', async () => {
+    // The shape the shared zod middleware answers a rejected body with.
+    stubFetch(() =>
+      json(400, {
+        success: false,
+        error: 'Validation failed',
+        details: {
+          formErrors: [],
+          fieldErrors: { branch: ['Branch name is required'] },
+        },
+      }),
+    );
+    const { result } = renderHook(() => useGitCheckoutMutation('acme', '/w'), {
+      wrapper: wrapperFor(client()),
+    });
+    act(() => result.current.mutate({ branch: '' }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error?.message).toBe('Branch name is required');
+  });
+
   test('push names the Project and returns the remote it pushed to', async () => {
     const push: GitPushResult = { output: 'main -> main', remote: 'origin' };
     const fetchMock = stubFetch(() => json(200, { success: true, data: push }));

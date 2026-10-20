@@ -1337,8 +1337,9 @@ repository inside it.
 
 Commit and push are the Station operator's act: the server answers any other
 caller with `403`, and the SDK grants nothing of its own. Every git write
-rejects with the server's `error` sentence (a refused secret-looking file,
-repository configuration or remote is named there). A successful write
+rejects with the server's refusal: its validation reasons when it sends them,
+otherwise its `error` sentence (a refused secret-looking file, repository
+configuration or remote is named there). A successful write
 invalidates that folder's `useGitStatusQuery`, `useGitBranchesQuery` and
 `useGitLogQuery` reads.
 

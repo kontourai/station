@@ -11,6 +11,7 @@ import {
 } from '@tanstack/react-query';
 import {
   _getApiBase,
+  apiErrorMessage,
   bulkDeleteKnowledgeDocs,
   deleteKnowledgeDoc,
   fetchKnowledgeDocContent,
@@ -282,7 +283,9 @@ async function postGitWrite<T>(
   );
   const result = (await response.json()) as GitEnvelope<T>;
   if (!response.ok || !result.success) {
-    throw new Error(result.error || `Request failed (${response.status})`);
+    throw new Error(
+      apiErrorMessage(result, `Request failed (${response.status})`),
+    );
   }
   return result.data as T;
 }
