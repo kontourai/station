@@ -9,8 +9,8 @@
 > assurances supplied by the current package installer.
 
 Status: **proposed for owner/architecture ratification**  
-Issue: [#529](https://github.com/kontourai/station/issues/529)  
-Parent: [#252](https://github.com/kontourai/station/issues/252)
+Issue: [archive#529](https://github.com/kontourai/station-archive/issues/529)  
+Parent: [#30](https://github.com/kontourai/station/issues/30)
 
 ## Decision summary
 

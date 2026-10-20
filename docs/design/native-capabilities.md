@@ -10,7 +10,7 @@
 > live in the [desktop guide](../guides/desktop-build.md) and
 > [mobile release guide](../guides/mobile-release.md).
 
-Status: implemented foundation for Station #809; native release contract for #818 (2026-07-25)
+Status: implemented foundation for #58; native release contract for #59 (2026-07-25)
 
 Station is web/PWA-first. The React application talks to exactly one typed
 platform boundary at `src-ui/src/platform/native/`; it never imports Tauri
@@ -37,7 +37,7 @@ host.
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
-| Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (station#1954). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
+| Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (#178). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
 | Remote push wakeup | unsupported | build-dependent | Enabled for Android builds carrying all four Firebase values or iOS builds carrying the Live Activity plugin. iOS also checks push signing before offering registration. User opt-in, server registration and provider delivery remain separate. |
 | Station service tray | unsupported | report-authoritative | Desktop implementation remains Rust-owned. The renderer may request native menu reveal through one typed command but receives no opener permission, URL, port, or menu mutation authority. |
 
@@ -402,7 +402,7 @@ See the [shell verification evidence](../guides/native-shell-verification.md).
 Source tests and the macOS Keychain roundtrip do not establish
 physical-device Project access.
 
-### Pairing deep-link threat review (station#1957)
+### Pairing deep-link threat review (archive#1957)
 
 The `tauri-plugin-deep-link` association uses the custom channel-specific scheme
 configured for a native build. On its `pair` route, the adapter accepts exactly
@@ -433,7 +433,7 @@ exists.
 | --- | --- | --- |
 | Deep linking | Schemes are build-time configuration, not runtime registration. | The pinned `tauri-plugin-deep-link` admits the reviewed pairing and owned-local-browser routes above; generic share intake remains disabled. |
 | Local notifications | Supported across listed Tauri targets. | enabled, but cannot wake a frozen or closed mobile app. |
-| Single instance | Desktop only (Windows mutex, Linux session D-Bus, macOS `/tmp` Unix socket keyed on the app identifier). | the pinned `tauri-plugin-single-instance` with the `deep-link` feature, registered as the first plugin so a second launch exits before any other plugin or setup side effect (one benign pre-builder log-dir write probe still runs) and its argv (a pairing URL on Windows/Linux) is forwarded to the running app; a foreground second launch requests activation of its existing window, while a background launch does not (station#2904). Best-effort, not a hard mutex — the home-scoped sidecar claim remains the cross-surface guard. Known limits, accepted: a squatted macOS socket is an availability-only concern — the squatter also sees the launching process's argv/cwd, but no pairing secret transits argv on macOS (Apple Events); an unisolated `tauri dev` using the installed app’s identifier can activate that app instead of starting a separate one; isolated development configuration uses its own identifier. |
+| Single instance | Desktop only (Windows mutex, Linux session D-Bus, macOS `/tmp` Unix socket keyed on the app identifier). | the pinned `tauri-plugin-single-instance` with the `deep-link` feature, registered as the first plugin so a second launch exits before any other plugin or setup side effect (one benign pre-builder log-dir write probe still runs) and its argv (a pairing URL on Windows/Linux) is forwarded to the running app; a foreground second launch requests activation of its existing window, while a background launch does not (archive#2904). Best-effort, not a hard mutex — the home-scoped sidecar claim remains the cross-surface guard. Known limits, accepted: a squatted macOS socket is an availability-only concern — the squatter also sees the launching process's argv/cwd, but no pairing secret transits argv on macOS (Apple Events); an unisolated `tauri dev` using the installed app’s identifier can activate that app instead of starting a separate one; isolated development configuration uses its own identifier. |
 | Remote push | Platform support requires FCM on Android and APNs on iOS. | Build-dependent enablement as above. See [notification delivery](notification-delivery.md) for payload, opt-in and recorded qualification scope. |
 | Updater | Desktop only; mobile is unsupported. | Rust registers it only when the desktop build has usable updater configuration. This is not proof an update feed or signed release is available. |
 | Dialog | The original survey recorded partial mobile support. | Enabled for Rust-owned consent dialogs; this does not expose a generic JavaScript file picker. |
@@ -472,7 +472,7 @@ Physical release distribution, signing/store delivery, real-device credential
 lifecycle, inbound native shares, remote-push delivery and background mobile
 agents remain **NOT_VERIFIED** by the receipts on this page. Development
 simulator build/install and the older paired simulator IPC journey are narrower
-observed results, not physical Nightly acceptance. #818 adds source-controlled Android/iOS Tauri configuration and
+observed results, not physical Nightly acceptance. #59 adds source-controlled Android/iOS Tauri configuration and
 a fail-closed GitHub workflow contract, not credential-backed distribution
 proof. The only secretless mobile output is an unsigned iOS simulator archive
 marked verification-only; it is never a distributable asset. The 2026-07-25
