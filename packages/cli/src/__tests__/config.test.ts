@@ -95,6 +95,44 @@ afterEach(() => {
 });
 
 describe('telemetry commands', () => {
+  test('a saved Detailed preference without an author destination explains that nothing can be sent', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: { telemetryTier: { kontour: 'full' } },
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          publishers: {
+            kontour: {
+              tier: 'lite',
+              reason: 'disclosure',
+              userChoice: 'full',
+              fullAvailable: false,
+            },
+            operator: { tier: 'off', reason: 'user', fullAvailable: true },
+          },
+        },
+      }),
+    );
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await runTelemetryCommand([
+      'set',
+      'kontour',
+      'full',
+      '--api-base=http://127.0.0.1:43129',
+    ]);
+    expect(consoleLog).toHaveBeenCalledWith(
+      'Kontour: Anonymous usage counts (lite); This build has no Station usage destination, so nothing is sent to Kontour',
+    );
+    expect(consoleLog.mock.calls.flat().join(' ')).not.toContain(
+      'waiting for your review',
+    );
+  });
+
   test('environment-limited status explains how to restore Full delivery', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({

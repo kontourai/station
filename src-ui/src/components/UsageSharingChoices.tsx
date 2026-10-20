@@ -1,5 +1,5 @@
 import type { TelemetryTier } from '@kontourai/station-contracts/product-telemetry';
-import { useId } from 'react';
+import { type Ref, useId } from 'react';
 import { PageCallout } from './PageCallout';
 import './UsageTelemetryDisclosure.css';
 
@@ -174,7 +174,9 @@ export function UsageSharingChoices({
   counts,
   onDetailedIntent,
   firstRun = false,
+  initialChoiceRef,
 }: {
+  initialChoiceRef?: Ref<HTMLInputElement>;
   value: TelemetryTier | undefined;
   onChange: (tier: TelemetryTier) => void;
   disabled?: boolean;
@@ -213,6 +215,7 @@ export function UsageSharingChoices({
         {(['off', 'lite', 'full'] as const).map((tier) => (
           <label key={tier}>
             <input
+              ref={tier === (value ?? 'off') ? initialChoiceRef : undefined}
               type="radio"
               name={name}
               aria-label={SHARING_LABELS[tier]}

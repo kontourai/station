@@ -237,7 +237,7 @@ export function TelemetryTierSettings({
                   }
                 >
                   <span className="settings__field-hint">
-                    {effectiveSummary(status)}
+                    {effectiveSummary(status, publisher)}
                   </span>
                 </SettingsPageRow>
                 {pending?.publisher === publisher &&
@@ -284,10 +284,13 @@ export function TelemetryTierSettings({
 
 function effectiveSummary(
   status: TelemetryPublisherStatus | undefined,
+  publisher: TelemetryPublisherId,
 ): string {
   if (!status) return 'Effective state loads from this Station.';
   if (status.reason === 'DNT')
     return 'Effective: Off — DO_NOT_TRACK is active. Saved choices are not changed.';
+  if (publisher === 'kontour' && status.fullAvailable === false)
+    return 'This build has no Station usage destination, so nothing is sent to Kontour.';
   if (status.reason === 'disclosure')
     return 'Effective: Lite — Full is awaiting disclosure acknowledgement.';
   if (status.reason === 'environment')

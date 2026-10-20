@@ -849,7 +849,7 @@ export function createConfigRoutes(
               !(await canSaveAuthorFull?.())
             )
               throw new Error(
-                'Kontour Full is unavailable until a Kontour Full disclosure exists. Choose Off or Lite.',
+                "The current confirmation for sharing detailed usage with Kontour is missing. Review what's included and save your choice.",
               );
           }
           // A semantic contribution change needs the BOUND-OPERATOR verdict,

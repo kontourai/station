@@ -5,12 +5,12 @@ import {
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
 } from '@kontourai/station-sdk/client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useOptionalRecoveryScope } from '../contexts/RecoveryQueryBoundary';
 import { type TelemetryStatus, useTelemetryStatus } from './useTelemetryStatus';
 
-/** A committed, visible notice is the receipt owner; fetching status never records it. */
+/** Capture a visible notice at interaction time; persist it only after any choice write. */
 export function useTelemetryNotice(enabled: boolean) {
   const { apiBase: protectedBase } = useApiBase();
   const scope = useOptionalRecoveryScope();
@@ -81,7 +81,7 @@ export function useTelemetryNotice(enabled: boolean) {
       );
     },
   });
-  const recordShown = useCallback(async () => {
+  const prepareShown = useCallback(() => {
     const node = element.current;
     const current = status.data;
     if (
@@ -103,35 +103,36 @@ export function useTelemetryNotice(enabled: boolean) {
       rect.right <= 0 ||
       rect.left >= window.innerWidth ||
       rect.height <= 0 ||
-      rect.top < 0 ||
       rect.top >= window.innerHeight ||
       rect.bottom <= 0
     )
       return;
-    for (const publisher of ['kontour', 'operator'] as const) {
-      const state = current.publishers[publisher];
-      const revision = current.liteInventoryRevision;
-      const key = `${targetKey}:${publisher}:${revision}`;
-      if (
-        state?.tier !== 'lite' ||
-        state.reason === 'DNT' ||
-        current.liteNotices?.[publisher]?.inventoryRevision === revision ||
-        inFlight.current.has(key)
-      )
-        continue;
-      inFlight.current.add(key);
-      try {
-        await receipt.mutateAsync({
-          publisher,
-          revision,
-          apiBase,
-          identityKey: scope?.identityKey,
-          requestScope: scope?.requestScope ?? null,
-        });
-      } finally {
-        inFlight.current.delete(key);
+    return async () => {
+      for (const publisher of ['kontour', 'operator'] as const) {
+        const state = current.publishers[publisher];
+        const revision = current.liteInventoryRevision;
+        const key = `${targetKey}:${publisher}:${revision}`;
+        if (
+          !state ||
+          state.reason === 'DNT' ||
+          current.liteNotices?.[publisher]?.inventoryRevision === revision ||
+          inFlight.current.has(key)
+        )
+          continue;
+        inFlight.current.add(key);
+        try {
+          await receipt.mutateAsync({
+            publisher,
+            revision,
+            apiBase,
+            identityKey: scope?.identityKey,
+            requestScope: scope?.requestScope ?? null,
+          });
+        } finally {
+          inFlight.current.delete(key);
+        }
       }
-    }
+    };
   }, [
     enabled,
     status.data,
@@ -141,35 +142,8 @@ export function useTelemetryNotice(enabled: boolean) {
     scope?.requestScope,
     receipt.mutateAsync,
   ]);
-  useEffect(() => {
-    if (!enabled) return;
-    let frame = 0;
-    const check = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        frame = requestAnimationFrame(() => {
-          void recordShown().catch(() => {});
-        });
-      });
-    };
-    const observer = new MutationObserver(check);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['aria-modal'],
-    });
-    document.addEventListener('visibilitychange', check);
-    document.addEventListener('scroll', check, true);
-    window.addEventListener('resize', check);
-    check();
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      document.removeEventListener('visibilitychange', check);
-      document.removeEventListener('scroll', check, true);
-      window.removeEventListener('resize', check);
-    };
-  }, [enabled, recordShown]);
-  return { element, isError: receipt.isError, recordShown };
+  const recordShown = useCallback(async () => {
+    await prepareShown()?.();
+  }, [prepareShown]);
+  return { element, isError: receipt.isError, prepareShown, recordShown };
 }

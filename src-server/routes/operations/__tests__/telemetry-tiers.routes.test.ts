@@ -190,7 +190,7 @@ test.each([undefined, '1'])(
   },
 );
 
-test('Lite notice receipts reject Off and Full publishers and persist only for effective Lite', async () => {
+test('a current notice can be recorded after Off or Full saves without granting Full consent', async () => {
   const service = new UsageTelemetryService({
     homeDir: makeTempDir('station-notice-tier-'),
     appConfig: {
@@ -217,20 +217,26 @@ test('Lite notice receipts reject Off and Full publishers and persist only for e
         inventoryRevision: status.liteInventoryRevision,
       }),
     });
-  expect((await post()).status).toBe(409);
-  expect((await service.telemetryStatus()).liteNotices).toEqual({});
+  expect((await post()).status).toBe(200);
+  expect(
+    (await service.telemetryStatus()).liteNotices.operator?.inventoryRevision,
+  ).toBe(status.liteInventoryRevision);
   await service.reconfigure({
     defaultModel: '',
     invokeModel: '',
     structureModel: '',
     telemetryTier: { operator: 'full' },
   });
+  expect((await service.disclosure()).acknowledged).toBe(false);
+  expect((await service.telemetryStatus()).publishers.operator.tier).toBe(
+    'lite',
+  );
   await service.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION);
   expect((await service.telemetryStatus()).publishers.operator.tier).toBe(
     'full',
   );
-  expect((await post()).status).toBe(409);
-  expect((await service.telemetryStatus()).liteNotices).toEqual({});
+  expect((await post()).status).toBe(200);
+  expect((await service.disclosure()).acknowledged).toBe(true);
   await service.reconfigure({
     defaultModel: '',
     invokeModel: '',

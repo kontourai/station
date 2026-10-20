@@ -1742,6 +1742,7 @@ function telemetryConsentScreens(): Screen[] {
     (
       [
         'dialog-default',
+        'dialog-mixed',
         'dialog-dnt',
         'dialog-endpoint',
         'dialog-detailed',
@@ -1758,6 +1759,7 @@ function telemetryConsentScreens(): Screen[] {
       const dialogVisible = mode.startsWith('dialog-');
       const dnt = mode.includes('dnt');
       const endpoint =
+        mode === 'dialog-mixed' ||
         mode === 'dialog-endpoint' ||
         mode === 'dialog-detailed' ||
         mode === 'dialog-dnt' ||
@@ -1801,11 +1803,15 @@ function telemetryConsentScreens(): Screen[] {
           expect(typeof statusSnapshot.data.liteInventoryRevision).toBe(
             'string',
           );
+          const choices = {
+            kontour: mode === 'dialog-mixed' ? 'off' : 'lite',
+            operator: 'lite',
+          } as const;
           const publishers = {
             kontour: {
-              tier: dnt ? 'off' : 'lite',
+              tier: dnt ? 'off' : choices.kontour,
               reason: dnt ? 'DNT' : 'user',
-              userChoice: 'lite',
+              userChoice: choices.kontour,
               fullAvailable: false,
               source: 'config',
             },
@@ -1822,10 +1828,7 @@ function telemetryConsentScreens(): Screen[] {
               /\/config\/app(?:\?.*)?$/,
               async (route) => {
                 const body = structuredClone(configSnapshot);
-                body.data.telemetryTier = {
-                  kontour: 'lite',
-                  operator: 'lite',
-                };
+                body.data.telemetryTier = choices;
                 body.data.productTelemetryEndpoint = endpoint
                   ? 'https://counts.example.test/events'
                   : '';
@@ -1921,12 +1924,20 @@ function telemetryConsentScreens(): Screen[] {
               name: 'Usage sharing',
             });
             await expect(dialog).toBeVisible();
-            await expect(
-              dialog.getByRole('radio', {
-                name: 'Anonymous usage counts',
-                exact: true,
-              }),
-            ).toBeChecked();
+            if (mode !== 'dialog-mixed') {
+              await expect(
+                dialog.getByRole('radio', {
+                  name: 'Anonymous usage counts',
+                  exact: true,
+                }),
+              ).toBeChecked();
+              await expect(
+                dialog.getByRole('radio', {
+                  name: 'Anonymous usage counts',
+                  exact: true,
+                }),
+              ).toBeFocused();
+            }
             for (const name of [
               "Don't share",
               'Anonymous usage counts',
@@ -1976,6 +1987,31 @@ function telemetryConsentScreens(): Screen[] {
                 document.documentElement.setAttribute('data-theme', 'light'),
               );
             await assertSharingRowRhythm(dialog);
+            if (mode === 'dialog-mixed') {
+              await expect(
+                dialog.getByText(/current choices differ/),
+              ).toBeVisible();
+              for (const radio of await dialog.getByRole('radio').all())
+                await expect(radio).not.toBeChecked();
+              const first = dialog.getByRole('radio', {
+                name: "Don't share",
+                exact: true,
+              });
+              await expect(first).toBeFocused();
+              await first.press('Enter');
+              for (const radio of await dialog.getByRole('radio').all())
+                await expect(radio).not.toBeChecked();
+              await expect(
+                dialog.getByRole('button', {
+                  name: 'Save choice',
+                  exact: true,
+                }),
+              ).toBeDisabled();
+              await expect(
+                dialog.getByRole('button', { name: 'Not now', exact: true }),
+              ).toBeInViewport();
+              return;
+            }
             for (const name of ['Not now', 'Save choice']) {
               const button = dialog.getByRole('button', {
                 name,

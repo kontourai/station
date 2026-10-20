@@ -686,6 +686,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   };
 
   const saveConfig = async () => {
+    const recordSharingNotice = telemetryNotice.prepareShown();
     if (!isValid || saveInFlightRef.current) return;
     const changed = Object.fromEntries(
       Object.keys({ ...savedConfig, ...config })
@@ -836,6 +837,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   ),
                 );
               }
+              await recordSharingNotice?.().catch(() => {});
             } finally {
               if (telemetryTier) {
                 void invalidate(['telemetry-status']);

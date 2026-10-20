@@ -332,6 +332,9 @@ vi.mock('../hooks/useTelemetryStatus', async (importOriginal) => {
         ? undefined
         : {
             authorEndpoint: telemetryAuthorDestination,
+            liteInventoryRevision: 'settings-counts-revision',
+            liteInventory: { event: { domain: ['station_daily'] } },
+            liteNotices: {},
             publishers: Object.fromEntries(
               ['kontour', 'operator'].map((id) => [
                 id,
@@ -2260,6 +2263,65 @@ describe('settings catalog completeness', () => {
       }),
     );
     expect(persisted).toEqual({ kontour: 'lite', operator: 'off' });
+  });
+
+  test('viewing Privacy records nothing; saving Off records the visible notice only after both choices persist', async () => {
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { kontour: 'lite', operator: 'lite' },
+      },
+      dataUpdatedAt: 1,
+    };
+    const original = vi.mocked(authenticatedFetch).getMockImplementation()!;
+    vi.mocked(authenticatedFetch).mockImplementation(async (...args) =>
+      String(args[0]).endsWith('/lite-notices')
+        ? new Response(JSON.stringify({ success: true }), { status: 200 })
+        : original(...args),
+    );
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({
+        top: 100,
+        bottom: 300,
+        height: 200,
+        left: 0,
+        right: 390,
+        width: 390,
+        x: 0,
+        y: 100,
+        toJSON: () => ({}),
+      });
+    const view = await renderSettings();
+    const notices = () =>
+      vi
+        .mocked(authenticatedFetch)
+        .mock.calls.filter(([url]) => String(url).endsWith('/lite-notices'));
+    try {
+      await act(async () => {
+        await new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        );
+      });
+      expect(notices()).toHaveLength(0);
+      fireEvent.click(screen.getByRole('radio', { name: "Don't share" }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(notices()).toHaveLength(2));
+      expect(updateConfig.mock.calls.map(([patch]) => patch)).toEqual([
+        { telemetryTier: { kontour: 'off' } },
+        { telemetryTier: { operator: 'off' } },
+      ]);
+      const firstNotice = vi
+        .mocked(authenticatedFetch)
+        .mock.calls.findIndex(([url]) => String(url).endsWith('/lite-notices'));
+      expect(updateConfig.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        vi.mocked(authenticatedFetch).mock.invocationCallOrder[firstNotice],
+      );
+    } finally {
+      view.unmount();
+      rect.mockRestore();
+    }
   });
 
   test('saving two deliberate publisher edits retains both choices', async () => {

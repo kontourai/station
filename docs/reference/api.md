@@ -1216,8 +1216,10 @@ preserved. Raising a tier requires the operator or `access:manage`; a standard
 paired device may lower or keep it. Agent-originated requests cannot change
 telemetry choices. `telemetryTier` must be an object
 with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed maps
-return a validation error with 400 before mutation. Full without a current
-publisher disclosure remains effectively Lite. Agents also receive 403 from
+return a validation error with 400 before mutation. A previously saved Full
+preference whose confirmation becomes stale remains effectively Lite. A new
+configured Kontour Full save without its current confirmation returns 400;
+an acknowledgement POST with a stale revision returns 409 instead. Agents also receive 403 from
 `POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
 Handler refusals from `PUT /config/app` log `App config update refused` with a
 stable `reason`, `principalKind`, and `deviceKind`. Telemetry choice refusals
@@ -1230,7 +1232,9 @@ A new Kontour Full preference at the mounted config route requires a current
 Kontour acknowledgement when a build destination is configured. DNT and an
 absent author destination permit a pending saved preference, without granting
 permission to send. A route constructed without that runtime consent capability
-retains its default refusal. `GET /api/usage-telemetry/disclosure` exposes only
+retains its default refusal. On builds without an author destination, status
+reports `fullAvailable: false`; a pending preference cannot send to Kontour and
+there is no author confirmation to review. `GET /api/usage-telemetry/disclosure` exposes only
 `additionalHost` for an additional destination, including an environment-derived
 address. `GET /api/usage-telemetry/disclosure?publisher=kontour` returns the exact
 build destination for its separate, revision-bound acknowledgement.
@@ -1246,7 +1250,10 @@ lowering within 10 minutes, no prior reason for that change, and the shared inli
 and standalone budget of one reason per publisher per UTC day; unavailable feedback
 returns 409.
 `POST /api/usage-telemetry/lite-notices` records publisher and the
-shown inventoryRevision. A stale inventory, DNT, or an effective tier other than Lite returns 409 without recording a receipt. Both writes require `access:manage` and refuse agent
+shown inventoryRevision after an explicit interaction with a visibly presented
+sharing surface. Save persists the preference before recording, so notices may
+also be recorded for Off or Full without enabling sending or granting Full
+consent. Stale inventory and DNT return 409 without recording a receipt. Both writes require `access:manage` and refuse agent
 principals. See the exact feedback enum and notice behavior in the usage reference.
 The [usage reference](usage-telemetry.md) owns the program and deployment limits.
 

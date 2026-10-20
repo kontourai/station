@@ -49,25 +49,42 @@ export function UsageSharingPrompt({
     (state) => state?.reason === 'DNT',
   );
   const notice = useTelemetryNotice(true);
+  const savedChoice = (id: 'kontour' | 'operator') =>
+    settings?.telemetryTier?.[id] ??
+    status.data?.publishers[id]?.userChoice ??
+    (status.data?.publishers[id]?.reason === 'DNT'
+      ? 'lite'
+      : status.data?.publishers[id]?.tier) ??
+    'lite';
+  const kontourChoice = savedChoice('kontour');
+  const additionalChoice = savedChoice('operator');
+  const initialChoice =
+    kontourChoice === additionalChoice ? kontourChoice : undefined;
   const selectionTarget = JSON.stringify([
     apiBase,
     scope?.identityKey,
     data.inventoryRevision,
     data.authorDisclosure?.destination,
     dnt,
+    kontourChoice,
+    additionalChoice,
   ]);
   const [selection, setSelection] = useState<{
     target: string;
     value: TelemetryTier;
   }>();
   const choice =
-    selection?.target === selectionTarget ? selection.value : 'lite';
+    selection?.target === selectionTarget ? selection.value : initialChoice;
   const setChoice = (value: TelemetryTier) =>
     setSelection({ target: selectionTarget, value });
   const client = useQueryClient();
-  const saveRef = useRef<HTMLButtonElement>(null);
+  const choiceRef = useRef<HTMLInputElement>(null);
   const save = useMutation({
-    mutationFn: async (next: TelemetryTier) => {
+    mutationFn: async (action: {
+      next: TelemetryTier;
+      recordNotice: (() => Promise<void>) | undefined;
+    }) => {
+      const { next } = action;
       // Capture one authority for both requests; guarded recovery writes refuse rotation.
       const target = { apiBase, scope };
       const write = async (
@@ -141,7 +158,13 @@ export function UsageSharingPrompt({
           operator: next,
         },
       });
-      return { ...target, dnt };
+      let noticeSaved = true;
+      try {
+        await action.recordNotice?.();
+      } catch {
+        noticeSaved = false;
+      }
+      return { ...target, dnt, noticeSaved };
     },
     onError: () => {
       void client.invalidateQueries({
@@ -149,6 +172,7 @@ export function UsageSharingPrompt({
       });
     },
     onSuccess: async (target) => {
+      if (!target.noticeSaved) return;
       await Promise.all([
         client.invalidateQueries({ queryKey: ['config'] }),
         client.invalidateQueries({ queryKey: ['usage-telemetry-disclosure'] }),
@@ -183,6 +207,7 @@ export function UsageSharingPrompt({
     >
       <UsageSharingChoices
         firstRun
+        initialChoiceRef={choiceRef}
         value={choice}
         onChange={setChoice}
         disabled={save.isPending || !status.data}
@@ -191,6 +216,12 @@ export function UsageSharingPrompt({
         data={data}
         counts={status.data?.liteInventory}
       />
+      {initialChoice === undefined && (
+        <p>
+          Your current choices differ between the two destinations. Choosing an
+          option changes both. Not now keeps your current choices.
+        </p>
+      )}
       {(save.isError || notice.isError) && (
         <PageCallout
           calloutId="usage-sharing-error"
@@ -200,7 +231,9 @@ export function UsageSharingPrompt({
         >
           {save.isError
             ? 'Your sharing choice could not be saved. Try again.'
-            : 'The notice could not be saved. Anonymous counts stay paused until it is saved.'}
+            : save.data?.noticeSaved === false
+              ? 'Your sharing choice was saved, but the notice could not be saved. Anonymous counts stay paused. Try Save choice again.'
+              : 'The notice could not be saved. Anonymous counts stay paused until it is saved.'}
         </PageCallout>
       )}
     </section>
@@ -209,6 +242,10 @@ export function UsageSharingPrompt({
     try {
       await notice.recordShown();
     } finally {
+      if (save.data?.noticeSaved === false) {
+        void client.invalidateQueries({ queryKey: ['config'] });
+        void client.invalidateQueries({ queryKey: ['telemetry-status'] });
+      }
       onClose();
     }
   };
@@ -224,10 +261,12 @@ export function UsageSharingPrompt({
         Not now
       </Button>
       <Button
-        ref={saveRef}
         variant="secondary"
-        onClick={() => save.mutate(choice)}
-        disabled={save.isPending || !status.data}
+        onClick={() => {
+          if (choice !== undefined)
+            save.mutate({ next: choice, recordNotice: notice.prepareShown() });
+        }}
+        disabled={save.isPending || !status.data || choice === undefined}
       >
         Save choice
       </Button>
@@ -244,7 +283,7 @@ export function UsageSharingPrompt({
       size="lg"
       historyMode="none"
       panelClassName="usage-telemetry-disclosure"
-      initialFocusRef={saveRef}
+      initialFocusRef={choiceRef}
       initialFocusPolicy="always"
       footer={actions}
     >

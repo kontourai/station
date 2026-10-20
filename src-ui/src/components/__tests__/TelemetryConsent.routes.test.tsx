@@ -3,8 +3,15 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { Hono } from 'hono';
+import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const build = vi.hoisted(() => ({ endpoint: '' }));
@@ -174,7 +181,10 @@ beforeEach(() => {
   bridge.scope = null;
   build.endpoint = '';
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 function mountChoice(client: QueryClient, advance = vi.fn(), dialog = false) {
   return render(
@@ -322,13 +332,13 @@ test.each([undefined, '1'])(
   },
 );
 
-test('Not now preserves anonymous counts and records only a visibly shown notice for both destinations', async () => {
-  const { client, loader, service } = await publisherFixture();
-  const rect = vi
-    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-    .mockReturnValue({
-      top: 100,
-      bottom: 300,
+test.each(['hidden', 'covered', 'offscreen'] as const)(
+  'dismissal cannot record a notice from an unseen %s surface',
+  async (hidden) => {
+    const { client, loader, service } = await publisherFixture();
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: hidden === 'offscreen' ? -400 : 100,
+      bottom: hidden === 'offscreen' ? -200 : 300,
       height: 200,
       left: 0,
       right: 390,
@@ -337,59 +347,26 @@ test('Not now preserves anonymous counts and records only a visibly shown notice
       y: 100,
       toJSON: () => ({}),
     });
-  const visibility = vi
-    .spyOn(document, 'visibilityState', 'get')
-    .mockReturnValue('hidden');
-  const cover = document.createElement('div');
-  cover.setAttribute('aria-modal', 'true');
-  document.body.append(cover);
-  const view = mountChoice(client, vi.fn(), true);
-  try {
-    await screen.findByRole('dialog', { name: 'Usage sharing' });
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve)),
-    );
-    expect((await service.telemetryStatus()).liteNotices).toEqual({});
-    cover.remove();
-    document.dispatchEvent(new Event('visibilitychange'));
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve)),
-    );
-    expect((await service.telemetryStatus()).liteNotices).toEqual({});
-    document.body.append(cover);
-    visibility.mockReturnValue('visible');
-    document.dispatchEvent(new Event('visibilitychange'));
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve)),
-    );
-    expect((await service.telemetryStatus()).liteNotices).toEqual({});
-    cover.remove();
-    await waitFor(async () =>
-      expect(
-        Object.keys((await service.telemetryStatus()).liteNotices).sort(),
-      ).toEqual(['kontour', 'operator']),
-    );
-    expect(screen.getByRole('dialog')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect((await loader.loadAppConfig()).telemetryTier).toEqual({
-      kontour: 'lite',
-      operator: 'lite',
-    });
-    expect((await service.disclosure()).acknowledged).toBe(false);
-    view.unmount();
-    resetUsageTelemetryDisclosureDismissal();
-    const remount = mountChoice(client, vi.fn(), true);
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    remount.unmount();
-  } finally {
-    cover.remove();
-    view.unmount();
-    client.clear();
-    loader.dispose();
-    rect.mockRestore();
-  }
-});
+    if (hidden === 'hidden')
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    const cover = document.createElement('div');
+    cover.setAttribute('aria-modal', 'true');
+    if (hidden === 'covered') document.body.append(cover);
+    const view = mountChoice(client, vi.fn(), true);
+    try {
+      await screen.findByRole('dialog');
+      fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect((await service.telemetryStatus()).liteNotices).toEqual({});
+      expect(calls('/lite-notices')).toHaveLength(0);
+    } finally {
+      cover.remove();
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);
 
 test.each([false, true])(
   'Detailed acknowledges both configured destinations before saving; author refusal %s',
@@ -404,7 +381,10 @@ test.each([false, true])(
         body: JSON.stringify({ telemetryTier: { kontour: 'full' } }),
       },
     );
-    expect(refusedBeforeReview.ok).toBe(false);
+    expect(refusedBeforeReview.status).toBe(400);
+    expect((await refusedBeforeReview.json()).error).toBe(
+      "The current confirmation for sharing detailed usage with Kontour is missing. Review what's included and save your choice.",
+    );
     expect((await loader.loadAppConfig()).telemetryTier?.kontour).toBe('lite');
     const request = bridge.request.getMockImplementation()!;
     if (refuse)
@@ -435,6 +415,7 @@ test.each([false, true])(
           operator: 'lite',
         });
         expect(calls('/config/app')).toHaveLength(0);
+        expect(calls('/lite-notices')).toHaveLength(0);
       } else {
         await waitFor(() => expect(advance).toHaveBeenCalledOnce());
         const acknowledgements = calls('/acknowledgements');
@@ -525,6 +506,7 @@ test('a stale persisted notice requires visible presentation of the current revi
   const view = mountChoice(client, vi.fn(), true);
   try {
     await screen.findByRole('dialog', { name: 'Usage sharing' });
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     await waitFor(async () =>
       expect(
         (await service.telemetryStatus()).liteNotices.operator
@@ -682,37 +664,23 @@ test('an environment-configured additional destination discloses only its host, 
   }
 });
 
-test('first-run and main Settings use plain language; Advanced controls keep independent saved choices', async () => {
+test('Advanced controls keep independent saved choices through the real config route', async () => {
   const { client, loader, service } = await publisherFixture();
-  const view = mountChoice(client, vi.fn(), true);
+  const status = await service.telemetryStatus();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <StationConfigSection
+        section="telemetry"
+        containerScope="station"
+        config={bridge.config}
+        telemetryPublishers={status.publishers}
+        onChange={(config) => {
+          void bridge.save({ telemetryTier: config.telemetryTier });
+        }}
+      />
+    </QueryClientProvider>,
+  );
   try {
-    await screen.findByRole('dialog');
-    fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
-    expect(screen.getByRole('dialog').textContent).not.toMatch(
-      /\b(Lite|Full|publisher|operator|inventory|receipt)\b/i,
-    );
-    expect(screen.getByText('Also shared with: receiver.test')).toBeTruthy();
-    view.unmount();
-    const status = await service.telemetryStatus();
-    const settings = render(
-      <QueryClientProvider client={client}>
-        <StationConfigSection
-          section="telemetry"
-          containerScope="station"
-          config={bridge.config}
-          telemetryPublishers={status.publishers}
-          onChange={(config) => {
-            void bridge.save({ telemetryTier: config.telemetryTier });
-          }}
-        />
-      </QueryClientProvider>,
-    );
-    const main = screen.getByLabelText('Usage sharing choices');
-    expect(main.textContent).not.toMatch(
-      /\b(Lite|Full|publisher|operator|inventory|receipt)\b/i,
-    );
-    fireEvent.click(screen.getByText('Advanced', { exact: true }));
-    // jsdom does not implement the details activation behavior.
     const details = screen.getByText('Advanced', { exact: true })
       .parentElement!;
     details.setAttribute('open', '');
@@ -727,7 +695,6 @@ test('first-run and main Settings use plain language; Advanced controls keep ind
         operator: 'lite',
       }),
     );
-    settings.unmount();
   } finally {
     view.unmount();
     client.clear();
@@ -861,5 +828,318 @@ test('outbox uses recovery scope and tolerates an unsent null payload', async ()
     loader.dispose();
     bridge.scope = null;
     build.endpoint = '';
+  }
+});
+
+test.each([undefined, '1'])(
+  'reopened mixed choices remain unchanged until a radio is selected (DNT %s)',
+  async (dnt) => {
+    const choices = { kontour: 'off', operator: 'lite' } as const;
+    const { client, loader } = await publisherFixture(dnt, undefined, {
+      choices,
+    });
+    const view = mountChoice(client, vi.fn(), true);
+    try {
+      const first = await screen.findByRole('radio', {
+        name: SHARING_LABELS.off,
+      });
+      await waitFor(() => expect(first).toHaveProperty('disabled', false));
+      expect(
+        screen
+          .getAllByRole('radio')
+          .filter((radio) => (radio as HTMLInputElement).checked),
+      ).toHaveLength(0);
+      await waitFor(() => expect(document.activeElement).toBe(first));
+      expect(screen.getByText(/current choices differ/i)).toBeTruthy();
+      const save = screen.getByRole('button', { name: 'Save choice' });
+      expect(save).toHaveProperty('disabled', true);
+      bridge.request.mockClear();
+      fireEvent.keyDown(first, { key: 'Enter', code: 'Enter' });
+      fireEvent.click(save);
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+      expect(calls('/config/app')).toHaveLength(0);
+      expect((await loader.loadAppConfig()).telemetryTier).toEqual(choices);
+    } finally {
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);
+
+test('reopened Detailed with stale confirmation keeps Detailed selected and renews it on Save', async () => {
+  const { client, loader, service } = await publisherFixture(
+    undefined,
+    undefined,
+    { choices: { kontour: 'full', operator: 'full' } },
+  );
+  const view = mountChoice(client, vi.fn(), true);
+  try {
+    expect((await service.disclosure()).acknowledged).toBe(false);
+    const detailed = await screen.findByRole('radio', {
+      name: SHARING_LABELS.full,
+    });
+    await waitFor(() => expect(detailed).toHaveProperty('disabled', false));
+    expect(detailed).toHaveProperty('checked', true);
+    await waitFor(() => expect(document.activeElement).toBe(detailed));
+    fireEvent.keyDown(detailed, { key: 'Enter', code: 'Enter' });
+    expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+      kontour: 'full',
+      operator: 'full',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+    await waitFor(async () =>
+      expect((await service.disclosure()).acknowledged).toBe(true),
+    );
+    await waitFor(() => expect(client.isMutating()).toBe(0));
+    expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+      kontour: 'full',
+      operator: 'full',
+    });
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+  }
+});
+
+test('fresh choices preselect Anonymous and initially focus that radio', async () => {
+  const { client, loader } = await publisherFixture(undefined, undefined, {
+    choices: {},
+  });
+  const view = mountChoice(client, vi.fn(), true);
+  try {
+    const anonymous = await screen.findByRole('radio', {
+      name: SHARING_LABELS.lite,
+    });
+    await waitFor(() => expect(anonymous).toHaveProperty('disabled', false));
+    expect(anonymous).toHaveProperty('checked', true);
+    await waitFor(() => expect(document.activeElement).toBe(anonymous));
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+  }
+});
+
+test.each(['off', 'dismiss'] as const)(
+  'reading a visible dialog past the daily flush does not send; interaction %s',
+  async (action) => {
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setInterval',
+        'clearInterval',
+        'requestAnimationFrame',
+        'cancelAnimationFrame',
+      ],
+    });
+    vi.setSystemTime('2026-10-12T10:00:00Z');
+    const { client, loader, service, sent } = await publisherFixture();
+    await service.track('client_connected', {
+      surface: 'web',
+      device_class: 'other',
+      version: 'custom',
+    });
+    vi.setSystemTime('2026-10-13T10:00:00Z');
+    await service.track('client_connected', {
+      surface: 'web',
+      device_class: 'other',
+      version: 'custom',
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      bottom: 300,
+      height: 200,
+      left: 0,
+      right: 390,
+      width: 390,
+      x: 0,
+      y: 100,
+      toJSON: () => ({}),
+    });
+    const view = mountChoice(client, vi.fn(), true);
+    let resumeChoice: (() => void) | undefined;
+    try {
+      await screen.findByRole('dialog');
+      await vi.waitFor(() => expect(client.isFetching()).toBe(0));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(40);
+      });
+      vi.setSystemTime('2026-10-13T10:00:00Z');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(12_000);
+      });
+      expect((await service.telemetryStatus()).liteNotices).toEqual({});
+      expect(sent).toHaveLength(0);
+      if (action === 'off') {
+        const gate = new Promise<void>((resolve) => {
+          resumeChoice = resolve;
+        });
+        const request = bridge.request.getMockImplementation()!;
+        bridge.request.mockImplementation(
+          async (url: string, init?: RequestInit) => {
+            if (url.endsWith('/config/app') && init?.method === 'PUT')
+              await gate;
+            return request(url, init);
+          },
+        );
+        fireEvent.click(
+          screen.getByRole('radio', { name: SHARING_LABELS.off }),
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+        await vi.waitFor(() =>
+          expect(
+            calls('/config/app').filter(([, init]) => init?.method === 'PUT'),
+          ).toHaveLength(1),
+        );
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(12_000);
+        });
+        expect((await service.telemetryStatus()).liteNotices).toEqual({});
+        expect(sent).toHaveLength(0);
+        resumeChoice!();
+      } else fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(
+        Object.keys((await service.telemetryStatus()).liteNotices).sort(),
+      ).toEqual(['kontour', 'operator']);
+      await service.flushDaily();
+      expect(sent).toHaveLength(action === 'off' ? 0 : 1);
+      expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+        kontour: action === 'off' ? 'off' : 'lite',
+        operator: action === 'off' ? 'off' : 'lite',
+      });
+    } finally {
+      resumeChoice?.();
+      view.unmount();
+      client.clear();
+      loader.dispose();
+      await service.shutdown();
+      vi.useRealTimers();
+    }
+  },
+);
+
+test.each([
+  [false, false],
+  [true, false],
+  [false, true],
+  [true, true],
+])(
+  'Detailed copy remains plain in first-run and main Settings with real fields (DNT %s, mixed %s)',
+  async (dnt, mixed) => {
+    const choices = mixed
+      ? ({ kontour: 'off', operator: 'lite' } as const)
+      : ({ kontour: 'lite', operator: 'lite' } as const);
+    const { client, loader, service } = await publisherFixture(
+      dnt ? '1' : undefined,
+      undefined,
+      { choices },
+    );
+    const view = mountChoice(client, vi.fn(), true);
+    try {
+      await screen.findByRole('dialog');
+      fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
+      expect(
+        screen.getByRole('region', { name: "What's included" }).textContent,
+      ).toContain('retry code');
+      expect(screen.getByRole('dialog').textContent).not.toMatch(
+        /\b(Lite|Full|publisher|operator|inventory|receipt)\b/i,
+      );
+      view.unmount();
+      const status = await service.telemetryStatus();
+      const disclosure = await service.disclosure();
+      function CopySettings() {
+        const [draft, setDraft] = useState(bridge.config);
+        return (
+          <StationConfigSection
+            section="telemetry"
+            containerScope="station"
+            config={draft}
+            telemetryPublishers={status.publishers}
+            telemetryDisclosure={disclosure}
+            telemetryCounts={status.liteInventory}
+            onChange={setDraft}
+          />
+        );
+      }
+      const settings = render(
+        <QueryClientProvider client={client}>
+          <CopySettings />
+        </QueryClientProvider>,
+      );
+      try {
+        const main = screen.getByLabelText('Usage sharing choices');
+        if (dnt)
+          expect(
+            screen.getByRole('region', { name: 'Do Not Track' }),
+          ).toBeTruthy();
+        if (mixed) expect(main.textContent).toContain('Custom choices');
+        expect(main.textContent).not.toMatch(
+          /\b(Lite|Full|publisher|operator|inventory|receipt)\b/i,
+        );
+        fireEvent.click(
+          screen.getByRole('radio', { name: SHARING_LABELS.full }),
+        );
+        expect(
+          screen.getByRole('region', { name: "What's included" }).textContent,
+        ).toContain('retry code');
+        expect(main.textContent).not.toMatch(
+          /\b(Lite|Full|publisher|operator|inventory|receipt)\b/i,
+        );
+      } finally {
+        settings.unmount();
+      }
+    } finally {
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);
+
+test('notice failure after Save preserves the preference and reports only the notice failure', async () => {
+  const { client, loader, service, sent } = await publisherFixture();
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    top: 100,
+    bottom: 300,
+    height: 200,
+    left: 0,
+    right: 390,
+    width: 390,
+    x: 0,
+    y: 100,
+    toJSON: () => ({}),
+  });
+  const request = bridge.request.getMockImplementation()!;
+  bridge.request.mockImplementation((url: string, init?: RequestInit) =>
+    url.endsWith('/lite-notices')
+      ? Promise.resolve(new Response(null, { status: 503 }))
+      : request(url, init),
+  );
+  const view = mountChoice(client, vi.fn(), true);
+  try {
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.off }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+    await screen.findByText(
+      /Your sharing choice was saved, but the notice could not be saved/,
+    );
+    expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+      kontour: 'off',
+      operator: 'off',
+    });
+    expect((await service.telemetryStatus()).liteNotices).toEqual({});
+    await service.flushDaily();
+    expect(sent).toHaveLength(0);
+    expect(
+      screen.queryByText('Your sharing choice could not be saved. Try again.'),
+    ).toBeNull();
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+    await service.shutdown();
   }
 });

@@ -49,3 +49,7 @@
 .usage-telemetry-disclosure__included-content li {
   margin-block: var(--k-space-2);
 }
+
+.usage-telemetry-disclosure__included-content ul {
+  padding-inline-start: var(--k-space-4);
+}

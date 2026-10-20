@@ -130,11 +130,6 @@ export function createUsageTelemetryDisclosureRoutes(
         { success: false, error: { code: 'telemetry_notice_DNT' } },
         409,
       );
-    if (status.publishers[body.publisher].tier !== 'lite')
-      return c.json(
-        { success: false, error: { code: 'telemetry_notice_not_lite' } },
-        409,
-      );
     await service.recordLiteNotice(body.publisher, body.inventoryRevision);
     return c.json({ success: true });
   });

@@ -314,7 +314,10 @@ One first-run dialog presents Don't share, Anonymous usage counts (the default),
 and Detailed usage to help improve Station. It covers Kontour and a configured
 additional endpoint together; plugin destinations remain outside first-run.
 Closing or Not now keeps the current choice and records the shown notice, so
-anonymous counts remain suppressed until the notice was actually presented.
+anonymous counts remain suppressed until a visibly presented prompt is explicitly
+acted on. Merely viewing it or Privacy & sharing records nothing. Save persists
+the choice first, then records the notice; Off stays blocked throughout. Printed
+CLI/headless notices retain their existing shown semantics.
 DNT explains that nothing is shared and that the choice applies if it is disabled;
 existing notice-write and acknowledgement restrictions still apply.
 

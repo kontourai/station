@@ -3,8 +3,12 @@
 Station product telemetry is server-side only and sends no prompts, paths, repository names, hostnames, branches, account identities, or other free text. It does not read third-party vendor configuration or credential homes.
 
 First run asks one usage-sharing question, with three equally presented choices.
-Anonymous usage counts is preselected. Settings → Privacy & sharing uses the
-same labels:
+A fresh install preselects Anonymous usage counts. Reopened prompts use the
+existing saved choices, including a Detailed preference awaiting renewed
+confirmation. If the two destinations differ, no option is selected and Save
+is disabled until an option is chosen; Not now keeps the separate choices.
+Initial keyboard focus goes to the selected radio, or the first radio when
+none is selected. Settings → Privacy & sharing uses the same labels:
 
 | Display label | Config/API/CLI value | Meaning |
 | --- | --- | --- |
@@ -38,9 +42,18 @@ connection details and local history live in the collapsed **Advanced** section.
 Advanced retains independent choices and the same three option labels. Importing a `full` setting does not acknowledge unseen details. Settings requires an explicit Detailed choice bound to the displayed revision before it creates that acknowledgement; a changed revision requires choosing Detailed again.
 
 **Not now**, close, Escape and backdrop dismissal preserve the existing setting
-(the new-install default is `lite`). The single choice surface records a notice
-only while actually visible. Recording the notice does not close it before the
-person can choose. A status fetch alone never records presentation. A current
+(the new-install default is `lite`). Merely displaying the dialog, even past
+its ten-second send interval, records nothing and does not enable daily counts.
+A notice is recorded only after an interaction with the visibly presented
+surface: Save choice, Not now, close, Escape or backdrop dismissal. Save first
+persists the chosen preference, then records the displayed notice revision;
+saving Don't share therefore cannot temporarily enable a count. A failed choice
+save records no notice. A failed notice write leaves the saved preference intact,
+reports that separate failure and keeps counts paused. Viewing Privacy & sharing
+also records nothing; its Save action records a notice only for its visibly
+presented sharing section. Hidden or covered surfaces cannot supply that evidence.
+DNT still refuses notice writes. CLI/headless starts are unchanged: printing
+the notice counts as showing it. A status fetch alone never records presentation. A current
 notice prevents another prompt on remount; a changed notice revision prompts
 again. Off remains available in Settings. Resetting Station settings preserves
 sharing choices.
