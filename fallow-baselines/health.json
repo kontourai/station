@@ -2124,7 +2124,10 @@
       }
     },
     "packages/sdk/src/session-inventory.ts": {
-      "crap_high": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
         "count": 1
       }
     },
@@ -3938,6 +3941,14 @@
         "count": 1
       }
     },
+    "scripts/fallow-ceiling.mjs": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
     "scripts/fallow-review-status.mjs": {
       "complexity_moderate": {
         "count": 1
@@ -3997,6 +4008,11 @@
       },
       "crap_moderate": {
         "count": 1
+      }
+    },
+    "scripts/hygiene-report.mjs": {
+      "crap_moderate": {
+        "count": 2
       }
     },
     "scripts/install-playwright-browsers.mjs": {
@@ -4371,6 +4387,39 @@
     "scripts/lib/github-merged-issue-facts.mjs": {
       "complexity_moderate": {
         "count": 1
+      }
+    },
+    "scripts/lib/hygiene/checks.mjs": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 6
+      }
+    },
+    "scripts/lib/hygiene/github.mjs": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "scripts/lib/hygiene/source-text.mjs": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
       }
     },
     "scripts/lib/installed-remediation-graph.mjs": {
@@ -5140,20 +5189,6 @@
         "count": 5
       }
     },
-    "scripts/proof-phase1-no-aws-startup.mjs": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 2
-      },
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 2
-      }
-    },
     "scripts/proof-repo-guardrails.mjs": {
       "crap_high": {
         "count": 1
@@ -5388,7 +5423,7 @@
         "count": 4
       },
       "complexity_moderate": {
-        "count": 1
+        "count": 2
       },
       "crap_critical": {
         "count": 4
@@ -9875,16 +9910,13 @@
     },
     "src-server/services/evidence/task-answer-support-module.ts": {
       "complexity_critical": {
-        "count": 2
-      },
-      "complexity_high": {
-        "count": 1
+        "count": 3
       },
       "crap_critical": {
-        "count": 2
+        "count": 3
       },
       "crap_high": {
-        "count": 3
+        "count": 2
       },
       "crap_moderate": {
         "count": 1
@@ -14855,11 +14887,6 @@
         "count": 1
       }
     },
-    "src-ui/src/components/modals/project-form-utils.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "src-ui/src/components/modals/useNewChatSetupReturn.ts": {
       "crap_moderate": {
         "count": 1
@@ -17154,11 +17181,6 @@
         "count": 1
       }
     },
-    "src-ui/src/views/connections-hub/StationAddressDialog.tsx": {
-      "crap_high": {
-        "count": 1
-      }
-    },
     "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx": {
       "complexity_critical": {
         "count": 1
@@ -18366,11 +18388,6 @@
         "count": 1
       }
     },
-    "tests/helpers/mobile-chat-contracts.ts": {
-      "crap_high": {
-        "count": 1
-      }
-    },
     "tests/helpers/orchestration.ts": {
       "complexity_critical": {
         "count": 1
@@ -18771,6 +18788,7 @@
     "src-ui/src/components/icons/BrandIcon.tsx:complexity",
     "packages/connect/src/core/nativeConnectionShared.ts:dead code",
     "src-server/domain/telemetry-bootstrap-config.ts:complexity",
+    "scripts/build-evidence-archive.mjs:dead code",
     "scripts/plugin-identity-enumeration-scan.mjs:complexity",
     "src-server/services/infra/server-log-reader.ts:complexity",
     "packages/shared/src/skill-experience-values.ts:high impact",
@@ -18782,9 +18800,9 @@
     "src-ui/src/components/modals/NewChatModal.tsx:high impact",
     "packages/shared/src/notification-envelope.ts:high impact",
     "src-server/services/orchestration/bounded-json.ts:high impact",
+    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx:complexity",
     "src-ui/src/lib/newChatIntent.ts:high impact",
     "packages/shared/src/release-manifest.mjs:high impact",
-    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx:complexity",
     "tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts:complexity",
     "src-ui/src/hooks/useChatDockActions.ts:complexity",
     "scripts/lib/learning-source-reader.mjs:high impact",
@@ -18815,48 +18833,50 @@
     "src-shared/foreground-work-journal.ts:dead code",
     "src-ui/src/components/chat/transcript-child-work.ts:high impact",
     "src-ui/src/hooks/useConnectedServerUpdateContext.ts:complexity",
-    "packages/sdk/src/session-inventory.ts:high impact",
     "src-server/runtime/routes/runtime-routes.ts:complexity",
     "src-server/domain/revision-bound-evidence.ts:dead code",
     "src-ui/src/views/home/home-view-model.ts:complexity",
-    "src-ui/src/components/chat/MessageBubble.tsx:complexity",
+    "packages/sdk/src/session-inventory.ts:high impact",
     "src-ui/src/hooks/useNewChatSelectionModel.ts:complexity",
     "src-ui/src/components/chat-dock/ChatDock.tsx:circular dependency",
-    "src-server/tools/station-control-delegation.ts:complexity",
     "packages/telemetry-broker/src/client-address.ts:high impact",
+    "scripts/lib/free-ports.mjs:high impact",
     "src-ui/src/utils/answer-quotes.ts:high impact",
     "src-ui/src/views/IntegrationsView.tsx:complexity",
     "src-server/services/orchestration/orchestration-session-state.ts:complexity",
+    "src-server/tools/station-control-delegation.ts:complexity",
     "src-ui/src/components/UsageTelemetryDisclosure.tsx:complexity",
+    "src-ui/src/components/chat/MessageBubble.tsx:complexity",
     "tests/tauri-shell/native-project-acceptance-webview.ts:dead code",
     "src-ui/src/hooks/useChatInput.ts:complexity",
     "scripts/migrate-review-ledger.mjs:complexity",
     "src-ui/src/hooks/orchestration/useSessionEventWindow.ts:complexity",
     "src-server/services/plugins/plugin-install-transaction.ts:complexity",
-    "src-ui/src/components/chat-dock/ChatDockBody.tsx:complexity",
     "src-server/providers/adapters/codex-adapter.ts:complexity",
     "src-server/services/orchestration/project-task-room-runtime.ts:complexity",
     "src-server/services/ssh/device-pairing-service.ts:complexity",
+    "src-ui/src/components/chat-dock/ChatDockBody.tsx:complexity",
     "src-ui/src/components/chat/ChatMessageList.tsx:complexity",
     "src-ui/src/components/chat-dock/ChatDockHeader.tsx:complexity",
     "src-server/services/plugins/plugin-installation-service.ts:complexity",
     "src-server/runtime/mcp/mcp-manager.ts:complexity",
-    "src-ui/src/components/chat/ChatInputArea.tsx:complexity",
     "src-ui/src/components/notifications/NotificationHistory.tsx:complexity",
+    "src-ui/src/components/chat/ChatInputArea.tsx:complexity",
     "src-ui/src/components/SplitPaneLayout.tsx:complexity",
     "src-server/routes/orchestration/orchestration.ts:complexity",
-    "src-ui/src/components/chat/StreamingMessage.tsx:complexity",
     "src-ui/src/views/SessionsView.tsx:complexity",
     "src-ui/src/components/chat-start/StartComposer.tsx:complexity",
-    "packages/sdk/src/conversation-open.ts:high impact",
     "src-server/runtime/bootstrap/station-runtime.ts:complexity",
     "src-server/services/plugins/mcp-service.ts:complexity",
+    "src-ui/src/components/chat/StreamingMessage.tsx:complexity",
     "packages/cli/src/commands/lifecycle.ts:complexity",
     "packages/cli/src/commands/profile-store.ts:complexity",
     "src-server/services/projects/task-graph-service.ts:complexity",
+    "packages/sdk/src/conversation-open.ts:high impact",
     "packages/telemetry-broker/src/app.ts:high impact",
     "scripts/lib/review-binding.mjs:high impact",
     "src-ui/src/components/chat-dock/conversationOpenController.ts:complexity",
+    "scripts/lib/release-sboms.mjs:high impact",
     "src-server/services/scheduling/scheduler-ledger.ts:complexity",
     "src-ui/src/contexts/active-chats-state.ts:complexity",
     "src-server/services/orchestration/session-transcript-reads.ts:complexity",
@@ -18872,7 +18892,6 @@
     "src-server/runtime/conversation/native-memory-history.ts:high impact",
     "src-ui/src/views/ScheduleView.tsx:complexity",
     "src-ui/src/views/project-settings/ProjectAgentsPanel.tsx:complexity",
-    "scripts/lib/release-sboms.mjs:high impact",
     "src-server/providers/adapters/claude-adapter.ts:complexity",
     "src-ui/src/components/chat/TaskShapingComposer.tsx:complexity",
     "src-ui/src/contexts/work-observation.ts:high impact",
@@ -18931,7 +18950,6 @@
     "src-ui/src/components/search/WorkspaceSearchPalette.tsx:complexity",
     "src-server/routes/orchestration/tasks.ts:complexity",
     "src-ui/src/views/home/work-facts.ts:complexity",
-    "packages/shared/src/runtime-event-projection.ts:complexity",
     "src-ui/src/workspace-panes/LayoutWorkspacePane.tsx:complexity",
     "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx:high impact",
     "packages/sdk/src/hooks/context.ts:high impact",
@@ -18939,8 +18957,10 @@
     "src-ui/src/components/chat-dock/ImportedConversationPane.tsx:complexity",
     "src-ui/src/platform/native/NativeRelayLinkReview.tsx:complexity",
     "packages/sdk/src/client/http.ts:complexity",
+    "packages/shared/src/runtime-event-projection.ts:complexity",
     "src-server/services/orchestration/project-task-room-history.ts:complexity",
     "src-ui/src/contexts/background-tasks-store.ts:complexity",
+    "scripts/lib/documentation-freshness.mjs:complexity",
     "src-server/services/secrets/secret-binding-administration.ts:complexity",
     "src-ui/src/hooks/useSTT.ts:high impact",
     "packages/sdk/src/client/session-outputs.ts:high impact",
@@ -18961,7 +18981,6 @@
     "scripts/build-learning-guide.mjs:complexity",
     "scripts/lib/pnpm-dependency-graph.mjs:high impact",
     "packages/connect/src/react/ConnectionManagerModalContent.tsx:complexity",
-    "scripts/lib/documentation-freshness.mjs:complexity",
     "src-server/services/plugins/package-mcp-admission.ts:high impact",
     "src-ui/src/hooks/useActiveProject.ts:high impact",
     "src-server/services/connections/virtual-application.ts:complexity",
@@ -18984,9 +19003,10 @@
     "packages/sdk/src/client/task-tool-results.ts:high impact",
     "src-ui/src/utils/notifications.ts:high impact",
     "src-ui/src/views/sessions/run-groups.ts:high impact",
-    "src-ui/src/views/plugin-management/usePluginManagementViewModel.ts:complexity",
     "packages/shared/src/input-request.ts:high impact",
+    "scripts/actionlint-gate.mjs:high impact",
     "src-server/domain/shared-working-state.ts:complexity",
+    "src-ui/src/views/plugin-management/usePluginManagementViewModel.ts:complexity",
     "packages/connect/src/core/connectionProfile.ts:high impact",
     "src-ui/src/views/connections-hub/ComputersSection.tsx:complexity",
     "src-ui/src/views/developer/SystemTab.tsx:complexity",
@@ -19015,9 +19035,7 @@
     "scripts/qualification-health.mjs:complexity",
     "scripts/release-container-sbom-source.mjs:high impact",
     "src-server/analytics/usage-export-reader.ts:high impact",
-    "src-server/services/evidence/reviewed-source-basis-resolver.ts:complexity",
     "src-ui/src/components/home/StarterInspectionCards.tsx:complexity",
-    "scripts/actionlint-gate.mjs:high impact",
     "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx:complexity",
     "packages/contracts/src/workspace-pane-host.ts:complexity",
     "src-server/services/plugins/plugin-public-server.ts:complexity",
@@ -19030,8 +19048,10 @@
     "src-server/providers/adapters/claude-adapter-events.ts:complexity",
     "packages/cli/src/commands/triage.ts:complexity",
     "src-server/runtime/agents/pre-tool-policy.ts:complexity",
+    "src-server/services/evidence/reviewed-source-basis-resolver.ts:complexity",
     "src-ui/src/contexts/persisted-chat-shape.ts:untested risk",
     "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx:complexity",
+    "scripts/lib/review-history.mjs:high impact",
     "src-ui/src/components/chat-dock/ConversationContextResetDialog.tsx:complexity",
     "src-ui/src/components/usage-stats/StationUsagePanel.tsx:complexity",
     "src-ui/src/hooks/orchestration/replay/observe.ts:high impact",
@@ -19057,7 +19077,6 @@
     "src-server/domain/migrations/003-orchestration-events.ts:complexity",
     "scripts/test-fixture-policy.mjs:complexity",
     "scripts/lib/dependency-patch-binding.mjs:complexity",
-    "scripts/lib/review-history.mjs:high impact",
     "src-ui/src/components/attention/RequestInspectionDialog.tsx:complexity",
     "src-ui/src/components/chat-dock/UsageLimitBanner.tsx:complexity",
     "src-ui/src/platform/native/deliveryFeed.ts:complexity",
@@ -19076,6 +19095,7 @@
     "src-server/runtime/frameworks/strands-message-sync.ts:high impact",
     "src-server/services/search/transcript-search-protocol.ts:high impact",
     "src-ui/src/components/chat/transcriptProjection.ts:high impact",
+    "src-ui/src/components/chat-dock/SessionInventoryCompact.tsx:complexity",
     "src-ui/src/components/usage-stats/UsageRollupPanel.tsx:complexity",
     "packages/contracts/src/workspace-pane.ts:complexity",
     "src-ui/src/components/PathAutocomplete.tsx:complexity",
@@ -19091,9 +19111,9 @@
     "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx:complexity",
     "src-ui/src/components/ResponsiveDialogSurface.tsx:complexity",
     "packages/shared/src/request-settlement.ts:complexity",
-    "src-ui/src/platform/native/publicHandshakeTransport.ts:high impact",
     "packages/sdk/src/client/unified-search.ts:untested risk",
     "src-server/services/session-summary/session-summary-store.ts:untested risk",
+    "src-ui/src/platform/native/publicHandshakeTransport.ts:high impact",
     "scripts/lib/verification-reporter.mjs:complexity",
     "packages/cli/src/commands/lifecycle-doctor.ts:complexity",
     "src-ui/src/live-surface/LiveSurfaceCanvas.tsx:complexity",
@@ -19101,20 +19121,20 @@
     "src-server/services/projects/task-room-work-module.ts:high impact",
     "src-ui/src/components/session-detail/SessionTranscript.tsx:complexity",
     "scripts/pr-ci-supersession.mjs:untested risk",
-    "src-ui/src/components/action-operations/ActionOperationsSection.tsx:complexity",
     "src-ui/src/components/plugins/framePaneHost.tsx:complexity",
     "src-server/services/devices/device-tools.ts:complexity",
     "src-server/services/projects/git-read-repository.ts:complexity",
+    "src-server/services/projects/task-basis-module.ts:complexity",
     "src-ui/src/components/coding-layout/PullRequestsPanel.tsx:complexity",
     "src-ui/src/contexts/PreviewContext.tsx:circular dependency",
     "src-ui/src/components/coding-layout/DiffPanel.tsx:complexity",
+    "src-ui/src/components/action-operations/ActionOperationsSection.tsx:complexity",
     "src-ui/src/views/settings/AgentActivitySetting.tsx:complexity",
-    "src-ui/src/views/settings/LocalAccountsSection.tsx:complexity",
     "deploy/push-gateway/src/send-request.ts:complexity",
     "packages/sdk/src/device-code-login.ts:high impact",
-    "src-ui/src/components/chat-dock/SessionInventoryCompact.tsx:complexity",
     "src-ui/src/components/chat-dock/sessionInventoryLiveBinding.ts:high impact",
     "src-ui/src/components/status/chatStatus.ts:complexity",
+    "src-ui/src/views/settings/LocalAccountsSection.tsx:complexity",
     "src-server/services/inference/fleet-candidate-service.ts:dead code",
     "src-ui/src/components/scheduler/JobFormModal.tsx:complexity",
     "packages/shared/src/runtime-path-resolver.ts:complexity",
@@ -19143,10 +19163,10 @@
     "packages/contracts/src/child-work.ts:complexity",
     "src-ui/src/components/OnboardingGate.tsx:complexity",
     "src-ui/src/workspace-panes/FilePreviewPane.tsx:complexity",
-    "src-server/services/projects/task-basis-module.ts:complexity",
     "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx:complexity",
     "src-ui/src/views/home/useHomeWorkLanes.ts:complexity",
     "packages/shared/src/usage-rollup.ts:high impact",
+    "scripts/lockfile-sync-gate.mjs:complexity",
     "src-server/providers/adapters/codex-approval-delivery.ts:high impact",
     "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx:complexity",
     "packages/connect/src/core/nativeApplicationTransport.ts:complexity",
@@ -19184,7 +19204,6 @@
     "src-server/routes/system/config.ts:complexity",
     "src-server/runtime/plugins/plugin-operational-event-subscriptions.ts:complexity",
     "src-server/security/confinement/seatbelt.ts:complexity",
-    "scripts/run-verification.mjs:high impact",
     "src-server/services/orchestration/session-outputs-module.ts:complexity",
     "src-ui/src/components/notifications/NotificationContainer.tsx:complexity",
     "scripts/builder-delivery-viewer-import-gate.mjs:complexity",
@@ -19195,17 +19214,16 @@
     "src-server/services/browser/ip-address.ts:high impact",
     "src-server/services/search/search-read-refusal.ts:complexity",
     "src-ui/src/utils/sessionDiagnosticsLog.ts:untested risk",
+    "scripts/run-verification.mjs:high impact",
     "src-ui/src/components/session-detail/MutableSessionDetail.tsx:complexity",
     "src-ui/src/app-shell/destination-registry.ts:complexity",
     "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx:complexity",
     "src-ui/src/app-shell/AppViewContent.tsx:complexity",
     "src-ui/src/components/first-run/EnginesStep.tsx:complexity",
     "src-ui/src/views/monitoring/ContextDiagnostics.tsx:complexity",
-    "scripts/lockfile-sync-gate.mjs:complexity",
     "packages/connect/src/react/DevicePairingPanel.tsx:complexity",
     "packages/contracts/src/live-surface.ts:complexity",
     "src-ui/src/components/chat/LazyMarkdown.tsx:circular dependency",
-    "src-ui/src/views/provider-settings/providerCatalog.tsx:complexity",
     "src-ui/src/workspace-panes/ConnectedSessionInventory.tsx:complexity",
     "src-server/routes/chat/conversations.ts:complexity",
     "scripts/release-availability-driver.mjs:untested risk",
@@ -19213,6 +19231,7 @@
     "src-ui/src/views/MonitoringView.tsx:complexity",
     "scripts/generate-metric-reference.mjs:complexity",
     "scripts/lib/verification-completion-phases.mjs:complexity",
+    "scripts/staged-fleet-inventory.mjs:untested risk",
     "src-server/routes/system/relay-enrollment-routes.ts:complexity",
     "src-server/services/connections/cloudflare-turn-provider.ts:untested risk",
     "src-ui/src/views/settings/registry-row.tsx:complexity",
@@ -19234,6 +19253,7 @@
     "src-ui/src/components/flow/FlowRunConsole.tsx:complexity",
     "src-ui/src/views/connections-hub/ConnectStationDialog.tsx:complexity",
     "src-ui/src/views/project-page/ProjectTasksSection.tsx:complexity",
+    "src-server/services/evidence/task-answer-support-module.ts:complexity",
     "src-ui/src/components/chat/ReplayTransport.tsx:complexity",
     "src-ui/src/components/chat-dock/SessionContextCard.tsx:complexity",
     "src-ui/src/components/chat-dock/backgroundTaskRows.tsx:complexity",
@@ -19277,7 +19297,6 @@
     "src-ui/src/hooks/orchestration/replay/tape-validation.ts:untested risk",
     "packages/cli/src/commands/profile-command.ts:complexity",
     "packages/connect/src/core/deviceLabel.ts:complexity",
-    "scripts/staged-fleet-inventory.mjs:untested risk",
     "src-server/services/notifications/delivery/policy.ts:complexity",
     "src-server/voice/providers/nova-sonic-events.ts:complexity",
     "src-ui/src/components/coding-layout/CodingWorkbench.tsx:complexity",
@@ -19297,6 +19316,7 @@
     "src-server/runtime/conversation/dispatch-model-policy.ts:complexity",
     "src-server/services/orchestration/session-inventory-module.ts:complexity",
     "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx:complexity",
+    "src-ui/src/views/provider-settings/providerCatalog.tsx:complexity",
     "packages/cli/src/commands/delegate.ts:complexity",
     "src-server/providers/sessions/grok-session-source.ts:complexity",
     "src-ui/src/views/ProviderSettingsView.tsx:complexity",
@@ -19334,9 +19354,9 @@
     "src-ui/src/views/agent-editor/AgentEditorWorkflows.tsx:complexity",
     "scripts/__tests__/engine-delivery-probes.test.ts:complexity",
     "src-server/knowledge-store/adapters/obsidian-store.ts:complexity",
-    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx:complexity",
     "src-ui/src/views/ProjectSettingsView.tsx:complexity",
     "src-ui/src/views/account/AccountEntryView.tsx:complexity",
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx:complexity",
     "packages/contracts/src/workspace-composition.ts:high impact",
     "src-ui/src/float-over-chat/FloatOverChatHost.tsx:complexity",
     "src-ui/src/views/agent-editor/useAgentsViewModel.ts:complexity",
@@ -19362,6 +19382,7 @@
     "scripts/lib/path-read-pin-scan.mjs:complexity",
     "src-server/services/peers/peer-enrollment-service.ts:high impact",
     "packages/cli/src/commands/project-identity.ts:complexity",
+    "scripts/fallow-ceiling.mjs:complexity",
     "src-server/services/html-replies.ts:complexity",
     "packages/cli/src/dev/http.ts:complexity",
     "packages/shared/src/workspace-git-pack.ts:complexity",
@@ -19396,6 +19417,7 @@
     "packages/supervisor/src/main.ts:complexity",
     "src-ui/src/lib/outboundQueueSnapshotSource.ts:circular dependency",
     "scripts/lib/dependency-install-retirement.mjs:complexity",
+    "scripts/lib/hygiene/source-text.mjs:complexity",
     "src-server/services/connections/credential-usage-metadata.ts:complexity",
     "src-ui/src/components/chat-dock/ChatInboxHoverCard.tsx:complexity",
     "scripts/dependency-advisory-policy.mjs:complexity",
@@ -19429,8 +19451,8 @@
     "src-ui/src/views/settings/PersonalTokens.tsx:complexity",
     "scripts/__tests__/pr-title-check.test.ts:complexity",
     "src-server/knowledge-store/adapters/shared/wikilinks.ts:complexity",
-    "src-ui/src/components/conversation-stats/ConversationStatsModal.tsx:complexity",
     "src-server/services/identity/local-account-provider.ts:complexity",
+    "src-ui/src/components/conversation-stats/ConversationStatsModal.tsx:complexity",
     "scripts/interactive-workspace-performance.mjs:complexity",
     "src-server/services/relay/relay-enrollment-journal.ts:complexity",
     "src-server/routes/consent/consent-native-routes.ts:complexity",
@@ -19442,6 +19464,7 @@
     "tests/task-first-home.spec.ts:complexity",
     "src-server/services/connections/credential-usage.ts:complexity",
     "src-ui/src/lib/browserRelayEnrollmentController.ts:complexity",
+    "scripts/record-documentation-review.mjs:complexity",
     "src-server/services/identity/native-device-proof-verifier.ts:complexity",
     "ops/nightly/macos-embedded-signing.mjs:complexity",
     "scripts/agent-instructions-gate.mjs:complexity",
@@ -19456,9 +19479,9 @@
     "src-server/services/operational-events/operational-event-delivery.ts:complexity",
     "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx:complexity",
     "packages/cli/src/dev/security.ts:complexity",
+    "packages/shared/src/portability.ts:complexity",
     "src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts:complexity",
     "packages/cli/src/commands/checkpoints.ts:complexity",
-    "packages/shared/src/portability.ts:complexity",
     "scripts/lib/verification-terminal-receipt.mjs:complexity",
     "src-ui/src/performance/interactive-workspace-performance-bridge.ts:complexity",
     "src-ui/src/views/integrations/IntegrationEditorPanel.tsx:complexity",
@@ -19475,7 +19498,6 @@
     "scripts/release-cohort-workflow.mjs:untested risk",
     "packages/shared/src/orchestration-store-quarantine.ts:complexity",
     "scripts/test-realtime-wait-gate.mjs:complexity",
-    "scripts/record-documentation-review.mjs:complexity",
     "tests/connect-modal.spec.ts:complexity",
     "scripts/__tests__/qualification-evidence.test.ts:complexity",
     "src-server/services/orchestration/turn-stall-watchdog.ts:complexity",
@@ -19487,6 +19509,7 @@
     "src-server/domain/shared-working-state-editing.ts:complexity",
     "scripts/run-e2e-coverage.mjs:complexity",
     "src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts:complexity",
+    "scripts/lib/hygiene/checks.mjs:complexity",
     "scripts/monument-import-boundary-gate.mjs:complexity",
     "src-server/services/orchestration/interrupted-turn-recovery.ts:complexity",
     "tests/e2e-manifest.mjs:complexity",
@@ -19516,7 +19539,6 @@
     "scripts/claim-fixture-ratchet.mjs:complexity",
     "scripts/state-primitives-ratchet.mjs:complexity",
     "scripts/run-test-mutations.mjs:complexity",
-    "scripts/build-evidence-archive.mjs:complexity",
     "tests/project-lifecycle.spec.ts:complexity",
     "packages/cli/src/__tests__/core-http.test.ts:complexity",
     "scripts/__tests__/station-dogfood-runtime-recovery.integration.test.ts:complexity",

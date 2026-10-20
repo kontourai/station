@@ -2,9 +2,9 @@
   "description": "Recorded fallow dead-code counts per category. A category fails when it exceeds its count plus max(3, 5%). Regenerate with npm run fallow:baseline; see docs/guides/code-quality.md#dead-code-ceiling.",
   "fallow": "fallow 3.33.1",
   "counts": {
-    "total_issues": 833,
-    "unused_files": 93,
-    "unused_exports": 379,
+    "total_issues": 815,
+    "unused_files": 90,
+    "unused_exports": 364,
     "unused_types": 89,
     "unused_dependencies": 11,
     "unused_class_members": 241,
