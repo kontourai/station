@@ -39,7 +39,7 @@ export const CHAT_INPUT_MAX_CHARS = 200_000;
  *   error, which is the whole point of sizing at the boundary.
  * - It is deliberately a literal, NOT arithmetic on CHAT_INPUT_MAX_CHARS:
  *   coupling the two would mean lowering the authored limit later silently
- *   drags the tool budget along (the review finding that shaped this split).
+ *   drags the tool budget along.
  *   Two budgets, two declared sources, moved only on purpose.
  *
  * Tool-carried text that is NOT a string (a tool call's arguments are a JSON
@@ -59,7 +59,7 @@ export type ChatInputSize =
 
 /**
  * Size a turn's text, failing CLOSED on any shape it does not recognize.
- * (Review round on #2807: the previous parts-only sizer measured the AI SDK
+ * (#2807: the previous parts-only sizer measured the AI SDK
  * `ModelMessage` shape — text in `content` — as ZERO, so a 500,000-character
  * prompt passed the bound unmeasured. A size guard that returns 0 for input
  * it cannot recognize fails open by construction.)
