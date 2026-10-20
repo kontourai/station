@@ -897,7 +897,13 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
       verified folder); else nothing, for a folder outside every Project.
       Only a session that is not `host` is checked, and such a session is
       never the operator's own, so a folder outside every Project trusts no
-      `.codex`. Native adoption stamps the same value. The trusted
+      `.codex`. Native adoption stamps the same value. Every comparison is
+      canonical (`realpathSync.native`: symlinks resolved, on-disk case) and
+      the root is stamped canonical: an adopted place is canonical, so a
+      Project configured through a symlink or in another case would
+      otherwise never match it and leave the place as its own root. The
+      check maps the canonical root back onto a cwd reached through a link.
+      The trusted
       repository is the innermost one containing that root. Anything found
       from the cwd is no anchor: an agent can build a whole repository,
       commit and remote-tracking ref included, in temp and move it in
