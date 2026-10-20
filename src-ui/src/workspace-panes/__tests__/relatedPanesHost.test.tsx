@@ -505,6 +505,32 @@ describe('a plugin opens its own related panes', () => {
     expect(await settledStorageSnapshot()).toEqual(before);
   });
 
+  // Admission is asked again inside the lock, after any guard answered: a
+  // plugin disabled while the covered pane's guard was up opens nothing.
+  test('a plugin disabled while a guard is answering is refused inside the lock', async () => {
+    await mount();
+    act(() => probe.model?.placeSurface('activity', 'right'));
+    const before = await settledStorageSnapshot();
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('covered pane'),
+      (continueNavigation) => {
+        facts.registryVersion = null;
+        continueNavigation();
+      },
+      'activity',
+    );
+    try {
+      expect(await open({})).toEqual({
+        status: 'unavailable',
+        reason: 'not-authorized',
+      });
+    } finally {
+      unregister();
+    }
+    expect(regions().right.panes).toEqual(['activity']);
+    expect(await settledStorageSnapshot()).toEqual(before);
+  });
+
   test('requests spend one shared budget', async () => {
     await mount();
     const outcomes = [];
