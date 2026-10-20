@@ -862,6 +862,21 @@ describe('Current-answer lineage rows', () => {
     ).toBeNull();
   });
 
+  test('a contributing output is bound to the exact turn too', () => {
+    const output = lineageRows().output;
+    output.relations = ['produced-by', 'contributed-to'];
+    expect(
+      parseSessionInventoryProjection(currentAnswerV2('available', [output])),
+    ).not.toBeNull();
+    output.output.turnId = 'turn-other';
+    expect(
+      parseSessionInventoryProjection(currentAnswerV2('available', [output])),
+    ).toBeNull();
+    expect(
+      parseSessionInventoryProjection(withRows(v2Projection(), [output])),
+    ).not.toBeNull();
+  });
+
   test('contributed-to stays the per-kind support edge', () => {
     for (const name of ['toolResult', 'delegation', 'decision', 'workItem']) {
       const claimed = lineageRows()[name];

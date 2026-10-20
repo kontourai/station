@@ -1118,10 +1118,13 @@ function group(
       itemRecord.taskId !== projectionScope.taskId
     )
       return false;
+    // Any row that carries a turn binding, including an output's declared
+    // turn, must name the scope turn whatever its relations. Kinds with no
+    // turn field (for example a Flow narrative) are not turn-checked here.
     if (
       projectionScope.kind === 'current-answer' &&
-      itemRecord.turnId !== undefined &&
-      itemRecord.turnId !== projectionScope.turnId
+      rowTurnId(itemRecord) !== undefined &&
+      rowTurnId(itemRecord) !== projectionScope.turnId
     )
       return false;
     const relations = itemRecord.relations;
