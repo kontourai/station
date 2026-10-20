@@ -3048,6 +3048,29 @@ apply prompt limits and schedule validation. The response is
 `{success: true, data: {output}}`, where output is the provider's result text;
 it is not proof that a future run completed.
 
+A person approves an agent's job proposal (`propose_job`) by sending this
+route the proposed job with its `proposalId`. The route then creates the job
+only when the request is a person's own (a request that may be an agent's
+answers 403 `person-approval-required`), the person may send to the
+proposal's conversation (404 `job_proposal_not_found` otherwise), the
+proposal is still open (409 `job_proposal_settled`), and the body is exactly
+the proposed `name`, `schedule`, `prompt` and `agent` with nothing more (409
+`job_proposal_mismatch`). It then records the proposal approved. The
+`proposalId` is never passed to the scheduler.
+
+### Agent check-backs and job proposals in a conversation
+
+`GET /api/orchestration/agent-schedule/:conversationId` answers a
+`ConversationAgentSchedule`: the conversation's waiting check-backs
+(`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
+by name), and a usage-limit stop waiting for a known reset
+(`usageLimitResume`). It needs a person who may read the conversation.
+`POST .../wake-ups/:wakeUpId/cancel` cancels a check-back and
+`POST .../job-proposals/:proposalId/decline` declines a proposal; both need a
+person who may send to the conversation. An agent's request reaches none of
+them. The agent's own side is the station-control tools in
+[the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
+
 ### Update Job
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including

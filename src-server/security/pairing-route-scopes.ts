@@ -2642,6 +2642,38 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/declare-pull-request',
     },
+    // `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`:
+    // internal-only at the route (404 to anything the runtime boundary did not
+    // accept as Station's own internal principal), acting only on the
+    // verified caller's own conversation. The family tiers are the tiers of a
+    // read and a mutation there.
+    { method: 'POST', path: '/api/orchestration/station-control/wake-ups' },
+    { method: 'GET', path: '/api/orchestration/station-control/wake-ups' },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/station-control/wake-ups/:wakeUpId',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/job-proposals',
+    },
+    // The person's own view of what an agent scheduled in a conversation, and
+    // their Cancel and Decline. Deliberate family inheritance: the GET is
+    // gated on reading the conversation, the POSTs on sending to it (the same
+    // authority as the next turn), and each refuses a request that may be an
+    // agent's.
+    {
+      method: 'GET',
+      path: '/api/orchestration/agent-schedule/:conversationId',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/wake-ups/:wakeUpId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
+    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
@@ -3294,6 +3326,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/usage-limit/cancel',
+    },
+    // The person's per-stop choice of what happens at the reset; the same
+    // gate and tier as Cancel auto-resume.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/resume-at-reset',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/hold',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate

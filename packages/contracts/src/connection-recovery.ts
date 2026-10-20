@@ -244,6 +244,11 @@ export interface ConnectionRecoveryProjection {
    * change while it waits. Absent when the reader did not consult it.
    */
   autoResume?: boolean;
+  /**
+   * A person's choice on this stop, which decides `autoResume` in place of
+   * the setting: `resume` at the reset, or `hold` (do not resume on its own).
+   */
+  autoResumeChoice?: 'resume' | 'hold';
   updatedAt: string;
 }
 

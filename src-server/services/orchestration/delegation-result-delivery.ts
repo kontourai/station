@@ -248,7 +248,7 @@ export type TransactionalSqliteDatabase = SqliteDatabase & {
  * busy handler, whenever a peer holds that lock. Nested in a caller's
  * transaction it is a SAVEPOINT, and the caller owns how the lock was taken.
  */
-function writeTransaction<T>(
+export function writeTransaction<T>(
   db: TransactionalSqliteDatabase,
   savepoint: string,
   run: () => T,

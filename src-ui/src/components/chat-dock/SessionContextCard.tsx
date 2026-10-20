@@ -3,6 +3,7 @@ import { memo, type ReactNode, useLayoutEffect } from 'react';
 import type { WorkStatusTone } from '../../views/home/work-status';
 import { BranchGlyph, FolderGlyph } from '../icons/Glyph';
 import { useConversationPullRequestLinks } from '../pull-requests/useConversationPullRequestLinks';
+import { SessionScheduledSection } from './SessionScheduledSection';
 import { SESSION_CONTEXT_CARD_WIDTH } from './sessionContextCardModel';
 import './SessionContextCard.css';
 
@@ -13,7 +14,8 @@ import './SessionContextCard.css';
  * row's status line, the Background tasks count, the composer's pending
  * queue — and every action opens a surface that already exists. The card adds
  * no read of its own except the pull request links, which share the one
- * cache entry Chat details and the Coding pull requests panel read.
+ * cache entry Chat details and the Coding pull requests panel read, and the
+ * Scheduled section, which shares the chat's agent-schedule entry.
  */
 export interface SessionContextCardProps {
   workspace: {
@@ -304,6 +306,9 @@ export function SessionContextRows({
           />
         ) : null}
       </ul>
+      {conversationId ? (
+        <SessionScheduledSection conversationId={conversationId} wrap={wrap} />
+      ) : null}
       {inventory ? (
         <div className="session-context-card__footer">
           <button
