@@ -597,12 +597,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "scripts/proof-repo-guardrails.mjs",
-      "rule": "as-any",
-      "fingerprint": "380e78d75069e4bb23667ab3ba4102b5f68ebadfe478fe71c45a63ab967e1869",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/analytics/usage-rollup-service.ts",
       "rule": "as-any",
       "fingerprint": "3f7083107757d7596f5cb8025f0274ece4d2cb7f6bfd6dff3206fb61855819d7",

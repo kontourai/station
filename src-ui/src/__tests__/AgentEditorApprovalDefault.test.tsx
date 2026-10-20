@@ -61,6 +61,15 @@ describe('AgentEditorApprovalDefault', () => {
 
     expect(latest?.execution.approvalMode).toBe('never');
     expect(screen.getByText(/starts at full access/)).toBeTruthy();
+    // Full access does not lift workspace confinement from a start without a
+    // full-access grant (a webhook start), so the hint must not promise
+    // "no sandbox" (`approval-posture.ts` startConfinement; #3918).
+    expect(
+      screen.getByText(
+        /still runs inside Station\u2019s workspace\s+confinement/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/no sandbox/i)).toBeNull();
     expect(buildAgentPayload(latest!).execution).toMatchObject({
       approvalMode: 'never',
     });

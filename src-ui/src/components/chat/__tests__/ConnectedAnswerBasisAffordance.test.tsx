@@ -1,12 +1,14 @@
 /** @vitest-environment jsdom */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   fireEvent,
-  render,
   renderHook,
+  render as renderInDom,
   screen,
   waitFor,
 } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   closeSessionInventoryOccurrence,
@@ -33,6 +35,12 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 vi.mock('../../../workspace-panes/BasisPaneLauncher', () => ({
   useBasisPaneLauncher: () => ({ openBasis: mocks.openBasis, fallback: null }),
 }));
+function render(ui: ReactNode) {
+  return renderInDom(
+    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
+  );
+}
+
 const { ConnectedAnswerBasisAffordance } = await import(
   '../ConnectedAnswerBasisAffordance'
 );
