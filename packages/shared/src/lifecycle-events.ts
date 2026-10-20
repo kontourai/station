@@ -48,6 +48,22 @@ export type LifecycleIdentity = {
   pid: number;
 };
 
+/**
+ * Why a server observed its own shutdown. The supervisor reasons come from
+ * the process supervisor: a drain it requested, or its IPC channel closing.
+ */
+export const LIFECYCLE_SHUTDOWN_REASONS = Object.freeze([
+  'SIGINT',
+  'SIGTERM',
+  'uncaughtException',
+  'startup_failure',
+  'stdout_epipe',
+  'supervisor_drain',
+  'supervisor_disconnect',
+] as const);
+export type LifecycleShutdownReason =
+  (typeof LIFECYCLE_SHUTDOWN_REASONS)[number];
+
 export type StopIntent =
   | 'promotion'
   | 'operator_stop'
@@ -68,7 +84,7 @@ export type LifecycleEvent = LifecycleIdentity & {
   operationId?: string;
   expiresAt?: string;
   result?: 'completed' | 'already_absent' | 'failed';
-  reason?: 'SIGINT' | 'SIGTERM' | 'uncaughtException' | 'startup_failure';
+  reason?: LifecycleShutdownReason;
   exitCode?: number | null;
   signal?: string | null;
   sender?: 'unknown';
@@ -80,6 +96,10 @@ export type ExitClassification =
   | 'expected_recovery_stop'
   | 'expected_rollback'
   | 'unexpected_signal'
+  /** The process supervisor asked this generation to drain, and it did. */
+  | 'supervisor_drain'
+  /** The process supervisor's IPC channel closed, so this generation left. */
+  | 'supervisor_disconnect'
   | 'crash'
   | 'crash_unobserved';
 
@@ -147,7 +167,7 @@ export function parseLifecycleEvent(value: unknown): LifecycleEvent {
   }
   if (
     event.type === 'shutdown_observed' &&
-    !['SIGINT', 'SIGTERM', 'uncaughtException', 'startup_failure'].includes(
+    !(LIFECYCLE_SHUTDOWN_REASONS as readonly string[]).includes(
       event.reason ?? '',
     )
   ) {
@@ -1225,6 +1245,35 @@ export function classifyLifecycleExit(
       intent: null,
       sender: 'unknown',
     };
+  const supervisorShutdown = [...matching]
+    .reverse()
+    .find(
+      (event) =>
+        event.type === 'shutdown_observed' &&
+        (event.reason === 'supervisor_drain' ||
+          event.reason === 'supervisor_disconnect'),
+    );
+  // A drain the supervisor asked for ends in exit 0; a non-zero exit after
+  // it is a crash. A lost supervisor channel exits 1 by design, so any
+  // unsignalled exit after it is that disconnect.
+  const drainedCleanly =
+    supervisorShutdown?.reason === 'supervisor_drain' &&
+    (actual.type !== 'process_exit' || actual.exitCode === 0);
+  if (
+    supervisorShutdown &&
+    !actual.signal &&
+    (supervisorShutdown.reason === 'supervisor_disconnect' || drainedCleanly)
+  ) {
+    return {
+      classification:
+        supervisorShutdown.reason === 'supervisor_drain'
+          ? 'supervisor_drain'
+          : 'supervisor_disconnect',
+      event: actual,
+      intent: null,
+      sender: 'unknown',
+    };
+  }
   if (observedSignal || actual.signal) {
     return {
       classification: 'unexpected_signal',
