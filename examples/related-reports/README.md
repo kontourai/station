@@ -20,6 +20,12 @@ inside Station's sandboxed plugin frame.
 - The **Report** pane reads the report it was opened for with `target()`.
 - Every outcome is a value. On a Station without the capability, or when an
   open is refused, the list shows the report itself and says why.
+- The list always calls through the capability the latest render returned:
+  the host replaces it when, for example, the Station changes, and the one
+  it replaced answers `context-mismatch`.
+- In the frame, the bundle draws plain DOM once the frame document has
+  loaded, with the same landmarks as its components, and talks to the host
+  through the client the frame runtime injects.
 
 ## Install and try
 
@@ -32,6 +38,7 @@ inside Station's sandboxed plugin frame.
 
 ## Verify
 
-The browser journey is `tests/related-panes.spec.ts`; the host's admission,
-placement and refusals are unit-tested in
+The browser journeys are `tests/related-panes.spec.ts` (the direct tier) and
+`tests/related-panes-frame.spec.ts` (Station's sandboxed plugin frame); the
+host's admission, placement and refusals are unit-tested in
 `src-ui/src/workspace-panes/__tests__/relatedPanesHost.test.tsx`.

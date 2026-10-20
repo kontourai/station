@@ -126,6 +126,9 @@ report list opening each report — through the SDK's related-pane capability
 The plugin names its own descriptor, a declared mode and an opaque key; Station
 decides where the pane goes, fences it to the Station, keeps one reusable
 preview per opener and refuses anything outside the plugin's own descriptors.
+The capability belongs to the pane occurrence and Station it was given on and
+is replaced when either changes, so call through the value the latest render
+returned.
 
 A descriptor may declare how it is presented when opened that way:
 

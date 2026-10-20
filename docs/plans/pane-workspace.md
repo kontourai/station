@@ -66,19 +66,28 @@ not yet accepted.
 - [ ] Phone inbox/conversation, child destinations and properties sheet work.
   Not started.
 - [ ] Direct and iframe SDK report journeys share bounded admission/outcomes.
-  In the SDK pull request stacked on #3875: one host implementation behind
-  `useRelatedPanes` and the frame client, through the shared related-occurrence
-  pipeline (guards, locked fresh-read commit, Station fence). The direct tier
-  has a browser journey with the Related Reports example; the frame tier's
-  transport is covered at its boundaries (host adapter, SDK client, frame
-  bootstrap relay), not by a frame browser journey.
+  In the SDK pull request stacked on #3875 (#3964): one host implementation
+  behind `useRelatedPanes` and the frame client, through the shared
+  related-occurrence pipeline (guards, locked fresh-read commit, Station
+  fence). Both tiers have a real-Station browser journey with the Related
+  Reports example: direct (`related-panes.spec.ts`) and from Station's
+  sandboxed plugin frame on a Station the spec owns, reached under a
+  non-loopback name (`related-panes-frame.spec.ts`).
 - [ ] Context/grant/generation failures and older-host fallback remain visible.
   In the SDK pull request: `context-mismatch`, `not-authorized` (disabled,
   removed or updated plugin, renderer not admitted, including when it changes
   while a guard answers), `station-unverified` and the bounds are refused at
   the host before anything is written; a removed plugin's related pane keeps
-  its tab with a placeholder (browser journey); an older host answers
-  `unsupported` without rejecting (SDK hook and frame client).
+  its tab with a placeholder, and a same-version reinstall does not bring it
+  back (browser journey, through the catalog's server-issued lifecycle
+  generation); an older host answers `unsupported` without rejecting (SDK
+  hook and frame client). Independent source review of d316d2776d3 found five
+  holes, each reproduced and repaired with fault injection: target identity
+  now includes the Project, captured context and generation; a capability is
+  revoked with its occurrence or Station and a frame request with its
+  document; a close re-admits everything inside the lock; the shared pipeline
+  reads the committed arrangement and refuses on unsaved work registered
+  while it asked; and disable, re-enable or reinstall is a new generation.
 - [ ] Header/footer controls work expanded, collapsed, mobile and both themes.
   In #3875: account control beside Live work, region glyphs at the far right;
   browser geometry checked expanded at 216px in both themes, and collapsed and

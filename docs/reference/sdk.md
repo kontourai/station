@@ -2651,8 +2651,29 @@ What the plugin names and what the host decides:
   `replaced` it; opening the same target, or a target the user kept,
   `focused` it. The user's **Keep open**, or unsaved work in the preview,
   keeps it as an ordinary tab.
+- "The same target" is exact: the same descriptor, mode and key, in the same
+  Project, with the same captured context and the same installed generation.
+  A kept report opened for another Session, run or installation is never the
+  one an open focuses; a new occurrence opens instead.
 - A handle reveals or closes only what this occurrence opened, for its own
-  plugin and installed generation; anything else is `unknown-handle`.
+  Project, context, plugin and installed generation; anything else is
+  `unknown-handle`.
+- Before anything changes, the host asks the unsaved-changes guard of every
+  pane the request would take off screen (the preview it replaces, the pane
+  it covers, the pane a `close` removes). It commits only if, when the last
+  guard answers, everything is still as it asked about: the same Station and
+  holder, the plugin still admitted, the same pane in front, and no unsaved
+  work registered meanwhile for a pane it would hide. Otherwise it answers
+  `superseded` (or the admission's own reason) and leaves everything as it
+  was.
+- The capability belongs to the occurrence that received it, on the Station
+  it was received on. When the occurrence unmounts, or another Station is
+  verified, the capability is revoked: it answers `context-mismatch`,
+  including for a request whose guard is still being answered, and the
+  occurrence gets a new one. Call through the latest `useRelatedPanes()`
+  value rather than keeping one from an earlier render. A frame's requests
+  are bound to the frame document that sent them: one from a replaced
+  document changes nothing.
 
 `unavailable` reasons: `unsupported`, `invalid-request`, `unknown-descriptor`,
 `mode-unsatisfiable`, `not-authorized` (the plugin was disabled, removed or
@@ -2668,7 +2689,12 @@ pane's unsaved-changes guard), `guard-cancelled`, `unknown-handle` and
 A related occurrence is fenced to the Station it was opened on and renders only
 while its plugin is still the installed generation it was opened under; a
 disabled or updated plugin's related pane stays as a tab with an unavailable
-placeholder and runs no plugin code. Declaring `docked` placement does not
+placeholder and runs no plugin code. The generation includes the catalog
+contribution's server-issued `lifecycleGeneration`, which changes whenever
+the installation is replaced (a same-version reinstall included) or its
+enablement changes, so enabling or reinstalling the plugin again does not
+bring an earlier occurrence back. From a server that issues no lifecycle
+generation, the same installation enabled again is the same generation. Declaring `docked` placement does not
 admit a pane to a region, and related panes are opened only through this
 capability; legacy navigation (`useNavigation`, the frame's `navigate`
 message) is unchanged.
@@ -2683,8 +2709,12 @@ holds at most 16 requests and settles an unanswered request `refused` after
 30 seconds.
 
 The [Related Reports example](../../examples/related-reports/README.md) uses
-both tiers. Source: [contract](../../packages/contracts/src/workspace-pane-host-contract.ts),
-[SDK hook and frame client](../../packages/sdk/src/related-panes.ts),
+both tiers. The hook is on the SDK root only: plugin bundles receive the root
+from their host at runtime, which is what binds the hook to the host's
+provider. The Pane subpath carries the frame client, `UNSUPPORTED_RELATED_PANES`
+and the types. Source: [contract](../../packages/contracts/src/workspace-pane-host-contract.ts),
+[SDK hook](../../packages/sdk/src/related-panes-hook.ts) and
+[frame client](../../packages/sdk/src/related-panes.ts),
 [host](../../src-ui/src/workspace-panes/relatedPanesHost.ts). These exports
 require a published SDK and contracts release before external consumers can
 import them.
