@@ -1,0 +1,7 @@
+{
+  "revision": "407a4ca1d5ecd698e56604d592a0f840b1abf385",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the claims citing approvalMode.ts: only the OpenCode full-access description changed, and it now says permitted actions run without approval prompts and that questions and plan exits may still ask. This document does not describe that copy; no documented claim changes.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/utils/approvalMode.ts"]}
+  ]
+}
