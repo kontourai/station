@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
@@ -8,8 +8,10 @@ import { describe, expect, test } from 'vitest';
 import { serializeSDKMock } from '../dev/sdk-mock.js';
 import { buildDevSharedRuntimeScript } from '../dev/template-scripts.js';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-const examplesRoot = join(repoRoot, 'examples');
+const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
+const examplesRoot = fileURLToPath(
+  new URL('../../../../examples/', import.meta.url),
+);
 
 /** The SDK specifiers a plugin build leaves to the host (shared `build.ts`). */
 const HOST_SDK_SPECIFIERS = [
@@ -171,6 +173,17 @@ describe('station dev SDK mock', () => {
     expect(sdk.isRelevantKnowledgeRoot(project, null)).toBe(false);
     expect(sdk.knowledgeRootIncarnationKey(project)).toBe(
       knowledgeRootIncarnationKey(project as never),
+    );
+    const freshness = (record: Record<string, unknown>) =>
+      sdk.knowledgeFreshnessLabel(sdk.knowledgeRecordFreshness(record));
+    expect(freshness({ created_at: '2026-01-01T00:00:00.000Z' })).toBe(
+      'No expiry declared',
+    );
+    expect(
+      freshness({ created_at: '2026-01-01T00:00:00.000Z', ttl_seconds: 60 }),
+    ).toBe('Expires at 2026-01-01T00:01:00.000Z');
+    expect(freshness({ expires_at: 'soon', created_at: 'x' })).toBe(
+      'Invalid expiry declaration: soon',
     );
     expect(sdk.knowledgeRootIncarnationKey(project)).toBe(
       '["root-1","project","alpha","kit","/store","Alpha","2026-01-01T00:00:00.000Z"]',

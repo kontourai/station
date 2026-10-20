@@ -122,6 +122,9 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // impact edge selects it (#2922).
   'scripts/__tests__/ci-event-environment.test.ts',
   'packages/cli/src/__tests__/dev-security.test.ts',
+  // Walks every previewable example's src/ for SDK imports (a repo scan in
+  // REPO_SCAN_SUITES); no single pin could stand for it.
+  'packages/cli/src/__tests__/dev-sdk-mock-parity.test.ts',
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts',
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
   // Walks the whole SDK source tree (a repo scan), like its neighbours here.

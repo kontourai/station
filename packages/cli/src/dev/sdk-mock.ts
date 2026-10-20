@@ -79,6 +79,8 @@ window.__station_ai_sdk_mock={
   // Same results as the SDK's pure helpers
   isRelevantKnowledgeRoot:function(root,project){if(root.scope.kind==='personal')return true;return project!==null&&root.scope.projectSlug===project},
   knowledgeRootIncarnationKey:function(root){return JSON.stringify([root.id,root.scope.kind,root.scope.kind==='project'?root.scope.projectSlug:null,root.adapterId,root.storeRoot,root.displayName,root.createdAt])},
+  knowledgeRecordFreshness:function(record){var e=record.expires_at||null;if(!e&&record.ttl_seconds!==undefined){var c=Date.parse(record.created_at);e=Number.isFinite(c)?new Date(c+record.ttl_seconds*1000).toISOString():record.created_at}if(e===null)return{kind:'not-declared'};if(!Number.isFinite(Date.parse(e)))return{kind:'invalid',value:e};return{kind:'declared',expiresAt:e}},
+  knowledgeFreshnessLabel:function(f){return f.kind==='declared'?'Expires at '+f.expiresAt:f.kind==='invalid'?'Invalid expiry declaration: '+f.value:'No expiry declared'},
   telemetry:{track:noop,flush:function(){return Promise.resolve()}},
   voiceRegistry:__voiceRegistry,
   KnowledgeRecallBrowser:__hostComponent('KnowledgeRecallBrowser'),
