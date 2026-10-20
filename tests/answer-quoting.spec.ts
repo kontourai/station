@@ -27,10 +27,15 @@ test.beforeAll(async () => {
       import { NavigationProvider } from './src-ui/src/contexts/NavigationContext';
       import { RegionModelProvider, useRegionModel } from './src-ui/src/contexts/RegionModelContext';
       import { DOCK_REGION_IDS } from './src-ui/src/regions/region-model';
-      import { composeQuotedReply } from './src-ui/src/utils/answer-quotes';
+      import { composeQuotedReply, quoteHref } from './src-ui/src/utils/answer-quotes';
+      import { ProjectKnowledgeViewerModal } from './src-ui/src/views/project-page/ProjectKnowledgeViewerModal';
       window.quoteAuthority = true;
       setClientCredentialResolver(() => ({ origin: "http://station.test", requestAuthority: { apiBase: "http://station.test", authorityKey: "fixture", isCurrent: () => window.quoteAuthority } }));
       const messages = [{ id: 'answer-a', sessionId: 'session-a', turnId: 'turn-a', role: 'assistant', answerEligible: true, content: ${JSON.stringify(text)} }];
+      // A quote saved in a knowledge document, read in the Project page's own
+      // viewer, owned as ProjectKnowledgeSection owns it.
+      const documentQuote = { version: 1, origin: 'http://station.test', sessionId: 'session-a', turnId: 'turn-a', messageId: 'answer-a', revision: 'a'.repeat(64), excerpt: 'selected words' };
+      const knowledgeDocument = { id: 'doc-decisions', filename: 'decisions.md', chunkCount: 1, createdAt: '2026-10-19T00:00:00.000Z' };
       // App's region shells register a host while a region surface can render,
       // which is what makes a reveal a write of the real model rather than a
       // deep link. Chat is drawn where the model put it, and only there.
@@ -45,7 +50,7 @@ test.beforeAll(async () => {
       }
       function Harness() {
         const root = useRef(null); const [input, setInput] = useState('Keep existing draft');
-        const [sent, setSent] = useState(''); const [epoch, setEpoch] = useState(0);
+        const [sent, setSent] = useState(''); const [epoch, setEpoch] = useState(0); const [viewing, setViewing] = useState(false);
         const quotes = useSyncExternalStore(chatDraftsStore.subscribe, () => chatDraftsStore.getQuotes('reply-a'));
         return <main data-epoch={epoch} style={{padding:24,position:'relative',zIndex:'var(--layer-dock)'}}>
           <div ref={root}><div data-quote-source-message="answer-a"><MarkdownRenderer>{messages[0].content}</MarkdownRenderer></div></div>
@@ -55,6 +60,8 @@ test.beforeAll(async () => {
           <button onClick={() => { setSent(composeQuotedReply(input,quotes)); chatDraftsStore.clear('reply-a'); }}>Send reply</button>
           <button onClick={() => { window.quoteAuthority=false; setEpoch(epoch+1); }}>Revoke access</button>
           <section aria-label="Sent reply"><MarkdownRenderer>{sent}</MarkdownRenderer></section>
+          <button onClick={() => setViewing(true)}>View decisions.md</button>
+          {viewing && <ProjectKnowledgeViewerModal doc={knowledgeDocument} content={'See [the reviewed answer](' + quoteHref(documentQuote) + ') for why.'} loading={false} onClose={() => setViewing(false)} />}
           <ChatRegion />
         </main>;
       }
@@ -89,7 +96,7 @@ test.beforeAll(async () => {
   const styles = await build({
     stdin: {
       contents:
-        '@import "./src-ui/src/index.css"; @import "./src-ui/src/components/chat/chat.css";',
+        '@import "./src-ui/src/index.css"; @import "./src-ui/src/components/chat/chat.css"; @import "./src-ui/src/views/ProjectPage.css";',
       resolveDir: ROOT,
       loader: 'css',
     },
@@ -239,6 +246,51 @@ test('a Chat already full screen stays full screen when a quote opens its source
   await expect(page).toHaveURL(/maximize=true/);
   await expect(chat).toHaveAttribute('data-maximized', 'true');
 });
+
+// The Project page's knowledge viewer covers the whole page, Chat included,
+// so the open closes it through its owner before Chat is shown.
+for (const [device, viewport] of [
+  ['a phone', { width: 390, height: 844 }],
+  ['a desktop', { width: 1280, height: 900 }],
+] as const) {
+  test(`on ${device}, opening a knowledge document's quoted source leaves the document and shows Chat unobscured`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await mount(page, () => ({}));
+    await page
+      .getByRole('button', { name: 'View decisions.md', exact: true })
+      .click();
+    const closeDocument = page.getByRole('button', {
+      name: 'Close knowledge document',
+      exact: true,
+    });
+    await expect(closeDocument).toBeVisible();
+    await page
+      .getByRole('button', { name: 'the reviewed answer', exact: true })
+      .click();
+    await expect(page.getByRole('dialog')).toContainText(
+      'Source revision is unchanged',
+    );
+    const chat = page.getByRole('region', { name: 'Chat', exact: true });
+    await expect(chat).toHaveCount(0);
+    await page
+      .getByRole('button', { name: 'Open source conversation', exact: true })
+      .click();
+    await expect(closeDocument).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(chat).toBeVisible();
+    await expect(page).toHaveURL(/chat=session-a/);
+    await expect(page).toHaveURL(/#station-message=answer-a$/);
+    // An ordinary click reaches Chat: nothing is left over it.
+    await chat
+      .getByRole('button', { name: 'Reply in Chat', exact: true })
+      .click();
+    await expect(
+      chat.getByRole('button', { name: 'Chat is in use', exact: true }),
+    ).toBeVisible();
+  });
+}
 
 test('changed or denied source never replaces the saved quote or displays cached current text', async ({
   page,

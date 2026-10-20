@@ -6,8 +6,10 @@
  * the inspected source's enabled Open action, and the real region model and
  * navigation store behind it. The open must SHOW the conversation (Chat's
  * canonical reveal), not only point `?chat=` at it, and must not take a pane
- * with unsaved work off screen without asking it once. Only the source read
- * and the authority scope are stubbed.
+ * with unsaved work off screen without asking it once. An admitted open
+ * closes the document through its owner, so it does not stay over Chat; one
+ * refused or cancelled leaves the document and the inspection as they were.
+ * Only the source read and the authority scope are stubbed.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -111,17 +113,23 @@ function RegionShellProbe({ regionShell }: { regionShell: boolean }) {
 const modalHost = {
   setLoading: null as ((loading: boolean) => void) | null,
 };
+/** Owned as `ProjectKnowledgeSection` owns it: its close takes it away. */
 function KnowledgeModal({ content }: { content: string }) {
+  const [viewing, setViewing] = useState(true);
   const [loading, setLoading] = useState(false);
   modalHost.setLoading = setLoading;
-  return (
+  return viewing ? (
     <ProjectKnowledgeViewerModal
       doc={DOC}
       content={content}
       loading={loading}
-      onClose={() => {}}
+      onClose={() => setViewing(false)}
     />
-  );
+  ) : null;
+}
+
+function knowledgeDocument() {
+  return screen.queryByRole('button', { name: 'Close knowledge document' });
 }
 
 function mount(
@@ -256,6 +264,8 @@ describe('Open source conversation from a knowledge document', () => {
     expect(
       screen.queryByRole('dialog', { name: 'Quoted answer source' }),
     ).toBeNull();
+    // The document it was read in does not stay over the conversation.
+    expect(knowledgeDocument()).toBeNull();
   });
 
   test('a Chat already full screen stays full screen', async () => {
@@ -278,6 +288,7 @@ describe('Open source conversation from a knowledge document', () => {
       occupant: 'chat',
     });
     expect(params().get('maximize')).toBe('true');
+    expect(knowledgeDocument()).toBeNull();
   });
 
   test('where the Coding centre owns Chat, its Chat page is asked for instead of the dock', async () => {
@@ -293,6 +304,7 @@ describe('Open source conversation from a knowledge document', () => {
       await waitFor(() => expect(requests).toHaveBeenCalledTimes(1));
       expect(params().get('chat')).toBe('session-a');
       expect(model?.regions.bottom.visible).toBe(false);
+      expect(knowledgeDocument()).toBeNull();
     } finally {
       unsubscribe();
     }
@@ -320,6 +332,7 @@ describe('Open source conversation from a knowledge document', () => {
     expect(window.location.pathname).toBe('/projects/station/layouts/chat');
     expect(params().get('surface')).toBeNull();
     expect(window.location.hash).toBe('#station-message=answer-a');
+    expect(knowledgeDocument()).toBeNull();
   });
 
   test('a pane with unsaved work that the reveal would hide is asked once; Cancel changes nothing', async () => {
@@ -354,6 +367,7 @@ describe('Open source conversation from a knowledge document', () => {
       expect(
         screen.getByRole('dialog', { name: 'Quoted answer source' }),
       ).toBeTruthy();
+      expect(knowledgeDocument()).not.toBeNull();
 
       answer = 'continue';
       act(() =>
@@ -365,6 +379,7 @@ describe('Open source conversation from a knowledge document', () => {
       expect(asked).toHaveBeenCalledTimes(2);
       expect(params().get('chat')).toBe('session-a');
       expect(window.location.hash).toBe('#station-message=answer-a');
+      expect(knowledgeDocument()).toBeNull();
     } finally {
       unregister();
     }
@@ -388,6 +403,10 @@ describe('Open source conversation from a knowledge document', () => {
       expect(params().get('chat')).toBeNull();
       expect(window.location.hash).toBe('');
       expect(model?.regions.bottom.occupant).toBe('activity');
+      expect(
+        screen.getByRole('dialog', { name: 'Quoted answer source' }),
+      ).toBeTruthy();
+      expect(knowledgeDocument()).not.toBeNull();
     } finally {
       unregister();
     }
@@ -416,6 +435,7 @@ describe('Open source conversation from a knowledge document', () => {
     expect(params().get('chat')).toBeNull();
     expect(window.location.hash).toBe('');
     expect(model?.regions.bottom.visible).toBe(false);
+    expect(knowledgeDocument()).not.toBeNull();
   });
 
   test('on a phone, the pane a layer shows over Chat is asked once, and Continue shows the conversation', async () => {
@@ -443,6 +463,7 @@ describe('Open source conversation from a knowledge document', () => {
       expect(params().get('chat')).toBe('session-a');
       expect(window.location.hash).toBe('#station-message=answer-a');
       expect(guard.asked).toHaveBeenCalledTimes(1);
+      expect(knowledgeDocument()).toBeNull();
     } finally {
       guard.unregister();
     }
@@ -473,6 +494,7 @@ describe('Open source conversation from a knowledge document', () => {
       expect(
         screen.getByRole('dialog', { name: 'Quoted answer source' }),
       ).toBeTruthy();
+      expect(knowledgeDocument()).not.toBeNull();
     } finally {
       guard.unregister();
     }

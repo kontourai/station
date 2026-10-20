@@ -1,6 +1,6 @@
 import { getAssistantQuoteSource } from '@kontourai/station-sdk/quote-source';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { navigationStore } from '../../contexts/navigation-store';
@@ -18,6 +18,7 @@ import {
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { ErrorState, SkeletonBlock } from '../state';
+import { QuoteSurfaceCloseContext } from './quote-surface';
 
 export function QuoteSourceLink({
   quote,
@@ -89,6 +90,7 @@ function QuoteSourceInspection({
     refetchOnMount: 'always',
   });
   const revealChat = useGuardedChatReveal();
+  const closeSurface = useContext(QuoteSurfaceCloseContext);
   const source =
     scope?.isCurrent() &&
     sameOrigin &&
@@ -114,6 +116,9 @@ function QuoteSourceInspection({
                 admit: () => scope.isCurrent(),
                 open: () => {
                   onClose();
+                  // Admitted: the document it was read in must not stay over
+                  // the conversation it now shows.
+                  closeSurface?.();
                   navigationStore.navigate(window.location.pathname, {
                     chat: quote.sessionId,
                   });
