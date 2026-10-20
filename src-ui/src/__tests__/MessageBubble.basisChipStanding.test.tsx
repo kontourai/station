@@ -236,8 +236,9 @@ describe('answer Basis chip standing', () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 60_000);
     try {
       await scrollTo(0);
+      // Longer than the chip's 150ms dwell, so every chip is enabled again.
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 300));
       });
       expect(reads).toHaveLength(before);
     } finally {
@@ -245,7 +246,7 @@ describe('answer Basis chip standing', () => {
     }
   });
 
-  it('a fling past fifty answers keeps at most one viewport of reads in flight', async () => {
+  it('a fling past fifty answers reads only where it settled, and cancels what it left', async () => {
     // Reads that never answer on their own: each settles only when aborted,
     // so whatever is still in flight after the fling was never cancelled.
     const inFlight = new Set<number>();
@@ -266,16 +267,27 @@ describe('answer Basis chip standing', () => {
     renderTranscript();
     await chipsMounted();
 
-    for (let first = 0; first <= ANSWERS - VIEWPORT; first += VIEWPORT)
+    // A fling: each viewport is on screen for a moment far shorter than the
+    // chip's 150ms dwell, except one pause of 300ms at answers 25-29.
+    for (let first = 0; first <= ANSWERS - VIEWPORT; first += VIEWPORT) {
       await scrollTo(first);
+      if (first === 25)
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        });
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
 
-    // Each answer that passed through the viewport started one read, and
-    // every one that left it was cancelled: only the last viewport remains.
+    // Reads STARTED only where the fling settled: the pause and the stop.
+    expect([...reads].sort((a, b) => a - b)).toEqual([
+      25, 26, 27, 28, 29, 45, 46, 47, 48, 49,
+    ]);
+    // The paused viewport was left before its reads answered: cancelled.
     await waitFor(() =>
       expect([...inFlight].sort((a, b) => a - b)).toEqual([45, 46, 47, 48, 49]),
     );
-    expect(reads).toHaveLength(ANSWERS);
-    expect(new Set(reads).size).toBe(ANSWERS);
   });
 
   it('shows Surface’s label only for a notable standing; an unassessed one stays plain', async () => {
