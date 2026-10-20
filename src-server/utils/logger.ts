@@ -522,5 +522,3 @@ export function applyConfiguredLogLevel(
   }
   setGlobalLogLevel(configured);
 }
-
-export const EMIT_LOG_LEVELS = EMIT_LEVELS;

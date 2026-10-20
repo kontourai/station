@@ -1,0 +1,9 @@
+{
+  "revision": "d63bcf687e7546eeba119744c2d468fe45b9f098",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Read the lane table (test-changed row, line 1528) and the merge-queue regression section on supplemental edges (lines 1650-1670). This change adds three supplemental unmodelled-input edges (color-theme artifacts read by path, selecting the drift and cascade tests), raises the independently pinned edge count to 16, and classifies the drift test's listing of its own generated directory in the walker inventory; supplemental edges still only add suites, which changed-verification.test.ts asserts per edge. No prose change.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Read the full README. changed-verification.test.ts changed only the pinned UNMODELLED_INPUT_EDGES count (13 to 16) for the new color-theme edges; the narrow-diff fixture, the demo and its 120-second liveness limit are unchanged. No prose change.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

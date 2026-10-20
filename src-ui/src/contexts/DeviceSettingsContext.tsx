@@ -29,15 +29,6 @@ export function useDeviceSettings(): DeviceSettings {
   );
 }
 
-/** True once the store has resolved storage — synchronous in this environment. */
-export function useDeviceSettingsHydrated(): boolean {
-  return useSyncExternalStore(
-    deviceSettingsStore.subscribe,
-    deviceSettingsStore.isHydrated,
-    deviceSettingsStore.isHydrated,
-  );
-}
-
 export interface DeviceSettingsActions {
   setDeviceSetting: <K extends keyof DeviceSettings>(
     key: K,

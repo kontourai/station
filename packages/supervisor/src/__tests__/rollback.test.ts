@@ -73,6 +73,43 @@ describe('supervisor handoff rollback (real processes)', () => {
     90_000,
   );
 
+  it('drains a promoted trial that serves but misses readiness, resetting no client', async () => {
+    const home = makeTempDir('sup-rollback-serving-');
+    const buildRoot = makeTempDir('sup-build-');
+    const goodEntry = realpathSync(writeCoreVariant(buildRoot, 'core', {}));
+    const badEntry = writeCoreVariant(buildRoot, 'serves-unready', {
+      FAKE_CORE_SERVE_WITHOUT_READY: '1',
+    });
+    const supervisor = await startSupervisor({ home, entry: goodEntry });
+    const port = supervisor.port;
+    const load = startLoad(port);
+    try {
+      await vi.waitFor(() => expect(load.stats.ok).toBeGreaterThan(20));
+      const result = await supervisor.handoff({
+        entry: badEntry,
+        readinessTimeoutMs: 1_500,
+      });
+      expect(result, supervisor.output()).toMatchObject({
+        outcome: 'rolled-back',
+        reason: 'trial-readiness-timeout',
+      });
+      const after = await supervisor.status();
+      expect(after.active?.generation).toBe(3);
+      const servedBefore = load.stats.ok;
+      await vi.waitFor(() => {
+        expect(load.stats.bootIds.at(-1)).toBe(after.active?.bootId);
+        expect(load.stats.ok).toBeGreaterThan(servedBefore + 20);
+      });
+      const stats = await load.stop();
+      // The trial served this load before it failed; it was drained, not
+      // signalled, so none of its keep-alive connections was reset.
+      expect(stats.bootIds.length).toBe(3);
+      expect(stats.errors, supervisor.output()).toEqual({});
+    } finally {
+      await load.stop();
+    }
+  }, 90_000);
+
   it('never disturbs the active generation when the trial fails before parking', async () => {
     const home = makeTempDir('sup-rollback-park-');
     const buildRoot = makeTempDir('sup-build-');

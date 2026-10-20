@@ -199,6 +199,9 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     expect(capturedArgs).toEqual([
       '-c',
       'mcp_servers.station-control.url="http://127.0.0.1:4321/mcp/station-control?token=minted-for-thread-e2e-codex"',
+      // No confinement given: confined, so its writable roots are pinned (#3800).
+      '-c',
+      'sandbox_workspace_write.writable_roots=[]',
     ]);
     // The stale persisted port (9999) baked into the resolved record never
     // appears anywhere in the spawn call, and no env var carries it either

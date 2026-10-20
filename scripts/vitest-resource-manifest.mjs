@@ -547,8 +547,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dependency-patch-binding.test.ts',
   // Installed YAML CLI children protect the parser migration's public behavior.
   'scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts',
-  // Bounded Bash children test Linux bootstrap recovery with inert swap commands.
-  'scripts/__tests__/gcp-bootstrap.test.ts',
   // Offline Git children validate encrypted workspace transport against real repositories.
   'packages/shared/src/__tests__/workspace-package.test.ts',
   'packages/cli/src/__tests__/cloud.test.ts',
@@ -587,6 +585,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/documentation-value-bindings.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
+  // Runs the dead-code ceiling CLI with the real fallow analyzer against a
+  // disposable project.
+  'scripts/__tests__/fallow-ceiling.test.ts',
+  // Runs the hygiene report CLI as a child against disposable Git trees and a
+  // fake `gh` child.
+  'scripts/__tests__/hygiene-report.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',
   // station#4464: pins the screenshot comparator's scope-integrity behavior
@@ -643,6 +647,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // reads the ledger from origin/main, peels real ledger commit-backs with
   // git, and its exit status. Bounded, single-shot children.
   'scripts/__tests__/nightly-qualification-decide.cli.test.ts',
+  // Runs the evidence-archive generator once as a real child process in a
+  // throwaway repository layout to check the manifest note it writes.
+  'scripts/__tests__/dogfood-evidence-retention.test.ts',
   // Bounded real CLI with local Actions HTTP responses; no corpus or provider effects.
   'scripts/__tests__/release-pipeline.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
@@ -1050,6 +1057,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // that starts a grandchild in its group, then sweeps and terminates it.
   // Same process-tree shape as owned-process-reaping.test.ts.
   'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
+  // #3800: starts the real `codex app-server` (when this host has one) with a
+  // fresh CODEX_HOME to read the sandbox it reports over a planted workspace
+  // config; skips loudly where no codex binary resolves.
+  'src-server/providers/__tests__/codex-project-config.process.test.ts',
   // #561: runs a real Flow shell command (a stub script that leaves a
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.
@@ -1082,6 +1093,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Vitest workers or hide a leaked child behind a timing failure.
   'src-server/services/__tests__/scheduler.test.ts',
   'src-server/services/acp/__tests__/acp-process-spawn-failure.test.ts',
+  // #3290: spawns an OpenCode-shaped ACP engine through the real
+  // ACPProcess, so the launch environment is the one actually delivered.
+  'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
   // Runs npm and the real lockfile gate against an isolated two-workspace
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
@@ -1446,6 +1460,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // geometry, a squatted locator global, a covered button, 300,000
   // elements, a page spinning forever). Explicit skip without a browser.
   'src-server/services/browser/__tests__/browser-agent-hostile.real.test.ts',
+  // The built supervisor bundle runs the built core server: a parked
+  // generation's untouched home, then a handoff under HTTP load across all
+  // four listeners; and the source supervisor beside a real home through a
+  // schema migration. Builds its own dist-server-* directory; no wall-clock
+  // assertion beyond liveness-scaled waits.
+  'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
   // Process supervisor: real supervisor children fork fixture core
   // generations, hand a held listening socket between them, and hammer it
   // with keep-alive HTTP and SSE clients on an ephemeral port.
@@ -1642,23 +1662,72 @@ function explicitFiles(manifest) {
  * and compares it to the exact manifest partition before a run can start.
  */
 export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
-  const siblings = new Map();
-  for (const file of explicitFiles(manifest)) {
-    const slash = file.lastIndexOf('/');
-    const directory = file.slice(0, slash + 1);
-    const names = siblings.get(directory) ?? [];
-    names.push(file.slice(slash + 1));
-    siblings.set(directory, names);
-  }
   return Object.freeze([
-    ...Array.from(siblings, ([directory, names]) =>
-      names.length === 1
-        ? `${directory}${names[0]}`
-        : `${directory}{${names.join(',')}}`,
-    ),
+    ...compactExactPaths(explicitFiles(manifest)),
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
     `${manifest.dogfoodReconcile.prefix}/**`,
   ]);
+}
+
+const BRACE_UNSAFE = /[*?[\]{}(),!+@\\]|\.\./;
+
+/**
+ * The same exact files as fewer patterns: the files of one directory become
+ * one brace alternation of their literal names, `dir/{a.test.ts,b.test.ts}`,
+ * which matches those files and nothing else. A name holding a glob
+ * metacharacter, or `..` (a range inside braces), stays a pattern of its own. Order is deterministic.
+ */
+export function compactExactPaths(paths) {
+  const byDirectory = new Map();
+  const literal = [];
+  for (const path of [...new Set(paths)].sort()) {
+    const slash = path.lastIndexOf('/');
+    const name = path.slice(slash + 1);
+    if (slash <= 0 || BRACE_UNSAFE.test(path)) {
+      literal.push(path);
+      continue;
+    }
+    const directory = path.slice(0, slash);
+    const names = byDirectory.get(directory) ?? [];
+    names.push(name);
+    byDirectory.set(directory, names);
+  }
+  const compact = [];
+  for (const [directory, names] of byDirectory) {
+    compact.push(
+      names.length === 1
+        ? `${directory}/${names[0]}`
+        : `${directory}/{${names.join(',')}}`,
+    );
+  }
+  return [...compact, ...literal];
+}
+
+/**
+ * Windows caps a command line at 32,767 UTF-16 characters. The check takes
+ * the Vitest arguments a runner builds (see buildVitestCommand) and adds a
+ * node path of Windows MAX_PATH (260), longer than any real install, plus a
+ * quote pair and a separating space per argument.
+ */
+export const WINDOWS_COMMAND_LINE_LIMIT = 32_767;
+const WORST_CASE_WINDOWS_PATH_LENGTH = 260;
+
+function windowsCommandLineLength(vitestArguments) {
+  return [
+    'x'.repeat(WORST_CASE_WINDOWS_PATH_LENGTH),
+    ...vitestArguments,
+  ].reduce((total, argument) => total + argument.length + 3, 0);
+}
+
+/** Throws when a Vitest command line could exceed the Windows limit. */
+export function assertWindowsCommandLineFits(vitestArguments) {
+  const length = windowsCommandLineLength(vitestArguments);
+  if (length >= WINDOWS_COMMAND_LINE_LIMIT) {
+    throw new Error(
+      `the Vitest command line could reach ${length} characters, over the Windows limit of ${WINDOWS_COMMAND_LINE_LIMIT}; compact ordinaryVitestExcludes`,
+    );
+  }
+  return length;
 }
 
 export function assertOrdinaryVitestSelection(

@@ -279,6 +279,7 @@ function deriveSession(
     providerOptions: chatState.providerOptions,
     lastAppliedApprovalMode: chatState.lastAppliedApprovalMode,
     approvalEscalationRejected: chatState.approvalEscalationRejected,
+    approvalTakeoverFailed: chatState.approvalTakeoverFailed,
     queuedApprovalMode: chatState.queuedApprovalMode,
     approvalPosture: chatState.approvalPosture,
     approvalPostureSequence: chatState.approvalPostureSequence,
@@ -380,7 +381,6 @@ export function useDerivedSessions(
 
       const agent = agents.find((a) => a.slug === chatState.agentSlug);
 
-      // Get conversation metadata for title
       const conversationsList =
         conversationsSnapshot.conversations[chatState.agentSlug!] ||
         EMPTY_CONVERSATIONS_LIST;
@@ -388,7 +388,6 @@ export function useDerivedSessions(
         (c) => c.id === chatState.conversationId,
       );
 
-      // Get messages from backend
       const messagesKey = chatState.conversationId
         ? `messages:${chatState.agentSlug}:${chatState.conversationId}`
         : null;

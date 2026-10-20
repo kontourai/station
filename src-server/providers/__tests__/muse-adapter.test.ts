@@ -432,7 +432,7 @@ describe('MuseAdapter', () => {
     const events = await drain(harness.iterator, 4, 'first-turn-prompt');
     const started = events.find((event) => event.method === 'turn.started');
     expect(started.prompt).toBe('Hello');
-    // Independent review MEDIUM-1: the marker rides THIS turn's own
+    // The marker rides THIS turn's own
     // persisted metadata, so the delegate-seam disclosure can derive
     // 'delivered' from this turn's own record, not merely from having
     // started.
@@ -524,7 +524,7 @@ describe('MuseAdapter', () => {
     expect(harness.processes).toHaveLength(2);
   });
 
-  // archive#3450 review (FIX 3): `muse-exit-without-terminal` and
+  // archive#3450: `muse-exit-without-terminal` and
   // `muse-terminal-not-completed` were the only two `error`-outcome call
   // sites with test coverage; `muse-spawn-failed` and
   // `muse-terminal-not-completed` had none. This covers `muse-spawn-failed`
@@ -572,7 +572,7 @@ describe('MuseAdapter', () => {
     expect(harness.processes).toHaveLength(2);
   });
 
-  // archive#3450 review (FIX 3 + the FIX 1 sub-case): `run_terminal` with a
+  // archive#3450: `run_terminal` with a
   // non-`completed` terminal and NO deltas streamed is the narrow case where
   // `effect.text` is the ONLY carrier of muse's reported text anywhere in
   // the event stream — `settleTurn`'s `outputTextDetail` folds it into
@@ -623,7 +623,7 @@ describe('MuseAdapter', () => {
     expect(error.message).toContain(
       'Muse turn ended without completing (terminal: failed, reason: model_error).',
     );
-    // The FIX 1 sub-case: `run_terminal.text` was the only carrier of this
+    // `run_terminal.text` was the only carrier of this
     // text (no deltas streamed) and it must not vanish.
     expect(error.message).toContain(
       'the model refused to respond: content policy violation',
@@ -666,7 +666,7 @@ describe('MuseAdapter', () => {
     expect(harness.logger.info).toHaveBeenCalledWith(
       expect.stringContaining('stderr'),
     );
-    // archive#3450 review round 2 (FIX C): the `completed` arm needs the
+    // archive#3450: the `completed` arm needs the
     // same ceiling as the `error` arm — a stray `runtime.error` appended
     // after `turn.completed` (the exact mirror of archive#3450's original defect)
     // would otherwise be invisible here.
@@ -710,7 +710,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'stderr flood');
   });
 
-  // archive#3450 review round 2 (FIX D): MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS
+  // archive#3450: MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS
   // had no test proving its rejection path runs — the sibling stderr-tail
   // bound above does. Mirrors that test's shape exactly, against
   // `outputTextDetail` instead of `stderrDetail`.
@@ -752,7 +752,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'output text flood');
   });
 
-  // archive#3450 review round 2, post-merge follow-up (commit b3ff4eb4c):
+  // archive#3450 follow-up (commit b3ff4eb4c):
   // outputTextDetail now redacts BEFORE truncating. The scrub test above uses
   // a 64-char secret, well under MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS (500) — for
   // a short string, redact-then-slice and slice-then-redact are IDENTICAL, so
@@ -815,7 +815,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'output text straddle');
   });
 
-  // archive#3450 review round 2 (FIX A): `effect.terminal`/`effect.reason`
+  // archive#3450: `effect.terminal`/`effect.reason`
   // come from `extractString` — a bare `typeof` check with no length cap of
   // its own — and interpolate into `muse-terminal-not-completed`'s
   // `runtime.error.message` PREFIX, which neither `outputTextDetail`'s nor
@@ -919,7 +919,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'stderr secret');
   });
 
-  // archive#3450 review round 2 (FIX B): outputTextDetail folds
+  // archive#3450: outputTextDetail folds
   // run_terminal.text into the SAME runtime.error.message string
   // stderrDetail's redacted tail lands in — it must be scrubbed too, or an
   // unredacted secret would sit right next to a redacted one in one string.
@@ -955,7 +955,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'output text secret');
   });
 
-  // archive#3450 review round 2, post-merge follow-up (commit b3ff4eb4c):
+  // archive#3450 follow-up (commit b3ff4eb4c):
   // boundedTerminalField now scrubs too — `reason` is the field an engine is
   // most likely to fill with an auth error. Kept well under
   // MUSE_TERMINAL_FIELD_MAX_CHARS (200, ~66 chars here) so the clamp's own
@@ -1091,7 +1091,7 @@ describe('MuseAdapter', () => {
     });
     // Still one session, still no session.exited from a killed turn child.
     expect(await harness.adapter.hasSession('thread-interrupt')).toBe(true);
-    // archive#3450 review round 2 (FIX C): the `aborted` arm needs the same
+    // archive#3450: the `aborted` arm needs the same
     // ceiling as the `error` arm — this test's own name claims "exactly
     // once", which the fixed-count drain above does not compute on its own.
     await expectNoFurtherEvent(harness.iterator, 'interrupt');
@@ -1232,7 +1232,7 @@ describe('MuseAdapter', () => {
     // Without a `stopped` guard the exit handler has already re-opened the
     // turn slot, so this spawns a second `muse exec` that bills tokens and
     // publishes `content.text-delta`/`turn.completed` AFTER `session.exited`.
-    // #2300 round 4: a pre-effect refusal, so the orchestration layer
+    // #2300: a pre-effect refusal, so the orchestration layer
     // retires the dispatch cleanly instead of recording it indeterminate.
     const refusal = await harness.adapter
       .sendTurn({ threadId: 'thread-stop-race', input: 'two' })
@@ -1748,7 +1748,7 @@ describe('Muse startup-provider override', () => {
   });
 
   /**
-   * MEDIUM-1: under `echo` no `--model` is ever passed, so a session that
+   * Under `echo` no `--model` is ever passed, so a session that
    * reports a model would be asserting something nothing applied.
    */
   describe('the session reports the model that actually ran', () => {
@@ -2075,7 +2075,7 @@ describe('MuseAdapter owned-child registration', () => {
 
     // The original handle remains in the slot. A replacement cannot steal the
     // forced-stop target while the old child is still alive.
-    // #2300 round 3: Station already failed to confirm this child stopped,
+    // #2300: Station already failed to confirm this child stopped,
     // so nothing frees the slot on its own — a definitive pre-effect
     // refusal, never the retryable slot-releasing one.
     const refusal = await Promise.race([
@@ -2969,7 +2969,7 @@ describe('Muse turn supervision (#2269)', () => {
       expect(error).toMatchObject({
         code: MUSE_TURN_IDLE_TIMEOUT_CODE,
       });
-      // #2308 review: one completion per call id per turn — the replayed
+      // #2308: one completion per call id per turn — the replayed
       // receipt is dropped rather than published as a second outcome row,
       // and (as before) never buys idle time.
       expect(

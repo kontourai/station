@@ -37,7 +37,7 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import {
   buildActiveChatTaskItems,
-  buildHomeTaskItems,
+  buildHomeWorkItems,
 } from '../views/home/home-view-model';
 
 const NOW = Date.parse('2026-09-23T20:00:00.000Z');
@@ -93,7 +93,7 @@ function items(
     agents: [],
     sessions,
   });
-  return buildHomeTaskItems({ chats: {}, sessions, agents: [], chatItems });
+  return buildHomeWorkItems({ chats: {}, sessions, agents: [], chatItems });
 }
 
 function titleOf(rows: ReturnType<typeof items>, threadId: string): string {

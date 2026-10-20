@@ -18,6 +18,7 @@ import {
   NavigationProvider,
   navigationStore,
 } from '../../../contexts/NavigationContext';
+import { MOBILE_MEDIA_QUERY } from '../../../hooks/useIsMobile';
 import { TerminalPanel } from '../TerminalPanel';
 
 const { fetchTerminalPort, credentialProvider, assertRawEgress, station } =
@@ -43,7 +44,10 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
     credentialProvider: { ...credentialProvider },
   }),
 }));
-vi.mock('../../../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../../../hooks/useIsMobile', async (original) => ({
+  ...(await original<typeof import('../../../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 
 const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
   class FakeTerminal {
@@ -69,7 +73,10 @@ const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
     hasSelection = vi.fn(() => Boolean(this.selection));
     getSelection = vi.fn(() => this.selection);
 
-    constructor() {
+    options: { fontSize?: number } | undefined;
+
+    constructor(options?: { fontSize?: number }) {
+      this.options = options;
       FakeTerminal.instances.push(this);
     }
 
@@ -195,6 +202,19 @@ async function connectTerminal() {
   } as MessageEvent);
   return { socket, terminal: FakeTerminal.instances[0]! };
 }
+
+// The glyph size follows the app's one mobile breakpoint, including its
+// landscape-phone clause, rather than a width-only copy of it.
+test.each([
+  { device: 'a phone held sideways', mobile: true, fontSize: 14 },
+  { device: 'a desktop', mobile: false, fontSize: 12 },
+])('renders larger glyphs only on a phone: $device', ({ mobile, fontSize }) => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: mobile && query === MOBILE_MEDIA_QUERY,
+  }));
+  renderTerminal();
+  expect(FakeTerminal.instances[0]?.options?.fontSize).toBe(fontSize);
+});
 
 test('renderer unmount detaches its WebSocket without sending a terminal close command', async () => {
   const rendered = renderTerminal();

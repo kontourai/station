@@ -226,7 +226,6 @@ export function useChatInput({
   // History navigation index
   const [, setHistoryIndex] = useState<Map<string, number>>(new Map());
 
-  // Get actions from context
   const {
     updateChat,
     clearInput,
@@ -254,7 +253,6 @@ export function useChatInput({
   );
   const handleSlashCommand = useSlashCommandHandler();
 
-  // Wrap slash command handler
   const slashCommandHandler = useCallback(
     async (sid: string, command: string) => {
       return handleSlashCommand(sid, command, {

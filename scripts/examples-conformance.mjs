@@ -1,10 +1,10 @@
 /**
  * Examples conformance gate.
  *
- * `examples/` is the surface people copy from, and until now exactly one of the
- * nineteen examples was exercised by any test. A manifest could name an
- * entrypoint that had been renamed, a README could document a command that no
- * longer exists, and nothing would notice.
+ * `examples/` is the surface people copy from. Before this gate, only one
+ * example was exercised by any test: a manifest could name an entrypoint that
+ * had been renamed, a README could document a command that no longer exists,
+ * and nothing would notice.
  *
  * This checks every example against the real contract and the real files on
  * disk:
@@ -28,8 +28,9 @@
  * which loads each one through the install preview's own reader (#2401).
  *
  * Live build/run proof is a separate lane: see `--build`. Examples that need
- * credentials are declared here rather than skipped silently, so "not proven"
- * is visible instead of being confused with "passing".
+ * credentials, and examples known not to work, are declared here rather than
+ * skipped silently, so "not proven" and "broken" are visible instead of being
+ * confused with "passing".
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -47,10 +48,28 @@ const EXAMPLES_DIR = join(ROOT, 'examples');
  * Listed explicitly so an unproven example is a disclosed gap, not a silence.
  */
 export const CREDENTIAL_GATED = new Map([
-  ['elevenlabs-voice', 'needs an ElevenLabs API key'],
   ['openai-realtime-voice', 'needs an OpenAI API key'],
-  ['nova-sonic-voice', 'needs AWS Bedrock credentials for Nova Sonic'],
   ['meeting-transcription', 'needs a speech-to-text provider credential'],
+]);
+
+/**
+ * Examples that cannot work as shipped, whatever credentials are supplied.
+ * Their READMEs and the examples index say so; this keeps the gate's output
+ * from reporting them as merely credential-gated.
+ */
+export const KNOWN_BROKEN = new Map([
+  [
+    'nova-sonic-voice',
+    'structural only: its relay returns HTTP 501 until a WebSocket-to-Bedrock bridge exists',
+  ],
+  [
+    'elevenlabs-voice',
+    'its token, audio and transcript code differs from the provider protocol (#2784)',
+  ],
+  [
+    'station-sessions-mcp',
+    'its reader uses the wrong route and reports failed reads as empty (#2785)',
+  ],
 ]);
 
 /**
@@ -397,6 +416,9 @@ function main() {
 
   for (const [name, reason] of CREDENTIAL_GATED) {
     console.log(`  NOT PROVEN AT RUNTIME: ${name} — ${reason}`);
+  }
+  for (const [name, reason] of KNOWN_BROKEN) {
+    console.log(`  KNOWN BROKEN: ${name} — ${reason}`);
   }
   for (const [name, reason] of TYPECHECK_EXCLUDED) {
     console.log(`  NOT TYPE-CHECKED: ${name} — ${reason}`);

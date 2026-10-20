@@ -191,6 +191,10 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         // #3051 — the Coding layout's panels, per session.
         'codingPanels',
         'chatReturnBehavior',
+        // Named color themes (docs/decisions/user-color-themes.md).
+        'colorTheme',
+        'colorThemeFlavor',
+        'colorThemeAccent',
       ].sort(),
     );
   });
@@ -204,6 +208,10 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     );
     expect(byKey.get('theme')).toBe('dark');
     expect(byKey.get('accentColor')).toBeNull();
+    // `station` is today's look: an absent selection changes nothing.
+    expect(byKey.get('colorTheme')).toBe('station');
+    expect(byKey.get('colorThemeFlavor')).toBeNull();
+    expect(byKey.get('colorThemeAccent')).toBeNull();
     expect(byKey.get('hapticsEnabled')).toBe(true);
     expect(byKey.get('featureSettings')).toEqual({
       ttsReadbackEnabled: false,

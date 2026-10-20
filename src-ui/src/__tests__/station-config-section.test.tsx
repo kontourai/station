@@ -322,9 +322,15 @@ test('#2144 slice 6: the row states who ignores it and when it applies', () => {
   expect(
     screen.getByText(/webhooks, Discord, scheduled jobs, delegations/),
   ).toBeTruthy();
+  expect(screen.getByText(/never to a session already running/)).toBeTruthy();
+  // Full access drops prompts; it does not lift Station's workspace
+  // confinement from a start that carries no full-access grant (a webhook
+  // start, `approval-posture.ts` startConfinement), so the row must not
+  // promise "no sandbox".
   expect(
-    screen.getByText(/Never applied to a session already running/),
+    screen.getByText(/still runs inside Station\u2019s workspace confinement/),
   ).toBeTruthy();
+  expect(screen.queryByText(/no sandbox/)).toBeNull();
   // Who it does nothing for: Station's own engine (it keeps a knob-capable
   // connection id and renders no approval control) and every engine whose
   // adapter has no knob.

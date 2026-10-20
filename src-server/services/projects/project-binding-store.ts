@@ -87,7 +87,7 @@ export function projectBindingStorePath(homeDir: string): string {
   return join(homeDir, 'config', 'project-bindings.json');
 }
 
-export function emptyProjectBindingStore(): ProjectBindingStore {
+function emptyProjectBindingStore(): ProjectBindingStore {
   return {
     schemaVersion: PROJECT_BINDING_STORE_SCHEMA_VERSION,
     memberId: LOCAL_MEMBER_ID,

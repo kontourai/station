@@ -3,6 +3,7 @@
  * the holder itself, refuses a live one, demands --force when the holder's
  * identity cannot be verified, and never deletes an epoch.
  */
+
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
@@ -11,7 +12,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import { processFingerprint } from '../generation-registry.ts';
-import { SUPERVISOR_MAIN, startSupervisor } from './harness.ts';
+import { supervisorRunDir } from '../protocol.ts';
+import { SUPERVISOR_MAIN, startSupervisor, trackHome } from './harness.ts';
 
 const makeTempDir = trackTempDirs();
 const children: ChildProcess[] = [];
@@ -46,7 +48,7 @@ function breakLock(
 }
 
 function epochFile(home: string, epoch: number): string {
-  return join(home, 'run', `instance-test.lock.${epoch}`);
+  return join(supervisorRunDir(home), `instance-test.lock.${epoch}`);
 }
 
 function readEpoch(home: string, epoch: number): Record<string, unknown> {
@@ -58,7 +60,10 @@ function writeEpoch(
   epoch: number,
   content: Record<string, unknown>,
 ): void {
-  mkdirSync(join(home, 'run'), { recursive: true, mode: 0o700 });
+  mkdirSync(supervisorRunDir(trackHome(home)), {
+    recursive: true,
+    mode: 0o700,
+  });
   writeFileSync(epochFile(home, epoch), JSON.stringify(content));
 }
 
@@ -103,7 +108,9 @@ describe('--break-lock (child processes)', () => {
     expect(marked.releasedBy).toBe('break-lock');
     expect(marked.releaseReason).toBe('test cleanup');
     expect(
-      readdirSync(join(home, 'run')).filter((name) => name.includes('.lock.')),
+      readdirSync(supervisorRunDir(home)).filter((name) =>
+        name.includes('.lock.'),
+      ),
     ).toEqual(['instance-test.lock.1']);
     const next = await startSupervisor({ home });
     expect(next.output()).toContain('acquired instance lock epoch 2');
@@ -194,7 +201,10 @@ describe('--break-lock (child processes)', () => {
       makeTempDir('sup-break-quote-'),
       "a b $(touch pwned) 'q'",
     );
-    mkdirSync(join(home, 'run'), { recursive: true, mode: 0o700 });
+    mkdirSync(supervisorRunDir(trackHome(home)), {
+      recursive: true,
+      mode: 0o700,
+    });
     // A lock still being written: the refusal suggests --break-lock --force.
     writeFileSync(epochFile(home, 1), '');
     const starter = await startSupervisor({ home, waitForServing: false });

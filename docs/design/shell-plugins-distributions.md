@@ -1,6 +1,7 @@
 # Shell kernel, plugin contributions and distribution manifests
 
-> **Reading status: accepted direction, not built.** This record holds the
+> **Reading status: accepted direction, not built; tracked by
+> [#2993](https://github.com/kontourai/station/issues/2993).** This record holds the
 > owner decisions of 2026-09-29 and the delivery plan that implements them.
 > Nothing below is shipped behavior unless the text says it **exists** and
 > cites the source that establishes it. The "Current state" section was
@@ -277,7 +278,9 @@ behavior.
   [`/api/branding`](../../src-server/routes/system/branding.ts)).
 - The white-label theme applies five role tokens and refuses the whole theme
   (keeping defaults) on an unknown key, a non-hex value or a failed contrast
-  check. Since #2952, which was re-checked after merging it, the check is
+  check. Under a named color theme, a slot group that fails on that theme's
+  surfaces falls back to the theme's value
+  ([decision](../decisions/user-color-themes.md)). Since #2952, which was re-checked after merging it, the check is
   `@kontourai/ui`'s `validateBrandOverride` plus Station's own stricter text
   rules: two on 1.16.0, one (the action fill) since the 1.18.0 bump, whose
   validator took over the brand rule ([branding-theme.ts](../../src-ui/src/lib/branding-theme.ts);

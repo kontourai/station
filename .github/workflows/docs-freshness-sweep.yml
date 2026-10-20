@@ -51,3 +51,80 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: node scripts/docs-freshness-sweep.mjs --upsert --report .artifacts/docs-freshness-report.md --repo "$REPOSITORY"
+
+  # Code hygiene sweep (docs/guides/code-hygiene.md): the same advisory,
+  # single-tracking-issue pattern for unfinished-work markers, issue
+  # references, plan labels, module ownership, design status and evidence
+  # retention. The job that installs dependencies and resolves issue state
+  # holds read-only permissions; only the dependency-free upsert job below
+  # can write the issue.
+  hygiene:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: read
+      # A marker or status line may cite a pull request number.
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: npm run dependencies:ci
+      - name: Report code hygiene
+        id: report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        # Exit 2 (NOT_VERIFIED, or a check that could not run) must still
+        # publish the report, so the status is recorded and enforced below.
+        run: |
+          status=0
+          npm run hygiene:report -- --repo "$REPOSITORY" --report .artifacts/code-hygiene-report.md || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+      - name: Print report (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run != 'false'
+        run: cat .artifacts/code-hygiene-report.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: hashFiles('.artifacts/code-hygiene-report.md') != ''
+        with:
+          name: code-hygiene-report
+          path: .artifacts/code-hygiene-report.md
+          retention-days: 7
+      - name: Refuse an unverified report
+        if: steps.report.outputs.status != '0'
+        env:
+          STATUS: ${{ steps.report.outputs.status }}
+        run: |
+          echo "::error::hygiene:report exited $STATUS: a check is NOT_VERIFIED or could not run; see the log above."
+          exit 1
+
+  hygiene-issue:
+    needs: hygiene
+    if: >-
+      !cancelled() &&
+      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == 'false'))
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: code-hygiene-report
+          path: .artifacts
+      - name: Upsert tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: node scripts/hygiene-report.mjs --upsert --report .artifacts/code-hygiene-report.md --repo "$REPOSITORY"

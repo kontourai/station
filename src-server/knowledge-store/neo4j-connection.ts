@@ -19,14 +19,10 @@ export interface Neo4jGraphViewConnectionConfig {
   database?: string;
   username?: string;
   /**
-   * K5 evolution (`s203-knowledge-meeting-notes--plan.md` Wave 1 Task 1): K2's
-   * original doc comment on this interface deliberately deferred credential
-   * modeling — "belongs to whichever wave adds a real driver-backed client
-   * (K5)". That wave is this one (`./neo4j-graph-sync.ts` /
-   * `./neo4j-graph-provider.ts`'s `createNeo4jDriver`), so `password` is added
-   * here, optional and only ever read by the real-driver factory — never by
-   * this file's own registration/reachability/query-stub surface, which is
-   * otherwise unchanged.
+   * Optional, and read only by the real-driver factory
+   * (`./neo4j-graph-provider.ts`'s `createNeo4jDriver`, used by
+   * `./neo4j-graph-sync.ts`). This file's own registration and reachability
+   * surface never reads it: the TCP probe does not authenticate.
    */
   password?: string;
 }
@@ -58,7 +54,7 @@ export function clearNeo4jGraphViewConnection(): void {
   registeredConnection = null;
 }
 
-// ── Reachability (K4 onboarding hook) ───────────────────────────────────────────
+// ── Reachability (onboarding hook) ──────────────────────────────────────────────
 
 function parseBoltHostPort(uri: string): { host: string; port: number } {
   const parsed = new URL(uri);
@@ -94,7 +90,7 @@ function tcpProbe(
 }
 
 /**
- * K4's onboarding hook (this module's equivalent of an adapter's `validateRoot`,
+ * The onboarding hook (this module's equivalent of an adapter's `validateRoot`,
  * named for what it actually checks — a connection, not a store root). Never
  * throws; always returns an honest `{ok, reason}` shape, including the
  * not-verifiable-without-a-driver case:
@@ -102,16 +98,15 @@ function tcpProbe(
  * - No config / empty `uri` → `{ok: false, reason: 'not configured'}`.
  * - Malformed `uri` → `{ok: false, reason: 'invalid Neo4j URI: ...'}`.
  * - No daemon accepts a TCP connection within `timeoutMs` → `{ok: false, reason:
- *   'not reachable: ...'}` — this is the expected, common result in K2 (no live
+ *   'not reachable: ...'}` — this is the expected, common result (no live
  *   Neo4j daemon dependency anywhere in this repo).
  * - A TCP connection succeeds → still `{ok: false, reason: 'TCP-reachable, but not
- *   verifiable...'}`, NOT `{ok: true}` — K2 ships no bolt driver, so a successful
- *   TCP handshake only proves *something* is listening on that host:port, not that
- *   it is actually a live Neo4j daemon speaking the bolt protocol. Overclaiming
- *   `ok: true` here would be exactly the "silently returning empty success" failure
- *   mode this plan explicitly rejects (see the plan's Wave 3 acceptance criteria).
- *   A real reachability/health verdict is K5's dual-adapter dogfood scope, once a
- *   real driver exists.
+ *   verifiable...'}`, NOT `{ok: true}` — this probe uses no bolt driver, so a
+ *   successful TCP handshake only proves *something* is listening on that
+ *   host:port, not that it is actually a live Neo4j daemon speaking the bolt
+ *   protocol. Overclaiming `ok: true` here would be a "silently returning empty
+ *   success" failure. A real reachability/health verdict needs a bolt-protocol
+ *   handshake, which this probe does not perform.
  */
 export async function validateNeo4jGraphViewConnection(
   config: Neo4jGraphViewConnectionConfig | null,

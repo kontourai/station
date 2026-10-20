@@ -1,100 +1,137 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
-import { AnswerBasisAffordance } from '../AnswerBasisAffordance';
+/**
+ * The answer's Basis chip face. Surface derives every standing and label here
+ * (real `buildBasisPanelViewModel` over projections composed by Surface's own
+ * composer); only the SDK read is replaced, so each case states exactly what
+ * the read returned.
+ */
+import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  AnswerBasisAffordance,
+  answerBasisChipCue,
+} from '../AnswerBasisAffordance';
+import {
+  type AnswerBasisStandingFixture,
+  answerBasisProjection,
+} from './fixtures/answer-basis-standing';
 
 const query = vi.hoisted(() => vi.fn());
-const mocks = vi.hoisted(() => {
-  class MockAnswerBasisRequestError extends Error {
-    constructor(readonly status: number) {
-      super('Answer basis unavailable');
-    }
-  }
-  return { MockAnswerBasisRequestError };
-});
 vi.mock('@kontourai/station-sdk/answer-basis', () => ({
   useAnswerBasisQuery: query,
-  AnswerBasisRequestError: mocks.MockAnswerBasisRequestError,
 }));
 
+const ANSWER = 'the answer “Here is the answer.”';
+
+function renderChip(enabled = true) {
+  const onOpen = vi.fn();
+  render(
+    <AnswerBasisAffordance
+      sessionId="agent:1792425046978"
+      turnId="turn-7"
+      enabled={enabled}
+      answerName={ANSWER}
+      onOpen={onOpen}
+    />,
+  );
+  return { button: screen.getByRole('button'), onOpen };
+}
+
+beforeEach(() => {
+  query.mockReset();
+});
+afterEach(cleanup);
+
 describe('AnswerBasisAffordance', () => {
-  test('reports checking and captures the invoking button', () => {
+  test('an unassessed answer stays plain "Basis" and names its standing only for assistive tech', () => {
+    query.mockReturnValue({
+      data: answerBasisProjection('execution-only'),
+      error: null,
+    });
+    const { button } = renderChip();
+    expect(button.textContent).toBe('Basis');
+    expect(button.getAttribute('aria-label')).toBe(
+      `Basis for ${ANSWER}: Unassessed`,
+    );
+  });
+
+  test.each([
+    ['policy-met', 'Policy met'],
+    ['assessed-with-gaps', 'Assessed with gaps'],
+    ['unresolved', 'Temporarily unavailable'],
+  ] as const)(
+    'a notable standing (%s) shows Surface’s own label',
+    (standing, label) => {
+      const projection = answerBasisProjection(standing);
+      // The label is Surface's, not a string this package spells.
+      expect(buildBasisPanelViewModel(projection).standing.label).toBe(label);
+      query.mockReturnValue({ data: projection, error: null });
+      const { button } = renderChip();
+      expect(button.textContent).toBe(`Basis · ${label}`);
+      expect(button.getAttribute('aria-label')).toBe(
+        `Basis · ${label} for ${ANSWER}`,
+      );
+    },
+  );
+
+  test('while unread, loading or failed it stays plain and still opens', () => {
+    for (const result of [
+      { data: undefined, error: null },
+      { data: undefined, error: new Error('private identity') },
+    ]) {
+      query.mockReturnValue(result);
+      const { button, onOpen } = renderChip();
+      expect(button.textContent).toBe('Basis');
+      expect(button.getAttribute('aria-label')).toBe(`Basis for ${ANSWER}`);
+      expect(document.body.textContent).not.toContain('private identity');
+      fireEvent.click(button);
+      expect(onOpen).toHaveBeenCalledWith(button);
+      cleanup();
+    }
+  });
+
+  test('reads only while enabled, and never re-reads a cached standing on its own', () => {
     query.mockReturnValue({ data: undefined, error: null });
-    const onOpen = vi.fn();
-    render(
-      <AnswerBasisAffordance
-        sessionId="session"
-        turnId="turn"
-        enabled={false}
-        onOpen={onOpen}
-      />,
+    renderChip(false);
+    expect(query).toHaveBeenLastCalledWith(
+      'agent:1792425046978',
+      'turn-7',
+      expect.objectContaining({
+        enabled: false,
+        staleTime: Number.POSITIVE_INFINITY,
+      }),
     );
-    const button = screen.getByRole('button', { name: 'Basis · Checking…' });
-    fireEvent.click(button);
-    expect(onOpen).toHaveBeenCalledWith(button);
   });
 
-  test('names protected failure without leaking detail', () => {
-    query.mockReturnValue({
-      data: undefined,
-      error: new Error('private identity'),
-    });
-    render(
-      <AnswerBasisAffordance
-        sessionId="session"
-        turnId="turn"
-        enabled
-        onOpen={() => undefined}
-      />,
-    );
-    expect(screen.getByRole('button').textContent).toBe('Basis · Unavailable');
-    expect(document.body.textContent).not.toContain('private identity');
-  });
-  /**
-   * #1536 B3. The route answers 404 when there is no basis to show and keeps
-   * 503 for a read it could not perform; collapsing both into "Unavailable"
-   * made a healthy instance accuse itself of a failure.
-   *
-   * Review H3: and 404 also covers a denied or stale-principal read —
-   * deliberately, so the two are indistinguishable to the caller. The label
-   * must therefore claim nothing about WHY, in either direction.
-   */
-  test('a 404 reads as an absence, and claims nothing about recording or denial', () => {
-    query.mockReturnValue({
-      data: undefined,
-      error: new mocks.MockAnswerBasisRequestError(404),
-    });
-    render(
-      <AnswerBasisAffordance
-        sessionId="session"
-        turnId="turn"
-        enabled
-        onOpen={() => undefined}
-      />,
-    );
-    const button = screen.getByRole('button');
-    expect(button.textContent).toBe('Basis · Not available for this turn');
-    expect(button.title).toBe(
-      'Station has no basis it can show you for this turn.',
-    );
-    // Neither half of the distinction the route refuses to leak.
-    expect(button.textContent).not.toMatch(/recorded|denied|permission/i);
-    expect(button.title).not.toMatch(/recorded|denied|permission/i);
-  });
-
-  test('a read that could not be performed still reads as unavailable', () => {
-    query.mockReturnValue({
-      data: undefined,
-      error: new mocks.MockAnswerBasisRequestError(503),
-    });
-    render(
-      <AnswerBasisAffordance
-        sessionId="session"
-        turnId="turn"
-        enabled
-        onOpen={() => undefined}
-      />,
-    );
-    expect(screen.getByRole('button').textContent).toBe('Basis · Unavailable');
+  test('the notable list is closed: an unknown code stays plain', () => {
+    const fixtures: AnswerBasisStandingFixture[] = [
+      'execution-only',
+      'policy-met',
+      'assessed-with-gaps',
+      'unresolved',
+    ];
+    expect(
+      fixtures.map((fixture) =>
+        answerBasisChipCue(
+          buildBasisPanelViewModel(answerBasisProjection(fixture)).standing,
+        ),
+      ),
+    ).toEqual([
+      null,
+      'Policy met',
+      'Assessed with gaps',
+      'Temporarily unavailable',
+    ]);
+    expect(
+      answerBasisChipCue({
+        code: 'future-standing' as never,
+        label: 'Future',
+        description: '',
+        tone: 'neutral',
+        unresolvedReason: null,
+      }),
+    ).toBeNull();
+    expect(answerBasisChipCue(null)).toBeNull();
   });
 });

@@ -125,7 +125,7 @@ import type { StrandsFramework } from '../frameworks/strands-adapter.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   type HonoServerConfig,
-  honoServer,
+  stationHonoServer,
 } from '../frameworks/voltagent-hono-runtime.js';
 import * as MCPManager from '../mcp/mcp-manager.js';
 import {
@@ -160,7 +160,6 @@ import {
   isHostedTenantExecutionRequired,
   loadHostedTenantRegistryFromEnvironment,
 } from './runtime-tenant-context.js';
-import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js';
 
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
@@ -413,22 +412,11 @@ export async function initializeRuntime(
   const features = (process.env.STATION_FEATURES || '')
     .split(',')
     .filter(Boolean);
+  // SUNSET(#3909): delete once the persisted `runtime` setting is the only
+  // runtime selector, or Strands is the default.
   if (features.includes('strands-runtime')) {
     appConfig.runtime = 'strands';
   }
-  // archive#980: default OFF. In-memory only (never persisted to
-  // config/app.json) — mirrors the `strands-runtime` flag just above.
-  // **Boot-time snapshot only — NOT the source of truth after this point.**
-  // `this.appConfig` (station-runtime.ts) is wholesale reassigned from a
-  // fresh disk load on every `reloadAgentsFromDisk()`/`reloadDefaultAgent()`
-  // (which never carries this non-persisted field), so any live reader must
-  // go through `isManagedChatOrchestrationFeatureEnabled()`
-  // (`station-features.ts`), never `appConfig.managedChatOrchestration`
-  // directly — see `createConfigRoutes`'s `getManagedChatOrchestrationEnabled`
-  // param, which does exactly that.
-  appConfig.managedChatOrchestration = isManagedChatOrchestrationFeatureEnabled(
-    process.env,
-  );
 
   const runtime = appConfig.runtime || 'voltagent';
   const framework: RuntimeFramework =
@@ -489,9 +477,9 @@ export async function initializeRuntime(
     // to resolve at registration is "known" to /chat, which returns a
     // specific 409 — not "unknown"). This is a strict widening (accept-more,
     // never accept-less), so it is safe for BOTH paths that reach this gate:
-    // the managed-chat-orchestration flip AND the always-on `delegateTask`
-    // Station-agent branch (which uses provider 'station-agent' regardless of
-    // the flag) — not flip-only, contrary to what the flag's name suggests.
+    // managed chat (which runs through orchestration unconditionally, ADR
+    // 0014) AND the `delegateTask` Station-agent branch (provider
+    // 'station-agent').
     // archive#1992: the active set keys the built-in default agent under the
     // internal runtime key 'default' (runtime-default-agent.ts), while every
     // caller reaching this gate uses the public slug 'station' — and the
@@ -604,6 +592,10 @@ export async function initializeRuntime(
     // acp-resume-cursor-support.ts — keyed on the observed handshake, not on
     // the presence of capabilities.
     resumeCursorSupport: acpResumeCursorSupport(acpBridge),
+    // #3290: an ACP thread has an approval knob only on a connection whose
+    // approval rules Station sets at launch.
+    acpApprovalControl: (connectionId) =>
+      acpBridge.approvalControl(connectionId),
     adoptionLedger,
     credentialProfileRecoveryAdapter: deps.credentialProfileRecoveryAdapter,
     requireTenantExecutionContext: isHostedTenantExecutionRequired,
@@ -977,7 +969,7 @@ export async function initializeRuntime(
           createEventStoreWorkItemPrincipalLiveness(orchestrationEventStore),
         ),
         resolveUnattendedGrant: deps.resolveUnattendedGrant,
-        // archive#1834 review round 2: the same guardian composition
+        // archive#1834: the same guardian composition
         // runtime-agent-builder gives every persisted agent.
         approvalGuardian: new ApprovalGuardianService({
           appConfig,
@@ -1058,7 +1050,7 @@ export async function initializeRuntime(
   // Station's handler immediately as well, before awaiting VoltAgent.ready.
   void serverStartup.catch(() => {});
   let serverStartInvoked = false;
-  const createServer = honoServer(serverConfig);
+  const createServer = stationHonoServer(serverConfig);
   const trackedServerFactory: ServerProviderFactory = (serverDeps) => {
     const provider = createServer(serverDeps);
     return {

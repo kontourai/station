@@ -2113,6 +2113,9 @@ every check from the "White-label overrides" section in
 [`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides)
 (the package's `validateBrandOverride`) and Station's stricter text checks
 pass in both modes; otherwise it applies none of it and keeps the default.
+Under a named color theme an accepted override is rated again on that theme's
+surfaces, and a failing slot group falls back to the theme's value
+([decision](../decisions/user-color-themes.md)).
 The rules and a worked provider are in
 [examples/custom-branding](../../examples/custom-branding/README.md).
 

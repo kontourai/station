@@ -17,3 +17,4 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |
 | [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |
 | [telemetry-tiers](./telemetry-tiers.md) | current | Per-publisher Station telemetry tiers and consent boundaries |
+| [user-color-themes](./user-color-themes.md) | current | Named color themes layered on the shipped design tokens, Station unchanged by default |

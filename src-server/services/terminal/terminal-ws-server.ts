@@ -1,7 +1,8 @@
 import { terminalPtyUnavailableReason } from '@kontourai/station-shared/terminal-capability';
-import { type RawData, WebSocket, WebSocketServer } from 'ws';
+import { type RawData, WebSocket, type WebSocketServer } from 'ws';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import type { TerminalEvent } from '../../domain/terminal-types.js';
+import { startWebSocketListener } from '../../runtime/bootstrap/websocket-listener.js';
 import {
   type ExternalSurfaceCapabilityRule,
   requiredExternalSurfaceCapability,
@@ -97,21 +98,23 @@ export class TerminalWebSocketServer {
     host?: string,
     options: { allowedBrowserOrigins?: readonly string[] } = {},
   ): WebSocketServer {
-    this.wss = new WebSocketServer({
-      port,
-      maxPayload: Math.max(
-        DEFAULT_MAX_AUTH_FRAME_BYTES,
-        this.auth?.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
-      ),
-      ...(host ? { host } : {}),
-      verifyClient: createCredentialFreeOriginVerifier({
-        allowedOrigins: options.allowedBrowserOrigins ?? [],
-        credentialRequired: this.auth !== undefined,
-        classifyPeer: this.auth?.classifyPeer,
-        onRejected: (peerClass) =>
-          this.auditFailure('origin_forbidden', peerClass),
-      }),
-    });
+    this.wss = startWebSocketListener(
+      'terminal',
+      { port, host },
+      {
+        maxPayload: Math.max(
+          DEFAULT_MAX_AUTH_FRAME_BYTES,
+          this.auth?.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
+        ),
+        verifyClient: createCredentialFreeOriginVerifier({
+          allowedOrigins: options.allowedBrowserOrigins ?? [],
+          credentialRequired: this.auth !== undefined,
+          classifyPeer: this.auth?.classifyPeer,
+          onRejected: (peerClass) =>
+            this.auditFailure('origin_forbidden', peerClass),
+        }),
+      },
+    );
 
     this.wss.on('connection', (ws: WebSocket, req) => {
       const url = new URL(req.url ?? '/', `http://localhost:${port}`);

@@ -28,10 +28,10 @@ loop need not run them.
 the [generated contributor command reference](../reference/contributor-commands.md)
 for the exact nine recipes and their checked Unix and Windows implementations.
 
-Install Just **1.44.0 or later**: `brew install just` on macOS, your Linux
-distribution's package manager (or `cargo install just --locked`), or `winget install --id Casey.Just --exact` in Windows Package Manager. The minimum is
-required for the Windows `[script]` recipes. Run `just --version` after
-installation.
+Install Just 1.44.0 or later by following the
+[contribution guide](../../CONTRIBUTING.md#optional-just-contributor-interface),
+which owns the per-platform install commands, and check it with
+`just --version`.
 
 Run the recipes from the repository root. The forwarding recipes preserve
 arguments: on macOS/Linux quote shell-sensitive values with single quotes; in
@@ -232,7 +232,9 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-connect` | `packages/connect/` | Private in this checkout (`private: true`) | Standalone bidirectional pairing library |
 | `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
 | `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), `private: true` until a qualified functional release (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, message delivery decisions and sequencing, conformance suite. Station uses its public entry points, binds storage commands to its existing tables and supplies host admission, terminal facts, owner liveness and start/steer invocation |
-| `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations; not yet run by any launch mode. Other packages import its protocol from `@kontourai/station-supervisor/protocol` |
+| `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations; not yet run by any launch mode. Its [README](../../packages/supervisor/README.md) covers status and build. Control-channel clients are to import the protocol from `@kontourai/station-supervisor/protocol`; none does yet |
+| `@kontourai/station-basis-pane` | `packages/basis-pane/` | Private workspace package (`private: true`); consumed from TypeScript source through Station's bundler | First-party Basis Workspace Pane, answer-basis affordance and session inventory views, built on SDK and Surface view contracts. See its [README](../../packages/basis-pane/README.md) |
+| `@kontourai/station-board-pane` | `packages/board-pane/` | Private workspace package (`private: true`); consumed from TypeScript source | The Console Board as an in-process Workspace Pane over published contracts. See its [README](../../packages/board-pane/README.md) |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
 The contracts, SDK, and shared packages ship raw TypeScript source, so their
@@ -290,7 +292,7 @@ packages/         Contracts, SDK, connect package, shared helpers, CLI
 examples/         Plugin and provider examples
 docs/             Strategy, guides, reference, design docs, Pages source
 tests/            Playwright E2E specs and manifest
-monitoring/       OTel collector, Prometheus, Grafana, Jaeger stack
+deployment/       Self-hosted broker and telemetry/monitoring Compose profiles
 ```
 
 ## CLI Reference

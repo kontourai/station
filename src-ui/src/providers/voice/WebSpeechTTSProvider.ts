@@ -1,7 +1,5 @@
 /**
  * WebSpeechTTSProvider — TTSProvider backed by the SpeechSynthesis API.
- *
- * Extracted from useVoiceMode.ts.
  */
 import type { TTSOptions, TTSProvider } from '@kontourai/station-sdk';
 import { ListenerManager } from '@kontourai/station-sdk';

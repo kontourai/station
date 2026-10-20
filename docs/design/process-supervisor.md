@@ -1,11 +1,15 @@
 # Station process supervisor
 
+Status: Proposal — unscheduled; no tracking issue as of 2026-10-20 (phases 2–4; phase 1 shipped in #3811).
+
 > **Reading status: proposal (2026-10-17), phase 1 core implemented.** The
 > supervisor package ([`packages/supervisor`](../../packages/supervisor/src/generation-manager.ts))
 > implements the control channel, listener handoff, sequential generation
 > handoff with rollback, and crash restart, verified against a fixture core
-> server. No launch mode runs it yet, and the core server has no supervised
-> mode. The [process supervisor decision](../decisions/process-supervisor.md)
+> server. The core server also runs as a supervised generation
+> ([`supervisor-link.ts`](../../src-server/runtime/bootstrap/supervisor-link.ts)),
+> verified by running the built supervisor and core bundles together. No
+> launch mode runs it yet. The [process supervisor decision](../decisions/process-supervisor.md)
 > records the ownership change. Until adoption, the
 > current lifecycle is owned by the Desktop sidecar supervisor
 > (`run_sidecar_supervisor` in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs)),
@@ -104,19 +108,51 @@ product decisions.
   3. When N has exited, `promote` N+1 and send it each held handle with
      `listener.adopt`. N+1 boots and reports `ready` with its boot id.
   4. Commit, once N+1 has stayed up for a short grace after `ready`. If N+1
-     exits before then or misses its readiness timeout, the supervisor kills
+     exits before then or misses its readiness timeout, the supervisor ends
      it, starts N's entry again as a new generation, and reports
-     `rolled-back`.
+     `rolled-back`. A promoted N+1 may already be serving the held
+     listeners, so it is drained like N (without the voice extension) and
+     signalled only after the drain deadline; a trial that never left
+     `parked` is signalled at once.
 
   Clients wait during the swap but are not refused. Draining sets
   `Connection: close` on every response, so busy keep-alive connections
-  close after their response and reconnect into the backlog. Connections
-  still idle after a short grace are then closed with
-  `closeIdleConnections()`. Closing idle connections immediately, which
-  `http.Server.close()` does on Node 19 and later, resets keep-alive clients
-  whose next request is already in flight: the fixture saw every
-  connection reset on every handoff until the grace was added. SSE and
-  terminal clients reconnect and resume.
+  close after their response and reconnect into the backlog, and ends
+  server-sent event streams cleanly so their clients reconnect too. After a
+  short grace, connections with no request in progress are closed with
+  `closeIdleConnections()`, repeatedly as more go idle; a connection whose
+  next request has started arriving, even partially, is left to finish.
+  Closing idle connections immediately, which `http.Server.close()` does on
+  Node 19 and later, resets keep-alive clients whose next request is
+  already in flight: the fixture saw every connection reset on every
+  handoff until the grace was added. The generation shuts down once every
+  HTTP connection has closed, or when the drain deadline less a margin
+  passes; a request still running then is cut off when it exits. Terminal
+  clients reconnect and resume.
+
+  On the core server's side, a generation started with
+  `STATION_SUPERVISOR_IPC=1` parks before its temp and orphan sweeps, the
+  home schema gate, and its log sink, which touch the home or the live
+  generation's processes. Telemetry registers at import as usual, but its
+  home writes (schema gate, installation identity) wait for promotion. Its four listeners (API,
+  terminal, voice, consent) bind through one link: adopted handles when the
+  supervisor holds them, otherwise a normal bind reported with
+  `listener.bound`. A later generation takes its base port from the held API
+  socket, so `PORT=0` keeps one block across generations. `ready` carries a
+  boot id generated per generation; `STATION_BOOT_ID` is inherited unchanged
+  by every generation. Draining reports live voice calls, waits for HTTP
+  connections as above and for voice calls to end, then runs the ordinary
+  graceful shutdown. A supervised generation given SIGTERM drains the same
+  way within the supervisor's default kill grace (5 seconds), without
+  waiting for voice calls; a second signal shuts it down at once. A
+  supervisor started with another `--kill-grace-ms` does not tell its
+  generations; a shorter one kills mid-drain. If such a generation drains
+  and exits cleanly outside a handoff after serving stably (60 seconds by
+  default), the supervisor restarts it at once without counting a failure.
+  A clean exit sooner than that, or any other exit, counts as a crash, so
+  repeated signals reach the failure budget instead of looping. It does not arm the older parent
+  watchdog: the closed IPC channel is how it learns its supervisor is gone. Terminal and engine
+  processes it starts do not inherit the supervisor's generation variables.
 
   Overlapping generations, where N+1 boots while N still serves, need a
   home-writer lease that hands the home from one generation to the next. That
@@ -136,7 +172,7 @@ product decisions.
   One supervisor runs per home and instance, enforced by lock epochs and
   process identity. The argument is written out in
   [`instance-lock.ts`](../../packages/supervisor/src/instance-lock.ts).
-  - Lock files are `<home>/run/instance-<instance>.lock.<n>`, with n written
+  - Lock files are `<run>/instance-<instance>.lock.<n>`, with n written
     without leading zeros, created only with `wx`, so each epoch n has
     exactly one winner. The highest n is the current lock. Its content is
     the holder's pid, a random nonce, its process start fingerprint, its
@@ -245,18 +281,30 @@ product decisions.
 - **Registry.** It holds the home's single-owner claim and the
   `instances.json` record. Because it owns every engine, the boot sweep only
   matters after a supervisor crash.
-- **Control channel.** A versioned protocol on a local socket in the Station
-  home (mode 0600 on Unix), or a named pipe on Windows. The core server, the CLI, and
+- **Control channel.** A versioned protocol on a local socket beside the
+  Station home (mode 0600 on Unix), or a named pipe on Windows. The core server, the CLI, and
   the tray are its clients.
-  - The socket is `<home>/run/supervisor-<instance>.sock`. When that path
+  - The supervisor's run directory, `<run>` above, is
+    `<parent>/.<home name>.station-supervisor`, a sibling of the home and
+    never inside it. A home schema migration copies the home aside and
+    replaces it, which would move a live lock and socket out from under the
+    supervisor (a copy skips the socket). The home's parent is already
+    writable wherever Station runs, because the schema gate keeps its
+    mutation lock there. A fresh home therefore stays empty until the first
+    generation's schema gate creates it. The default home
+    `~/.station/instances/<channel>` puts it at
+    `~/.station/instances/.<channel>.station-supervisor`; a home set to
+    `~/.station` itself puts it at `~/..station.station-supervisor`. A home
+    at a filesystem root is refused.
+  - The socket is `<run>/supervisor-<instance>.sock`. When that path
     exceeds the platform's socket path limit (104 bytes on macOS), a hashed
     path in a private temporary directory is used instead. Clients derive the
     same path.
   - On Windows the pipe is `\\.\pipe\station-supervisor-<hash>`, named from
     a hash of the home and instance.
   - Every connection starts with `hello`, carrying the protocol version and
-    the token from `<home>/run/supervisor-<instance>.token` (mode 0600 on
-    Unix; Windows relies on the home directory's ACL). A different major
+    the token from `<run>/supervisor-<instance>.token` (mode 0600 on
+    Unix; Windows relies on the parent directory's ACL). A different major
     version or a wrong token is refused, and the supervisor disconnects a
     refused client promptly so it cannot hold a connection slot.
   - The supervisor creates its run directories at 0700 and refuses an
@@ -440,6 +488,14 @@ Every path becomes a generation handoff:
   - Task Scheduler does not relaunch a process that exits. The supervisor
     therefore restarts core servers itself, and the logon task's wrapper
     restarts the supervisor.
+  - Known gap: a handoff can reset a connection or two that were mid-accept.
+    libuv on Windows pre-posts `AcceptEx` on a listener, and closing the
+    draining generation's copy closes every pending accept, so connections
+    already completed into them are reset; POSIX keeps them in the shared
+    backlog. A supervisor-side fix follows in its own change. Until then the
+    zero-reset handoff holds on POSIX only.
+  - `process.kill(pid, 'SIGTERM')` ends a process outright on Windows, so a
+    core signalled that way does not run its SIGTERM drain.
 
 ### Failure modes
 
@@ -466,9 +522,10 @@ verification, and fault injection.
 
 1. **Supervisor core:** package, control protocol, listener handle passing,
    sequential generation handoff with rollback, crash restart. The package is
-   implemented; a supervised mode in the core server and adoption by
+   implemented, and so is the core server's supervised mode; adoption by
    `station start`, `service run`, and containers follow in their own pull
-   requests. Handle passing must be verified on a real Windows host before
+   requests. The core's `handoff.request` sender exists but nothing calls it
+   yet: the in-app update still refuses under supervision. Handle passing must be verified on a real Windows host before
    adoption.
 2. **Workloads and terminals:** workload host and journals, then the terminal
    redesign on top of it (see [terminal.md](terminal.md)).
@@ -499,5 +556,27 @@ verification, and fault injection.
 - **Phase 1 evidence:** the package's real-process tests run a fixture core
   server that speaks the IPC protocol. Under keep-alive HTTP load and an SSE
   client, repeated handoffs, rollbacks, and crash restarts produce no refused
-  connection, and handoffs produce no reset connection, on one port
-  throughout. They do not yet cover the real core server or Windows.
+  connection, and the tested handoffs and rollbacks reset no connection, on
+  one port throughout. A journey of the built supervisor and core server
+  bundles
+  ([`supervised-core.real.test.ts`](../../src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts))
+  hands generation 1 to 2 under keep-alive, fresh-connection, and
+  slow-header HTTP load (requests whose headers are still arriving when
+  generation 1 drains) with no refused or reset connection, on the same four
+  ports, and checks the terminal, voice, and consent listeners on the new
+  generation. It also checks that a parked generation leaves the home, the
+  temp root, and the engine registry untouched, and that the supervisor
+  keeps its socket, token, and lock through a home schema migration. These
+  are the cases tested, not a guarantee for every request: one still running
+  at the drain bound is cut off. They also cover an operator's SIGTERM to the
+  serving core. None covers a drain held open by a live voice call or an
+  event stream on the real core server (its streams need credentials;
+  ending them is tested against a plain server). On a Windows host the
+  supervisor package's tests passed and one journey run saw a single reset
+  in a handoff, from the cause described under Windows above; the journey's
+  zero-reset and SIGTERM checks run on POSIX only. A failed trial drains for
+  at most the kill grace, then gets SIGTERM and, 250 ms later, SIGKILL, so
+  a frozen trial delays the rollback by about one kill grace and its process
+  group still gets a chance to clean up. SIGKILL goes to the group only if
+  the leader is still running then; a group member that ignores SIGTERM can
+  outlive a trial whose leader exited, as it can after any SIGTERM stop.
