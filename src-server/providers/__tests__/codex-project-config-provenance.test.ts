@@ -123,6 +123,20 @@ describe('findUnaccountedCodexConfig (#3800)', () => {
     expect(findUnaccountedCodexConfig(join(root, 'sub', 'via'))).toBeDefined();
   });
 
+  test('a cwd that resolves into another repository is checked there too', () => {
+    const { root } = repository();
+    const other = realpathSync(makeTempDir('codex-provenance-other-'));
+    mkdirSync(join(other, 'inner'), { recursive: true });
+    writeFileSync(join(other, 'README.md'), 'other\n');
+    commitAll(other);
+    mkdirSync(join(other, '.codex'));
+    symlinkSync(join(other, 'inner'), join(root, 'sub', 'elsewhere'));
+    // Nothing on the lexical path; the resolved one has an uncommitted root.
+    expect(findUnaccountedCodexConfig(join(root, 'sub', 'elsewhere'))).toBe(
+      join(other, '.codex'),
+    );
+  });
+
   test("the user's own Codex home is configuration, not a project layer", () => {
     const home = realpathSync(makeTempDir('codex-provenance-home-'));
     mkdirSync(join(home, '.codex'));
