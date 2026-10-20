@@ -434,7 +434,8 @@ recorded deferral: a run that defers `ci-fast` or `test-full`, or selects
 targets and executes no test, is incomplete. Hosted `fast-checks` still passes
 such a plan, since `Merge-queue regression` runs full regression before merge,
 but it reports the pass as provisional with a warning that names the deferred
-lanes. An E2E, desktop or pre-push deferral is owned outside the selection and
+lanes, and the required `Source verification policy` status stays success with
+a provisional note in its description. An E2E, desktop or pre-push deferral is owned outside the selection and
 leaves the run complete.
 
 A companion Vitest reporter keeps failed-test error names, primary messages,
