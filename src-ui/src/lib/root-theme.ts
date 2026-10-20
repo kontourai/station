@@ -24,7 +24,7 @@
 import { useSyncExternalStore } from 'react';
 
 /** The attributes on `<html>` whose value can change resolved colours. */
-export const ROOT_THEME_ATTRIBUTES = [
+const ROOT_THEME_ATTRIBUTES = [
   'data-theme',
   'data-color-theme',
   'data-color-theme-flavor',
@@ -43,7 +43,7 @@ const BARE_LENGTH = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?(px)?$/;
  * A string that changes whenever the root's theme inputs change, and stays
  * the same across geometry-only inline style writes.
  */
-export function rootThemeSignature(root: HTMLElement): string {
+function rootThemeSignature(root: HTMLElement): string {
   const parts: string[] = [];
   for (const name of ROOT_THEME_ATTRIBUTES) {
     if (name === 'style') continue;
