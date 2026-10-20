@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  existsSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -241,6 +242,7 @@ describe('npm run fallow:baseline', () => {
       expect(JSON.parse(readFileSync(join(root, file), 'utf8'))).toBeTypeOf(
         'object',
       );
+    expect(existsSync(join(root, CEILING_FILE)), CEILING_FILE).toBe(true);
     expect(
       JSON.parse(readFileSync(join(root, CEILING_FILE), 'utf8')).counts,
     ).toEqual({ total_issues: 2, unused_files: 1, unused_exports: 1 });
