@@ -67,9 +67,19 @@ were written and are not scanned for issue references or labels. Dated
 records under `docs/reviews/`, `docs/strategy/`, `docs/adr/` and
 `.changeset/` keep their original labels.
 
-The comment scanner is not a parser. A JavaScript regular-expression literal
-that contains a quote can hide the rest of its line. A Markdown file that
-discusses the markers must put its examples in code spans or fences.
+The comment scanner is not a parser. It handles Rust character literals and
+lifetimes, and apostrophes inside YAML plain scalars, but a JavaScript
+regular-expression literal that contains a quote can still hide the rest of
+its line. A Markdown file that discusses the markers must put its examples in
+code spans or fences.
+
+There is no declared flag registry: Station reads `STATION_FEATURES` and
+tests it for literal flag names. The markers check follows every read to its
+membership tests: on the read itself, through a `const` list, or through an
+unexported function that returns the list. A read in any other shape
+(destructuring `process.env`, aliasing the list, passing it on, exporting the
+list function) makes the check NOT_VERIFIED, naming the line, rather than
+reporting fewer flags.
 
 ### Evidence retention lines
 
