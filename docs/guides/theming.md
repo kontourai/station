@@ -158,7 +158,7 @@ The picker is the Appearance page (`/appearance`, listed in Customize and the
 command palette): [AppearancePage](../../src-ui/src/pages/AppearancePage.tsx)
 holds the light/dark mode, a gallery of every theme drawn from the catalog
 swatches for the current mode, the family's dark flavors, and its named
-accents (Station's own presets and custom colour when Station is selected).
+accents (Station's own presets and custom color when Station is selected).
 Choosing a family resets flavor and accent to that family's defaults, and
 choosing a named accent clears a custom `accentColor`, which would otherwise
 win. A different family's sheet loads first, so until the applier names it

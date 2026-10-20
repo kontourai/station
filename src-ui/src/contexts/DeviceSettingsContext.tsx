@@ -44,10 +44,12 @@ export interface DeviceSettingsActions {
     value: DeviceSettings[K],
   ) => void;
   /**
-   * Several keys as ONE choice: one envelope write and, when signed in, one
-   * account patch. For values that only make sense together (a color theme
-   * and its flavor and accent), so no subscriber sees half of the change and
-   * an account server cannot accept one key of it and refuse another.
+   * Several keys as ONE choice: one envelope write, one notify and, when
+   * signed in, one account patch request. For values that only make sense
+   * together (a color theme and its flavor and accent), so no subscriber sees
+   * half of the change. The server still stores keys per document (a custom
+   * `accentColor` in the account document, the color-theme keys beside it),
+   * so this is one request, not one atomic write.
    */
   setDeviceSettings: (values: Partial<DeviceSettings>) => void;
   resetDeviceSetting: <K extends keyof DeviceSettings>(key: K) => void;

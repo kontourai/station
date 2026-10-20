@@ -141,8 +141,8 @@ most recent request for a family has failed, the root carries
 `data-color-theme-failed="<family>"`. It is removed when a new request for
 that family starts (retrying is not failed; it is set again only if that
 request fails), when a later apply loads it, or when the selection changes.
-It is exposed for an Appearance page to offer a retry; nothing on this branch
-reads it.
+The Appearance page reads it to show the choice as not loaded and to offer
+`retryColorTheme()`.
 `color-scheme` is already set per mode by the tokens.
 
 ### Signed-in people

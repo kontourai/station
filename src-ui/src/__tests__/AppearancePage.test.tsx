@@ -249,6 +249,63 @@ describe('Appearance page', () => {
   });
 });
 
+// One choice is one write: one store notification on this device and, signed
+// in, one account PATCH carrying every key of the choice. Per-key writes would
+// publish half a choice (a family with the previous family's accent) and send
+// several requests that can land in a different order.
+describe('a choice is one write', () => {
+  test('signed out: a family and a named accent each notify the store once', () => {
+    seed({ colorTheme: 'catppuccin', accentColor: '#22c55e' });
+    renderPage();
+    let notifications = 0;
+    const unsubscribe = deviceSettingsStore.subscribe(() => {
+      notifications += 1;
+    });
+    fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: 'Accent' })).getByRole(
+        'radio',
+        { name: 'Peach' },
+      ),
+    );
+    expect(notifications).toBe(1);
+    notifications = 0;
+    fireEvent.click(screen.getByRole('radio', { name: /^Nord/ }));
+    expect(notifications).toBe(1);
+    unsubscribe();
+  });
+
+  test('signed in: a family and a named accent each send one account patch with all their keys', () => {
+    seed({});
+    const patches: Record<string, unknown>[] = [];
+    let unbindAccount: () => void = () => {};
+    act(() => {
+      unbindAccount = deviceSettingsStore.bindAccountPreferences(
+        { colorTheme: 'catppuccin', accentColor: '#22c55e' },
+        (patch) => patches.push({ ...patch }),
+      );
+    });
+    try {
+      renderPage();
+      fireEvent.click(
+        within(screen.getByRole('radiogroup', { name: 'Accent' })).getByRole(
+          'radio',
+          { name: 'Peach' },
+        ),
+      );
+      expect(patches).toEqual([
+        { colorThemeAccent: 'peach', accentColor: null },
+      ]);
+      patches.length = 0;
+      fireEvent.click(screen.getByRole('radio', { name: /^Nord/ }));
+      expect(patches).toEqual([
+        { colorTheme: 'nord', colorThemeFlavor: null, colorThemeAccent: null },
+      ]);
+    } finally {
+      act(() => unbindAccount());
+    }
+  });
+});
+
 describe('the ⌘H hint', () => {
   function stubMedia(matching: (query: string) => boolean) {
     window.matchMedia = ((query: string) => ({
@@ -298,7 +355,7 @@ describe('Appearance page while a theme sheet loads', () => {
     fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));
 
     expect(attributes().theme).toBeNull();
-    expect(card(/^Catppuccin/).getAttribute('aria-busy')).toBe('true');
+    expect(card(/^Catppuccin/).classList.contains('is-loading')).toBe(true);
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinLoading…');
     expect(
       card(/^Catppuccin/).querySelector('.appearance-theme__check'),
@@ -307,7 +364,7 @@ describe('Appearance page while a theme sheet loads', () => {
 
     await settleSheetsAndObserve();
     expect(attributes().theme).toBe('catppuccin');
-    expect(card(/^Catppuccin/).getAttribute('aria-busy')).toBeNull();
+    expect(card(/^Catppuccin/).classList.contains('is-loading')).toBe(false);
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinMocha');
     expect(
       card(/^Catppuccin/).querySelector('.appearance-theme__check'),
@@ -327,7 +384,7 @@ describe('Appearance page while a theme sheet loads', () => {
 
     expect(attributes().theme).toBeNull();
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
-    expect(card(/^Catppuccin/).getAttribute('aria-busy')).toBeNull();
+    expect(card(/^Catppuccin/).classList.contains('is-loading')).toBe(false);
     expect(
       card(/^Catppuccin/).querySelector('.appearance-theme__check'),
     ).toBeNull();
@@ -443,7 +500,7 @@ describe('Appearance page while a theme sheet loads', () => {
       flavor: 'polar-night',
       accent: expect.any(String),
     });
-    expect(card(/^Nord/).getAttribute('aria-busy')).toBeNull();
+    expect(card(/^Nord/).classList.contains('is-loading')).toBe(false);
 
     // And back to Station before a family's sheet arrives leaves no theme.
     fireEvent.click(screen.getByRole('radio', { name: /^Tokyo Night/ }));
