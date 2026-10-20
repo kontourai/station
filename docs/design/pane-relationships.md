@@ -42,6 +42,25 @@ generation, opener selection, target identity and Keep. Readers reject invalid
 references, cycles, oversized records and mismatched Station/generation. Old
 arrangements remain readable; unsupported metadata cannot erase kept work.
 
+Each related occurrence also carries its own Station fence, written once when it
+is minted and removed only with the occurrence. A gate outside the pane admits
+its reader only on exactly that verified Station: while the Station is unknown
+it reads nothing, on another Station it shows a placeholder, and a fence this
+build cannot read stays closed. Losing, rolling back or outgrowing the side
+record therefore never unfences an occurrence.
+
+Writes to the side record are transactions under an exclusive cross-window
+lock, over a fresh read of the record. A contended or unavailable lock, a newer
+record, the bound, or a source or Station that changed while a guard was
+answering refuses the open, and a refusal removes whatever it had written. At
+the bound a new relation is refused; nothing live or kept is evicted, and only
+relations whose occurrence no longer exists in shared storage are pruned.
+
+Without a verified Station there is nothing to fence a new occurrence to, so
+opens keep their earlier behavior: an unfenced preview, matched by path. That
+is a migration limit, not a second mode: an occurrence that was ever fenced is
+never matched or read that way.
+
 Relations describe display and navigation only. They never authorize a read,
 grant plugin context, broaden a bound occurrence or establish domain ancestry.
 

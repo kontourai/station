@@ -508,9 +508,11 @@ views. The header's sidebar button collapses the desktop map to a project
 rail; clicking a project icon opens its views without navigating first.
 The dashboard icon below projects opens your Personal Boards and their add
 button. Escape closes either popup and returns focus to its icon.
-The compact footer keeps live work, Schedule, Customize and Settings in one
-row, or under Sidebar utilities in the collapsed rail. Conversations and
-composer drafts stay in the chat dock and its inbox (⌘D).
+The footer puts live work beside your initials, which open a summary of your
+access with **My access**, **Profile**, **Ask Station for help** and **Open
+settings**; Schedule, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
+Sidebar utilities. Conversations and composer drafts stay in the chat dock and
+its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
 for new chats. An existing chat stays with its original project. The chat bar's

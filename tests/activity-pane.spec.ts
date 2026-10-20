@@ -589,13 +589,14 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
       await page
         .getByRole('button', { name: 'Collapse workspace map' })
         .click();
-      await footer.getByRole('button', { name: 'Sidebar utilities' }).click();
-      const utilities = page.getByRole('dialog', { name: 'Sidebar utilities' });
+      // Live work stays on the collapsed rail itself, outside the utilities.
       await expect(
-        utilities.getByRole('button', {
+        footer.getByRole('button', {
           name: /4 participants.*2 active sessions/,
         }),
       ).toBeVisible();
+      await footer.getByRole('button', { name: 'Sidebar utilities' }).click();
+      const utilities = page.getByRole('dialog', { name: 'Sidebar utilities' });
       for (const name of ['Schedule', 'Customize', 'Settings']) {
         await expect(
           utilities.getByRole('button', { name, exact: true }),
@@ -868,12 +869,31 @@ fixtureTest.describe('Live work beside the account control', () => {
             .getByRole('navigation', { name: 'Mobile navigation' })
             .locator('.sidebar__footer');
           await expect(drawer).toBeVisible();
-          await expectFooterControlsApart(drawer, {
+          const phoneControls = {
             'Live work': drawer.getByRole('button', { name: /^Who is here:/ }),
             account: drawer.getByRole('button', {
               name: 'Profile and settings',
             }),
-          });
+            Schedule: drawer.getByRole('button', {
+              name: 'Schedule',
+              exact: true,
+            }),
+            Customize: drawer.getByRole('button', {
+              name: 'Customize',
+              exact: true,
+            }),
+            Settings: drawer.getByRole('button', {
+              name: 'Settings',
+              exact: true,
+            }),
+          };
+          await expectFooterControlsApart(drawer, phoneControls);
+          // The phone's touch floor, measured on every footer control.
+          for (const [name, control] of Object.entries(phoneControls))
+            expect(
+              (await control.boundingBox())?.height,
+              `${name} height`,
+            ).toBeGreaterThanOrEqual(44);
           expect(await documentFitsViewportWidth(page)).toBe(true);
           await captureFooter(
             drawer,

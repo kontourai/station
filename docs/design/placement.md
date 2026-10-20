@@ -537,8 +537,9 @@ leaving a showing region reads as the dock closing (`dockMirrorDiff`), and
 `syncRegionArrangementFromDock` re-places an unplaced Chat only on an
 explicit open (`dock=open`, a `focusSession` reveal), the first free dock
 region (`firstFreeDockRegion`: the requested one when empty, else `right`,
-`bottom`, `left` — #2156) else joining the requested one — a closed dock
-leaves it unplaced.
+`bottom` — #2156; `left` is no longer a fallback since the
+[pane workspace contract](pane-relationships.md)) else joining the requested
+one — a closed dock leaves it unplaced.
 
 The five decisions of the 2a plan, as taken (each reversible on its own):
 
@@ -581,7 +582,9 @@ layout binding", the `ChatPane` rule; the working directory falls back from
 the layout's to the project's; a layout-less Files pane keeps a file click out
 of `setLayout`, and a docked Files pane cannot open a preview until #2049 — a
 click selects the row only, because File Preview is no region surface and the
-region host refuses its occurrence). A project switch re-binds a mounted pane
+region host refuses its occurrence; superseded: a docked Files pane now opens
+the file as a related preview in a dock region, see
+[pane relationships](pane-relationships.md)). A project switch re-binds a mounted pane
 through the host's authority fingerprint (the instance's `boundContext` is
 part of it). With no active project the placed pane keeps its tab and its
 record and the region shows "Choose a project for this dock"; while that
@@ -612,7 +615,8 @@ opens a pane instance in a dock region: `useOpenInRegion` (a sibling of
 hands it to the provider's `openSurfaceInRegion(surfaceId, { region?,
 placement?, focusExisting? })`, which resolves the target (explicit, else the
 surface's own rule: its region if held, else its default region or the first
-free dock region — `right`, then `bottom`, then `left`, since #2156), reveals
+free dock region — `right`, then `bottom`, since #2156 and the pane
+workspace contract, which dropped `left`), reveals
 it and places or selects through the model.
 `showSurface` is reimplemented over it. An instance already open somewhere is
 revealed where it is (`focusExisting`, default on) rather than opened twice —
@@ -715,7 +719,12 @@ a tab left behind Chat would be one nobody can see or close;
 dismissal. (A pane held in `main` never opens a layer, so a layer pane's
 origin is always a dock region.) Opening another pane while a layer is open
 replaces the layer's pane and keeps the ORIGINAL previous state, so one Back
-always returns to Chat. Anything else that takes the pane off screen — "Show
+always returns to Chat. Since the pane workspace contract a kept related
+preview is the exception to the minted tab's removal (`retainLayerPane`): Keep,
+or beginning an edit, makes the layer's pane an ordinary tab of Chat's region,
+so Back, "‹ Chat" and a later replacement leave it placed, and the control
+names the conversation the preview came from
+([pane relationships](pane-relationships.md)). Anything else that takes the pane off screen — "Show
 Chat" in the folded menu, closing the tab, hiding the region — dismisses the
 layer the same way and consumes its entry; "Hide <pane>" for the layer's own
 pane is the way back to Chat rather than a hide of Chat's region. A
@@ -754,7 +763,8 @@ before the `?maximize` mirror writes (effect declaration order), so Back
 travels to the pre-layer URL and an in-app close travels back over the entry
 rather than collapsing it.
 
-A reload with a layer open lands in the pre-layer dock state. The layer's
+A reload with a layer open lands in the pre-layer dock state, then reopens the
+layer's pane (below). The layer's
 maximize (and a dock open it adds) ride Chat's `?dock`/`?maximize` params,
 so the provider keeps Chat's pre-layer visibility, maximize and
 `lastDockMaximized` in the tab's session storage for the life of the layer
@@ -764,7 +774,11 @@ A load on exactly that entry seeds the arrangement from the record and
 writes navigation back once; a load on any other entry discards it. Every
 ending of a layer removes the record, and so does the provider unmounting
 with a layer open (a reload runs no cleanup, which is what leaves it for the
-next load). The layer itself does not survive a reload.
+next load). Since the pane workspace contract the record also names the pane
+the layer shows, and a load on that entry reopens exactly that pane over Chat
+on the same entry, so Back still returns to the pre-layer state; a pane that
+no longer resolves, or a record an older build wrote without one, leaves the
+pre-layer state as before.
 
 **Owner decision 2026-09-24 (#928 comment).** This supersedes #928's
 2026-09-03 phone decision in one respect: showing Activity (or any pane) on
@@ -1169,7 +1183,9 @@ one arrangement, and no control at all that said whether a region was open
 (a hidden region has no bar; the only way back was a surface row).
 
 - **One toggle per dock region**, in screen order (left, bottom, right),
-  `aria-pressed` derived from `RegionState.visible`; a press shows or hides
+  `aria-pressed` derived from `RegionState.visible` (since the pane
+  workspace contract the group ends the header row, and Left's toggle shows
+  only while Left holds a pane or is open); a press shows or hides
   the region, so every tab comes back with the selection it had. The
   accessible name is the region's ("Bottom region") and the panes it holds
   are the tooltip, so a journey finds the same control in every arrangement.
@@ -1242,6 +1258,13 @@ Accepted: the rule has no Chat-shaped exception. Terminal's new default is
 read by the `?surface=coding:terminal` deep link and by nothing advertised in
 the UI today (the region "+" always names its region); it is a default that
 #2154's chooser and later openers inherit.
+
+**Superseded by the pane workspace contract, 2026-10-19.** Files defaults to
+Related (`right`) like the rest, and the fallback order is `right`, then
+`bottom`: `left` is never chosen automatically. Left stays an advanced
+placement, reached by moving a pane or from a region's chooser, and a saved or
+explicit Left placement still restores. `region-model.test.ts` pins both
+([pane relationships](pane-relationships.md)).
 
 Both are DEFAULTS, not rules: Bottom refuses nothing. Every dock-capable
 surface still declares all three dock regions, so a tab's "Move to Bottom",

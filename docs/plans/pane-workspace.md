@@ -36,18 +36,44 @@ publication are separate delivery states.
 
 ## Acceptance ledger
 
+A box is checked only after independent review and runtime acceptance. "In
+#3875" means implemented with source-level evidence in that pull request and
+not yet accepted.
+
 - [ ] Main/Related/Tools are distinct shell regions; one workspace sidebar.
+  In #3875: Files and every fallback open in Related or Tools; Left is never
+  an automatic fallback and its toggle shows only while Left is in use.
 - [ ] Preview replacement, Keep, edit protection and exact target focus work.
+  In #3875 for file previews opened from a conversation link or a docked Files
+  pane, including a per-occurrence Station fence and cross-window locked
+  writes. Other related kinds wait for their slices.
 - [ ] Quick review preserves source selection/search/scroll; Open promotes.
+  Not started.
 - [ ] Source switching and cancelled guards preserve the right child and focus.
+  In #3875 for file previews: source hide/restore, and Cancel on a covered,
+  replaced or closed pane's guard leaves arrangement, selection, relation,
+  state and focus unchanged.
 - [ ] Warm/cold links, Back/Up and reload restore validated exact targets.
+  In #3875: Up to the exact conversation or Files Project through canonical
+  navigation, and a phone-layer reload reopens its exact pane. Cold child links
+  are not started.
 - [ ] Responsive folds preserve occurrence/controller/history identity.
+  In #3875 for the phone layer only (Keep through replacement, Back, reopen).
 - [ ] Coding leases stable outlets without rewriting ambient arrangements.
+  Not started.
 - [ ] One Chat controller and Terminal process owner across all hosts.
+  Not started.
 - [ ] Phone inbox/conversation, child destinations and properties sheet work.
+  Not started.
 - [ ] Direct and iframe SDK report journeys share bounded admission/outcomes.
+  Not started on `main`; a local SDK branch predates the #3875 repairs.
 - [ ] Context/grant/generation failures and older-host fallback remain visible.
+  Not started.
 - [ ] Header/footer controls work expanded, collapsed, mobile and both themes.
+  In #3875: account control beside Live work, region glyphs at the far right;
+  browser geometry checked expanded at 216px in both themes, and collapsed and
+  in the phone drawer at 390 and 320px. Coding toggle delegation is not
+  started.
 - [ ] Required local checks, independent review and native journeys recorded.
 - [ ] PRs linked and actual REST landing recorded.
 - [ ] Public SDK/contracts publication state recorded separately.
@@ -59,3 +85,9 @@ publication are separate delivery states.
 - Pre-edit `gate:for` completed for design, UI, contracts and SDK paths.
 - All implementation and runtime acceptance items remain unqualified at plan
   creation. Update this ledger with observed results as the slices land.
+- #3875 review repairs: unit and integration suites for the fence, locked
+  transactions, the bound, guards, Keep on a phone and exact Up each fail when
+  the behaviour they name is reverted (fault injection, recorded in the pull
+  request). Known limits: without a verified Station opens stay unfenced and
+  path-matched; switching tabs within a region still unmounts the hidden pane,
+  as before; the open account menu's phone geometry is not measured.
