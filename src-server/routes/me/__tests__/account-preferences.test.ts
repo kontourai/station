@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { describe, expect, test } from 'vitest';
+import { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { AccountPreferencesStore } from '../../../services/identity/account-preferences.js';
 import { createAccountPreferencesRoutes } from '../account-preferences.js';
@@ -209,6 +210,110 @@ describe('account preference HTTP persistence', () => {
     for (const colorTheme of ['Catppuccin', '<style>', '', 'a'.repeat(49), 42])
       expect((await f.call({ colorTheme })).status).toBe(400);
     expect((await f.call({ colorThemeAccent: 'x y' })).status).toBe(400);
+  });
+
+  test('a server from before color themes still reads what this one writes', async () => {
+    // Verbatim from src-server/services/identity/account-preferences.ts at
+    // e880e9c9203 (the last main without color themes): that reader parses
+    // its document strictly, so one unknown key would fail every account
+    // preference after a downgrade or with a shared home.
+    const list = z.array(z.string().min(1).max(1024)).max(512);
+    const mode = z.enum(['ask', 'auto', 'never']);
+    const fields = {
+      theme: z.enum(['light', 'dark']),
+      accentColor: z.string().max(128).nullable(),
+      diffStyle: z.enum(['unified', 'split']),
+      diffWrap: z.boolean(),
+      chatShowReasoning: z.boolean(),
+      chatShowToolDetails: z.boolean(),
+      chatFontSize: z.number().int().min(10).max(24).nullable(),
+      chatDockAutoHide: z.boolean(),
+      confirmConversationDelete: z.boolean(),
+      developerToolsEnabled: z.boolean(),
+      modelPickerPreferences: z
+        .object({ favorites: list, recents: list, hidden: list, order: list })
+        .strict(),
+      smoothReveal: z.boolean(),
+      bufferedDelivery: z.boolean(),
+      interactiveApprovalModes: z
+        .object({
+          codex: mode.optional(),
+          claude: mode.optional(),
+          muse: mode.optional(),
+        })
+        .strict(),
+    };
+    const oldDocument = z
+      .object({
+        schemaVersion: z.literal(1),
+        values: z.object(fields).partial().strict(),
+      })
+      .strict();
+
+    const f = await fixture();
+    expect(
+      (
+        await f.call({
+          theme: 'light',
+          colorTheme: 'catppuccin',
+          colorThemeFlavor: 'frappe',
+          colorThemeAccent: 'pink',
+        })
+      ).status,
+    ).toBe(200);
+    const dir = join(f.home, 'config', 'account-preferences');
+    const files = (await readdir(dir)).filter((name) => name.endsWith('.json'));
+    const mainFile = files.find((name) => !name.includes('.appearance.'))!;
+    expect(files).toHaveLength(2);
+    // The old reader opens only <key>.json, and it parses.
+    const old = oldDocument.parse(
+      JSON.parse(await readFile(join(dir, mainFile), 'utf8')),
+    );
+    expect(old.values).toEqual({ theme: 'light' });
+    // This server reads both and returns one view.
+    expect(await (await f.call()).json()).toMatchObject({
+      data: {
+        values: {
+          theme: 'light',
+          colorTheme: 'catppuccin',
+          colorThemeFlavor: 'frappe',
+          colorThemeAccent: 'pink',
+        },
+      },
+    });
+  });
+
+  test('a key written by a newer server is kept on write and left out of the view', async () => {
+    const f = await fixture();
+    await f.call({ theme: 'dark' });
+    const dir = join(f.home, 'config', 'account-preferences');
+    const [file] = (await readdir(dir)).filter((name) =>
+      name.endsWith('.json'),
+    );
+    const path = join(dir, file!);
+    await writeFile(
+      path,
+      JSON.stringify({
+        schemaVersion: 1,
+        values: { theme: 'dark', someFutureKey: { nested: true } },
+      }),
+    );
+    const read = (await (await f.call()).json()) as {
+      data: { values: Record<string, unknown> };
+    };
+    expect(read.data.values).toEqual({ theme: 'dark' });
+    expect((await f.call({ diffWrap: true })).status).toBe(200);
+    expect(JSON.parse(await readFile(path, 'utf8')).values).toEqual({
+      theme: 'dark',
+      diffWrap: true,
+      someFutureKey: { nested: true },
+    });
+    // A known key is still validated.
+    await writeFile(
+      path,
+      JSON.stringify({ schemaVersion: 1, values: { theme: 'sepia' } }),
+    );
+    expect((await f.call()).status).toBe(503);
   });
 
   test('a corrupt saved record is reported rather than replaced by defaults or a later patch', async () => {
