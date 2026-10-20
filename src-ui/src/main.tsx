@@ -68,7 +68,9 @@ import {
   BRANDING_THEME_STORAGE_KEY,
   resolveCachedBrandingTheme,
 } from './lib/branding-theme';
+import { bindColorThemeToSettings } from './lib/color-theme-apply';
 import {
+  deviceSettingsStore,
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
@@ -231,6 +233,10 @@ const _bootBrandingTheme = resolveCachedBrandingTheme(
 );
 if (_bootBrandingTheme)
   applyBrandingTheme(document.documentElement, _bootBrandingTheme);
+// The color theme follows the resolved settings for the page's lifetime:
+// device settings now (startup-theme.js already stamped them before first
+// paint), account preferences once they bind. See lib/color-theme-apply.ts.
+bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
 
 function renderApp(): void {
   ReactDOM.createRoot(document.getElementById('root')!).render(

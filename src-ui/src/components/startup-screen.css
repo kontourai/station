@@ -1,5 +1,7 @@
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
+/* The selected color theme's surfaces, so the splash paints in it. */
+@import url("../color-themes.startup.generated.css");
 
 .station-startup-frame {
   inset: 0;

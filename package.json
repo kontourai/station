@@ -108,6 +108,7 @@
     "workspace-pane:conformance": "tsx scripts/workspace-pane-conformance.ts",
     "generate:openapi": "tsx scripts/generate-openapi.ts",
     "gen:settings-registry": "tsx scripts/gen-settings-registry.ts",
+    "gen:color-themes": "tsx scripts/gen-color-themes.ts",
     "project-shadow:report": "tsx scripts/project-resource-shadow-report.ts",
     "docs:links:check": "node scripts/check-markdown-links.mjs",
     "docs:learn:build": "node scripts/build-learning-guide.mjs",

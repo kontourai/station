@@ -12,6 +12,7 @@
       "!!**/dist-server",
       "!!**/dist-ui",
       "!!**/archive",
+      "!!src-ui/src/*.generated.css",
       "!!docs/strategy/dogfood/**/evidence",
       "!!.veritas/**",
       "!!veritas.claims.json"

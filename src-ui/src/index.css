@@ -18,6 +18,11 @@
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
 @import url("@kontourai/ui/react/styles.css");
+/* Named color themes (docs/decisions/user-color-themes.md), generated from
+   lib/color-theme-catalog.ts. Imported here, before the Station blocks below,
+   on purpose: its selectors outrank them by weight, not by order, so moving
+   this import cannot change which declaration wins. */
+@import url("./color-themes.generated.css");
 
 /* A development build installs alongside a real one — same name, same window,
    one letter of difference in the application id. Retinting the brand token is
