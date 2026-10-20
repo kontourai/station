@@ -541,8 +541,8 @@ Every path becomes a generation handoff:
     with eight spares and the draining generation closing at once, 3 in 700;
     with the quiet close as well, none in 700. Closing any Windows listener
     can still reset a connection completed into it in that instant, so the
-    quiet windows shrink that window rather than remove it; the tested cases
-    saw no reset.
+    quiet windows shrink that window rather than remove it: the journey
+    below saw one such reset in 39 runs.
   - `process.kill(pid, 'SIGTERM')` ends a process outright on Windows, so a
     core signalled that way does not run its SIGTERM drain.
 
@@ -622,8 +622,10 @@ verification, and fault injection.
   event stream on the real core server (its streams need credentials;
   ending them is tested against a plain server). On a Windows host the
   supervisor package's tests passed, and the journey's zero-reset check
-  passed in 12 runs with connection catching (see Windows above); with
-  catching turned off, 3 of 3 runs reset one or two connections. The
+  passed in 38 of 39 runs with connection catching (see Windows above); the
+  other reset a single connection. With catching turned off, 3 of 3 runs
+  reset one or two connections. The Windows pull-request check does not run
+  the journey, so the residual reset cannot fail it. The
   journey's SIGTERM check runs on POSIX only. The package's real-process
   tests also run catching on any host, through a handoff and two rollbacks,
   and pair a catching supervisor with a 1.0 fixture core (in both
